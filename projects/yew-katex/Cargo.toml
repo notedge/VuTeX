@@ -9,9 +9,9 @@ license = "MPL-2.0"
 edition = "2018"
 
 [dependencies]
-yew = "0.17"
-katex-wasmbind = {version = "0.8", path = "../wasmbind-katex"}
-anyhow = "1.0"
+yew = "0.19.3"
+katex-wasmbind = {version = "0.9", path = "../wasmbind-katex"}
+anyhow = "1.0.55"
 
 [dev-dependencies]
 

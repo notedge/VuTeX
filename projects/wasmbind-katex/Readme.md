@@ -1,4 +1,4 @@
-# KaTeX Wasmbind
+# KaTeX WASM (KaTeX 0.15.2)
 
 ## Basic
 

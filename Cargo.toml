@@ -3,7 +3,7 @@ members = ["projects/*"]
 default-members = [
     "projects/wasmbind-katex",
     "projects/yew-katex",
-    "projects/yew-katex-preview",
+    "projects/katex-preview",
 ]
 exclude = [
     "projects/.DS_Store",

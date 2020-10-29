@@ -10,5 +10,5 @@ license = "MPL-2.0"
 edition = "2018"
 
 [dependencies]
-yew = "0.17"
+yew = "0.19.3"
 yew-katex = {version = "0.2", path = "../yew-katex"}
