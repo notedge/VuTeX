@@ -1,7 +1,7 @@
-KaTeX for Yew
-=============
+KaTeX for Rust
+==============
 
-Render math with KaTeX in Yew!
+Render math with KaTeX in Web!
 
 - The online preview: https://galaster.github.io/yew-katex
 

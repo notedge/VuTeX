@@ -1,9 +1,8 @@
 use crate::render_to_string;
 use serde_derive::{Deserialize, Serialize};
 use std::collections::HashMap;
-use wasm_bindgen::{prelude::*, JsValue};
+use wasm_bindgen::JsValue;
 
-#[wasm_bindgen]
 #[derive(Clone, Deserialize, Serialize)]
 /// Read <https://katex.org/docs/options.html> for more information.
 pub struct KaTeXOptions {
@@ -23,7 +22,6 @@ pub struct KaTeXOptions {
     #[serde(rename = "throwOnError")]
     pub throw_on_error: bool,
     /// Color used for invalid LaTeX.
-
 
     /// Specifies a minimum thickness, in ems.
     #[serde(rename = "minRuleThickness")]
@@ -75,16 +73,10 @@ impl Default for KaTeXOptions {
 
 impl KaTeXOptions {
     pub fn display_mode() -> KaTeXOptions {
-        KaTeXOptions {
-            display_mode: true,
-            ..KaTeXOptions::default()
-        }
+        KaTeXOptions { display_mode: true, ..KaTeXOptions::default() }
     }
     pub fn inline_mode() -> KaTeXOptions {
-        KaTeXOptions {
-            display_mode: false,
-            ..KaTeXOptions::default()
-        }
+        KaTeXOptions { display_mode: false, ..KaTeXOptions::default() }
     }
     pub fn render(&self, input: &str) -> String {
         render_to_string(input, &JsValue::from_serde(self).unwrap())
@@ -102,7 +94,7 @@ impl KaTeXOptions {
             "html" => "html",
             "mathml" => "mathml",
             "htmlandmathml" => "htmlAndMathml",
-            _ => return false
+            _ => return false,
         };
         self.output = String::from(set);
         return true;

@@ -5,10 +5,10 @@ version = "0.2.0"
 authors = ["Aster <192607617@qq.com>"]
 description = "Render math with KaTeX in Yew!"
 repository = "https://github.com/GalAster/yew-katex"
-readme = "../../Readme.md"
+readme = "readme.md"
 license = "MPL-2.0"
 edition = "2018"
 
 [dependencies]
-yew = "0.19.3"
-yew-katex = {version = "0.2", path = "../yew-katex"}
+dioxus = "0.1.8"
+dioxus-katex = {version = "0.1", path = "../dioxus-katex"}

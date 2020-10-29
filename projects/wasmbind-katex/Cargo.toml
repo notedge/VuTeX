@@ -3,10 +3,10 @@ name = "katex-wasmbind"
 version = "0.9.0"
 authors = ["Aster <galaster@foxmail.com>"]
 description = "KaTeX Render for wasm bind"
-edition = "2021"
+repository = "https://github.com/oovm/katex-wasm"
 license = "MPL-2.0"
 readme = "Readme.md"
-repository = "https://github.com/oovm/katex-wasm"
+edition = "2021"
 include = ["/src/**/*"]
 # exclude = ["/tests/*", "/.idea/*", "/benches/*"]
 

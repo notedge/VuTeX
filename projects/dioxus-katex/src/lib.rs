@@ -1,3 +1,6 @@
-mod katex;
+pub use self::katex::{
+    builder::{use_katex, UseKatexBuilder},
+    UseKatex,
+};
 
-pub use katex::{KaTeX, KaTeXProperties};
+mod katex;
