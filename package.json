@@ -2,6 +2,6 @@
     "private": true,
     "scripts": {
         "web": "cd projects/yew-katex-preview && trunk serve",
-        "u": "cargo upgrade --workspace",
+        "u": "cargo upgrade --workspace"
     }
 }

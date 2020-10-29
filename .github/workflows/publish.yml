@@ -19,12 +19,10 @@ jobs:
           override: true
           profile: minimal
       - uses: jetli/wasm-bindgen-action@v0.1.0
-      - name: Install trunk 🗝
-        run: |
-          brew install trunk
+      - uses: jetli/trunk-action@v0.1.0
       - name: Build website 💣
         run: |
-          cd projects/yew-katex-preview
+          cd projects/katex-preview
           wasm-bindgen -V
           trunk -V
           trunk build --release
@@ -33,5 +31,5 @@ jobs:
         with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BRANCH: gh-pages
-          FOLDER: projects/yew-katex-preview/dist
+          FOLDER: projects/katex-preview/dist
           CLEAN: true

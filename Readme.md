@@ -3,7 +3,7 @@ KaTeX for Rust
 
 Render math with KaTeX in Web!
 
-- The online preview: https://galaster.github.io/yew-katex
+- The online preview: https://galaster.github.io/katex-wasm
 
 ## How to use
 
@@ -12,19 +12,5 @@ Render math with KaTeX in Web!
 If you want to manage CDN by yourself, you can disable this feature and manually import it
 
 ```html
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/katex.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.15.2/dist/katex.min.css">
 ```
-
-2. Easily added using `<KaTeX/>`
-
-```rust
-use yew_katex::KaTeX;
-
-html! {
-    <KaTeX math="\\KaTeX" inline=false/>
-}
-```
-
-## Todo
-
-- [x] Automatically import css cdn when the first component is loaded

@@ -1,26 +1,21 @@
 use super::*;
 
-pub struct UseKatexBuilder {}
-
-impl Default for UseKatexBuilder {
-    fn default() -> Self {
-        Self {}
-    }
+/// A builder for a [`UseKatex`] hook.
+pub fn use_katex(cx: &ScopeState, katex: KaTeXOptions) -> &mut UseKatex {
+    let katex = UseKatex { katex: Rc::new(RefCell::new(katex)), updater: cx.schedule_update() };
+    cx.use_hook(|_| katex)
+}
+/// A builder for a [`UseKatex`] hook in display mode.
+pub fn use_katex_display(cx: &ScopeState) -> &mut UseKatex {
+    use_katex(cx, KaTeXOptions::display_mode())
+}
+/// A builder for a [`UseKatex`] hook in inline mode.
+pub fn use_katex_inline(cx: &ScopeState) -> &mut UseKatex {
+    use_katex(cx, KaTeXOptions::inline_mode())
 }
 
-impl UseKatexBuilder {
-    pub fn use_tailwind<'a>(&self, cx: &'a ScopeState) -> &'a mut UseKatex {
-        cx.use_hook(|_| UseKatex::new(cx, self))
+impl Debug for UseKatex {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        Debug::fmt(&self.katex.borrow(), f)
     }
-}
-
-impl UseKatex {
-    fn new(cx: &ScopeState, _: &UseKatexBuilder) -> Self {
-        let cfg = KaTeXOptions::default();
-        Self { katex: Rc::new(RefCell::new(cfg)), updater: cx.schedule_update() }
-    }
-}
-
-pub fn use_katex(cx: &ScopeState) -> &UseKatex {
-    UseKatexBuilder::default().use_tailwind(cx)
 }

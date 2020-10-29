@@ -5,24 +5,18 @@ Render math with KaTeX in Dioxus!
 
 ## How to use
 
-1. When `auto-cdn` feature is enable, CDN will be inserted to head when the first component of this type is loaded.
-
-If you want to manage CDN by yourself, you can disable this feature and manually import it
+- First you need to import css cdn:
 
 ```html
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/katex.min.css">
 ```
 
-2. Easily added using `<KaTeX/>`
+- Call `use_katex_display` hook to prepare context.
+- Call `compile` to get math expression node.
 
 ```rust
-use yew_katex::KaTeX;
+use dioxus_katex::use_katex_display;
 
-html! {
-    <KaTeX math="\\KaTeX" inline=false/>
-}
+let katex = use_katex_display(&cx);
+let math = katex.compile(text);
 ```
-
-## Todo
-
-- [x] Automatically import css cdn when the first component is loaded
