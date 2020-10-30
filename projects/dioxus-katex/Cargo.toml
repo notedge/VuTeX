@@ -1,16 +1,17 @@
 [package]
 name = "dioxus-katex"
-version = "0.2.0"
+version = "0.2.2"
 authors = ["Aster <192607617@qq.com>"]
-description = "Render math with KaTeX in Yew!"
-repository = "https://github.com/GalAster/yew-katex"
+description = "Render math with KaTeX in Dioxus!"
+repository = "https://github.com/oovm/katex-wasm"
+documentation = "https://docs.rs/dioxus-katex"
 readme = "readme.md"
 license = "MPL-2.0"
 edition = "2018"
 
 [dependencies]
-dioxus = "0.1.8"
-katex-wasmbind = {version = "0.9.2", path = "../wasmbind-katex"}
+dioxus = "0.2.4"
+katex-wasmbind = {version = "0.10.0", path = "../wasmbind-katex"}
 
 [dev-dependencies]
 

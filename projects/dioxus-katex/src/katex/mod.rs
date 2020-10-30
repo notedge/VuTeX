@@ -3,6 +3,7 @@ use std::{
     fmt::{Debug, Formatter},
     rc::Rc,
 };
+use std::sync::Arc;
 
 use dioxus::prelude::*;
 use dioxus_elements::{div, GlobalAttributes};
@@ -14,7 +15,7 @@ pub mod builder;
 /// A hook which keeping the context of KaTeX formula.
 pub struct UseKatex {
     katex: Rc<RefCell<KaTeXOptions>>,
-    updater: Rc<dyn Fn() + 'static>,
+    updater: Arc<dyn Fn() + 'static>,
 }
 
 impl UseKatex {
@@ -49,12 +50,12 @@ impl UseKatex {
     pub fn compile(&self, input: &str) -> LazyNodes {
         let config = self.katex.borrow_mut();
         let out = config.render(input);
-        LazyNodes::new_some(move |cx: NodeFactory| -> VNode {
+        LazyNodes::new(move |cx: NodeFactory| -> VNode {
             cx.element(
                 div,
-                cx.bump().alloc([]),
+                &[],
                 cx.bump().alloc([div.dangerous_inner_html(cx, format_args!("{out}", out = out))]),
-                cx.bump().alloc([]),
+                &[],
                 None,
             )
         })

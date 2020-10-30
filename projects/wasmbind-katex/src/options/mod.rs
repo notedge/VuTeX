@@ -3,7 +3,7 @@ use serde_derive::{Deserialize, Serialize};
 use std::collections::HashMap;
 use wasm_bindgen::JsValue;
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 /// Read <https://katex.org/docs/options.html> for more information.
 pub struct KaTeXOptions {
     /// Whether to render the math in the display mode.
@@ -72,12 +72,15 @@ impl Default for KaTeXOptions {
 }
 
 impl KaTeXOptions {
+    /// Set output as `\displaystyle`
     pub fn display_mode() -> KaTeXOptions {
         KaTeXOptions { display_mode: true, ..KaTeXOptions::default() }
     }
+    /// Set output as `\inlinestyle`
     pub fn inline_mode() -> KaTeXOptions {
         KaTeXOptions { display_mode: false, ..KaTeXOptions::default() }
     }
+    /// Render formulas to html string.
     pub fn render(&self, input: &str) -> String {
         render_to_string(input, &JsValue::from_serde(self).unwrap())
     }
@@ -99,12 +102,11 @@ impl KaTeXOptions {
         self.output = String::from(set);
         return true;
     }
+    /// Set the color of the error message.
     pub fn set_error_color(&mut self) -> bool {
         unimplemented!()
     }
-    pub fn set_macro_rules(&mut self) -> bool {
-        unimplemented!()
-    }
+    /// Insert a custom macro.
     pub fn insert_macro_rule(&mut self) -> bool {
         unimplemented!()
     }

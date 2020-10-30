@@ -6,4 +6,7 @@ require('esbuild')
         minify: true,
         bundle: true,
     })
-    .catch(() => process.exit(1))
+    .catch(error => {
+        console.error(error);
+        process.exit(1);
+    });

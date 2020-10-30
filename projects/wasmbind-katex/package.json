@@ -2,14 +2,14 @@
     "private": true,
     "scripts": {
         "build": "node esbuild",
-        "test": "wee build && wasm-pack test --node",
-        "update": "yarn upgrade-interactive --latest"
+        "t": "wee build && wasm-pack test --chrome",
+        "u": "yarn upgrade-interactive --latest",
+        "p": "cargo publish --allow-dirty"
     },
     "dependencies": {
-        "katex": "^0.15.2"
+        "katex": "^0.16.0"
     },
     "devDependencies": {
-        "@types/katex": "^0.11.0",
         "esbuild": "^0.14.25"
     }
 }

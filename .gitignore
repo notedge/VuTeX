@@ -24,5 +24,7 @@ Thumbs.db
 .DS_Store
 docs/.build/
 package-lock.json
+time-travel.*
 
 *.7z
+*.nb

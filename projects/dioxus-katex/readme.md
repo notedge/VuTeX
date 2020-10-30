@@ -8,7 +8,7 @@ Render math with KaTeX in Dioxus!
 - First you need to import css cdn:
 
 ```html
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/katex.min.css">
+<link rel="stylesheet" href="https://unpkg.com/katex@0.12.0/dist/katex.min.css">
 ```
 
 - Call `use_katex_display` hook to prepare context.

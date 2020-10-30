@@ -63,7 +63,7 @@ impl KaTeX {
         return render;
     }
     pub fn load_cdn(&self) -> Result<(), std::io::Error> {
-        // <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/katex.min.css">
+        // <link rel="stylesheet" href="https://unpkg.com/katex@0.12.0/dist/katex.min.css">
         if let None = document().get_element_by_id("cdn-katex") {
             let head = document().query_selector("head").expect("").expect("");
             let t = document().create_element("link").expect("");
@@ -72,7 +72,7 @@ impl KaTeX {
             t.set_attribute("media", "none").expect("");
             t.set_attribute("onload", "this.media='all'").expect("");
             t.set_attribute("rel", "stylesheet").expect("");
-            t.set_attribute("href", "https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/katex.min.css").expect("");
+            t.set_attribute("href", "https://unpkg.com/katex@0.12.0/dist/katex.min.css").expect("");
             head.append_child(&t).expect("");
         }
         Ok(())

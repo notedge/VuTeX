@@ -1,10 +1,10 @@
 use dioxus::{events::FormEvent, prelude::*};
 
-use dioxus_katex::{use_katex, use_katex_display, KaTeXOptions, UseKatex};
+use dioxus_katex::{use_katex_display, UseKatex};
 
 pub fn Editor(cx: Scope) -> Element {
     let place_holder = r#"K_{0}-K_{1}=\frac{E}{c^2}\frac{v^2}{2}"#;
-    let (text, text_set) = use_state(&cx, || place_holder.to_string());
+    let text = use_state(&cx, || place_holder.to_string());
     let katex = use_katex_display(&cx);
     let is_display = DisplayToggle(katex);
     let math = katex.compile(text);
@@ -14,10 +14,10 @@ pub fn Editor(cx: Scope) -> Element {
             div {
                 class: "form-control flex-1",
                 textarea {
-                    class: "textarea h-screen textarea-bordered textarea-primary",
+                    class: "textarea h-96 textarea-bordered textarea-primary",
                     id: "editor",
                     placeholder: "{place_holder}",
-                    oninput: move |e| text_set(e.value.to_owned()),
+                    oninput: move |e| text.set(e.value.to_owned()),
                     value: "{text}",
                 }
             }
@@ -30,7 +30,7 @@ pub fn Editor(cx: Scope) -> Element {
             class: "form-control",
             is_display
             a {
-                href: "https://github.com/oovm/tailwind-rs/issues",
+                href: "https://github.com/oovm/katex-wasm/issues",
                 target: "_blank",
                 button {
                     class: "py-2 px-4 mr-2 mb-2 text-sm font-medium text-gray-900 bg-white rounded-lg border border-gray-200 hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2 focus:ring-blue-700 focus:text-blue-700 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-600 dark:hover:text-white dark:hover:bg-gray-700",
