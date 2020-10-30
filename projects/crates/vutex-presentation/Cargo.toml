@@ -1,0 +1,13 @@
+[package]
+name = "vutex-presentation"
+version.workspace = true
+authors.workspace = true
+description = "Display and flow presentation IR"
+license.workspace = true
+edition.workspace = true
+readme = "readme.md"
+
+[dependencies]
+vutex-types = { workspace = true, features = ["serde"] }
+vutex-layout = { workspace = true }
+vutex-document = { workspace = true }

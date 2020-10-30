@@ -1,0 +1,12 @@
+[package]
+name = "vutex-input-typst"
+version.workspace = true
+authors.workspace = true
+description = "Typst to VuTeX document projection adapter"
+license.workspace = true
+edition.workspace = true
+readme = "readme.md"
+
+[dependencies]
+vutex-types = { workspace = true, features = ["serde"] }
+vutex-document = { workspace = true }

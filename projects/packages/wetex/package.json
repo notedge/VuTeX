@@ -1,0 +1,33 @@
+{
+    "name": "@vutex/wetex",
+    "version": "0.0.0",
+    "description": "WeTeX: VuTeX formula rendering for browser and Node (Rust/WASM)",
+    "type": "module",
+    "license": "MPL-2.0",
+    "publishConfig": {
+        "access": "public"
+    },
+    "exports": {
+        ".": "./src/index.ts",
+        "./wasm": "./src/wasm/index.ts"
+    },
+    "files": [
+        "readme.md",
+        "src"
+    ],
+    "engines": {
+        "node": ">=20"
+    },
+    "scripts": {
+        "typecheck": "tsc --noEmit",
+        "test": "tsx --test tests/smoke.test.ts"
+    },
+    "dependencies": {
+        "@vutex/vutex-unknown-wasm32": "workspace:*"
+    },
+    "devDependencies": {
+        "@types/node": "^22.13.10",
+        "tsx": "^4.19.3",
+        "typescript": "^5.8.3"
+    }
+}

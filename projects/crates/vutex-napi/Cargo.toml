@@ -1,0 +1,26 @@
+[package]
+name = "vutex-napi"
+version.workspace = true
+authors.workspace = true
+description = "Node-API bindings for VuTeX document and formula rendering"
+license.workspace = true
+edition.workspace = true
+readme = "readme.md"
+homepage = "https://github.com/notedge/VuTeX"
+repository = "https://github.com/notedge/VuTeX"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+napi = { workspace = true }
+napi-derive = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+wetex-wasm = { workspace = true }
+
+[build-dependencies]
+napi-build = { workspace = true }
+
+[package.metadata.napi]
+name = "vutex"

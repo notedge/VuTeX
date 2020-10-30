@@ -1,0 +1,16 @@
+[package]
+name = "vutex-types"
+version.workspace = true
+authors.workspace = true
+description = "Shared IDs, diagnostics, conversion reports, and errors for VuTeX"
+license.workspace = true
+edition.workspace = true
+readme = "readme.md"
+
+[features]
+default = ["serde"]
+serde = ["dep:serde"]
+
+[dependencies]
+thiserror = { workspace = true }
+serde = { workspace = true, optional = true }

@@ -1,0 +1,18 @@
+{
+  "cli.intro": "vutex — language-neutral document typesetting and rendering",
+  "cli.cmd.render": "Render a document to the configured output format",
+  "cli.cmd.inspect": "Inspect input format and document metadata",
+  "cli.cmd.package": "Manage VuTeX resource packages (fonts, templates, profiles)",
+  "cli.cmd.package.list": "List resource packages from manifest and lockfile",
+  "cli.cmd.package.add": "Add a resource package alias to vutex.toml",
+  "cli.cmd.package.remove": "Remove a resource package alias from vutex.toml",
+  "cli.cmd.package.install": "Resolve and install resource packages into the project cache",
+  "cli.cmd.package.update": "Refresh the resource package lockfile",
+  "cli.cmd.package.doctor": "Check manifest, lockfile, and package cache health",
+  "cli.opt.output": "Output file path, or format id when writing to stdout",
+  "cli.opt.profile": "Named language profile from vutex.toml",
+  "cli.opt.input-format": "Override input format id",
+  "cli.opt.json": "Emit machine-readable JSON on stdout",
+  "cli.opt.package-name": "Resource package name to install",
+  "cli.opt.package-version": "Requested package version range"
+}

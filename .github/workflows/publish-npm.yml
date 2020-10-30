@@ -1,0 +1,22 @@
+name: Publish npm
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  gate:
+    name: publish gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publish not configured
+        run: |
+          echo "VuTeX npm trusted publish is not wired yet."
+          echo "Tag push detected but release pipeline remains a manual follow-up."
