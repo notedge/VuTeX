@@ -31,6 +31,12 @@ pub struct FormulaMetrics {
     pub baseline: f64,
 }
 
+impl Default for FormulaMetrics {
+    fn default() -> Self {
+        Self { width: 0.0, height: 0.0, depth: 0.0, baseline: 0.0 }
+    }
+}
+
 /// Structured diagnostic for formula parsing or layout.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
