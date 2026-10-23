@@ -11,3 +11,7 @@ readme = "readme.md"
 vutex-types = { workspace = true, features = ["serde"] }
 vutex-presentation = { workspace = true }
 vutex-render = { workspace = true }
+
+[dev-dependencies]
+notedown-ir = { workspace = true }
+vutex-layout = { workspace = true }
