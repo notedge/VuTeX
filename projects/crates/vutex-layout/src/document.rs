@@ -46,6 +46,14 @@ const BODY_FACE: TextFace = TextFace { family: SERIF, style: FontStyle::Normal }
 /// Face used by inline code spans.
 const CODE_FACE: TextFace = TextFace { family: MONOSPACE, style: FontStyle::Normal };
 
+/// Measuring face for a run emitted with an explicit family name.
+///
+/// Only the two families layout emits reach this helper, so anything that is
+/// not monospace measures as body text.
+fn face_for_family(family: &str) -> TextFace {
+    if family == MONOSPACE { CODE_FACE } else { BODY_FACE }
+}
+
 /// Map an inline style name onto the shared text face.
 ///
 /// Only the emphasis names the document model recognises carry a visible
@@ -306,10 +314,12 @@ impl PageBuilder {
     fn emit_baseline(&mut self, text: String, size: f64, family: &str, indent: f64) {
         let x = self.left(indent);
         let y = self.cursor + ASCENT * size;
+        let width = measure_text(&self.metrics, &text, size, face_for_family(family));
         self.push(LayoutItem::TextRun(TextRun {
             x,
             y,
             size,
+            width,
             font_family: family.to_string(),
             style: FontStyle::Normal,
             text,
@@ -527,6 +537,7 @@ impl PageBuilder {
             x,
             y: baseline,
             size,
+            width,
             font_family: run.face.family.to_string(),
             style: run.face.style,
             text: std::mem::take(&mut run.text),
@@ -621,10 +632,12 @@ impl PageBuilder {
         for line in &lines {
             // Code lines stay verbatim: no wrapping, overflow is visible rather than hidden.
             let y = self.cursor + padding + ASCENT * size;
+            let width = measure_text(&self.metrics, line, size, CODE_FACE);
             self.push(LayoutItem::TextRun(TextRun {
                 x: x + padding,
                 y,
                 size,
+                width,
                 font_family: MONOSPACE.to_string(),
                 style: FontStyle::Normal,
                 text: (*line).to_string(),
@@ -899,6 +912,7 @@ fn clamp_inline_item(item: LayoutItem, origin_x: f64, baseline: f64, scale: f64)
             x: origin_x + (run.x - origin_x) * scale,
             y: baseline + (run.y - baseline) * scale,
             size: run.size * scale,
+            width: run.width * scale,
             font_family: run.font_family,
             style: run.style,
             text: run.text,

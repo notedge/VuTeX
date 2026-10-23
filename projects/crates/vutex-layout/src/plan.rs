@@ -15,6 +15,11 @@ pub struct TextRun {
     pub y: f64,
     /// Font size in points.
     pub size: f64,
+    /// Horizontal width of the run in page coordinates, in points.
+    ///
+    /// Measured with the same advances the layout pass uses for line breaking,
+    /// so a renderer can outline the exact glyph box instead of re-measuring.
+    pub width: f64,
     /// Font family name such as `serif`, `sans-serif`, or `monospace`.
     pub font_family: String,
     /// Face style carried from the inline content, such as bold or italic.

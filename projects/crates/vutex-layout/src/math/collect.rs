@@ -49,6 +49,7 @@ fn push_layout(node: &LayoutNode, x: f64, y: f64, items: &mut Vec<LayoutItem>) {
                     x,
                     y,
                     size: glyph.size.to_f64(),
+                    width: glyph.metrics.width.to_f64(),
                     font_family: output_family(&glyph.font_family),
                     style: FontStyle::Normal,
                     text: ch.to_string(),

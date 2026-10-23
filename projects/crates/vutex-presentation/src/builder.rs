@@ -28,15 +28,18 @@ pub fn build_display_presentation(plan: &LayoutPlan) -> DisplayPresentation {
 
 fn lower_item(item: &LayoutItem) -> DisplayItem {
     match item {
-        LayoutItem::TextRun(TextRun { x, y, size, font_family, style, text, href }) => DisplayItem::TextRun(DisplayTextRun {
-            x: *x,
-            y: *y,
-            size: *size,
-            font_family: font_family.clone(),
-            style: *style,
-            text: text.clone(),
-            href: href.clone(),
-        }),
+        LayoutItem::TextRun(TextRun { x, y, size, width, font_family, style, text, href }) => {
+            DisplayItem::TextRun(DisplayTextRun {
+                x: *x,
+                y: *y,
+                size: *size,
+                width: *width,
+                font_family: font_family.clone(),
+                style: *style,
+                text: text.clone(),
+                href: href.clone(),
+            })
+        }
         LayoutItem::Rule(Rule { x1, y1, x2, y2, thickness }) => {
             DisplayItem::Rule(DisplayRule { x1: *x1, y1: *y1, x2: *x2, y2: *y2, thickness: *thickness })
         }

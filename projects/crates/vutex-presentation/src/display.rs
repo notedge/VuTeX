@@ -14,6 +14,8 @@ pub struct DisplayTextRun {
     pub y: f64,
     /// Font size in points.
     pub size: f64,
+    /// Horizontal width of the run in page coordinates, in points.
+    pub width: f64,
     /// Font family name.
     pub font_family: String,
     /// Face style carried from layout, such as bold or italic.
