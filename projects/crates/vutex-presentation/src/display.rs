@@ -20,6 +20,14 @@ pub struct DisplayTextRun {
     pub style: FontStyle,
     /// Line text.
     pub text: String,
+    /// External link destination the run was authored inside, if any.
+    ///
+    /// Only [`notedown_ir::RelationEndpoint::ExternalUri`] targets resolve to a
+    /// destination. Internal `Node`, `Document`, and `Asset` targets stay
+    /// `None`, because fixed-geometry output emits no anchor ids for them.
+    /// Renderers must drop a destination they cannot safely emit while keeping
+    /// the text.
+    pub href: Option<String>,
 }
 
 /// One stroked line in display coordinates.

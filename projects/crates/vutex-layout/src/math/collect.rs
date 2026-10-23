@@ -52,6 +52,7 @@ fn push_layout(node: &LayoutNode, x: f64, y: f64, items: &mut Vec<LayoutItem>) {
                     font_family: output_family(&glyph.font_family),
                     style: FontStyle::Normal,
                     text: ch.to_string(),
+                    href: None,
                 }));
             }
         }
