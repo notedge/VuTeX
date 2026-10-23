@@ -11,7 +11,7 @@ Oak language frontends
   (oak-notedown / oak-markdown / oak-tex / oak-typst)
         │
         ▼
-notedown-formats::import (Markdown / Notedown / HTML / DOCX / EPUB / PDF)
+notedown-formats::import (Markdown / Notedown / HTML / DOC)
         │
         ▼
 notedown-ir::DocumentGraph   ◄──  canonical document model
@@ -19,7 +19,7 @@ notedown-ir::DocumentGraph   ◄──  canonical document model
    relations, assets, provenance, coverage, loss)
         │
         ▼
-vutex-layout (page / block / line / table / footnote / pagination)
+vutex-layout (page / block / line / table / pagination)
         │
         ├── vutex-style (semantic styles, named styles, inheritance, themes)
         ├── vutex-text (shaping, font metrics, line breaking)
@@ -63,20 +63,20 @@ vutex-napi / wetex-wasm (host adapters)
 | `wetex-wasm` | Math formula distribution |
 | `vutex-napi` | Node native host |
 
-### Excluded from this workspace (history/scaffold)
+### Backend status
 
-| Crate | Reason |
-|-------|--------|
-| `vutex-document` | Notedown IR is the canonical model — no second IR. |
-| `vutex-input-*` (5) | Language frontends are Oak + Notedown imports, not VuTeX-owned. |
-| `vutex-render-{pdf,svg,html,raster}` | `migrate-rutex.py` scaffold — Result-unwrap bugs. Re-enable after fix. |
-| `wetex-wasm`, `vutex-napi` | Depend on excluded render backends. |
+| Backend | Status |
+|---------|--------|
+| `vutex-render-svg` | Implemented: one stacked SVG document per render. |
+| `vutex-render-html` | Implemented: semantic reflow HTML and fixed-geometry snapshot HTML. |
+| `vutex-render-pdf` | Implemented: dependency-free PDF 1.7 writer over the base-14 fonts, Latin-1 text only. |
+| `vutex-render-raster` | Stub: returns the `vutex.render.raster.unimplemented` diagnostic. |
 
 ## Quick start
 
 ```bash
-cargo check --workspace          # core crates: exit 0
-cargo check --package vutex-layout --package vutex-presentation --package vutex-render
+cargo check --workspace          # every workspace member compiles
+cargo test --workspace           # layout, presentation, renderer, napi and wasm suites
 ```
 
 ## Product packages

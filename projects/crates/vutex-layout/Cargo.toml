@@ -2,7 +2,7 @@
 name = "vutex-layout"
 version.workspace = true
 authors.workspace = true
-description = "Page, block, line, table, footnote, and pagination layout"
+description = "Page, block, line, table, and pagination layout"
 license.workspace = true
 edition.workspace = true
 readme = "readme.md"
