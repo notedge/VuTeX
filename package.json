@@ -17,8 +17,8 @@
     },
     "devDependencies": {
         "@napi-rs/cli": "^3.10.9",
+        "@doki-land/nifty": "^0.1.9",
         "@vutex/vutex": "workspace:*",
-        "@vutex/wetex": "workspace:*",
-        "nifty": "latest"
+        "@vutex/wetex": "workspace:*"
     }
 }
