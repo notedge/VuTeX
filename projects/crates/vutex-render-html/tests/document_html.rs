@@ -63,6 +63,28 @@ fn reflow_html_rejects_non_element_root_tags() {
 }
 
 #[test]
+fn reflow_html_nests_child_list_inside_parent_item() {
+    let mut graph = DocumentGraph::new(DocumentId(5));
+    let child = graph.push_block(Block::List {
+        ordered: false,
+        items: vec![ListItem { content: vec![text("child")], children: Vec::new(), number: None }],
+    });
+    graph.push_block(Block::List {
+        ordered: false,
+        items: vec![ListItem { content: vec![text("parent")], children: vec![child], number: None }],
+    });
+
+    let html = render_html_reflow(&build_flow_presentation(&graph)).expect("reflow html");
+
+    // Line breaks are layout, not structure, so compare the compact shape.
+    let compact = html.replace('\n', "");
+    assert!(
+        compact.contains("<ul data-vutex-block=\"list\"><li>parent<ul data-vutex-block=\"list\"><li>child</li></ul></li></ul>"),
+        "{html}"
+    );
+}
+
+#[test]
 fn reflow_html_wraps_link_runs_in_anchors() {
     let mut graph = DocumentGraph::new(DocumentId(2));
     graph.push_block(Block::Paragraph {
