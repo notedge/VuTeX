@@ -89,6 +89,7 @@ fn flow_style(style: &str) -> FontStyle {
         "bold" | "strong" => FontStyle::Bold,
         "italic" | "em" => FontStyle::Italic,
         "mono" | "code" => FontStyle::Monospace,
+        "strike" => FontStyle::Strike,
         _ => FontStyle::Normal,
     }
 }

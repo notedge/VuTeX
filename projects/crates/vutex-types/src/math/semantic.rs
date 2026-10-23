@@ -72,6 +72,11 @@ pub enum FontStyle {
     Math,
     SansSerif,
     Monospace,
+    /// Authored strikethrough text face.
+    ///
+    /// A text face, not a math face: it selects the serif body text and the
+    /// decoration itself comes from layout geometry, not from the font.
+    Strike,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]

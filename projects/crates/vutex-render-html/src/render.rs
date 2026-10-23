@@ -188,6 +188,7 @@ fn write_flow_run(out: &mut String, run: &FlowRun) {
         FontStyle::Bold => "strong",
         FontStyle::Italic => "em",
         FontStyle::Monospace => "code",
+        FontStyle::Strike => "del",
         _ => {
             out.push_str(&escape_text(&run.text));
             return;
