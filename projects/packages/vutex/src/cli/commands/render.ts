@@ -1,8 +1,30 @@
+import { writeFile } from "node:fs/promises";
+import { basename, dirname, extname, join, resolve } from "node:path";
+
 import type { Cli, ParsedOptions } from "@vmz/commander";
 
+import type { RenderDocumentResult } from "../../types.js";
 import { createVuTeXRuntime } from "../context.js";
 import { emitJson, presentDiagnostics } from "../diagnostics.js";
 import { ExitCode } from "../exit-codes.js";
+
+/**
+ * Write PDF bytes beside the input file and build the CLI payload.
+ *
+ * The text mode prints `outputPath`; the JSON payload carries the render
+ * result without the binary body plus the absolute `outputPath`.
+ */
+export async function writePdfOutput(
+    inputPath: string,
+    bytes: Uint8Array,
+    result: RenderDocumentResult,
+): Promise<{ outputPath: string; payload: Record<string, unknown> }> {
+    const source = resolve(inputPath);
+    const outputPath = join(dirname(source), `${basename(source, extname(source))}.pdf`);
+    await writeFile(outputPath, bytes);
+    const { pdf: _bytes, ...rest } = result;
+    return { outputPath, payload: { ...rest, outputPath } };
+}
 
 export function registerRenderCommand(cli: Cli): void {
     cli.command("render", "cli.cmd.render")
@@ -23,8 +45,13 @@ export function registerRenderCommand(cli: Cli): void {
                 input: typeof options.input === "string" ? options.input : undefined,
             });
 
+            const pdf = result.outputFormat === "pdf" ? result.pdf : undefined;
+            const written = pdf ? await writePdfOutput(inputPath, pdf, result) : null;
+
             if (options.json === true) {
-                emitJson(result);
+                emitJson(written ? written.payload : result);
+            } else if (written) {
+                console.log(written.outputPath);
             } else {
                 const body = result.outputFormat === "svg"
                     ? result.svg ?? result.html

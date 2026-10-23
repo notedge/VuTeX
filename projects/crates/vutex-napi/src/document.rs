@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use vutex_layout::{LayoutHint, document::layout_with_hint};
 use vutex_presentation::builder::{build_display_presentation, build_flow_presentation};
 use vutex_render_html::{render_html_reflow, render_html_snapshot};
+use vutex_render_pdf::render_pdf;
 use vutex_render_svg::render_svg;
 
 /// Report schema version stamped on every report payload.
@@ -85,6 +86,8 @@ pub enum OutputFormat {
     Html,
     /// Fixed-geometry snapshot HTML.
     Snapshot,
+    /// Paginated PDF.
+    Pdf,
 }
 
 impl OutputFormat {
@@ -94,6 +97,7 @@ impl OutputFormat {
             "svg" => Some(Self::Svg),
             "html" => Some(Self::Html),
             "snapshot" => Some(Self::Snapshot),
+            "pdf" => Some(Self::Pdf),
             _ => None,
         }
     }
@@ -104,6 +108,7 @@ impl OutputFormat {
             Self::Svg => "svg",
             Self::Html => "html",
             Self::Snapshot => "snapshot",
+            Self::Pdf => "pdf",
         }
     }
 }
@@ -140,6 +145,8 @@ pub struct RenderOutcome {
     pub svg: Option<String>,
     /// HTML payload for `html` and `snapshot` output.
     pub html: Option<String>,
+    /// PDF bytes for `pdf` output.
+    pub pdf: Option<Vec<u8>>,
     /// Serialized render report JSON.
     pub report_json: String,
 }
@@ -170,7 +177,7 @@ pub struct DiagnosticRecord {
     pub path: Option<String>,
 }
 
-/// Import a document and render it into SVG, reflow HTML, or snapshot HTML.
+/// Import a document and render it into SVG, reflow HTML, snapshot HTML, or PDF.
 pub fn render_document(input_path: &str, options_json: Option<&str>) -> RenderOutcome {
     let options = RenderOptions::parse(options_json);
     let requested =
@@ -215,9 +222,9 @@ pub fn render_document(input_path: &str, options_json: Option<&str>) -> RenderOu
     let pages = display.pages.len();
     let items = display.pages.iter().map(|page| page.items.len()).sum::<usize>();
 
-    let (svg, html) = match output_format {
+    let (svg, html, pdf) = match output_format {
         OutputFormat::Svg => match render_svg(&display) {
-            Ok(svg) => (Some(svg), None),
+            Ok(svg) => (Some(svg), None, None),
             Err(failure) => {
                 let record = error(RENDER_FAILED, failure.message, "render", input_path);
                 return render_failure(input_path, output_format.id().to_string(), format_label, record);
@@ -226,7 +233,7 @@ pub fn render_document(input_path: &str, options_json: Option<&str>) -> RenderOu
         OutputFormat::Html => {
             let flow = build_flow_presentation(&graph);
             match render_html_reflow(&flow) {
-                Ok(html) => (None, Some(html)),
+                Ok(html) => (None, Some(html), None),
                 Err(failure) => {
                     let record = error(RENDER_FAILED, failure.message, "render", input_path);
                     return render_failure(input_path, output_format.id().to_string(), format_label, record);
@@ -234,7 +241,14 @@ pub fn render_document(input_path: &str, options_json: Option<&str>) -> RenderOu
             }
         }
         OutputFormat::Snapshot => match render_html_snapshot(&display) {
-            Ok(html) => (None, Some(html)),
+            Ok(html) => (None, Some(html), None),
+            Err(failure) => {
+                let record = error(RENDER_FAILED, failure.message, "render", input_path);
+                return render_failure(input_path, output_format.id().to_string(), format_label, record);
+            }
+        },
+        OutputFormat::Pdf => match render_pdf(&display) {
+            Ok(pdf) => (None, None, Some(pdf)),
             Err(failure) => {
                 let record = error(RENDER_FAILED, failure.message, "render", input_path);
                 return render_failure(input_path, output_format.id().to_string(), format_label, record);
@@ -252,7 +266,7 @@ pub fn render_document(input_path: &str, options_json: Option<&str>) -> RenderOu
     })
     .to_string();
 
-    RenderOutcome { exit_code: 0, output_format: output_format.id().to_string(), svg, html, report_json }
+    RenderOutcome { exit_code: 0, output_format: output_format.id().to_string(), svg, html, pdf, report_json }
 }
 
 /// Import a document and report its structural summary.
@@ -344,6 +358,7 @@ fn render_failure(input_path: &str, output_format: String, format_label: &str, r
         output_format,
         svg: None,
         html: None,
+        pdf: None,
         report_json: failure_report("render", input_path, format_label, record),
     }
 }

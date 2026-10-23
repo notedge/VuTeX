@@ -130,6 +130,27 @@ fn html_file_is_imported_and_rendered() {
 }
 
 #[test]
+fn markdown_renders_pdf_bytes() {
+    let dir = ScratchDir::new("pdf");
+    let path = dir.write("sample.md", SAMPLE);
+
+    let outcome = render_document(&path_string(&path), Some(r#"{"output":"pdf"}"#));
+    let payload = report(&outcome);
+
+    assert_eq!(outcome.exit_code, 0, "{}", outcome.report_json);
+    assert_eq!(outcome.output_format, "pdf");
+    assert!(outcome.svg.is_none());
+    assert!(outcome.html.is_none());
+    let pdf = outcome.pdf.expect("pdf payload");
+    assert!(!pdf.is_empty(), "pdf payload is never empty");
+    assert!(pdf.starts_with(b"%PDF-1.7"), "pdf header: {:?}", &pdf[..pdf.len().min(16)]);
+    assert!(pdf.ends_with(b"%%EOF\n"), "pdf trailer terminator");
+    assert_eq!(payload["output"]["format"], "pdf");
+    assert!(payload["output"]["pages"].as_u64().unwrap_or(0) >= 1, "{payload}");
+    assert!(payload["output"]["items"].as_u64().unwrap_or(0) > 0, "{payload}");
+}
+
+#[test]
 fn missing_file_reports_input_not_found() {
     let dir = ScratchDir::new("missing");
     let path = path_string(&dir.path.join("absent.md"));
@@ -158,9 +179,10 @@ fn unsupported_output_reports_output_format_unsupported() {
     let dir = ScratchDir::new("bad-output");
     let path = dir.write("sample.md", SAMPLE);
 
-    let outcome = render_document(&path_string(&path), Some(r#"{"output":"pdf"}"#));
+    let outcome = render_document(&path_string(&path), Some(r#"{"output":"docx"}"#));
 
     assert_eq!(outcome.exit_code, 1);
+    assert!(outcome.pdf.is_none());
     assert!(outcome.report_json.contains("VUTEX_OUTPUT_FORMAT_UNSUPPORTED"), "{}", outcome.report_json);
 }
 
@@ -202,5 +224,6 @@ fn format_ids_match_the_report_contract() {
     assert_eq!(ImportFormat::from_path("a.tex").id(), "unknown");
     assert_eq!(ImportFormat::from_option("tex").id(), "unknown");
     assert_eq!(OutputFormat::from_option("SVG").map(OutputFormat::id), Some("svg"));
-    assert!(OutputFormat::from_option("pdf").is_none());
+    assert_eq!(OutputFormat::from_option("PDF").map(OutputFormat::id), Some("pdf"));
+    assert!(OutputFormat::from_option("docx").is_none());
 }
