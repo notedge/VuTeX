@@ -9,7 +9,7 @@
   "cli.cmd.package.install": "Resolve and install resource packages into the project cache",
   "cli.cmd.package.update": "Refresh the resource package lockfile",
   "cli.cmd.package.doctor": "Check manifest, lockfile, and package cache health",
-  "cli.opt.output": "Output file path, or format id when writing to stdout",
+  "cli.opt.output": "Output format id: svg, html, or snapshot",
   "cli.opt.profile": "Named language profile from vutex.toml",
   "cli.opt.input-format": "Override input format id",
   "cli.opt.json": "Emit machine-readable JSON on stdout",

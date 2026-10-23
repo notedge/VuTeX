@@ -17,6 +17,7 @@ type NativeBinding = {
         exitCode: number;
         outputFormat: string;
         svg?: string;
+        html?: string;
         reportJson: string;
     };
 };

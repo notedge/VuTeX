@@ -24,6 +24,14 @@ function decodeFormulaRender(raw: string): FormulaRender {
     return JSON.parse(raw) as FormulaRender;
 }
 
+/**
+ * Keep unknown format ids intact so the native side can report them.
+ * Only a missing value falls back to the default `svg`.
+ */
+function normalizeOutputFormat(value: string | undefined): string {
+    return typeof value === "string" && value.length > 0 ? value : "svg";
+}
+
 function diagnosticsFromReport(reportJson: string): VuTeXDiagnostic[] {
     try {
         const report = JSON.parse(reportJson) as {
@@ -47,7 +55,7 @@ export function createVuTeXRuntime(
         async render(inputPath, renderOptions = {}): Promise<RenderDocumentResult> {
             const manifest = await readManifest(projectRoot);
             const payload = JSON.stringify({
-                output: renderOptions.output ?? manifest?.document?.output ?? "svg",
+                output: normalizeOutputFormat(renderOptions.output ?? manifest?.document?.output),
                 profile: renderOptions.profile ?? manifest?.profile?.name,
                 input: renderOptions.input ?? manifest?.document?.input,
             });
@@ -56,6 +64,7 @@ export function createVuTeXRuntime(
                 exitCode: response.exitCode,
                 outputFormat: response.outputFormat,
                 svg: response.svg,
+                html: response.html,
                 reportJson: response.reportJson,
                 diagnostics: diagnosticsFromReport(response.reportJson),
             };

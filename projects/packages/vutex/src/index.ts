@@ -4,6 +4,7 @@ import type { CreateVuTeXOptions, VuTeXRuntime } from "./types.js";
 
 export type {
     CreateVuTeXOptions,
+    DocumentOutputFormat,
     FormulaDiagnostic,
     FormulaMetrics,
     FormulaRender,
