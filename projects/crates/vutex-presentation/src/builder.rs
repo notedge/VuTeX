@@ -193,7 +193,7 @@ fn collect_flow(graph: &DocumentGraph, ids: &[NodeId], blocks: &mut Vec<FlowBloc
                         // child list renders inside the parent `<li>`.
                         let mut children = Vec::new();
                         collect_flow(graph, &item.children, &mut children);
-                        FlowListItem { runs: runs_of(&item.content), children }
+                        FlowListItem { runs: runs_of(&item.content), number: item.number, children }
                     })
                     .collect();
                 blocks.push(FlowBlock::List { ordered: *ordered, items });
