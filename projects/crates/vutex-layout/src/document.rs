@@ -12,6 +12,7 @@ use vutex_types::math::{FontStyle, GlyphKey};
 
 use crate::{
     hint::LayoutHint,
+    math::{collect_layout, layout_formula_with_size},
     plan::{ImagePlaceholder, LayoutItem, LayoutPage, LayoutPlan, Rect, Rule, TextRun},
 };
 
@@ -329,8 +330,34 @@ impl PageBuilder {
         self.pad(size * 0.8);
     }
 
+    /// Lay out display math and paint its positioned primitives.
+    ///
+    /// The formula is centred inside the content column like TeX display math
+    /// and follows the document body size. When the math engine cannot parse or
+    /// lay out the source, the raw TeX is rendered as text: a documented
+    /// degradation that keeps the formula visible instead of dropping it.
     fn emit_math(&mut self, content: &str, indent: f64) {
-        // Display math is carried as text until a math layout pass exists.
+        let size = self.body_size();
+        let padding = size * 0.8;
+        match layout_formula_with_size(content, true, size) {
+            Ok((node, formula)) => {
+                self.pad(padding);
+                self.ensure_space(formula.height + formula.depth + padding * 2.0);
+                let left = self.left(indent);
+                let offset = ((self.content_width(indent) - formula.width) / 2.0).max(0.0);
+                let baseline = self.cursor + padding + formula.height;
+                for item in collect_layout(&node, left + offset, baseline) {
+                    self.push(item);
+                }
+                self.cursor = baseline + formula.depth + padding;
+                self.pad(padding);
+            }
+            Err(_) => self.emit_math_text_fallback(content, indent),
+        }
+    }
+
+    /// Plain-text rendering used when the math engine rejects the source.
+    fn emit_math_text_fallback(&mut self, content: &str, indent: f64) {
         let size = self.body_size();
         self.pad(size * 0.4);
         self.emit_wrapped(content, size, SERIF, indent + 12.0);
