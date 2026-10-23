@@ -4,6 +4,11 @@
     "description": "WeTeX: VuTeX formula rendering for browser and Node (Rust/WASM)",
     "type": "module",
     "license": "MPL-2.0",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/notedge/VuTeX.git",
+        "directory": "projects/packages/wetex"
+    },
     "publishConfig": {
         "access": "public"
     },

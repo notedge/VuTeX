@@ -4,6 +4,11 @@
     "description": "VuTeX wasm-pack artifact for wasm32-unknown-unknown",
     "type": "module",
     "license": "MPL-2.0",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/notedge/VuTeX.git",
+        "directory": "projects/packages/vutex-unknown-wasm32"
+    },
     "main": "./lib/wetex_wasm.js",
     "types": "./lib/wetex_wasm.d.ts",
     "files": [
