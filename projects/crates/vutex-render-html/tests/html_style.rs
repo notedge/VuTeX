@@ -96,6 +96,16 @@ fn reflow_escapes_text_inside_styled_runs() {
 }
 
 #[test]
+fn reflow_strike_wraps_text_in_del_and_escapes_it() {
+    let mut graph = DocumentGraph::new(DocumentId(60));
+    graph.push_block(Block::Paragraph { content: vec![text("Say "), styled("strike", vec![text("A & B < C")]), text(" now")] });
+    let html = render_html_reflow(&build_flow_presentation(&graph)).expect("reflow html");
+
+    assert!(html.contains("Say <del>A &amp; B &lt; C</del> now"), "{html}");
+    assert_eq!(html.matches("<del>").count(), 1, "{html}");
+}
+
+#[test]
 fn reflow_heading_emits_strong_inline() {
     let mut graph = DocumentGraph::new(DocumentId(55));
     graph.push_block(Block::Section {

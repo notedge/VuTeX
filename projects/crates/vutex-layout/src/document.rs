@@ -18,6 +18,11 @@ use crate::{
 
 /// Text baseline height as a fraction of the font size.
 const ASCENT: f64 = 0.8;
+/// Height of a strikethrough rule above the text baseline, as a fraction of
+/// the font size.
+const STRIKE_OFFSET: f64 = 0.3;
+/// Stroke width of a strikethrough rule, as a fraction of the font size.
+const STRIKE_THICKNESS: f64 = 0.06;
 /// Horizontal indent per list nesting level, in points.
 const LIST_INDENT: f64 = 18.0;
 /// Font family used for body text.
@@ -51,6 +56,7 @@ fn face_for_style(style: &str) -> TextFace {
         "bold" | "strong" => TextFace { family: SERIF, style: FontStyle::Bold },
         "italic" | "em" => TextFace { family: SERIF, style: FontStyle::Italic },
         "mono" | "code" => TextFace { family: MONOSPACE, style: FontStyle::Monospace },
+        "strike" => TextFace { family: SERIF, style: FontStyle::Strike },
         _ => BODY_FACE,
     }
 }
@@ -458,10 +464,16 @@ impl PageBuilder {
     }
 
     /// Paint the buffered paragraph text as one run and clear the buffer.
+    ///
+    /// A strikethrough run also emits its decoration as a rule right after the
+    /// text run, so paint order keeps the rule above the glyphs. The rule spans
+    /// exactly the measured run width through the same face-aware metrics.
     fn paint_inline_run(&mut self, run: &mut PendingText, x: f64, baseline: f64, size: f64) {
         if run.is_empty() {
             return;
         }
+        let width = measure_text(&self.metrics, &run.text, size, run.face);
+        let struck = run.face.style == FontStyle::Strike;
         self.push(LayoutItem::TextRun(TextRun {
             x,
             y: baseline,
@@ -470,6 +482,11 @@ impl PageBuilder {
             style: run.face.style,
             text: std::mem::take(&mut run.text),
         }));
+        if struck {
+            let y = baseline - STRIKE_OFFSET * size;
+            let rule = Rule { x1: x, y1: y, x2: x + width, y2: y, thickness: STRIKE_THICKNESS * size };
+            self.push(LayoutItem::Rule(rule));
+        }
     }
 
     /// Paint a formula at the inline baseline, clamped to the content width.
