@@ -119,6 +119,13 @@ fn flow_runs(inlines: &[Inline], style: FontStyle, runs: &mut Vec<FlowRun>) {
     }
 }
 
+/// Styled runs for one inline sequence with no enclosing emphasis.
+fn runs_of(inlines: &[Inline]) -> Vec<FlowRun> {
+    let mut runs = Vec::new();
+    flow_runs(inlines, FontStyle::Normal, &mut runs);
+    runs
+}
+
 fn collect_flow(graph: &DocumentGraph, ids: &[NodeId], blocks: &mut Vec<FlowBlock>) {
     for id in ids {
         let Some(node) = graph.block(*id)
@@ -127,7 +134,7 @@ fn collect_flow(graph: &DocumentGraph, ids: &[NodeId], blocks: &mut Vec<FlowBloc
         };
         match &node.block {
             Block::Section { level, title, children } => {
-                blocks.push(FlowBlock::Heading { level: (*level).clamp(1, 6), text: plain(title) });
+                blocks.push(FlowBlock::Heading { level: (*level).clamp(1, 6), runs: runs_of(title) });
                 collect_flow(graph, children, blocks);
             }
             Block::Paragraph { content } => {
@@ -152,7 +159,7 @@ fn collect_flow(graph: &DocumentGraph, ids: &[NodeId], blocks: &mut Vec<FlowBloc
             Block::List { ordered, items } => {
                 blocks.push(FlowBlock::List {
                     ordered: *ordered,
-                    items: items.iter().map(|item| plain(&item.content)).collect(),
+                    items: items.iter().map(|item| runs_of(&item.content)).collect(),
                 });
                 for item in items {
                     collect_flow(graph, &item.children, blocks);
@@ -164,7 +171,7 @@ fn collect_flow(graph: &DocumentGraph, ids: &[NodeId], blocks: &mut Vec<FlowBloc
             Block::Math { content, .. } => {
                 blocks.push(FlowBlock::CodeBlock { language: None, text: content.clone() });
             }
-            Block::Quote { content } => blocks.push(FlowBlock::Quote { text: plain(content) }),
+            Block::Quote { content } => blocks.push(FlowBlock::Quote { runs: runs_of(content) }),
             Block::Table { caption, rows } => {
                 blocks.push(FlowBlock::Table {
                     caption: caption.clone(),
@@ -172,7 +179,7 @@ fn collect_flow(graph: &DocumentGraph, ids: &[NodeId], blocks: &mut Vec<FlowBloc
                         .iter()
                         .map(|row| FlowTableRow {
                             is_header: row.is_header,
-                            cells: row.cells.iter().map(|cell| plain(&cell.content)).collect(),
+                            cells: row.cells.iter().map(|cell| runs_of(&cell.content)).collect(),
                         })
                         .collect(),
                 });
