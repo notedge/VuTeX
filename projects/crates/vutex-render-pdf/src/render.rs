@@ -11,10 +11,27 @@ use vutex_presentation::display::{
     DisplayImage, DisplayItem, DisplayPage, DisplayPresentation, DisplayRect, DisplayRule, DisplayTextRun,
 };
 use vutex_render::RenderBackend;
-use vutex_types::{Diagnostic, Severity};
+use vutex_types::{Diagnostic, Severity, math::FontStyle};
 
 /// Base-14 fonts this backend can emit, in canonical resource order.
-const BASE_FONTS: [&str; 3] = ["Courier", "Helvetica", "Times-Roman"];
+///
+/// The table covers the three standard families in their regular, bold,
+/// italic, and bold-italic faces, so `/F1../Fn` stays stable no matter which
+/// styles a document uses.
+const BASE_FONTS: [&str; 12] = [
+    "Courier",
+    "Courier-Bold",
+    "Courier-BoldOblique",
+    "Courier-Oblique",
+    "Helvetica",
+    "Helvetica-Bold",
+    "Helvetica-BoldOblique",
+    "Helvetica-Oblique",
+    "Times-Roman",
+    "Times-Bold",
+    "Times-BoldItalic",
+    "Times-Italic",
+];
 
 /// PDF renderer. Consumes only the display presentation IR.
 pub fn render_pdf(presentation: &DisplayPresentation) -> Result<Vec<u8>, Diagnostic> {
@@ -43,17 +60,33 @@ fn render_document(presentation: &DisplayPresentation) -> Result<Vec<u8>, Diagno
     Ok(assemble(&objects))
 }
 
-/// Base-14 font for a display font family.
-fn base_font_for(family: &str) -> &'static str {
+/// Base-14 font for a display font family and face style.
+///
+/// Families resolve by substring, so CSS stacks such as `sans-serif` keep
+/// working; a style the base-14 set cannot express (math and plain sans/mono
+/// labels) falls back to the family's regular face.
+fn base_font_for(family: &str, style: FontStyle) -> &'static str {
     let lower = family.to_ascii_lowercase();
     if lower.contains("mono") {
-        "Courier"
+        match style {
+            FontStyle::Bold => "Courier-Bold",
+            FontStyle::Italic => "Courier-Oblique",
+            _ => "Courier",
+        }
     }
     else if lower.contains("sans") {
-        "Helvetica"
+        match style {
+            FontStyle::Bold => "Helvetica-Bold",
+            FontStyle::Italic => "Helvetica-Oblique",
+            _ => "Helvetica",
+        }
     }
     else {
-        "Times-Roman"
+        match style {
+            FontStyle::Bold => "Times-Bold",
+            FontStyle::Italic => "Times-Italic",
+            _ => "Times-Roman",
+        }
     }
 }
 
@@ -63,7 +96,7 @@ fn used_fonts(presentation: &DisplayPresentation) -> Vec<&'static str> {
     for page in &presentation.pages {
         for item in &page.items {
             if let DisplayItem::TextRun(run) = item {
-                let base = base_font_for(&run.font_family);
+                let base = base_font_for(&run.font_family, run.style);
                 if !used.contains(&base) {
                     used.push(base);
                 }
@@ -150,7 +183,7 @@ fn write_text(out: &mut String, page_height: f64, run: &DisplayTextRun, fonts: &
     if !all_finite(&[run.x, run.y, run.size]) {
         return;
     }
-    let base = base_font_for(&run.font_family);
+    let base = base_font_for(&run.font_family, run.style);
     let position = fonts.iter().position(|(font, _)| *font == base).unwrap_or(0);
     let y = page_height - run.y;
     let _ = write!(

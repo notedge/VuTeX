@@ -25,6 +25,34 @@ const SERIF: &str = "serif";
 /// Font family used for code and preformatted text.
 const MONOSPACE: &str = "monospace";
 
+/// Family and face style shared by consecutive inline text atoms.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct TextFace {
+    /// Font family name carried into the text run.
+    family: &'static str,
+    /// Face style carried into the text run.
+    style: FontStyle,
+}
+
+/// Body text face used by every unstyled run.
+const BODY_FACE: TextFace = TextFace { family: SERIF, style: FontStyle::Normal };
+/// Face used by inline code spans.
+const CODE_FACE: TextFace = TextFace { family: MONOSPACE, style: FontStyle::Normal };
+
+/// Map an inline style name onto the shared text face.
+///
+/// Only the emphasis names the document model recognises carry a visible
+/// face; any other style string is laid out as body text instead of being
+/// guessed at.
+fn face_for_style(style: &str) -> TextFace {
+    match style.to_ascii_lowercase().as_str() {
+        "bold" | "strong" => TextFace { family: SERIF, style: FontStyle::Bold },
+        "italic" | "em" => TextFace { family: SERIF, style: FontStyle::Italic },
+        "mono" | "code" => TextFace { family: MONOSPACE, style: FontStyle::Monospace },
+        _ => BODY_FACE,
+    }
+}
+
 /// Compute the layout plan for a Notedown document graph.
 ///
 /// The document layout pass walks the Notedown block tree, measures inline
@@ -62,11 +90,58 @@ fn root_ids(graph: &DocumentGraph) -> Vec<NodeId> {
 #[derive(Debug, Clone)]
 enum InlineAtom {
     /// Text break atom: a word, a single space, or one CJK glyph.
-    Text(String),
+    Text {
+        /// Atom text.
+        text: String,
+        /// Face shared with the surrounding styled span.
+        face: TextFace,
+    },
     /// Laid-out inline formula, kept whole across line breaks.
     Math(MathAtom),
     /// Forced line ending produced by an authored hard break.
     Break,
+}
+
+/// Text buffered until the face changes or the paragraph reaches a boundary.
+#[derive(Debug, Clone)]
+struct PendingText {
+    text: String,
+    face: TextFace,
+}
+
+impl PendingText {
+    fn body() -> Self {
+        Self { text: String::new(), face: BODY_FACE }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.text.is_empty()
+    }
+
+    /// Buffer `text` under `face`, flushing first when the face changes.
+    ///
+    /// Splitting on a face change is what turns a styled span into its own
+    /// [`LayoutItem`], so emphasis survives into every renderer.
+    fn push(&mut self, text: &str, face: TextFace, atoms: &mut Vec<InlineAtom>) {
+        if text.is_empty() {
+            return;
+        }
+        if !self.is_empty() && self.face != face {
+            self.flush(atoms);
+        }
+        self.face = face;
+        self.text.push_str(text);
+    }
+
+    /// Move the buffered text into break atoms.
+    fn flush(&mut self, atoms: &mut Vec<InlineAtom>) {
+        if self.is_empty() {
+            self.text.clear();
+            return;
+        }
+        atoms.extend(split_inline_atoms(&self.text, self.face));
+        self.text.clear();
+    }
 }
 
 /// A formula box carried alongside the paragraph flow.
@@ -153,7 +228,7 @@ impl PageBuilder {
     fn emit_baseline(&mut self, text: String, size: f64, family: &str, indent: f64) {
         let x = self.left(indent);
         let y = self.cursor + ASCENT * size;
-        self.push(LayoutItem::TextRun(TextRun { x, y, size, font_family: family.to_string(), text }));
+        self.push(LayoutItem::TextRun(TextRun { x, y, size, font_family: family.to_string(), style: FontStyle::Normal, text }));
     }
 
     fn emit_wrapped(&mut self, text: &str, size: f64, family: &str, indent: f64) {
@@ -182,26 +257,43 @@ impl PageBuilder {
         self.pad(base * 0.4);
     }
 
-    /// Compose a paragraph from text, inline math, and image atoms.
+    /// Compose a paragraph from text, styled spans, inline math, and image atoms.
     ///
-    /// Text keeps the greedy break atoms of [`wrap_text`]; inline math becomes a
+    /// Text keeps the greedy break atoms of [`wrap_text`]; a style change
+    /// splits the run so emphasis reaches the renderers. Inline math becomes a
     /// real formula box that flows on the text baseline and is never split.
     /// When the math engine rejects a formula, its raw source joins the text
     /// flow, matching the display-math fallback.
     fn emit_paragraph(&mut self, content: &[Inline], indent: f64) {
         let size = self.body_size();
-        let mut buffer = String::new();
+        let mut pending = PendingText::body();
         let mut atoms: Vec<InlineAtom> = Vec::new();
+        self.compose_inline(content, size, indent, &mut atoms, &mut pending, BODY_FACE);
+        pending.flush(&mut atoms);
+        self.emit_inline_lines(atoms, size, indent);
+        self.pad(size * 0.6);
+    }
+
+    /// Walk inline content into paragraph atoms under the enclosing face.
+    fn compose_inline(
+        &mut self,
+        content: &[Inline],
+        size: f64,
+        indent: f64,
+        atoms: &mut Vec<InlineAtom>,
+        pending: &mut PendingText,
+        face: TextFace,
+    ) {
         for inline in content {
             match inline {
                 Inline::Image { alt, .. } => {
-                    append_inline_text(&mut atoms, &mut buffer);
-                    self.emit_inline_lines(std::mem::take(&mut atoms), size, indent);
+                    pending.flush(atoms);
+                    self.emit_inline_lines(std::mem::take(atoms), size, indent);
                     let alt_text: String = alt.iter().map(Inline::plain_text).collect();
                     self.emit_image_placeholder(&alt_text, indent);
                 }
                 Inline::InlineMath { content, .. } => {
-                    append_inline_text(&mut atoms, &mut buffer);
+                    pending.flush(atoms);
                     match layout_formula_with_size(content, false, size) {
                         Ok((node, formula)) => atoms.push(InlineAtom::Math(MathAtom {
                             node,
@@ -209,15 +301,16 @@ impl PageBuilder {
                             height: formula.height,
                             depth: formula.depth,
                         })),
-                        Err(_) => atoms.extend(split_inline_atoms(content)),
+                        Err(_) => atoms.extend(split_inline_atoms(content, face)),
                     }
                 }
-                other => buffer.push_str(&other.plain_text()),
+                Inline::Styled { style, children } => {
+                    self.compose_inline(children, size, indent, atoms, pending, face_for_style(style));
+                }
+                Inline::InlineCode { text } => pending.push(text, CODE_FACE, atoms),
+                other => pending.push(&other.plain_text(), face, atoms),
             }
         }
-        append_inline_text(&mut atoms, &mut buffer);
-        self.emit_inline_lines(std::mem::take(&mut atoms), size, indent);
-        self.pad(size * 0.6);
     }
 
     /// Break inline atoms into lines and paint each composed line.
@@ -240,52 +333,57 @@ impl PageBuilder {
         }
         // A formula taller than the text ascent pushes the line top down so the
         // formula and the text share one baseline without crossing the previous
-        // line; the line box grows to the formula's full vertical extent.
-        let line_height = self.line_box(size).max(formula_height + formula_depth);
+        // line; the line box grows to the formula's full vertical extent, depth
+        // included.
         let raise = (formula_height - ASCENT * size).max(0.0);
+        let line_height = self.line_box(size).max(raise + ASCENT * size + formula_depth);
         self.ensure_space(raise + line_height);
         let top = self.cursor + raise;
         let baseline = top + ASCENT * size;
         let max_width = self.content_width(indent);
         let mut x = self.left(indent);
-        let mut run_text = String::new();
+        let mut run = PendingText::body();
         let mut run_x = x;
         for atom in line {
             match atom {
-                InlineAtom::Text(text) => {
-                    if run_text.is_empty() {
+                InlineAtom::Text { text, face } => {
+                    if run.is_empty() {
                         run_x = x;
+                        run.face = *face;
                     }
-                    run_text.push_str(text);
+                    else if run.face != *face {
+                        self.paint_inline_run(&mut run, run_x, baseline, size);
+                        run_x = x;
+                        run.face = *face;
+                    }
+                    run.text.push_str(text);
                     x += measure_text(&self.metrics, text, size);
                 }
                 InlineAtom::Math(math) => {
-                    if !run_text.is_empty() {
-                        let text = std::mem::take(&mut run_text);
-                        self.push(LayoutItem::TextRun(TextRun {
-                            x: run_x,
-                            y: baseline,
-                            size,
-                            font_family: SERIF.to_string(),
-                            text,
-                        }));
-                    }
+                    self.paint_inline_run(&mut run, run_x, baseline, size);
                     self.emit_inline_math(math, x, baseline, max_width);
                     x += math.width;
                 }
                 InlineAtom::Break => {}
             }
         }
-        if !run_text.is_empty() {
-            self.push(LayoutItem::TextRun(TextRun {
-                x: run_x,
-                y: baseline,
-                size,
-                font_family: SERIF.to_string(),
-                text: run_text,
-            }));
-        }
+        self.paint_inline_run(&mut run, run_x, baseline, size);
         self.cursor = top + line_height;
+    }
+
+    /// Paint the buffered paragraph text as one run and clear the buffer.
+    fn paint_inline_run(&mut self, run: &mut PendingText, x: f64, baseline: f64, size: f64) {
+        if run.is_empty() {
+            return;
+        }
+        self.push(LayoutItem::TextRun(TextRun {
+            x,
+            y: baseline,
+            size,
+            font_family: run.face.family.to_string(),
+            style: run.face.style,
+            text: std::mem::take(&mut run.text),
+        }));
     }
 
     /// Paint a formula at the inline baseline, clamped to the content width.
@@ -370,6 +468,7 @@ impl PageBuilder {
                 y,
                 size,
                 font_family: MONOSPACE.to_string(),
+                style: FontStyle::Normal,
                 text: (*line).to_string(),
             }));
             self.cursor += line_box;
@@ -425,6 +524,7 @@ impl PageBuilder {
                             y,
                             size,
                             font_family: SERIF.to_string(),
+                            style: FontStyle::Normal,
                             text: line.clone(),
                         }));
                     }
@@ -514,26 +614,18 @@ impl PageBuilder {
     }
 }
 
-/// Move buffered text into break atoms, preserving the paragraph flow.
-fn append_inline_text(atoms: &mut Vec<InlineAtom>, buffer: &mut String) {
-    if buffer.is_empty() {
-        return;
-    }
-    atoms.extend(split_inline_atoms(buffer));
-    buffer.clear();
-}
-
 /// Split text into paragraph atoms: words, single spaces, single CJK glyphs,
 /// and hard breaks. This mirrors [`split_atoms`], but keeps authored newlines
-/// as forced line endings instead of collapsing them into spaces.
-fn split_inline_atoms(text: &str) -> Vec<InlineAtom> {
+/// as forced line endings instead of collapsing them into spaces. Every atom
+/// carries `face`, so emphasis survives line breaking.
+fn split_inline_atoms(text: &str, face: TextFace) -> Vec<InlineAtom> {
     let mut atoms = Vec::new();
     let mut word = String::new();
     let mut in_space = false;
     for ch in text.chars() {
         if ch == '\n' {
             if !word.is_empty() {
-                atoms.push(InlineAtom::Text(std::mem::take(&mut word)));
+                atoms.push(InlineAtom::Text { text: std::mem::take(&mut word), face });
             }
             atoms.push(InlineAtom::Break);
             in_space = false;
@@ -541,10 +633,10 @@ fn split_inline_atoms(text: &str) -> Vec<InlineAtom> {
         }
         if ch.is_whitespace() {
             if !word.is_empty() {
-                atoms.push(InlineAtom::Text(std::mem::take(&mut word)));
+                atoms.push(InlineAtom::Text { text: std::mem::take(&mut word), face });
             }
             if !in_space {
-                atoms.push(InlineAtom::Text(" ".to_string()));
+                atoms.push(InlineAtom::Text { text: " ".to_string(), face });
                 in_space = true;
             }
             continue;
@@ -552,15 +644,15 @@ fn split_inline_atoms(text: &str) -> Vec<InlineAtom> {
         in_space = false;
         if (ch as u32) >= 0x2E80 {
             if !word.is_empty() {
-                atoms.push(InlineAtom::Text(std::mem::take(&mut word)));
+                atoms.push(InlineAtom::Text { text: std::mem::take(&mut word), face });
             }
-            atoms.push(InlineAtom::Text(ch.to_string()));
+            atoms.push(InlineAtom::Text { text: ch.to_string(), face });
             continue;
         }
         word.push(ch);
     }
     if !word.is_empty() {
-        atoms.push(InlineAtom::Text(word));
+        atoms.push(InlineAtom::Text { text: word, face });
     }
     atoms
 }
@@ -576,16 +668,16 @@ fn break_inline_atoms(metrics: &FontMetricsSystem, atoms: Vec<InlineAtom>, size:
     for atom in atoms {
         match atom {
             InlineAtom::Break => finish_inline_line(&mut lines, &mut current, &mut width),
-            InlineAtom::Text(text) if text.trim().is_empty() => {
+            InlineAtom::Text { text, face } => {
                 let atom_width = measure_text(metrics, &text, size);
-                // A space never starts a line and never widens past the column.
-                if !current.is_empty() && width + atom_width <= max_width {
-                    current.push(InlineAtom::Text(text));
-                    width += atom_width;
+                if text.trim().is_empty() {
+                    // A space never starts a line and never widens past the column.
+                    if !current.is_empty() && width + atom_width <= max_width {
+                        current.push(InlineAtom::Text { text, face });
+                        width += atom_width;
+                    }
+                    continue;
                 }
-            }
-            InlineAtom::Text(text) => {
-                let atom_width = measure_text(metrics, &text, size);
                 if !current.is_empty() && width + atom_width > max_width {
                     finish_inline_line(&mut lines, &mut current, &mut width);
                 }
@@ -596,18 +688,18 @@ fn break_inline_atoms(metrics: &FontMetricsSystem, atoms: Vec<InlineAtom>, size:
                     for ch in text.chars() {
                         let advance = advance_em(metrics, ch) * size;
                         if !chunk.is_empty() && chunk_width + advance > max_width {
-                            lines.push(vec![InlineAtom::Text(chunk.trim_end().to_string())]);
+                            lines.push(vec![InlineAtom::Text { text: chunk.trim_end().to_string(), face }]);
                             chunk.clear();
                             chunk_width = 0.0;
                         }
                         chunk.push(ch);
                         chunk_width += advance;
                     }
-                    current.push(InlineAtom::Text(chunk));
+                    current.push(InlineAtom::Text { text: chunk, face });
                     width = chunk_width;
                     continue;
                 }
-                current.push(InlineAtom::Text(text));
+                current.push(InlineAtom::Text { text, face });
                 width += atom_width;
             }
             InlineAtom::Math(math) => {
@@ -630,7 +722,7 @@ fn break_inline_atoms(metrics: &FontMetricsSystem, atoms: Vec<InlineAtom>, size:
 
 /// Close one line: drop trailing spaces and keep it only when it has content.
 fn finish_inline_line(lines: &mut Vec<Vec<InlineAtom>>, current: &mut Vec<InlineAtom>, width: &mut f64) {
-    while matches!(current.last(), Some(InlineAtom::Text(text)) if text.trim().is_empty()) {
+    while matches!(current.last(), Some(InlineAtom::Text { text, .. }) if text.trim().is_empty()) {
         current.pop();
     }
     if !current.is_empty() {
@@ -656,6 +748,7 @@ fn clamp_inline_item(item: LayoutItem, origin_x: f64, baseline: f64, scale: f64)
             y: baseline + (run.y - baseline) * scale,
             size: run.size * scale,
             font_family: run.font_family,
+            style: run.style,
             text: run.text,
         }),
         LayoutItem::Rule(rule) => LayoutItem::Rule(Rule {

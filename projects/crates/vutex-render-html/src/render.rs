@@ -2,9 +2,9 @@
 
 use vutex_presentation::{
     display::{DisplayItem, DisplayPresentation},
-    flow::{FlowBlock, FlowPresentation, FlowTableRow},
+    flow::{FlowBlock, FlowPresentation, FlowRun, FlowTableRow},
 };
-use vutex_types::{Diagnostic, Severity};
+use vutex_types::{Diagnostic, Severity, math::FontStyle};
 
 /// Snapshot HTML maps fixed layout geometry into absolute-positioned markup.
 ///
@@ -65,11 +65,12 @@ fn write_item(out: &mut String, item: &DisplayItem) {
     match item {
         DisplayItem::TextRun(run) => {
             out.push_str(&format!(
-                "<div class=\"vutex-text\" data-vutex-item=\"text\" style=\"left:{}pt;top:{}pt;font-size:{}pt;font-family:{}\">{}</div>\n",
+                "<div class=\"vutex-text\" data-vutex-item=\"text\" style=\"left:{}pt;top:{}pt;font-size:{}pt;font-family:{}{}\">{}</div>\n",
                 num(run.x),
                 num(run.y - 0.8 * run.size),
                 num(run.size),
                 escape_attribute(&run.font_family),
+                style_declarations(run.style),
                 escape_text(&run.text),
             ));
         }
@@ -120,8 +121,12 @@ fn write_flow_block(out: &mut String, block: &FlowBlock) {
             let level = (*level).clamp(1, 6);
             out.push_str(&format!("<h{level} data-vutex-block=\"heading\">{}</h{level}>\n", escape_text(text)));
         }
-        FlowBlock::Paragraph { text } => {
-            out.push_str(&format!("<p data-vutex-block=\"paragraph\">{}</p>\n", escape_text(text)));
+        FlowBlock::Paragraph { runs } => {
+            out.push_str("<p data-vutex-block=\"paragraph\">");
+            for run in runs {
+                write_flow_run(out, run);
+            }
+            out.push_str("</p>\n");
         }
         FlowBlock::List { ordered, items } => {
             let tag = if *ordered { "ol" } else { "ul" };
@@ -162,6 +167,32 @@ fn write_flow_block(out: &mut String, block: &FlowBlock) {
             out.push_str("</figure>\n");
         }
         FlowBlock::Rule => out.push_str("<hr data-vutex-block=\"rule\">\n"),
+    }
+}
+
+/// Write one flow run, wrapping it in the element that carries its emphasis.
+fn write_flow_run(out: &mut String, run: &FlowRun) {
+    let tag = match run.style {
+        FontStyle::Bold => "strong",
+        FontStyle::Italic => "em",
+        FontStyle::Monospace => "code",
+        _ => {
+            out.push_str(&escape_text(&run.text));
+            return;
+        }
+    };
+    out.push_str(&format!("<{tag}>{}</{tag}>", escape_text(&run.text)));
+}
+
+/// Inline CSS declarations for a styled run inside the fixed snapshot layout.
+///
+/// Snapshot geometry stays untouched; emphasis is layered on top so the
+/// absolute positioning is byte-identical to the unstyled output.
+fn style_declarations(style: FontStyle) -> &'static str {
+    match style {
+        FontStyle::Bold => ";font-weight:700",
+        FontStyle::Italic => ";font-style:italic",
+        _ => "",
     }
 }
 
