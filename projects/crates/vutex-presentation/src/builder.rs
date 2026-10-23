@@ -2,7 +2,7 @@
 
 use std::collections::HashSet;
 
-use notedown_ir::{Block, DocumentGraph, Inline, NodeId};
+use notedown_ir::{Block, DocumentGraph, Inline, NodeId, RelationEndpoint};
 use vutex_layout::plan::{ImagePlaceholder, LayoutItem, LayoutPlan, Rect, Rule, TextRun};
 use vutex_types::math::FontStyle;
 
@@ -94,35 +94,56 @@ fn flow_style(style: &str) -> FontStyle {
     }
 }
 
-/// Append one run, merging it into the previous run of the same style.
-fn push_run(runs: &mut Vec<FlowRun>, text: &str, style: FontStyle) {
+/// Append one run, merging it into the previous run of the same style and link.
+///
+/// A change of destination ends the previous run, so a link boundary is never
+/// merged away.
+fn push_run(runs: &mut Vec<FlowRun>, text: &str, style: FontStyle, href: Option<&str>) {
     if text.is_empty() {
         return;
     }
     if let Some(last) = runs.last_mut()
         && last.style == style
+        && last.href.as_deref() == href
     {
         last.text.push_str(text);
         return;
     }
-    runs.push(FlowRun { text: text.to_string(), style });
+    runs.push(FlowRun { text: text.to_string(), style, href: href.map(str::to_string) });
 }
 
-/// Flatten inline content into styled runs under the enclosing style.
-fn flow_runs(inlines: &[Inline], style: FontStyle, runs: &mut Vec<FlowRun>) {
+/// Resolve the destination of a link target.
+///
+/// Only authored external URIs become destinations. Internal `Node`,
+/// `Document`, `Asset`, and `Unresolved` targets keep the display text but stay
+/// without a destination, because reflow HTML emits no matching ids and a
+/// fabricated `#` anchor or invented URL scheme would point nowhere.
+fn link_href(target: &RelationEndpoint) -> Option<&str> {
+    match target {
+        RelationEndpoint::ExternalUri(uri) if !uri.is_empty() => Some(uri),
+        _ => None,
+    }
+}
+
+/// Flatten inline content into styled runs under the enclosing style and link.
+fn flow_runs<'a>(inlines: &'a [Inline], style: FontStyle, href: Option<&'a str>, runs: &mut Vec<FlowRun>) {
     for inline in inlines {
         match inline {
-            Inline::Styled { style: name, children } => flow_runs(children, flow_style(name), runs),
-            Inline::InlineCode { text } => push_run(runs, text, FontStyle::Monospace),
-            Inline::Image { alt, .. } => flow_runs(alt, style, runs),
+            Inline::Styled { style: name, children } => flow_runs(children, flow_style(name), href, runs),
+            Inline::InlineCode { text } => push_run(runs, text, FontStyle::Monospace, href),
+            Inline::Image { alt, .. } => flow_runs(alt, style, href, runs),
             // Attributes and link destinations carry no printable face, but
             // their wrapped content keeps every authored style.
-            Inline::Attributed { children, .. } => flow_runs(children, style, runs),
-            Inline::Link { display, .. } => flow_runs(display, style, runs),
-            Inline::Note { display: Some(display), .. } | Inline::Citation { display: Some(display), .. } => {
-                flow_runs(display, style, runs);
+            Inline::Attributed { children, .. } => flow_runs(children, style, href, runs),
+            Inline::Link { target, display, .. } => {
+                // A nested external link wins. A nested internal link keeps the
+                // enclosing destination so its text stays inside the anchor.
+                flow_runs(display, style, link_href(target).or(href), runs);
             }
-            other => push_run(runs, &other.plain_text(), style),
+            Inline::Note { display: Some(display), .. } | Inline::Citation { display: Some(display), .. } => {
+                flow_runs(display, style, href, runs);
+            }
+            other => push_run(runs, &other.plain_text(), style, href),
         }
     }
 }
@@ -130,7 +151,7 @@ fn flow_runs(inlines: &[Inline], style: FontStyle, runs: &mut Vec<FlowRun>) {
 /// Styled runs for one inline sequence with no enclosing emphasis.
 fn runs_of(inlines: &[Inline]) -> Vec<FlowRun> {
     let mut runs = Vec::new();
-    flow_runs(inlines, FontStyle::Normal, &mut runs);
+    flow_runs(inlines, FontStyle::Normal, None, &mut runs);
     runs
 }
 
@@ -160,7 +181,7 @@ fn collect_flow(graph: &DocumentGraph, ids: &[NodeId], blocks: &mut Vec<FlowBloc
                         blocks.push(FlowBlock::Image { alt: plain(alt), source: source.clone() });
                         continue;
                     }
-                    flow_runs(std::slice::from_ref(inline), FontStyle::Normal, &mut runs);
+                    flow_runs(std::slice::from_ref(inline), FontStyle::Normal, None, &mut runs);
                 }
                 blocks.push(FlowBlock::Paragraph { runs });
             }
