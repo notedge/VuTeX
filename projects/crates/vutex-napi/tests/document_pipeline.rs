@@ -183,6 +183,28 @@ fn pdf_keeps_bullet_markers_and_typographic_punctuation() {
     assert!(!text.contains("(?) Tj"), "no marker degrades to a question mark");
 }
 
+const LINK_AND_RULE_SAMPLE: &str = "# 标题\n\n正文 [站点](https://example.com) 继续\n\n---\n\n- 项目\n";
+
+#[test]
+fn thematic_break_and_external_link_reach_reflow_snapshot_and_svg() {
+    let dir = ScratchDir::new("rule-link");
+    let path = dir.write("rule-link.md", LINK_AND_RULE_SAMPLE);
+
+    let reflow = render_document(&path_string(&path), Some(r#"{"output":"html"}"#));
+    assert_eq!(reflow.exit_code, 0, "{}", reflow.report_json);
+    let html = reflow.html.expect("html payload");
+    assert!(html.contains(r#"data-vutex-block="rule""#), "{html}");
+    assert!(html.contains(r#"<a href="https://example.com">站点</a>"#), "{html}");
+
+    let snapshot = render_document(&path_string(&path), Some(r#"{"output":"snapshot"}"#));
+    assert_eq!(snapshot.exit_code, 0, "{}", snapshot.report_json);
+    let snapshot_html = snapshot.html.expect("snapshot payload");
+    assert!(snapshot_html.contains(r#"<a href="https://example.com">站点</a>"#), "{snapshot_html}");
+
+    let svg = render_document(&path_string(&path), None).svg.expect("svg payload");
+    assert!(svg.contains(r#"<a href="https://example.com"><text"#), "{svg}");
+}
+
 #[test]
 fn missing_file_reports_input_not_found() {
     let dir = ScratchDir::new("missing");
