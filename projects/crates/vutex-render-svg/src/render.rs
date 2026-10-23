@@ -102,11 +102,15 @@ fn write_item(out: &mut String, item: &DisplayItem) {
 ///
 /// SVG anchors wrap the `<text>` element so the glyph geometry stays untouched.
 /// A destination that fails [`is_safe_href`] is dropped and the text still
-/// renders as plain content.
+/// renders as plain content; an authored title becomes a `<title>` child of the
+/// anchor, which is the only place SVG tooltips come from.
 fn write_text_run(out: &mut String, run: &DisplayTextRun) {
     let anchor = run.href.as_deref().filter(|href| is_safe_href(href));
     if let Some(href) = anchor {
         out.push_str(&format!(r##"<a href="{}">"##, escape_attribute(href)));
+        if let Some(title) = &run.title {
+            out.push_str(&format!("<title>{}</title>", escape_text(title)));
+        }
     }
     out.push_str(&format!(
         r##"<text x="{}" y="{}" font-size="{}" font-family="{}"{} xml:space="preserve">{}</text>"##,

@@ -302,6 +302,55 @@ fn link_text_does_not_merge_with_adjacent_text() {
 }
 
 #[test]
+fn external_link_text_run_carries_the_authored_title() {
+    let graph = paragraph(vec![Inline::Link {
+        target: RelationEndpoint::ExternalUri("https://example.com".to_string()),
+        display: vec![text("the "), styled("bold", vec![text("guide")]), code("now")],
+        title: Some("Read the guide".to_string()),
+    }]);
+    let plan = layout(&graph);
+    let runs = text_runs(&plan.pages[0]);
+
+    assert_eq!(runs.len(), 3, "styles still split the link text: {runs:#?}");
+    assert!(runs.iter().all(|run| run.title.as_deref() == Some("Read the guide")), "{runs:#?}");
+    assert!(runs.iter().all(|run| run.href.as_deref() == Some("https://example.com")), "{runs:#?}");
+}
+
+#[test]
+fn link_runs_with_different_titles_do_not_merge() {
+    let graph = paragraph(vec![
+        Inline::Link {
+            target: RelationEndpoint::ExternalUri("https://example.com".to_string()),
+            display: vec![text("first")],
+            title: Some("First hint".to_string()),
+        },
+        Inline::Link {
+            target: RelationEndpoint::ExternalUri("https://example.com".to_string()),
+            display: vec![text("second")],
+            title: Some("Second hint".to_string()),
+        },
+        Inline::Link {
+            target: RelationEndpoint::ExternalUri("https://example.com".to_string()),
+            display: vec![text("third")],
+            title: Some(String::new()),
+        },
+    ]);
+    let plan = layout(&graph);
+    let runs = text_runs(&plan.pages[0]);
+
+    // The hover text is part of the run key, so neighbouring anchors with the
+    // same destination keep their own runs and tooltips.
+    assert_eq!(runs.len(), 3, "{runs:#?}");
+    assert_eq!(runs[0].text, "first");
+    assert_eq!(runs[0].title.as_deref(), Some("First hint"));
+    assert_eq!(runs[1].text, "second");
+    assert_eq!(runs[1].title.as_deref(), Some("Second hint"));
+    assert_eq!(runs[2].text, "third");
+    assert_eq!(runs[2].title, None, "an empty authored title carries no tooltip");
+    assert!(runs.iter().all(|run| run.href.as_deref() == Some("https://example.com")));
+}
+
+#[test]
 fn unstyled_text_has_no_strike_rule() {
     let graph = paragraph(vec![text("Pure text stays.")]);
     let plan = layout(&graph);

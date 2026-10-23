@@ -206,6 +206,50 @@ fn snapshot_html_drops_unsafe_link_destinations() {
 }
 
 #[test]
+fn reflow_html_writes_link_titles_on_the_anchor() {
+    let mut graph = DocumentGraph::new(DocumentId(14));
+    graph.push_block(Block::Paragraph {
+        content: vec![Inline::Link {
+            target: RelationEndpoint::ExternalUri("https://example.com/guide?q=a&lang=zh".to_string()),
+            display: vec![text("the guide")],
+            title: Some("Spec & \"notes\"".to_string()),
+        }],
+    });
+
+    let html = render_html_reflow(&build_flow_presentation(&graph)).expect("reflow html");
+
+    assert!(
+        html.contains(
+            "<a href=\"https://example.com/guide?q=a&amp;lang=zh\" \
+             title=\"Spec &amp; &quot;notes&quot;\">the guide</a>"
+        ),
+        "{html}"
+    );
+}
+
+#[test]
+fn snapshot_html_writes_link_titles_on_the_anchor() {
+    let mut graph = DocumentGraph::new(DocumentId(15));
+    graph.push_block(Block::Paragraph {
+        content: vec![Inline::Link {
+            target: RelationEndpoint::ExternalUri("https://example.com/guide?q=a&lang=zh".to_string()),
+            display: vec![text("the guide")],
+            title: Some("Spec & \"notes\"".to_string()),
+        }],
+    });
+
+    let html = render_html_snapshot(&build_display_presentation(&layout(&graph))).expect("snapshot html");
+
+    assert!(
+        html.contains(
+            "<a href=\"https://example.com/guide?q=a&amp;lang=zh\" \
+             title=\"Spec &amp; &quot;notes&quot;\">the guide</a>"
+        ),
+        "{html}"
+    );
+}
+
+#[test]
 fn reflow_html_drops_unsafe_link_destinations() {
     let mut graph = DocumentGraph::new(DocumentId(4));
     graph.push_block(Block::Paragraph {

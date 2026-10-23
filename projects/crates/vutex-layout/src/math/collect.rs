@@ -54,6 +54,7 @@ fn push_layout(node: &LayoutNode, x: f64, y: f64, items: &mut Vec<LayoutItem>) {
                     style: FontStyle::Normal,
                     text: ch.to_string(),
                     href: None,
+                    title: None,
                 }));
             }
         }

@@ -28,7 +28,7 @@ pub fn build_display_presentation(plan: &LayoutPlan) -> DisplayPresentation {
 
 fn lower_item(item: &LayoutItem) -> DisplayItem {
     match item {
-        LayoutItem::TextRun(TextRun { x, y, size, width, font_family, style, text, href }) => {
+        LayoutItem::TextRun(TextRun { x, y, size, width, font_family, style, text, href, title }) => {
             DisplayItem::TextRun(DisplayTextRun {
                 x: *x,
                 y: *y,
@@ -38,6 +38,7 @@ fn lower_item(item: &LayoutItem) -> DisplayItem {
                 style: *style,
                 text: text.clone(),
                 href: href.clone(),
+                title: title.clone(),
             })
         }
         LayoutItem::Rule(Rule { x1, y1, x2, y2, thickness }) => {
@@ -98,22 +99,25 @@ fn flow_style(style: &str) -> FontStyle {
     }
 }
 
-/// Append one run, merging it into the previous run of the same style and link.
+/// Append one run, merging it into the previous run of the same style, link,
+/// and link title.
 ///
-/// A change of destination ends the previous run, so a link boundary is never
-/// merged away.
-fn push_run(runs: &mut Vec<FlowRun>, text: &str, style: FontStyle, href: Option<&str>) {
+/// A change of destination or hover text ends the previous run, so a link
+/// boundary is never merged away and neighbouring anchors with different
+/// tooltips keep their own titles.
+fn push_run(runs: &mut Vec<FlowRun>, text: &str, style: FontStyle, href: Option<&str>, title: Option<&str>) {
     if text.is_empty() {
         return;
     }
     if let Some(last) = runs.last_mut()
         && last.style == style
         && last.href.as_deref() == href
+        && last.title.as_deref() == title
     {
         last.text.push_str(text);
         return;
     }
-    runs.push(FlowRun { text: text.to_string(), style, href: href.map(str::to_string) });
+    runs.push(FlowRun { text: text.to_string(), style, href: href.map(str::to_string), title: title.map(str::to_string) });
 }
 
 /// Resolve the destination of a link target.
@@ -129,25 +133,39 @@ fn link_href(target: &RelationEndpoint) -> Option<&str> {
     }
 }
 
+/// Resolve the hover text of a link target.
+///
+/// An authored empty title carries no tooltip, so it lowers to `None` instead of
+/// an empty attribute in the output.
+fn link_title(title: Option<&String>) -> Option<&str> {
+    title.map(String::as_str).filter(|value| !value.is_empty())
+}
+
 /// Flatten inline content into styled runs under the enclosing style and link.
-fn flow_runs<'a>(inlines: &'a [Inline], style: FontStyle, href: Option<&'a str>, runs: &mut Vec<FlowRun>) {
+fn flow_runs<'a>(
+    inlines: &'a [Inline],
+    style: FontStyle,
+    href: Option<&'a str>,
+    title: Option<&'a str>,
+    runs: &mut Vec<FlowRun>,
+) {
     for inline in inlines {
         match inline {
-            Inline::Styled { style: name, children } => flow_runs(children, flow_style(name), href, runs),
-            Inline::InlineCode { text } => push_run(runs, text, FontStyle::Monospace, href),
-            Inline::Image { alt, .. } => flow_runs(alt, style, href, runs),
+            Inline::Styled { style: name, children } => flow_runs(children, flow_style(name), href, title, runs),
+            Inline::InlineCode { text } => push_run(runs, text, FontStyle::Monospace, href, title),
+            Inline::Image { alt, .. } => flow_runs(alt, style, href, title, runs),
             // Attributes and link destinations carry no printable face, but
             // their wrapped content keeps every authored style.
-            Inline::Attributed { children, .. } => flow_runs(children, style, href, runs),
-            Inline::Link { target, display, .. } => {
+            Inline::Attributed { children, .. } => flow_runs(children, style, href, title, runs),
+            Inline::Link { target, display, title: link_hover } => {
                 // A nested external link wins. A nested internal link keeps the
                 // enclosing destination so its text stays inside the anchor.
-                flow_runs(display, style, link_href(target).or(href), runs);
+                flow_runs(display, style, link_href(target).or(href), link_title(link_hover.as_ref()).or(title), runs);
             }
             Inline::Note { display: Some(display), .. } | Inline::Citation { display: Some(display), .. } => {
-                flow_runs(display, style, href, runs);
+                flow_runs(display, style, href, title, runs);
             }
-            other => push_run(runs, &other.plain_text(), style, href),
+            other => push_run(runs, &other.plain_text(), style, href, title),
         }
     }
 }
@@ -155,7 +173,7 @@ fn flow_runs<'a>(inlines: &'a [Inline], style: FontStyle, href: Option<&'a str>,
 /// Styled runs for one inline sequence with no enclosing emphasis.
 fn runs_of(inlines: &[Inline]) -> Vec<FlowRun> {
     let mut runs = Vec::new();
-    flow_runs(inlines, FontStyle::Normal, None, &mut runs);
+    flow_runs(inlines, FontStyle::Normal, None, None, &mut runs);
     runs
 }
 
@@ -185,7 +203,7 @@ fn collect_flow(graph: &DocumentGraph, ids: &[NodeId], blocks: &mut Vec<FlowBloc
                         blocks.push(FlowBlock::Image { alt: plain(alt), source: source.clone() });
                         continue;
                     }
-                    flow_runs(std::slice::from_ref(inline), FontStyle::Normal, None, &mut runs);
+                    flow_runs(std::slice::from_ref(inline), FontStyle::Normal, None, None, &mut runs);
                 }
                 blocks.push(FlowBlock::Paragraph { runs });
             }
