@@ -15,6 +15,7 @@
     "devDependencies": {
         "@napi-rs/cli": "^3.10.9",
         "@vutex/vutex": "workspace:*",
-        "@vutex/wetex": "workspace:*"
+        "@vutex/wetex": "workspace:*",
+        "nifty": "latest"
     }
 }
