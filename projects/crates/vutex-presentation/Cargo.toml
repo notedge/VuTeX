@@ -8,6 +8,7 @@ edition.workspace = true
 readme = "readme.md"
 
 [dependencies]
+serde = { workspace = true, features = ["derive"] }
+notedown-ir = { workspace = true }
 vutex-types = { workspace = true, features = ["serde"] }
 vutex-layout = { workspace = true }
-vutex-document = { workspace = true }

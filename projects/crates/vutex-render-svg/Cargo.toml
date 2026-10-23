@@ -9,6 +9,7 @@ readme = "readme.md"
 
 [dependencies]
 vutex-types = { workspace = true, features = ["serde"] }
+vutex-layout = { workspace = true }
 vutex-presentation = { workspace = true }
 vutex-render = { workspace = true }
 

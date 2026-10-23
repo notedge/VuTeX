@@ -1,14 +1,28 @@
 [workspace]
 resolver = "2"
-members = ["projects/crates/*"]
-default-members = [
+members = [
     "projects/crates/vutex-types",
-    "projects/crates/vutex-document",
     "projects/crates/vutex-style",
-    "projects/crates/vutex-layout",
     "projects/crates/vutex-text",
+    "projects/crates/vutex-layout",
     "projects/crates/vutex-presentation",
     "projects/crates/vutex-render",
+    "projects/crates/vutex-render-pdf",
+    "projects/crates/vutex-render-svg",
+    "projects/crates/vutex-render-html",
+    "projects/crates/vutex-render-raster",
+    "projects/crates/wetex-wasm",
+    "projects/crates/vutex-napi",
+]
+default-members = [
+    "projects/crates/vutex-types",
+    "projects/crates/vutex-style",
+    "projects/crates/vutex-text",
+    "projects/crates/vutex-layout",
+    "projects/crates/vutex-presentation",
+    "projects/crates/vutex-render",
+    "projects/crates/wetex-wasm",
+    "projects/crates/vutex-napi",
 ]
 
 [workspace.lints.rust]
@@ -27,31 +41,30 @@ categories = ["text-processing", "rendering"]
 publish = false
 
 [workspace.dependencies]
+notedown-ir = { git = "https://github.com/notedge/notedown.git", branch = "dev" }
+notedown-formats = { git = "https://github.com/notedge/notedown.git", branch = "dev", default-features = false, features = ["markdown", "notedown", "html"] }
+boost-diagnostic = { git = "https://github.com/oovm/rust-boost", rev = "9aa52745d6eae2d7748c76e4e3e6555e1f6e4b86", default-features = false, features = ["std", "serde"] }
+
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
+wasm-bindgen = "0.2.129"
+napi = { version = "3.14.2", default-features = false, features = ["napi4"] }
+napi-derive = "3.6.12"
+napi-build = "2"
+
 vutex-types = { path = "projects/crates/vutex-types" }
-vutex-document = { path = "projects/crates/vutex-document" }
 vutex-style = { path = "projects/crates/vutex-style" }
-vutex-layout = { path = "projects/crates/vutex-layout" }
 vutex-text = { path = "projects/crates/vutex-text" }
+vutex-layout = { path = "projects/crates/vutex-layout" }
 vutex-presentation = { path = "projects/crates/vutex-presentation" }
 vutex-render = { path = "projects/crates/vutex-render" }
 vutex-render-pdf = { path = "projects/crates/vutex-render-pdf" }
 vutex-render-svg = { path = "projects/crates/vutex-render-svg" }
 vutex-render-html = { path = "projects/crates/vutex-render-html" }
 vutex-render-raster = { path = "projects/crates/vutex-render-raster" }
-vutex-input-notedown = { path = "projects/crates/vutex-input-notedown" }
-vutex-input-markdown = { path = "projects/crates/vutex-input-markdown" }
-vutex-input-mdx = { path = "projects/crates/vutex-input-mdx" }
-vutex-input-typst = { path = "projects/crates/vutex-input-typst" }
-vutex-input-tex = { path = "projects/crates/vutex-input-tex" }
 wetex-wasm = { path = "projects/crates/wetex-wasm" }
 vutex-napi = { path = "projects/crates/vutex-napi" }
-wasm-bindgen = "0.2.129"
-napi = { version = "3.14.2", default-features = false, features = ["napi4"] }
-napi-derive = "3.6.12"
-napi-build = "2"
 
 [profile.release]
 lto = true

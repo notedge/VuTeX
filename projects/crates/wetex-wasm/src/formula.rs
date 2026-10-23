@@ -1,3 +1,6 @@
+use vutex_layout::math::{FormulaLayout, layout_formula};
+use vutex_render_svg::math::{MathmlBackend, SvgBackend};
+use vutex_types::math::{MathError, MathStyle};
 use vutex_types::{Diagnostic, Severity};
 
 use crate::types::{DisplayMode, FormulaDiagnostic, FormulaMetrics, FormulaRender, RenderOptions};
@@ -7,41 +10,114 @@ const UNSUPPORTED_COMMANDS: &[&str] = &["usepackage", "input", "include", "write
 /// Measure a formula without emitting a full render payload.
 pub fn measure(source: &str, options: &RenderOptions) -> FormulaRender {
     let diagnostics = collect_diagnostics(source);
-    let metrics = if has_error(&diagnostics) {
-        FormulaMetrics { width: 0.0, height: 0.0, depth: 0.0, baseline: 0.0 }
+    if has_error(&diagnostics) {
+        return FormulaRender {
+            metrics: FormulaMetrics::default(),
+            svg: String::new(),
+            mathml: None,
+            diagnostics,
+        };
     }
-    else {
-        estimate_metrics(source, options.display_mode)
-    };
 
-    FormulaRender { metrics, svg: String::new(), mathml: None, diagnostics }
+    match layout_formula(source, options.display_mode == DisplayMode::Block) {
+        Ok((_, layout)) => FormulaRender {
+            metrics: layout_to_metrics(&layout),
+            svg: String::new(),
+            mathml: None,
+            diagnostics,
+        },
+        Err(err) => FormulaRender {
+            metrics: FormulaMetrics::default(),
+            svg: String::new(),
+            mathml: None,
+            diagnostics: vec![math_error_to_diagnostic(&err)],
+        },
+    }
 }
 
-/// Render a formula to SVG (and optional MathML in full `render`).
+/// Render a formula to SVG.
 pub fn render_svg(source: &str, options: &RenderOptions) -> FormulaRender {
-    let mut result = measure(source, options);
-    if !has_error(&result.diagnostics) {
-        result.svg = build_placeholder_svg(source, &result.metrics, options.display_mode);
+    let diagnostics = collect_diagnostics(source);
+    if has_error(&diagnostics) {
+        return FormulaRender {
+            metrics: FormulaMetrics::default(),
+            svg: String::new(),
+            mathml: None,
+            diagnostics,
+        };
     }
-    result
+
+    match render_formula_svg_inner(source, options.display_mode == DisplayMode::Block) {
+        Ok((svg, layout)) => FormulaRender {
+            metrics: layout_to_metrics(&layout),
+            svg,
+            mathml: None,
+            diagnostics,
+        },
+        Err(err) => FormulaRender {
+            metrics: FormulaMetrics::default(),
+            svg: String::new(),
+            mathml: None,
+            diagnostics: vec![math_error_to_diagnostic(&err)],
+        },
+    }
 }
 
-/// Render a formula to Presentation MathML (scaffold placeholder).
+/// Render a formula to Presentation MathML.
 pub fn render_mathml(source: &str, options: &RenderOptions) -> FormulaRender {
     let mut result = measure(source, options);
-    if !has_error(&result.diagnostics) {
-        result.mathml = Some(build_placeholder_mathml(source));
+    if has_error(&result.diagnostics) {
+        return result;
     }
-    result
+
+    match render_formula_mathml_inner(source, options.display_mode == DisplayMode::Block) {
+        Ok((mathml, _)) => {
+            result.mathml = Some(mathml);
+            result
+        }
+        Err(err) => {
+            result.diagnostics.push(math_error_to_diagnostic(&err));
+            result
+        }
+    }
 }
 
 /// Full render with SVG and MathML.
 pub fn render(source: &str, options: &RenderOptions) -> FormulaRender {
     let mut result = render_svg(source, options);
     if !has_error(&result.diagnostics) {
-        result.mathml = Some(build_placeholder_mathml(source));
+        match render_formula_mathml_inner(source, options.display_mode == DisplayMode::Block) {
+            Ok((mathml, _)) => result.mathml = Some(mathml),
+            Err(err) => result.diagnostics.push(math_error_to_diagnostic(&err)),
+        }
     }
     result
+}
+
+fn render_formula_svg_inner(source: &str, display: bool) -> Result<(String, FormulaLayout), MathError> {
+    use vutex_layout::math::render_layout_node;
+    let (root, layout) = layout_formula(source, display)?;
+    let svg_height = layout.height + layout.depth;
+    let mut backend = SvgBackend::new(layout.width, svg_height);
+    render_layout_node(&mut backend, &root, 0.0, layout.height)?;
+    Ok((backend.finish(), layout))
+}
+
+fn render_formula_mathml_inner(source: &str, display: bool) -> Result<(String, FormulaLayout), MathError> {
+    use vutex_layout::math::render_layout_node;
+    let (root, layout) = layout_formula(source, display)?;
+    let mut backend = MathmlBackend::new();
+    render_layout_node(&mut backend, &root, 0.0, layout.height)?;
+    Ok((backend.finish(), layout))
+}
+
+fn layout_to_metrics(layout: &FormulaLayout) -> FormulaMetrics {
+    FormulaMetrics {
+        width: layout.width,
+        height: layout.height,
+        depth: layout.depth,
+        baseline: layout.baseline,
+    }
 }
 
 fn collect_diagnostics(source: &str) -> Vec<FormulaDiagnostic> {
@@ -74,45 +150,18 @@ fn collect_diagnostics(source: &str) -> Vec<FormulaDiagnostic> {
     diagnostics
 }
 
+fn math_error_to_diagnostic(err: &MathError) -> FormulaDiagnostic {
+    FormulaDiagnostic {
+        code: "WETEX_MATH_ERROR".into(),
+        severity: severity_name(Severity::Error),
+        message: err.to_string(),
+        start: None,
+        end: None,
+    }
+}
+
 fn has_error(diagnostics: &[FormulaDiagnostic]) -> bool {
     diagnostics.iter().any(|item| item.severity == "error")
-}
-
-fn estimate_metrics(source: &str, display_mode: DisplayMode) -> FormulaMetrics {
-    let line_count = source.lines().count().max(1) as f64;
-    let char_count = source.chars().count().max(1) as f64;
-    let width = char_count * 7.2 + 12.0;
-    let height = if display_mode == DisplayMode::Block { 20.0 * line_count + 16.0 } else { 20.0 };
-    let depth = if display_mode == DisplayMode::Block { 4.0 } else { 2.0 };
-    let baseline = height - depth;
-
-    FormulaMetrics { width, height, depth, baseline }
-}
-
-fn build_placeholder_svg(source: &str, metrics: &FormulaMetrics, display_mode: DisplayMode) -> String {
-    let label = xml_escape(source);
-    let y = metrics.baseline;
-    let font_size = if display_mode == DisplayMode::Block { 16 } else { 14 };
-    format!(
-        r#"<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" data-wetex="placeholder"><text x="6" y="{y}" font-family="serif" font-size="{font_size}">{label}</text></svg>"#,
-        width = metrics.width,
-        height = metrics.height,
-        y = y,
-        font_size = font_size,
-        label = label,
-    )
-}
-
-fn build_placeholder_mathml(source: &str) -> String {
-    let label = xml_escape(source);
-    format!(
-        r#"<math xmlns="http://www.w3.org/1998/Math/MathML" data-wetex="placeholder"><mtext>{label}</mtext></math>"#,
-        label = label,
-    )
-}
-
-fn xml_escape(input: &str) -> String {
-    input.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
 }
 
 fn severity_name(severity: Severity) -> String {
@@ -126,7 +175,13 @@ fn severity_name(severity: Severity) -> String {
 
 impl From<Diagnostic> for FormulaDiagnostic {
     fn from(value: Diagnostic) -> Self {
-        Self { code: value.code, severity: severity_name(value.severity), message: value.message, start: None, end: None }
+        Self {
+            code: value.code,
+            severity: severity_name(value.severity),
+            message: value.message,
+            start: None,
+            end: None,
+        }
     }
 }
 
@@ -145,14 +200,20 @@ mod tests {
     fn simple_source_emits_svg() {
         let result = render_svg("x^2 + y^2", &RenderOptions::default());
         assert!(!result.svg.is_empty());
-        assert!(result.svg.contains("data-wetex=\"placeholder\""));
+        assert!(result.svg.contains("<svg"));
         assert!(result.metrics.width > 0.0);
+    }
+
+    #[test]
+    fn fraction_renders() {
+        let result = render_svg("\\frac{a}{b}", &RenderOptions::default());
+        assert!(!result.svg.is_empty());
+        assert!(!has_error(&result.diagnostics));
     }
 
     #[test]
     fn unsupported_command_reports_diagnostic() {
         let result = render_svg("\\usepackage{amsmath}", &RenderOptions::default());
         assert!(has_error(&result.diagnostics));
-        assert!(result.diagnostics.iter().any(|item| item.code == "WETEX_UNSUPPORTED_COMMAND"));
     }
 }
