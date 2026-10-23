@@ -1,12 +1,13 @@
 /**
- * Publish gate: require a green `ci.yml` run on the exact tag-peeled commit.
+ * Publish gate: require green check workflows on the exact tag-peeled commit.
  *
  * Contract (release gate, not a convenience check):
  * - A failed workflow can never pass. An earlier success on the same SHA must
  *   not mask a later completed failure (re-run, new run, different event).
- * - Missing, skipped, cancelled and timed-out jobs are not success. Delivery
- *   jobs are listed in REQUIRED_JOBS and verified one by one on the accepted run.
  * - Only runs whose headSha equals the bound tag SHA are considered.
+ * - Every workflow in CI_WORKFLOW_FILES must have its newest completed run on
+ *   that SHA conclude success. Missing, skipped, cancelled and timed-out runs
+ *   are not success.
  *
  * Why not `gh run list … -q '.[0].conclusion'`?
  * - Tag push can race dev CI (run still queued → "missing").
@@ -16,30 +17,26 @@
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-const REPO = process.env.GITHUB_REPOSITORY || process.env.VMZ_GITHUB_REPO || 'doki-land/vmz-framework';
+const REPO = process.env.GITHUB_REPOSITORY || 'notedge/VuTeX';
 const TAG_SHA = String(process.env.TAG_SHA || process.argv.find((a) => a.startsWith('--sha='))?.slice(6) || '')
     .trim()
     .toLowerCase();
-const WORKFLOW = process.env.CI_WORKFLOW_FILE || 'ci.yml';
+const WORKFLOWS = String(process.env.CI_WORKFLOW_FILES || 'check-rust.yml,check-typescript.yml')
+    .split(',')
+    .map((name) => name.trim())
+    .filter(Boolean);
 const TIMEOUT_MS = Number(process.env.CI_WAIT_TIMEOUT_MS || 45 * 60 * 1000);
 const INTERVAL_MS = Number(process.env.CI_WAIT_INTERVAL_MS || 20 * 1000);
-
-// Every job that proves the release artifacts are usable. `Build Runtimes` alone
-// is not enough: format, unit/example/browser and runtime gates all ship evidence.
-export const REQUIRED_JOBS = ['Build Runtimes', 'Format Check', 'Build and Test', 'UI and Browser Production', 'Slim and Runtime Quality'];
 
 const ACTIVE_STATUSES = new Set(['queued', 'in_progress', 'pending', 'requested', 'waiting']);
 
 /**
- * Decide the gate from run metadata only (no I/O), so fixtures can drive it.
+ * Decide the gate for one workflow from run metadata only (no I/O).
  *
- * @param {object} input
- * @param {string} input.sha bound tag SHA (40-char hex, lower-case)
- * @param {Array<object>} input.runs `gh run list` entries, any order
- * @param {(runId: number) => Array<{name: string, conclusion: string|null, status?: string}>} [input.jobsByRunId]
- * @returns {{ok: boolean, state: string, runId?: number, job?: string, conclusion?: string|null, active?: number, event?: string, displayTitle?: string}}
+ * @param {{sha: string, workflow: string, runs: Array<object>}} input
+ * @returns {{ok: boolean, state: string, runId?: number, conclusion?: string|null, active?: number, event?: string, displayTitle?: string}}
  */
-export function evaluateGate({ sha, runs, jobsByRunId }) {
+export function evaluateGate({ sha, workflow, runs }) {
     const scoped = (runs ?? []).filter((run) => String(run?.headSha ?? '').toLowerCase() === sha);
     if (scoped.length === 0) {
         return { ok: false, state: 'no-runs' };
@@ -68,47 +65,35 @@ export function evaluateGate({ sha, runs, jobsByRunId }) {
         };
     }
 
-    const jobs = jobsByRunId ? jobsByRunId(newest.databaseId) ?? [] : [];
-    const byName = new Map(jobs.map((job) => [job.name, job]));
-    for (const name of REQUIRED_JOBS) {
-        const job = byName.get(name);
-        if (!job) {
-            return { ok: false, state: 'missing-job', runId: newest.databaseId, job: name };
-        }
-        if (job.conclusion !== 'success') {
-            return {
-                ok: false,
-                state: 'job-not-success',
-                runId: newest.databaseId,
-                job: name,
-                conclusion: job.conclusion ?? job.status ?? null,
-            };
-        }
-    }
-
     return {
         ok: true,
         state: 'success',
         runId: newest.databaseId,
         event: newest.event,
         displayTitle: newest.displayTitle,
+        workflow,
     };
 }
 
-export function describeFailure(result) {
+/**
+ * Describe why the gate is not satisfied.
+ *
+ * @param {{state: string, runId?: number, conclusion?: string|null}} result
+ * @param {string} workflow
+ * @returns {string}
+ */
+export function describeFailure(result, workflow) {
     switch (result.state) {
         case 'run-not-success':
-            return `newest completed ${WORKFLOW} run on ${TAG_SHA} is ${result.conclusion} (run ${result.runId}); required jobs on a failed workflow never satisfy the release gate`;
-        case 'missing-job':
-            return `required job "${result.job}" is missing from run ${result.runId} on ${TAG_SHA}`;
-        case 'job-not-success':
-            return `required job "${result.job}" in run ${result.runId} concluded ${result.conclusion} (missing/skipped/cancelled/timeout is not success)`;
+            return `newest completed ${workflow} run on ${TAG_SHA} is ${result.conclusion} (run ${result.runId}); a failed workflow never satisfies the release gate`;
+        case 'active':
+            return `${workflow} run on ${TAG_SHA} is still active (${result.active})`;
         case 'no-runs':
-            return `no ${WORKFLOW} run found for ${TAG_SHA}`;
+            return `no ${workflow} run found for ${TAG_SHA}`;
         case 'no-completed':
-            return `no completed ${WORKFLOW} run for ${TAG_SHA}`;
+            return `no completed ${workflow} run for ${TAG_SHA}`;
         default:
-            return `gate not satisfied (state=${result.state})`;
+            return `gate not satisfied (workflow=${workflow} state=${result.state})`;
     }
 }
 
@@ -129,7 +114,7 @@ function gh(args) {
     return String(r.stdout ?? '').trim();
 }
 
-function listRuns() {
+function listRuns(workflow) {
     const raw = gh([
         'run',
         'list',
@@ -138,7 +123,7 @@ function listRuns() {
         '--commit',
         TAG_SHA,
         '--workflow',
-        WORKFLOW,
+        workflow,
         '--limit',
         '20',
         '--json',
@@ -148,15 +133,6 @@ function listRuns() {
         return JSON.parse(raw);
     } catch {
         fail(`invalid gh json: ${raw.slice(0, 200)}`);
-    }
-}
-
-function jobsByRunId(runId) {
-    const raw = gh(['api', `repos/${REPO}/actions/runs/${runId}/jobs?per_page=100`]);
-    try {
-        return (JSON.parse(raw).jobs ?? []).map((job) => ({ name: job.name, conclusion: job.conclusion, status: job.status }));
-    } catch {
-        fail(`invalid jobs json for run ${runId}: ${raw.slice(0, 200)}`);
     }
 }
 
@@ -174,25 +150,30 @@ async function main() {
 
     for (;;) {
         attempt += 1;
-        const runs = listRuns();
-        const result = evaluateGate({ sha: TAG_SHA, runs, jobsByRunId });
+        let waiting = false;
 
-        if (result.ok) {
-            console.log(`CI success confirmed for ${TAG_SHA} (run ${result.runId} "${result.displayTitle}" event=${result.event})`);
-            return;
-        }
+        for (const workflow of WORKFLOWS) {
+            const result = evaluateGate({ sha: TAG_SHA, workflow, runs: listRuns(workflow) });
 
-        // Only "still settling" states wait; a decided failure fails immediately.
-        if (result.state === 'active' || result.state === 'no-runs' || result.state === 'no-completed') {
-            if (Date.now() >= deadline) {
-                fail(`timed out after ${TIMEOUT_MS}ms waiting for green ${WORKFLOW} on ${TAG_SHA} (state=${result.state})`);
+            if (result.ok) {
+                console.log(`CI success confirmed for ${TAG_SHA}: ${workflow} (run ${result.runId} "${result.displayTitle}")`);
+                continue;
             }
-            console.log(`[${attempt}] ${describeFailure(result)} — waiting…`);
-            await sleep(INTERVAL_MS);
-            continue;
+
+            // Only "still settling" states wait; a decided failure fails immediately.
+            if (result.state === 'active' || result.state === 'no-runs' || result.state === 'no-completed') {
+                if (Date.now() >= deadline) {
+                    fail(`timed out after ${TIMEOUT_MS}ms waiting for green ${workflow} on ${TAG_SHA} (state=${result.state})`);
+                }
+                console.log(`[${attempt}] ${describeFailure(result, workflow)} — waiting…`);
+                waiting = true;
+            } else {
+                fail(describeFailure(result, workflow));
+            }
         }
 
-        fail(describeFailure(result));
+        if (!waiting) return;
+        await sleep(INTERVAL_MS);
     }
 }
 
