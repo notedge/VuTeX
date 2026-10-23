@@ -8,7 +8,7 @@
         "check": "cargo check --workspace",
         "test": "cargo test --workspace && pnpm -r --if-present run test",
         "fmt": "cargo fmt --all",
-        "build:wasm": "wasm-pack build projects/crates/wetex-wasm --target web --out-dir ../../packages/vutex-unknown-wasm32/lib --release",
+        "build:wasm": "wasm-pack build projects/crates/wetex-wasm --target web --out-dir ../../packages/vutex-unknown-wasm32/lib --release && node scripts/ci/strip-wasm-gitignore.mjs",
         "build:napi": "node scripts/build-napi.mjs",
         "typecheck": "pnpm -r --if-present run typecheck",
         "placeholder": "nifty publish --placeholder --dry-run",
