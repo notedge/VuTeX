@@ -51,6 +51,24 @@ const SAMPLE: &str = "# 标题\n\n第一段正文。\n\n- 项目一\n- 项目二
 
 const INSPECT_SAMPLE: &str = "# 标题\n\n第一段正文。\n\n1. 项目一\n2. 项目二\n";
 
+const RICH_SAMPLE: &str = r##"# 文档标题
+
+> 引用内容
+
+- 项目一
+- 项目二
+
+| 指标 | 数值 |
+| --- | --- |
+| 准确率 | 0.9 |
+
+```rust
+fn main() {
+    let value = 1;
+}
+```
+"##;
+
 #[test]
 fn markdown_renders_svg_with_page_statistics() {
     let dir = ScratchDir::new("svg");
@@ -214,6 +232,47 @@ fn inspect_reports_document_structure() {
     assert!(payload["document"]["paragraphs"].as_u64().unwrap_or(0) >= 1, "{payload}");
     assert!(payload["document"]["lists"].as_u64().unwrap_or(0) >= 1, "{payload}");
     assert_eq!(payload["document"]["coverage_complete"], true);
+}
+
+#[test]
+fn inspect_reports_every_imported_semantic_block() {
+    let dir = ScratchDir::new("inspect-rich");
+    let path = dir.write("rich.md", RICH_SAMPLE);
+
+    let outcome = inspect_document(&path_string(&path));
+    let payload = inspect_report(&outcome);
+
+    assert_eq!(payload["status"], "success");
+    let document = &payload["document"];
+    assert_eq!(document["sections"], 1, "{payload}");
+    assert_eq!(document["quotes"], 1, "{payload}");
+    assert_eq!(document["lists"], 1, "{payload}");
+    assert_eq!(document["tables"], 1, "{payload}");
+    assert_eq!(document["code"], 1, "{payload}");
+    assert_eq!(document["coverage_complete"], true, "{payload}");
+}
+
+#[test]
+fn markdown_semantic_blocks_reach_reflow_html_and_svg() {
+    let dir = ScratchDir::new("rich-render");
+    let path = dir.write("rich.md", RICH_SAMPLE);
+
+    let html_outcome = render_document(&path_string(&path), Some(r#"{"output":"html"}"#));
+    assert_eq!(html_outcome.exit_code, 0, "{}", html_outcome.report_json);
+    let html = html_outcome.html.expect("html payload");
+    for role in ["quote", "list", "table", "code"] {
+        assert!(html.contains(&format!(r#"data-vutex-block="{role}""#)), "missing {role} block: {html}");
+    }
+    assert!(html.contains("准确率") && html.contains("0.9"), "{html}");
+    assert!(html.contains("let value = 1;"), "{html}");
+
+    let svg_outcome = render_document(&path_string(&path), None);
+    assert_eq!(svg_outcome.exit_code, 0, "{}", svg_outcome.report_json);
+    let svg = svg_outcome.svg.expect("svg payload");
+    assert!(svg.contains("引用内容"), "{svg}");
+    assert!(svg.contains("准确率"), "{svg}");
+    assert!(svg.contains(r#"font-family="monospace""#), "{svg}");
+    assert!(svg.contains("let value = 1;"), "{svg}");
 }
 
 #[test]
