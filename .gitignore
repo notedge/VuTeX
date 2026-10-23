@@ -20,6 +20,8 @@ Cargo.lock
 
 # Node
 node_modules/
+.env.placeholder.local
+.cache/
 projects/packages/vutex-unknown-wasm32/lib/
 projects/packages/vutex-*/lib/
 cache/
