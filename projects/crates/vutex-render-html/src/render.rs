@@ -117,9 +117,13 @@ fn write_item(out: &mut String, item: &DisplayItem) {
 
 fn write_flow_block(out: &mut String, block: &FlowBlock) {
     match block {
-        FlowBlock::Heading { level, text } => {
+        FlowBlock::Heading { level, runs } => {
             let level = (*level).clamp(1, 6);
-            out.push_str(&format!("<h{level} data-vutex-block=\"heading\">{}</h{level}>\n", escape_text(text)));
+            out.push_str(&format!("<h{level} data-vutex-block=\"heading\">"));
+            for run in runs {
+                write_flow_run(out, run);
+            }
+            out.push_str(&format!("</h{level}>\n"));
         }
         FlowBlock::Paragraph { runs } => {
             out.push_str("<p data-vutex-block=\"paragraph\">");
@@ -132,7 +136,11 @@ fn write_flow_block(out: &mut String, block: &FlowBlock) {
             let tag = if *ordered { "ol" } else { "ul" };
             out.push_str(&format!("<{tag} data-vutex-block=\"list\">\n"));
             for item in items {
-                out.push_str(&format!("<li>{}</li>\n", escape_text(item)));
+                out.push_str("<li>");
+                for run in item {
+                    write_flow_run(out, run);
+                }
+                out.push_str("</li>\n");
             }
             out.push_str(&format!("</{tag}>\n"));
         }
@@ -143,8 +151,12 @@ fn write_flow_block(out: &mut String, block: &FlowBlock) {
             }
             out.push_str(&format!(">{}</code></pre>\n", escape_text(text)));
         }
-        FlowBlock::Quote { text } => {
-            out.push_str(&format!("<blockquote data-vutex-block=\"quote\"><p>{}</p></blockquote>\n", escape_text(text)));
+        FlowBlock::Quote { runs } => {
+            out.push_str("<blockquote data-vutex-block=\"quote\"><p>");
+            for run in runs {
+                write_flow_run(out, run);
+            }
+            out.push_str("</p></blockquote>\n");
         }
         FlowBlock::Table { caption, rows } => {
             out.push_str("<table data-vutex-block=\"table\">\n");
@@ -206,7 +218,11 @@ fn write_table_rows<'a>(out: &mut String, section: &str, rows: impl Iterator<Ite
         out.push_str("<tr>");
         let cell_tag = if row.is_header { "th" } else { "td" };
         for cell in &row.cells {
-            out.push_str(&format!("<{cell_tag}>{}</{cell_tag}>", escape_text(cell)));
+            out.push_str(&format!("<{cell_tag}>"));
+            for run in cell {
+                write_flow_run(out, run);
+            }
+            out.push_str(&format!("</{cell_tag}>"));
         }
         out.push_str("</tr>\n");
     }
