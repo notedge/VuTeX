@@ -1,12 +1,95 @@
+//! Fixed-geometry display presentation: pages of positioned primitives.
+
+/// One positioned text line in display coordinates.
+///
+/// `y` is the text baseline measured from the page top; the line box top is
+/// `y - 0.8 * size`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DisplayTextRun {
+    /// Left edge in points, measured from the page left.
+    pub x: f64,
+    /// Text baseline in points, measured from the page top.
+    pub y: f64,
+    /// Font size in points.
+    pub size: f64,
+    /// Font family name.
+    pub font_family: String,
+    /// Line text.
+    pub text: String,
+}
+
+/// One stroked line in display coordinates.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DisplayRule {
+    /// Start x in points.
+    pub x1: f64,
+    /// Start y in points.
+    pub y1: f64,
+    /// End x in points.
+    pub x2: f64,
+    /// End y in points.
+    pub y2: f64,
+    /// Stroke width in points.
+    pub thickness: f64,
+}
+
+/// One box in display coordinates.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DisplayRect {
+    /// Left edge in points.
+    pub x: f64,
+    /// Top edge in points.
+    pub y: f64,
+    /// Box width in points.
+    pub width: f64,
+    /// Box height in points.
+    pub height: f64,
+    /// Filled boxes carry a light background, unfilled boxes only an outline.
+    pub filled: bool,
+}
+
+/// One reserved image slot in display coordinates.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DisplayImage {
+    /// Left edge in points.
+    pub x: f64,
+    /// Top edge in points.
+    pub y: f64,
+    /// Box width in points.
+    pub width: f64,
+    /// Box height in points.
+    pub height: f64,
+    /// Alternative text for accessibility and diagnostics.
+    pub alt: String,
+}
+
+/// A fixed-geometry primitive painted by SVG, PDF, and raster backends.
+#[derive(Debug, Clone, PartialEq)]
+pub enum DisplayItem {
+    /// A single text line.
+    TextRun(DisplayTextRun),
+    /// A stroked line.
+    Rule(DisplayRule),
+    /// A box, either outlined or filled.
+    Rect(DisplayRect),
+    /// An image slot reserved at a fixed size.
+    Image(DisplayImage),
+}
+
 /// One page in a fixed-geometry display presentation.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DisplayPage {
+    /// Page width in points.
     pub width: f64,
+    /// Page height in points.
     pub height: f64,
+    /// Positioned primitives in paint order.
+    pub items: Vec<DisplayItem>,
 }
 
 /// Fixed-geometry presentation for PDF, SVG, and raster backends.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DisplayPresentation {
+    /// Pages in document order.
     pub pages: Vec<DisplayPage>,
 }

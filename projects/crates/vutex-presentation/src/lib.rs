@@ -6,6 +6,6 @@ pub mod builder;
 pub mod display;
 pub mod flow;
 
-pub use builder::build_display_presentation;
-pub use display::DisplayPresentation;
-pub use flow::FlowPresentation;
+pub use builder::{build_display_presentation, build_flow_presentation};
+pub use display::{DisplayItem, DisplayPage, DisplayPresentation};
+pub use flow::{FlowBlock, FlowPresentation, FlowTableRow};
