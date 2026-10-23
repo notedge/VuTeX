@@ -12,7 +12,7 @@ use vutex_types::math::{FontStyle, GlyphKey};
 
 use crate::{
     hint::LayoutHint,
-    math::{collect_layout, layout_formula_with_size},
+    math::{LayoutNode, collect_layout, layout_formula_with_size},
     plan::{ImagePlaceholder, LayoutItem, LayoutPage, LayoutPlan, Rect, Rule, TextRun},
 };
 
@@ -56,6 +56,26 @@ fn root_ids(graph: &DocumentGraph) -> Vec<NodeId> {
         }
     }
     graph.blocks.iter().map(|node| node.id).filter(|id| !referenced.contains(id)).collect()
+}
+
+/// One indivisible atom inside a composed paragraph line.
+#[derive(Debug, Clone)]
+enum InlineAtom {
+    /// Text break atom: a word, a single space, or one CJK glyph.
+    Text(String),
+    /// Laid-out inline formula, kept whole across line breaks.
+    Math(MathAtom),
+    /// Forced line ending produced by an authored hard break.
+    Break,
+}
+
+/// A formula box carried alongside the paragraph flow.
+#[derive(Debug, Clone)]
+struct MathAtom {
+    node: LayoutNode,
+    width: f64,
+    height: f64,
+    depth: f64,
 }
 
 /// Page-filling state for one layout pass.
@@ -162,28 +182,118 @@ impl PageBuilder {
         self.pad(base * 0.4);
     }
 
+    /// Compose a paragraph from text, inline math, and image atoms.
+    ///
+    /// Text keeps the greedy break atoms of [`wrap_text`]; inline math becomes a
+    /// real formula box that flows on the text baseline and is never split.
+    /// When the math engine rejects a formula, its raw source joins the text
+    /// flow, matching the display-math fallback.
     fn emit_paragraph(&mut self, content: &[Inline], indent: f64) {
         let size = self.body_size();
         let mut buffer = String::new();
+        let mut atoms: Vec<InlineAtom> = Vec::new();
         for inline in content {
             match inline {
                 Inline::Image { alt, .. } => {
-                    let text = buffer.trim().to_string();
-                    buffer.clear();
-                    if !text.is_empty() {
-                        self.emit_wrapped(&text, size, SERIF, indent);
-                    }
+                    append_inline_text(&mut atoms, &mut buffer);
+                    self.emit_inline_lines(std::mem::take(&mut atoms), size, indent);
                     let alt_text: String = alt.iter().map(Inline::plain_text).collect();
                     self.emit_image_placeholder(&alt_text, indent);
+                }
+                Inline::InlineMath { content, .. } => {
+                    append_inline_text(&mut atoms, &mut buffer);
+                    match layout_formula_with_size(content, false, size) {
+                        Ok((node, formula)) => atoms.push(InlineAtom::Math(MathAtom {
+                            node,
+                            width: formula.width,
+                            height: formula.height,
+                            depth: formula.depth,
+                        })),
+                        Err(_) => atoms.extend(split_inline_atoms(content)),
+                    }
                 }
                 other => buffer.push_str(&other.plain_text()),
             }
         }
-        let text = buffer.trim().to_string();
-        if !text.is_empty() {
-            self.emit_wrapped(&text, size, SERIF, indent);
-        }
+        append_inline_text(&mut atoms, &mut buffer);
+        self.emit_inline_lines(std::mem::take(&mut atoms), size, indent);
         self.pad(size * 0.6);
+    }
+
+    /// Break inline atoms into lines and paint each composed line.
+    fn emit_inline_lines(&mut self, atoms: Vec<InlineAtom>, size: f64, indent: f64) {
+        let max_width = self.content_width(indent);
+        for line in break_inline_atoms(&self.metrics, atoms, size, max_width) {
+            self.emit_inline_line(&line, size, indent);
+        }
+    }
+
+    /// Paint one composed line, sizing its box by the tallest formula it holds.
+    fn emit_inline_line(&mut self, line: &[InlineAtom], size: f64, indent: f64) {
+        let mut formula_height = 0.0f64;
+        let mut formula_depth = 0.0f64;
+        for atom in line {
+            if let InlineAtom::Math(math) = atom {
+                formula_height = formula_height.max(math.height);
+                formula_depth = formula_depth.max(math.depth);
+            }
+        }
+        // A formula taller than the text ascent pushes the line top down so the
+        // formula and the text share one baseline without crossing the previous
+        // line; the line box grows to the formula's full vertical extent.
+        let line_height = self.line_box(size).max(formula_height + formula_depth);
+        let raise = (formula_height - ASCENT * size).max(0.0);
+        self.ensure_space(raise + line_height);
+        let top = self.cursor + raise;
+        let baseline = top + ASCENT * size;
+        let max_width = self.content_width(indent);
+        let mut x = self.left(indent);
+        let mut run_text = String::new();
+        let mut run_x = x;
+        for atom in line {
+            match atom {
+                InlineAtom::Text(text) => {
+                    if run_text.is_empty() {
+                        run_x = x;
+                    }
+                    run_text.push_str(text);
+                    x += measure_text(&self.metrics, text, size);
+                }
+                InlineAtom::Math(math) => {
+                    if !run_text.is_empty() {
+                        let text = std::mem::take(&mut run_text);
+                        self.push(LayoutItem::TextRun(TextRun {
+                            x: run_x,
+                            y: baseline,
+                            size,
+                            font_family: SERIF.to_string(),
+                            text,
+                        }));
+                    }
+                    self.emit_inline_math(math, x, baseline, max_width);
+                    x += math.width;
+                }
+                InlineAtom::Break => {}
+            }
+        }
+        if !run_text.is_empty() {
+            self.push(LayoutItem::TextRun(TextRun {
+                x: run_x,
+                y: baseline,
+                size,
+                font_family: SERIF.to_string(),
+                text: run_text,
+            }));
+        }
+        self.cursor = top + line_height;
+    }
+
+    /// Paint a formula at the inline baseline, clamped to the content width.
+    fn emit_inline_math(&mut self, math: &MathAtom, x: f64, baseline: f64, max_width: f64) {
+        let scale = if math.width > max_width && math.width > 0.0 { (max_width / math.width).max(0.0) } else { 1.0 };
+        for item in collect_layout(&math.node, x, baseline) {
+            self.push(clamp_inline_item(item, x, baseline, scale));
+        }
     }
 
     fn emit_image_placeholder(&mut self, alt: &str, indent: f64) {
@@ -401,6 +511,161 @@ impl PageBuilder {
                 Block::Opaque { .. } => {}
             }
         }
+    }
+}
+
+/// Move buffered text into break atoms, preserving the paragraph flow.
+fn append_inline_text(atoms: &mut Vec<InlineAtom>, buffer: &mut String) {
+    if buffer.is_empty() {
+        return;
+    }
+    atoms.extend(split_inline_atoms(buffer));
+    buffer.clear();
+}
+
+/// Split text into paragraph atoms: words, single spaces, single CJK glyphs,
+/// and hard breaks. This mirrors [`split_atoms`], but keeps authored newlines
+/// as forced line endings instead of collapsing them into spaces.
+fn split_inline_atoms(text: &str) -> Vec<InlineAtom> {
+    let mut atoms = Vec::new();
+    let mut word = String::new();
+    let mut in_space = false;
+    for ch in text.chars() {
+        if ch == '\n' {
+            if !word.is_empty() {
+                atoms.push(InlineAtom::Text(std::mem::take(&mut word)));
+            }
+            atoms.push(InlineAtom::Break);
+            in_space = false;
+            continue;
+        }
+        if ch.is_whitespace() {
+            if !word.is_empty() {
+                atoms.push(InlineAtom::Text(std::mem::take(&mut word)));
+            }
+            if !in_space {
+                atoms.push(InlineAtom::Text(" ".to_string()));
+                in_space = true;
+            }
+            continue;
+        }
+        in_space = false;
+        if (ch as u32) >= 0x2E80 {
+            if !word.is_empty() {
+                atoms.push(InlineAtom::Text(std::mem::take(&mut word)));
+            }
+            atoms.push(InlineAtom::Text(ch.to_string()));
+            continue;
+        }
+        word.push(ch);
+    }
+    if !word.is_empty() {
+        atoms.push(InlineAtom::Text(word));
+    }
+    atoms
+}
+
+/// Greedy first-fit line breaking over paragraph atoms.
+///
+/// Formula atoms are never split; one that does not fit starts the next line,
+/// and one wider than the whole column occupies a line of its own.
+fn break_inline_atoms(metrics: &FontMetricsSystem, atoms: Vec<InlineAtom>, size: f64, max_width: f64) -> Vec<Vec<InlineAtom>> {
+    let mut lines: Vec<Vec<InlineAtom>> = Vec::new();
+    let mut current: Vec<InlineAtom> = Vec::new();
+    let mut width = 0.0f64;
+    for atom in atoms {
+        match atom {
+            InlineAtom::Break => finish_inline_line(&mut lines, &mut current, &mut width),
+            InlineAtom::Text(text) if text.trim().is_empty() => {
+                let atom_width = measure_text(metrics, &text, size);
+                // A space never starts a line and never widens past the column.
+                if !current.is_empty() && width + atom_width <= max_width {
+                    current.push(InlineAtom::Text(text));
+                    width += atom_width;
+                }
+            }
+            InlineAtom::Text(text) => {
+                let atom_width = measure_text(metrics, &text, size);
+                if !current.is_empty() && width + atom_width > max_width {
+                    finish_inline_line(&mut lines, &mut current, &mut width);
+                }
+                if atom_width > max_width && current.is_empty() {
+                    // Break an oversized word or URL character by character.
+                    let mut chunk = String::new();
+                    let mut chunk_width = 0.0;
+                    for ch in text.chars() {
+                        let advance = advance_em(metrics, ch) * size;
+                        if !chunk.is_empty() && chunk_width + advance > max_width {
+                            lines.push(vec![InlineAtom::Text(chunk.trim_end().to_string())]);
+                            chunk.clear();
+                            chunk_width = 0.0;
+                        }
+                        chunk.push(ch);
+                        chunk_width += advance;
+                    }
+                    current.push(InlineAtom::Text(chunk));
+                    width = chunk_width;
+                    continue;
+                }
+                current.push(InlineAtom::Text(text));
+                width += atom_width;
+            }
+            InlineAtom::Math(math) => {
+                if !current.is_empty() && width + math.width > max_width {
+                    finish_inline_line(&mut lines, &mut current, &mut width);
+                }
+                let oversized = math.width > max_width;
+                width += math.width;
+                current.push(InlineAtom::Math(math));
+                if oversized {
+                    // A formula wider than the column never shares its line.
+                    finish_inline_line(&mut lines, &mut current, &mut width);
+                }
+            }
+        }
+    }
+    finish_inline_line(&mut lines, &mut current, &mut width);
+    lines
+}
+
+/// Close one line: drop trailing spaces and keep it only when it has content.
+fn finish_inline_line(lines: &mut Vec<Vec<InlineAtom>>, current: &mut Vec<InlineAtom>, width: &mut f64) {
+    while matches!(current.last(), Some(InlineAtom::Text(text)) if text.trim().is_empty()) {
+        current.pop();
+    }
+    if !current.is_empty() {
+        lines.push(std::mem::take(current));
+    }
+    else {
+        current.clear();
+    }
+    *width = 0.0;
+}
+
+/// Scale an inline formula primitive about its origin and baseline.
+///
+/// Used only when a formula is wider than the content column: scaling keeps
+/// every glyph and rule inside the column instead of dropping the formula.
+fn clamp_inline_item(item: LayoutItem, origin_x: f64, baseline: f64, scale: f64) -> LayoutItem {
+    if (scale - 1.0).abs() < f64::EPSILON {
+        return item;
+    }
+    match item {
+        LayoutItem::TextRun(run) => LayoutItem::TextRun(TextRun {
+            x: origin_x + (run.x - origin_x) * scale,
+            y: baseline + (run.y - baseline) * scale,
+            size: run.size * scale,
+            font_family: run.font_family,
+            text: run.text,
+        }),
+        LayoutItem::Rule(rule) => LayoutItem::Rule(Rule {
+            x1: origin_x + (rule.x1 - origin_x) * scale,
+            y1: baseline + (rule.y1 - baseline) * scale,
+            x2: origin_x + (rule.x2 - origin_x) * scale,
+            y2: baseline + (rule.y2 - baseline) * scale,
+            thickness: rule.thickness * scale,
+        }),
+        other => other,
     }
 }
 
