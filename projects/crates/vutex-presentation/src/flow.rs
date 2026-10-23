@@ -35,6 +35,12 @@ pub struct FlowRun {
 pub struct FlowListItem {
     /// Styled runs of the item's marker line, in document order.
     pub runs: Vec<FlowRun>,
+    /// Authored marker number, when the item carried an explicit one.
+    ///
+    /// Only ordered items carry a number; unordered items keep `None`. Renderers
+    /// use it to emit `start` and `value` so authored numbering survives reflow
+    /// instead of restarting at one.
+    pub number: Option<u32>,
     /// Nested child blocks of this item, in document order.
     pub children: Vec<FlowBlock>,
 }
