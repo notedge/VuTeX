@@ -130,6 +130,8 @@ struct LinkAnnotation {
     y2: f64,
     /// Destination written into the `/URI` action.
     uri: String,
+    /// Hover text written into `/Contents`, when the run carried a title.
+    title: Option<String>,
 }
 
 /// Object strings in object-number order; index `i` is object `i + 1`.
@@ -193,7 +195,7 @@ fn page_links(page: &DisplayPage) -> Vec<LinkAnnotation> {
         if x2 <= x1 || y2 <= y1 {
             continue;
         }
-        links.push(LinkAnnotation { x1, y1, x2, y2, uri: uri.to_string() });
+        links.push(LinkAnnotation { x1, y1, x2, y2, uri: uri.to_string(), title: run.title.clone() });
     }
     links
 }
@@ -227,10 +229,11 @@ fn page_object(page: &DisplayPage, resources: &str, content_number: usize, annot
     object
 }
 
-/// Link annotation: a URI action over the run's glyph rectangle.
+/// Link annotation: a URI action over the run's glyph rectangle, carrying the
+/// authored hover text as `/Contents` when the run had one.
 fn annotation_object(link: &LinkAnnotation) -> String {
-    format!(
-        "<< /Type /Annot /Subtype /Link /Rect [{} {} {} {}] /Border [0 0 0] /A << /S /URI /URI ({}) >> >>",
+    let mut object = format!(
+        "<< /Type /Annot /Subtype /Link /Rect [{} {} {} {}] /Border [0 0 0] /A << /S /URI /URI ({}) >>",
         num(link.x1),
         num(link.y1),
         num(link.x2),
@@ -238,7 +241,12 @@ fn annotation_object(link: &LinkAnnotation) -> String {
         // Same literal-string escaping as text, so a destination containing
         // parentheses or backslashes cannot break the dictionary syntax.
         escape_text(&link.uri),
-    )
+    );
+    if let Some(title) = &link.title {
+        let _ = write!(object, " /Contents ({})", escape_text(title));
+    }
+    object.push_str(" >>");
+    object
 }
 
 fn font_object(base: &str) -> String {

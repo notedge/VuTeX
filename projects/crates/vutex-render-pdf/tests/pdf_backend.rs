@@ -15,6 +15,10 @@ fn text(x: f64, y: f64, size: f64, family: &str, value: &str) -> DisplayItem {
 }
 
 fn linked_text(x: f64, y: f64, size: f64, family: &str, value: &str, href: Option<&str>) -> DisplayItem {
+    titled_text(x, y, size, family, value, href, None)
+}
+
+fn titled_text(x: f64, y: f64, size: f64, family: &str, value: &str, href: Option<&str>, title: Option<&str>) -> DisplayItem {
     DisplayItem::TextRun(DisplayTextRun {
         x,
         y,
@@ -24,6 +28,7 @@ fn linked_text(x: f64, y: f64, size: f64, family: &str, value: &str, href: Optio
         style: FontStyle::Normal,
         text: value.to_string(),
         href: href.map(str::to_string),
+        title: title.map(str::to_string),
     })
 }
 
@@ -266,6 +271,34 @@ fn unsafe_link_emits_no_annotation() {
     assert!(!text.contains("/Subtype /Link"), "no link object");
     assert!(!text.contains("javascript:"), "unsafe destination never reaches the file");
     assert!(text.contains("(example) Tj"), "the text still renders");
+}
+
+#[test]
+fn link_annotation_carries_the_authored_title() {
+    let bytes = render_pdf(&DisplayPresentation {
+        pages: vec![page(
+            595.0,
+            842.0,
+            vec![titled_text(72.0, 100.0, 12.0, "serif", "example", Some("https://example.com"), Some("Spec (draft)"))],
+        )],
+    })
+    .expect("pdf render");
+    let text = lossy(&bytes);
+
+    assert!(text.contains("/URI (https://example.com)"), "destination literal string");
+    assert!(text.contains("/Contents (Spec \\(draft\\))"), "title literal string with escaped parentheses: {text}");
+}
+
+#[test]
+fn link_annotation_omits_contents_without_a_title() {
+    let bytes = render_pdf(&DisplayPresentation {
+        pages: vec![page(595.0, 842.0, vec![linked_text(72.0, 100.0, 12.0, "serif", "example", Some("https://example.com"))])],
+    })
+    .expect("pdf render");
+    let text = lossy(&bytes);
+
+    assert!(text.contains("/Subtype /Link"), "the annotation still exists");
+    assert!(!text.contains("/Contents ("), "no description entry without an authored title: {text}");
 }
 
 #[test]

@@ -24,6 +24,11 @@ pub struct FlowRun {
     /// matching ids, so a renderer must treat a missing destination as plain
     /// text rather than inventing an anchor.
     pub href: Option<String>,
+    /// Hover text authored on the link that contains the run, if any.
+    ///
+    /// Only link display content carries a title; all other runs keep `None`.
+    /// Renderers emit it as a tooltip only when they also emit the anchor.
+    pub title: Option<String>,
 }
 
 /// One list item: its marker-line runs plus the blocks nested under it.
