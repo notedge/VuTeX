@@ -18,6 +18,7 @@ type NativeBinding = {
         outputFormat: string;
         svg?: string;
         html?: string;
+        pdf?: Uint8Array;
         reportJson: string;
     };
 };

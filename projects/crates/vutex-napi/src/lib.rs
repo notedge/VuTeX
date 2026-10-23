@@ -4,6 +4,7 @@
 
 pub mod document;
 
+use napi::bindgen_prelude::Buffer;
 use napi_derive::napi;
 use wetex_wasm::{RenderOptions, measure, render, render_mathml, render_svg};
 
@@ -12,12 +13,14 @@ use wetex_wasm::{RenderOptions, measure, render, render_mathml, render_svg};
 pub struct RenderDocumentResponse {
     /// Process exit code. Zero means success.
     pub exit_code: u32,
-    /// Requested output format id (`svg`, `html`, or `snapshot`).
+    /// Requested output format id (`svg`, `html`, `snapshot`, or `pdf`).
     pub output_format: String,
     /// SVG payload when `output_format` is `svg`.
     pub svg: Option<String>,
     /// HTML payload when `output_format` is `html` or `snapshot`.
     pub html: Option<String>,
+    /// PDF bytes when `output_format` is `pdf`.
+    pub pdf: Option<Buffer>,
     /// Serialized render report JSON.
     pub report_json: String,
 }
@@ -81,7 +84,7 @@ pub fn inspect_document(input_path: String) -> InspectDocumentResponse {
     InspectDocumentResponse { input_format: outcome.input_format, path: outcome.path, report_json: outcome.report_json }
 }
 
-/// Render a document file into SVG, reflow HTML, or snapshot HTML.
+/// Render a document file into SVG, reflow HTML, snapshot HTML, or PDF.
 #[napi]
 pub fn render_document(input_path: String, options_json: Option<String>) -> RenderDocumentResponse {
     let outcome = document::render_document(&input_path, options_json.as_deref());
@@ -90,6 +93,7 @@ pub fn render_document(input_path: String, options_json: Option<String>) -> Rend
         output_format: outcome.output_format,
         svg: outcome.svg,
         html: outcome.html,
+        pdf: outcome.pdf.map(Buffer::from),
         report_json: outcome.report_json,
     }
 }

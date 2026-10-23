@@ -22,6 +22,7 @@ serde_json = { workspace = true }
 vutex-layout = { workspace = true }
 vutex-presentation = { workspace = true }
 vutex-render-html = { workspace = true }
+vutex-render-pdf = { workspace = true }
 vutex-render-svg = { workspace = true }
 vutex-types = { workspace = true }
 wetex-wasm = { workspace = true }

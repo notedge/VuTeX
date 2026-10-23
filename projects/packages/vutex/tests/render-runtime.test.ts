@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import test from "node:test";
 
+import { writePdfOutput } from "../src/cli/commands/render.js";
 import { createVuTeXRuntime } from "../src/runtime.js";
-import type { VuTeXBindings } from "../src/types.js";
+import type { RenderDocumentResult, VuTeXBindings } from "../src/types.js";
 
 type RenderCall = {
     inputPath: string;
@@ -17,6 +18,7 @@ type RenderResponse = {
     outputFormat: string;
     svg?: string;
     html?: string;
+    pdf?: Uint8Array;
     reportJson: string;
 };
 
@@ -101,6 +103,58 @@ test("render forwards snapshot output format and result", async () => {
         assert.equal(result.outputFormat, "snapshot");
         assert.equal(result.html, "<html data-snapshot=\"true\"/>");
         assert.equal(result.svg, undefined);
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
+});
+
+test("render forwards pdf output format and passes bytes through", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "vutex-render-"));
+    try {
+        const pdf = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x37]);
+        const { bindings, calls } = fakeBindings(() => ({
+            exitCode: 0,
+            outputFormat: "pdf",
+            pdf,
+            reportJson: "{}",
+        }));
+        const runtime = createVuTeXRuntime(bindings, { projectRoot: dir });
+        const result = await runtime.render("main.tex", { output: "pdf" });
+
+        assert.equal(calls[0].payload.output, "pdf");
+        assert.equal(result.outputFormat, "pdf");
+        assert.equal(result.pdf, pdf);
+        assert.equal(result.svg, undefined);
+        assert.equal(result.html, undefined);
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
+});
+
+test("cli pdf output writes bytes beside the input and keeps them out of the json payload", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "vutex-render-"));
+    try {
+        const inputPath = join(dir, "chapter.md");
+        await writeFile(inputPath, "# Title\n");
+        const bytes = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x37, 0x0a]);
+        const result: RenderDocumentResult = {
+            exitCode: 0,
+            outputFormat: "pdf",
+            pdf: bytes,
+            reportJson: '{"status":"success"}',
+            diagnostics: [],
+        };
+
+        const written = await writePdfOutput(inputPath, bytes, result);
+        const expectedPath = join(dir, "chapter.pdf");
+
+        assert.equal(written.outputPath, expectedPath);
+        assert.ok(isAbsolute(written.outputPath));
+        assert.deepEqual(new Uint8Array(await readFile(written.outputPath)), bytes);
+        assert.equal("pdf" in written.payload, false);
+        assert.equal(written.payload.outputPath, expectedPath);
+        assert.equal(written.payload.reportJson, '{"status":"success"}');
+        assert.equal(written.payload.outputFormat, "pdf");
     } finally {
         await rm(dir, { recursive: true, force: true });
     }
