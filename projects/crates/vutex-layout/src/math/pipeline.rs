@@ -23,8 +23,17 @@ pub struct FormulaLayout {
 /// `display` selects display style (larger base size, display-style shifts) instead
 /// of inline text style.
 pub fn layout_formula(source: &str, display: bool) -> MathResult<(super::LayoutNode, FormulaLayout)> {
-    let style = if display { MathStyle::Display } else { MathStyle::Text };
     let base_size = if display { 16.0 } else { 14.0 };
+    layout_formula_with_size(source, display, base_size)
+}
+
+/// Parse TeX math and produce a layout tree plus metrics at an explicit base size.
+///
+/// `base_size` is the em size in pixels used for the outer style; script styles
+/// scale down from it. Document layout uses the body size so formulas follow the
+/// surrounding text.
+pub fn layout_formula_with_size(source: &str, display: bool, base_size: f64) -> MathResult<(super::LayoutNode, FormulaLayout)> {
+    let style = if display { MathStyle::Display } else { MathStyle::Text };
     let tree = parse_math(source)?;
     let font_system = builtin_font_metrics();
     let engine = LayoutEngine::new(font_system).with_base_size(base_size);
