@@ -2,6 +2,7 @@
 
 use super::LayoutNode;
 use crate::plan::{LayoutItem, Rule, TextRun};
+use vutex_types::math::FontStyle;
 
 /// Smallest stroke width emitted for a math rule, in points.
 const MIN_RULE_THICKNESS: f64 = 0.4;
@@ -49,6 +50,7 @@ fn push_layout(node: &LayoutNode, x: f64, y: f64, items: &mut Vec<LayoutItem>) {
                     y,
                     size: glyph.size.to_f64(),
                     font_family: output_family(&glyph.font_family),
+                    style: FontStyle::Normal,
                     text: ch.to_string(),
                 }));
             }

@@ -1,5 +1,7 @@
 //! Computed layout output: pages of positioned primitives in points.
 
+use vutex_types::math::FontStyle;
+
 /// One positioned text line.
 ///
 /// `x` is the left edge of the line and `y` the text baseline. Layouts place
@@ -15,6 +17,8 @@ pub struct TextRun {
     pub size: f64,
     /// Font family name such as `serif`, `sans-serif`, or `monospace`.
     pub font_family: String,
+    /// Face style carried from the inline content, such as bold or italic.
+    pub style: FontStyle,
     /// Line text.
     pub text: String,
 }

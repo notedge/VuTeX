@@ -1,5 +1,7 @@
 //! Fixed-geometry display presentation: pages of positioned primitives.
 
+use vutex_types::math::FontStyle;
+
 /// One positioned text line in display coordinates.
 ///
 /// `y` is the text baseline measured from the page top; the line box top is
@@ -14,6 +16,8 @@ pub struct DisplayTextRun {
     pub size: f64,
     /// Font family name.
     pub font_family: String,
+    /// Face style carried from layout, such as bold or italic.
+    pub style: FontStyle,
     /// Line text.
     pub text: String,
 }

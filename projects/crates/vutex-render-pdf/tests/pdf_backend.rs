@@ -4,13 +4,21 @@ use vutex_presentation::display::{
     DisplayImage, DisplayItem, DisplayPage, DisplayPresentation, DisplayRect, DisplayRule, DisplayTextRun,
 };
 use vutex_render_pdf::render_pdf;
+use vutex_types::math::FontStyle;
 
 fn page(width: f64, height: f64, items: Vec<DisplayItem>) -> DisplayPage {
     DisplayPage { width, height, items }
 }
 
 fn text(x: f64, y: f64, size: f64, family: &str, value: &str) -> DisplayItem {
-    DisplayItem::TextRun(DisplayTextRun { x, y, size, font_family: family.to_string(), text: value.to_string() })
+    DisplayItem::TextRun(DisplayTextRun {
+        x,
+        y,
+        size,
+        font_family: family.to_string(),
+        style: FontStyle::Normal,
+        text: value.to_string(),
+    })
 }
 
 fn full_page() -> DisplayPage {
