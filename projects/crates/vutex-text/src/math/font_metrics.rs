@@ -3,8 +3,7 @@
 use std::collections::HashMap;
 
 use vutex_types::math::{
-    DelimiterConstruction, Fixed, FontMetricsData, FontStyle, GlyphKey, GlyphMetrics, MathConstant,
-    MathError, MathResult,
+    DelimiterConstruction, Fixed, FontMetricsData, FontStyle, GlyphKey, GlyphMetrics, MathConstant, MathError, MathResult,
 };
 
 #[derive(Debug)]
@@ -25,9 +24,7 @@ impl FontMetricsSystem {
 
     pub fn insert_metrics(&mut self, key: GlyphKey, metrics: GlyphMetrics) {
         let family = key.font_family.clone().unwrap_or_else(|| "default".to_string());
-        self.metrics_cache
-            .entry(family.clone())
-            .or_insert_with(|| FontMetricsData::new(family.clone(), 1000));
+        self.metrics_cache.entry(family.clone()).or_insert_with(|| FontMetricsData::new(family.clone(), 1000));
         self.metrics_cache.get_mut(&family).unwrap().glyphs.insert(key, metrics);
     }
 
