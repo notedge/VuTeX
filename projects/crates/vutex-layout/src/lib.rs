@@ -4,7 +4,7 @@
 
 pub mod document;
 pub mod hint;
-// pub mod math; // migrate-rutex.py scaffold — Result unwrap bugs (91) — re-enable after fix
+pub mod math;
 pub mod plan;
 
 pub use document::layout;
