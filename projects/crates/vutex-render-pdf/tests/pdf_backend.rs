@@ -177,6 +177,26 @@ fn substitutes_characters_outside_latin1() {
 }
 
 #[test]
+fn maps_typographic_punctuation_to_winansi_bytes() {
+    let bytes = render_pdf(&DisplayPresentation {
+        pages: vec![page(
+            595.0,
+            842.0,
+            vec![
+                text(72.0, 100.0, 12.0, "serif", "\u{2022} item \u{2013} dash"),
+                text(72.0, 120.0, 12.0, "serif", "\u{201C}quoted\u{201D} \u{2026} \u{2014} \u{20AC}"),
+            ],
+        )],
+    })
+    .expect("pdf render");
+    let text = lossy(&bytes);
+
+    assert!(text.contains("(\\225 item \\226 dash) Tj"), "bullet and en dash keep their winansi bytes");
+    assert!(text.contains("(\\223quoted\\224 \\205 \\227 \\200) Tj"), "curly quotes, ellipsis, em dash and euro");
+    assert!(!text.contains('?'), "representable punctuation never degrades to a question mark");
+}
+
+#[test]
 fn empty_presentation_is_rejected() {
     let diagnostic = render_pdf(&DisplayPresentation { pages: Vec::new() }).expect_err("empty presentation");
 

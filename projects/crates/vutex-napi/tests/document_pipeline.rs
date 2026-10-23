@@ -169,6 +169,21 @@ fn markdown_renders_pdf_bytes() {
 }
 
 #[test]
+fn pdf_keeps_bullet_markers_and_typographic_punctuation() {
+    let dir = ScratchDir::new("pdf-winansi");
+    let path = dir.write("winansi.md", "- alpha\n- beta\n\n\u{201C}quoted\u{201D} \u{2013} \u{2014} \u{2026}\n");
+
+    let outcome = render_document(&path_string(&path), Some(r#"{"output":"pdf"}"#));
+    assert_eq!(outcome.exit_code, 0, "{}", outcome.report_json);
+    let pdf = outcome.pdf.expect("pdf payload");
+    let text = String::from_utf8_lossy(&pdf);
+
+    assert!(text.contains("(\\225) Tj"), "list markers paint the winansi bullet byte: {text}");
+    assert!(text.contains("\\223quoted\\224"), "curly quotes keep their winansi bytes");
+    assert!(!text.contains("(?) Tj"), "no marker degrades to a question mark");
+}
+
+#[test]
 fn missing_file_reports_input_not_found() {
     let dir = ScratchDir::new("missing");
     let path = path_string(&dir.path.join("absent.md"));
