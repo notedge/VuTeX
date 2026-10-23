@@ -45,7 +45,10 @@ fn flow_lowering_keeps_block_semantics() {
     assert_eq!(presentation.root_tag, "article");
     assert_eq!(presentation.blocks.len(), 3);
     assert!(matches!(&presentation.blocks[0], FlowBlock::Heading { level: 1, text } if text == "Flow heading"));
-    assert!(matches!(&presentation.blocks[1], FlowBlock::Paragraph { text } if text == "Flow paragraph."));
+    assert!(matches!(
+        &presentation.blocks[1],
+        FlowBlock::Paragraph { runs } if runs.len() == 1 && runs[0].text == "Flow paragraph."
+    ));
     match &presentation.blocks[2] {
         FlowBlock::List { ordered, items } => {
             assert!(ordered);

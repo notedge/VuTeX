@@ -2,7 +2,7 @@
 
 use vutex_presentation::display::{DisplayItem, DisplayPresentation};
 use vutex_render::RenderBackend;
-use vutex_types::Diagnostic;
+use vutex_types::{Diagnostic, math::FontStyle};
 
 /// Render every display page into one SVG document.
 ///
@@ -56,11 +56,12 @@ fn write_item(out: &mut String, item: &DisplayItem) {
     match item {
         DisplayItem::TextRun(run) => {
             out.push_str(&format!(
-                r##"<text x="{}" y="{}" font-size="{}" font-family="{}" xml:space="preserve">{}</text>"##,
+                r##"<text x="{}" y="{}" font-size="{}" font-family="{}"{} xml:space="preserve">{}</text>"##,
                 num(run.x),
                 num(run.y),
                 num(run.size),
                 escape_attribute(&run.font_family),
+                style_attributes(run.style),
                 escape_text(&run.text),
             ));
         }
@@ -108,6 +109,18 @@ fn write_item(out: &mut String, item: &DisplayItem) {
 
 fn num(value: f64) -> String {
     format!("{value:.3}")
+}
+
+/// SVG presentation attributes for a text face style.
+///
+/// Unstyled runs append nothing, so plain body text keeps the exact attribute
+/// set it had before styles existed.
+fn style_attributes(style: FontStyle) -> &'static str {
+    match style {
+        FontStyle::Bold => r#" font-weight="700""#,
+        FontStyle::Italic => r#" font-style="italic""#,
+        _ => "",
+    }
 }
 
 fn escape_text(value: &str) -> String {

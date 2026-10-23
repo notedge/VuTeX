@@ -1,4 +1,21 @@
 //! Reflow presentation: semantic blocks for HTML and accessibility targets.
+//!
+//! Only paragraphs carry styled runs this round: headings, list items, quotes,
+//! and table cells stay plain text because their reflow markup is fixed by the
+//! block role. A `FlowRun` records one contiguous span of text plus the face
+//! style it was authored with, so renderers can emit `<strong>`, `<em>`, or
+//! `<code>` without re-reading the document graph.
+
+use vutex_types::math::FontStyle;
+
+/// One contiguous styled text span inside a reflow paragraph.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FlowRun {
+    /// Run text, escaped by the renderer.
+    pub text: String,
+    /// Face style the run was authored with.
+    pub style: FontStyle,
+}
 
 /// One row of a flow table, with the header role kept for `<thead>` output.
 #[derive(Debug, Clone, PartialEq)]
@@ -22,10 +39,10 @@ pub enum FlowBlock {
         /// Plain heading text.
         text: String,
     },
-    /// Paragraph text.
+    /// Paragraph text with its styled runs in document order.
     Paragraph {
-        /// Plain paragraph text.
-        text: String,
+        /// Styled runs; adjacent runs of the same style are already merged.
+        runs: Vec<FlowRun>,
     },
     /// Ordered or unordered list.
     List {
