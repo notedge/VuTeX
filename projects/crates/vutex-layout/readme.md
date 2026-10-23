@@ -1,3 +1,3 @@
 # `vutex-layout`
 
-Page, block, line, table, footnote, and pagination layout.
+Page, block, line, table, and pagination layout.
