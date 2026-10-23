@@ -9,6 +9,7 @@ fn text(family: &str, style: FontStyle, value: &str) -> DisplayItem {
         x: 72.0,
         y: 100.0,
         size: 12.0,
+        width: value.chars().count() as f64 * 6.0,
         font_family: family.to_string(),
         style,
         text: value.to_string(),

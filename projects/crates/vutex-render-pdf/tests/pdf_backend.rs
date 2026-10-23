@@ -11,14 +11,19 @@ fn page(width: f64, height: f64, items: Vec<DisplayItem>) -> DisplayPage {
 }
 
 fn text(x: f64, y: f64, size: f64, family: &str, value: &str) -> DisplayItem {
+    linked_text(x, y, size, family, value, None)
+}
+
+fn linked_text(x: f64, y: f64, size: f64, family: &str, value: &str, href: Option<&str>) -> DisplayItem {
     DisplayItem::TextRun(DisplayTextRun {
         x,
         y,
         size,
+        width: value.chars().count() as f64 * size * 0.5,
         font_family: family.to_string(),
         style: FontStyle::Normal,
         text: value.to_string(),
-        href: None,
+        href: href.map(str::to_string),
     })
 }
 
@@ -203,4 +208,93 @@ fn empty_presentation_is_rejected() {
 
     assert_eq!(diagnostic.code, "vutex.render.pdf.no_pages");
     assert_eq!(diagnostic.severity, vutex_types::Severity::Error);
+}
+
+/// `/Rect [x1 y1 x2 y2]` of every link annotation, in document order.
+fn link_rects(text: &str) -> Vec<[f64; 4]> {
+    let needle = "/Subtype /Link /Rect [";
+    let mut rects = Vec::new();
+    let mut cursor = 0;
+    while let Some(found) = text[cursor..].find(needle) {
+        let start = cursor + found + needle.len();
+        let end = start + text[start..].find(']').expect("link rect terminator");
+        let values: Vec<f64> =
+            text[start..end].split_whitespace().map(|value| value.parse().expect("link rect coordinate")).collect();
+        assert_eq!(values.len(), 4, "a link rect carries four coordinates");
+        rects.push([values[0], values[1], values[2], values[3]]);
+        cursor = end;
+    }
+    rects
+}
+
+#[test]
+fn safe_link_becomes_a_page_annotation() {
+    let bytes = render_pdf(&DisplayPresentation {
+        pages: vec![page(595.0, 842.0, vec![linked_text(72.0, 100.0, 12.0, "serif", "example", Some("https://example.com"))])],
+    })
+    .expect("pdf render");
+    let text = lossy(&bytes);
+
+    assert!(text.contains("/Subtype /Link"), "link annotation object");
+    assert!(text.contains("/S /URI"), "uri action");
+    assert!(text.contains("/URI (https://example.com)"), "destination literal string");
+    assert!(text.contains("/Annots ["), "page references its annotations");
+
+    let annots_at = text.find("/Annots [").expect("annots array") + "/Annots [".len();
+    let number: usize = text[annots_at..].split_whitespace().next().expect("annotation reference").parse().unwrap();
+    assert!(text.contains(&format!("{number} 0 obj\n<< /Type /Annot")), "reference points at the annotation object");
+
+    let rects = link_rects(&text);
+    assert_eq!(rects.len(), 1, "one annotation per safe run");
+    let [x1, y1, x2, y2] = rects[0];
+    assert!((x1 - 72.0).abs() < 1e-9, "rect starts at the run left edge");
+    assert!((x2 - (72.0 + 42.0)).abs() < 1e-9, "rect spans the run width");
+    assert!((y1 - (842.0 - (100.0 + 2.4))).abs() < 1e-9, "rect bottom sits 0.2 em below the baseline");
+    assert!((y2 - (842.0 - (100.0 - 9.6))).abs() < 1e-9, "rect top sits 0.8 em above the baseline");
+    assert!(x1 >= 0.0 && x2 <= 595.0 && y1 >= 0.0 && y2 <= 842.0, "rect stays inside the MediaBox");
+}
+
+#[test]
+fn unsafe_link_emits_no_annotation() {
+    let bytes = render_pdf(&DisplayPresentation {
+        pages: vec![page(595.0, 842.0, vec![linked_text(72.0, 100.0, 12.0, "serif", "example", Some("javascript:alert(1)"))])],
+    })
+    .expect("pdf render");
+    let text = lossy(&bytes);
+
+    assert!(!text.contains("/Annots"), "no annotation array without a safe destination");
+    assert!(!text.contains("/Subtype /Link"), "no link object");
+    assert!(!text.contains("javascript:"), "unsafe destination never reaches the file");
+    assert!(text.contains("(example) Tj"), "the text still renders");
+}
+
+#[test]
+fn pages_without_links_keep_no_annotations() {
+    let bytes = render_pdf(&DisplayPresentation { pages: vec![full_page()] }).expect("pdf render");
+    let text = lossy(&bytes);
+
+    assert!(!text.contains("/Annots"), "link-free pages stay annotation-free");
+    assert!(!text.contains("/Subtype /Link"));
+    assert!(text.contains("(Hello PDF) Tj"), "existing content is unchanged");
+}
+
+#[test]
+fn link_annotations_keep_the_xref_table_intact() {
+    let bytes = render_pdf(&DisplayPresentation {
+        pages: vec![
+            page(595.0, 842.0, vec![linked_text(72.0, 100.0, 12.0, "serif", "first", Some("https://example.com"))]),
+            page(612.0, 792.0, vec![linked_text(72.0, 100.0, 12.0, "sans", "second", Some("https://example.org"))]),
+        ],
+    })
+    .expect("pdf render");
+
+    let entries = xref_entries(&bytes);
+    let numbers = object_numbers(&bytes);
+    assert_eq!(entries.len(), numbers.len(), "one xref entry per object");
+    for (index, offset) in entries.iter().enumerate() {
+        let expected = format!("{} 0 obj", index + 1);
+        assert!(bytes[*offset..].starts_with(expected.as_bytes()), "object {expected} at offset {offset}");
+    }
+    let highest = numbers.into_iter().max().expect("at least one object");
+    assert_eq!(trailer_size(&bytes), highest + 1, "/Size is the highest object number plus one");
 }
