@@ -2,7 +2,9 @@
 
 use notedown_ir::{Attributes, Block, DocumentGraph, DocumentId, Inline, ListItem, RelationEndpoint, TableCell, TableRow};
 use vutex_layout::layout;
-use vutex_presentation::{DisplayItem, FlowBlock, FlowRun, FlowTableRow, build_display_presentation, build_flow_presentation};
+use vutex_presentation::{
+    DisplayItem, FlowBlock, FlowListItem, FlowRun, FlowTableRow, build_display_presentation, build_flow_presentation,
+};
 use vutex_types::math::FontStyle;
 
 fn text(value: &str) -> Inline {
@@ -71,7 +73,13 @@ fn flow_lowering_keeps_block_semantics() {
     match &presentation.blocks[2] {
         FlowBlock::List { ordered, items } => {
             assert!(ordered);
-            assert_eq!(items, &vec![vec![run("First item", FontStyle::Normal)], vec![run("Second item", FontStyle::Normal)]]);
+            assert_eq!(
+                items,
+                &vec![
+                    FlowListItem { runs: vec![run("First item", FontStyle::Normal)], children: Vec::new() },
+                    FlowListItem { runs: vec![run("Second item", FontStyle::Normal)], children: Vec::new() },
+                ]
+            );
         }
         other => panic!("expected a list block, got {other:?}"),
     }
@@ -111,7 +119,42 @@ fn flow_list_item_runs_preserve_italic_per_item() {
         presentation.blocks,
         vec![FlowBlock::List {
             ordered: false,
-            items: vec![vec![run("slanted", FontStyle::Italic)], vec![run("plain", FontStyle::Normal)]],
+            items: vec![
+                FlowListItem { runs: vec![run("slanted", FontStyle::Italic)], children: Vec::new() },
+                FlowListItem { runs: vec![run("plain", FontStyle::Normal)], children: Vec::new() },
+            ],
+        }]
+    );
+}
+
+#[test]
+fn flow_nested_list_stays_inside_parent_item() {
+    let mut graph = DocumentGraph::new(DocumentId(11));
+    let child = graph.push_block(Block::List {
+        ordered: false,
+        items: vec![ListItem { content: vec![text("child")], children: Vec::new(), number: None }],
+    });
+    graph.push_block(Block::List {
+        ordered: false,
+        items: vec![ListItem { content: vec![text("parent")], children: vec![child], number: None }],
+    });
+
+    let presentation = build_flow_presentation(&graph);
+
+    // The child list belongs to the parent item, so the document keeps exactly
+    // one top-level list block.
+    assert_eq!(presentation.blocks.len(), 1);
+    assert_eq!(
+        presentation.blocks,
+        vec![FlowBlock::List {
+            ordered: false,
+            items: vec![FlowListItem {
+                runs: vec![run("parent", FontStyle::Normal)],
+                children: vec![FlowBlock::List {
+                    ordered: false,
+                    items: vec![FlowListItem { runs: vec![run("child", FontStyle::Normal)], children: Vec::new() }],
+                }],
+            }],
         }]
     );
 }

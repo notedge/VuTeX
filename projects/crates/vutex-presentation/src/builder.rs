@@ -8,7 +8,7 @@ use vutex_types::math::FontStyle;
 
 use crate::{
     display::{DisplayImage, DisplayItem, DisplayPage, DisplayPresentation, DisplayRect, DisplayRule, DisplayTextRun},
-    flow::{FlowBlock, FlowPresentation, FlowRun, FlowTableRow},
+    flow::{FlowBlock, FlowListItem, FlowPresentation, FlowRun, FlowTableRow},
 };
 
 /// Lower a layout plan into a display presentation.
@@ -51,8 +51,8 @@ fn lower_item(item: &LayoutItem) -> DisplayItem {
 /// Build the semantic flow presentation of a Notedown document graph.
 ///
 /// The flow keeps block semantics for reflow targets. Nested section children
-/// follow their heading, and nested list children follow their list, so no
-/// block content is dropped.
+/// follow their heading, and nested list children stay on their item so no
+/// block content is dropped or promoted out of its parent list item.
 pub fn build_flow_presentation(graph: &DocumentGraph) -> FlowPresentation {
     let mut blocks = Vec::new();
     collect_flow(graph, &root_ids(graph), &mut blocks);
@@ -186,13 +186,17 @@ fn collect_flow(graph: &DocumentGraph, ids: &[NodeId], blocks: &mut Vec<FlowBloc
                 blocks.push(FlowBlock::Paragraph { runs });
             }
             Block::List { ordered, items } => {
-                blocks.push(FlowBlock::List {
-                    ordered: *ordered,
-                    items: items.iter().map(|item| runs_of(&item.content)).collect(),
-                });
-                for item in items {
-                    collect_flow(graph, &item.children, blocks);
-                }
+                let items = items
+                    .iter()
+                    .map(|item| {
+                        // Nested blocks stay on the item that authored them, so a
+                        // child list renders inside the parent `<li>`.
+                        let mut children = Vec::new();
+                        collect_flow(graph, &item.children, &mut children);
+                        FlowListItem { runs: runs_of(&item.content), children }
+                    })
+                    .collect();
+                blocks.push(FlowBlock::List { ordered: *ordered, items });
             }
             Block::Code { language, content } => {
                 blocks.push(FlowBlock::CodeBlock { language: language.clone(), text: content.clone() });
