@@ -1,7 +1,7 @@
 //! SVG output: one stacked page group per display page.
 
-use vutex_presentation::display::{DisplayItem, DisplayPresentation};
-use vutex_render::RenderBackend;
+use vutex_presentation::display::{DisplayItem, DisplayPresentation, DisplayTextRun};
+use vutex_render::{RenderBackend, is_safe_href};
 use vutex_types::{Diagnostic, math::FontStyle};
 
 /// Render every display page into one SVG document.
@@ -54,17 +54,7 @@ fn render_document(presentation: &DisplayPresentation) -> String {
 
 fn write_item(out: &mut String, item: &DisplayItem) {
     match item {
-        DisplayItem::TextRun(run) => {
-            out.push_str(&format!(
-                r##"<text x="{}" y="{}" font-size="{}" font-family="{}"{} xml:space="preserve">{}</text>"##,
-                num(run.x),
-                num(run.y),
-                num(run.size),
-                escape_attribute(&run.font_family),
-                style_attributes(run.style),
-                escape_text(&run.text),
-            ));
-        }
+        DisplayItem::TextRun(run) => write_text_run(out, run),
         DisplayItem::Rule(rule) => {
             out.push_str(&format!(
                 r##"<line x1="{}" y1="{}" x2="{}" y2="{}" stroke="#111111" stroke-width="{}"/>"##,
@@ -105,6 +95,31 @@ fn write_item(out: &mut String, item: &DisplayItem) {
         }
     }
     out.push('\n');
+}
+
+/// Write one positioned text run, wrapping it in its anchor when the
+/// destination is safe to emit.
+///
+/// SVG anchors wrap the `<text>` element so the glyph geometry stays untouched.
+/// A destination that fails [`is_safe_href`] is dropped and the text still
+/// renders as plain content.
+fn write_text_run(out: &mut String, run: &DisplayTextRun) {
+    let anchor = run.href.as_deref().filter(|href| is_safe_href(href));
+    if let Some(href) = anchor {
+        out.push_str(&format!(r##"<a href="{}">"##, escape_attribute(href)));
+    }
+    out.push_str(&format!(
+        r##"<text x="{}" y="{}" font-size="{}" font-family="{}"{} xml:space="preserve">{}</text>"##,
+        num(run.x),
+        num(run.y),
+        num(run.size),
+        escape_attribute(&run.font_family),
+        style_attributes(run.style),
+        escape_text(&run.text),
+    ));
+    if anchor.is_some() {
+        out.push_str("</a>");
+    }
 }
 
 fn num(value: f64) -> String {

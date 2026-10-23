@@ -21,6 +21,13 @@ pub struct TextRun {
     pub style: FontStyle,
     /// Line text.
     pub text: String,
+    /// External link destination the run was authored inside, if any.
+    ///
+    /// Only [`notedown_ir::RelationEndpoint::ExternalUri`] targets resolve to a
+    /// destination. Internal `Node`, `Document`, and `Asset` targets stay
+    /// `None`, because layout emits no anchor ids for them and a fabricated
+    /// destination would point nowhere.
+    pub href: Option<String>,
 }
 
 /// A straight stroked line, used for thematic breaks and table rules.

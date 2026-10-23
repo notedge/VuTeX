@@ -6,7 +6,7 @@
 
 use std::collections::HashSet;
 
-use notedown_ir::{Block, DocumentGraph, Inline, ListItem, NodeId, TableRow};
+use notedown_ir::{Block, DocumentGraph, Inline, ListItem, NodeId, RelationEndpoint, TableRow};
 use vutex_text::math::{FontMetricsSystem, builtin_font_metrics};
 use vutex_types::math::{FontStyle, GlyphKey};
 
@@ -61,6 +61,19 @@ fn face_for_style(style: &str) -> TextFace {
     }
 }
 
+/// Resolve the destination of a link target.
+///
+/// Only authored external URIs become destinations. Internal `Node`,
+/// `Document`, `Asset`, and `Unresolved` targets stay without a destination,
+/// because layout emits no matching anchor ids and a fabricated URL would point
+/// nowhere.
+fn link_href(target: &RelationEndpoint) -> Option<&str> {
+    match target {
+        RelationEndpoint::ExternalUri(uri) if !uri.is_empty() => Some(uri),
+        _ => None,
+    }
+}
+
 /// Compute the layout plan for a Notedown document graph.
 ///
 /// The document layout pass walks the Notedown block tree, measures inline
@@ -103,6 +116,8 @@ enum InlineAtom {
         text: String,
         /// Face shared with the surrounding styled span.
         face: TextFace,
+        /// External destination shared with the surrounding link, if any.
+        href: Option<String>,
     },
     /// Laid-out inline formula, kept whole across line breaks.
     Math(MathAtom),
@@ -110,34 +125,38 @@ enum InlineAtom {
     Break,
 }
 
-/// Text buffered until the face changes or the paragraph reaches a boundary.
+/// Text buffered until the face or the link destination changes.
 #[derive(Debug, Clone)]
 struct PendingText {
     text: String,
     face: TextFace,
+    href: Option<String>,
 }
 
 impl PendingText {
     fn body() -> Self {
-        Self { text: String::new(), face: BODY_FACE }
+        Self { text: String::new(), face: BODY_FACE, href: None }
     }
 
     fn is_empty(&self) -> bool {
         self.text.is_empty()
     }
 
-    /// Buffer `text` under `face`, flushing first when the face changes.
+    /// Buffer `text` under `face` and `href`, flushing first when either key
+    /// changes.
     ///
-    /// Splitting on a face change is what turns a styled span into its own
-    /// [`LayoutItem`], so emphasis survives into every renderer.
-    fn push(&mut self, text: &str, face: TextFace, atoms: &mut Vec<InlineAtom>) {
+    /// Splitting on a face or destination change is what turns a styled span or
+    /// a link into its own [`LayoutItem`], so emphasis and destinations survive
+    /// into every renderer without swallowing the neighbouring text.
+    fn push(&mut self, text: &str, face: TextFace, href: Option<&str>, atoms: &mut Vec<InlineAtom>) {
         if text.is_empty() {
             return;
         }
-        if !self.is_empty() && self.face != face {
+        if !self.is_empty() && (self.face != face || self.href.as_deref() != href) {
             self.flush(atoms);
         }
         self.face = face;
+        self.href = href.map(str::to_string);
         self.text.push_str(text);
     }
 
@@ -147,7 +166,7 @@ impl PendingText {
             self.text.clear();
             return;
         }
-        atoms.extend(split_inline_atoms(&self.text, self.face));
+        atoms.extend(split_inline_atoms(&self.text, self.face, self.href.as_deref()));
         self.text.clear();
     }
 }
@@ -166,14 +185,14 @@ enum ImageMode {
 struct AtomFlow {
     /// Composed break atoms in reading order.
     atoms: Vec<InlineAtom>,
-    /// Text buffered until the face changes or the content ends.
+    /// Text buffered until the face or destination changes or the content ends.
     pending: PendingText,
 }
 
 impl AtomFlow {
     /// Start a flow whose unstyled text uses `face`.
     fn new(face: TextFace) -> Self {
-        Self { atoms: Vec::new(), pending: PendingText { text: String::new(), face } }
+        Self { atoms: Vec::new(), pending: PendingText { text: String::new(), face, href: None } }
     }
 
     /// Close the buffered text into atoms and return the composed flow.
@@ -287,7 +306,15 @@ impl PageBuilder {
     fn emit_baseline(&mut self, text: String, size: f64, family: &str, indent: f64) {
         let x = self.left(indent);
         let y = self.cursor + ASCENT * size;
-        self.push(LayoutItem::TextRun(TextRun { x, y, size, font_family: family.to_string(), style: FontStyle::Normal, text }));
+        self.push(LayoutItem::TextRun(TextRun {
+            x,
+            y,
+            size,
+            font_family: family.to_string(),
+            style: FontStyle::Normal,
+            text,
+            href: None,
+        }));
     }
 
     fn emit_wrapped(&mut self, text: &str, size: f64, family: &str, indent: f64) {
@@ -344,11 +371,15 @@ impl PageBuilder {
         image_mode: ImageMode,
     ) -> Vec<InlineAtom> {
         let mut flow = AtomFlow::new(face);
-        self.compose_inline(content, size, indent, &mut flow, face, image_mode);
+        self.compose_inline(content, size, indent, &mut flow, face, None, image_mode);
         flow.finish()
     }
 
-    /// Walk inline content into paragraph atoms under the enclosing face.
+    /// Walk inline content into paragraph atoms under the enclosing face and
+    /// link destination.
+    ///
+    /// A link destination is inherited by nested inline content, so styled text
+    /// inside an external link keeps both its face and its destination.
     fn compose_inline(
         &mut self,
         content: &[Inline],
@@ -356,6 +387,7 @@ impl PageBuilder {
         indent: f64,
         flow: &mut AtomFlow,
         face: TextFace,
+        href: Option<&str>,
         image_mode: ImageMode,
     ) {
         for inline in content {
@@ -368,7 +400,7 @@ impl PageBuilder {
                             self.emit_inline_lines(std::mem::take(&mut flow.atoms), size, indent);
                             self.emit_image_placeholder(&alt_text, indent);
                         }
-                        ImageMode::AltText => flow.pending.push(&alt_text, face, &mut flow.atoms),
+                        ImageMode::AltText => flow.pending.push(&alt_text, face, href, &mut flow.atoms),
                     }
                 }
                 Inline::InlineMath { content, .. } => {
@@ -380,25 +412,28 @@ impl PageBuilder {
                             height: formula.height,
                             depth: formula.depth,
                         })),
-                        Err(_) => flow.atoms.extend(split_inline_atoms(content, face)),
+                        Err(_) => flow.atoms.extend(split_inline_atoms(content, face, href)),
                     }
                 }
                 Inline::Styled { style, children } => {
-                    self.compose_inline(children, size, indent, flow, face_for_style(style), image_mode);
+                    self.compose_inline(children, size, indent, flow, face_for_style(style), href, image_mode);
                 }
-                Inline::InlineCode { text } => flow.pending.push(text, CODE_FACE, &mut flow.atoms),
-                // Attributes and link destinations carry no printable face, but
-                // their wrapped content keeps every authored style.
+                Inline::InlineCode { text } => flow.pending.push(text, CODE_FACE, href, &mut flow.atoms),
+                // Attributes carry no printable face, but their wrapped content
+                // keeps every authored style and destination.
                 Inline::Attributed { children, .. } => {
-                    self.compose_inline(children, size, indent, flow, face, image_mode);
+                    self.compose_inline(children, size, indent, flow, face, href, image_mode);
                 }
-                Inline::Link { display, .. } => {
-                    self.compose_inline(display, size, indent, flow, face, image_mode);
+                Inline::Link { target, display, .. } => {
+                    // A nested external link wins. A nested internal link keeps
+                    // the enclosing destination so its text stays in the anchor.
+                    let inner = link_href(target).or(href);
+                    self.compose_inline(display, size, indent, flow, face, inner, image_mode);
                 }
                 Inline::Note { display: Some(display), .. } | Inline::Citation { display: Some(display), .. } => {
-                    self.compose_inline(display, size, indent, flow, face, image_mode);
+                    self.compose_inline(display, size, indent, flow, face, href, image_mode);
                 }
-                other => flow.pending.push(&other.plain_text(), face, &mut flow.atoms),
+                other => flow.pending.push(&other.plain_text(), face, href, &mut flow.atoms),
             }
         }
     }
@@ -442,23 +477,26 @@ impl PageBuilder {
 
     /// Paint the atoms of one composed line from `x` on one baseline.
     ///
-    /// Consecutive atoms sharing a face stay one run, and a face change starts
-    /// a new run so emphasis survives into every renderer.
+    /// Consecutive atoms sharing a face and destination stay one run, and a
+    /// change of either key starts a new run so emphasis and links survive into
+    /// every renderer.
     fn paint_line(&mut self, line: &[InlineAtom], size: f64, x: f64, baseline: f64, max_width: f64) {
         let mut x = x;
         let mut run = PendingText::body();
         let mut run_x = x;
         for atom in line {
             match atom {
-                InlineAtom::Text { text, face } => {
+                InlineAtom::Text { text, face, href } => {
                     if run.is_empty() {
                         run_x = x;
                         run.face = *face;
+                        run.href = href.clone();
                     }
-                    else if run.face != *face {
+                    else if run.face != *face || run.href.as_deref() != href.as_deref() {
                         self.paint_inline_run(&mut run, run_x, baseline, size);
                         run_x = x;
                         run.face = *face;
+                        run.href = href.clone();
                     }
                     run.text.push_str(text);
                     x += measure_text(&self.metrics, text, size, *face);
@@ -492,6 +530,7 @@ impl PageBuilder {
             font_family: run.face.family.to_string(),
             style: run.face.style,
             text: std::mem::take(&mut run.text),
+            href: run.href.clone(),
         }));
         if struck {
             let y = baseline - STRIKE_OFFSET * size;
@@ -589,6 +628,7 @@ impl PageBuilder {
                 font_family: MONOSPACE.to_string(),
                 style: FontStyle::Normal,
                 text: (*line).to_string(),
+                href: None,
             }));
             self.cursor += line_box;
         }
@@ -725,15 +765,19 @@ impl PageBuilder {
 /// Split text into paragraph atoms: words, single spaces, single CJK glyphs,
 /// and hard breaks. This mirrors [`split_atoms`], but keeps authored newlines
 /// as forced line endings instead of collapsing them into spaces. Every atom
-/// carries `face`, so emphasis survives line breaking.
-fn split_inline_atoms(text: &str, face: TextFace) -> Vec<InlineAtom> {
+/// carries `face` and `href`, so emphasis and destinations survive line
+/// breaking.
+fn split_inline_atoms(text: &str, face: TextFace, href: Option<&str>) -> Vec<InlineAtom> {
     let mut atoms = Vec::new();
     let mut word = String::new();
     let mut in_space = false;
+    let mut push_text = |value: String, atoms: &mut Vec<InlineAtom>| {
+        atoms.push(InlineAtom::Text { text: value, face, href: href.map(str::to_string) });
+    };
     for ch in text.chars() {
         if ch == '\n' {
             if !word.is_empty() {
-                atoms.push(InlineAtom::Text { text: std::mem::take(&mut word), face });
+                push_text(std::mem::take(&mut word), &mut atoms);
             }
             atoms.push(InlineAtom::Break);
             in_space = false;
@@ -741,10 +785,10 @@ fn split_inline_atoms(text: &str, face: TextFace) -> Vec<InlineAtom> {
         }
         if ch.is_whitespace() {
             if !word.is_empty() {
-                atoms.push(InlineAtom::Text { text: std::mem::take(&mut word), face });
+                push_text(std::mem::take(&mut word), &mut atoms);
             }
             if !in_space {
-                atoms.push(InlineAtom::Text { text: " ".to_string(), face });
+                push_text(" ".to_string(), &mut atoms);
                 in_space = true;
             }
             continue;
@@ -752,15 +796,15 @@ fn split_inline_atoms(text: &str, face: TextFace) -> Vec<InlineAtom> {
         in_space = false;
         if (ch as u32) >= 0x2E80 {
             if !word.is_empty() {
-                atoms.push(InlineAtom::Text { text: std::mem::take(&mut word), face });
+                push_text(std::mem::take(&mut word), &mut atoms);
             }
-            atoms.push(InlineAtom::Text { text: ch.to_string(), face });
+            push_text(ch.to_string(), &mut atoms);
             continue;
         }
         word.push(ch);
     }
     if !word.is_empty() {
-        atoms.push(InlineAtom::Text { text: word, face });
+        push_text(word, &mut atoms);
     }
     atoms
 }
@@ -776,12 +820,12 @@ fn break_inline_atoms(metrics: &FontMetricsSystem, atoms: Vec<InlineAtom>, size:
     for atom in atoms {
         match atom {
             InlineAtom::Break => finish_inline_line(&mut lines, &mut current, &mut width),
-            InlineAtom::Text { text, face } => {
+            InlineAtom::Text { text, face, href } => {
                 let atom_width = measure_text(metrics, &text, size, face);
                 if text.trim().is_empty() {
                     // A space never starts a line and never widens past the column.
                     if !current.is_empty() && width + atom_width <= max_width {
-                        current.push(InlineAtom::Text { text, face });
+                        current.push(InlineAtom::Text { text, face, href });
                         width += atom_width;
                     }
                     continue;
@@ -796,18 +840,18 @@ fn break_inline_atoms(metrics: &FontMetricsSystem, atoms: Vec<InlineAtom>, size:
                     for ch in text.chars() {
                         let advance = advance_em(metrics, ch, face) * size;
                         if !chunk.is_empty() && chunk_width + advance > max_width {
-                            lines.push(vec![InlineAtom::Text { text: chunk.trim_end().to_string(), face }]);
+                            lines.push(vec![InlineAtom::Text { text: chunk.trim_end().to_string(), face, href: href.clone() }]);
                             chunk.clear();
                             chunk_width = 0.0;
                         }
                         chunk.push(ch);
                         chunk_width += advance;
                     }
-                    current.push(InlineAtom::Text { text: chunk, face });
+                    current.push(InlineAtom::Text { text: chunk, face, href });
                     width = chunk_width;
                     continue;
                 }
-                current.push(InlineAtom::Text { text, face });
+                current.push(InlineAtom::Text { text, face, href });
                 width += atom_width;
             }
             InlineAtom::Math(math) => {
@@ -858,6 +902,7 @@ fn clamp_inline_item(item: LayoutItem, origin_x: f64, baseline: f64, scale: f64)
             font_family: run.font_family,
             style: run.style,
             text: run.text,
+            href: run.href,
         }),
         LayoutItem::Rule(rule) => LayoutItem::Rule(Rule {
             x1: origin_x + (rule.x1 - origin_x) * scale,

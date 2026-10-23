@@ -1,6 +1,6 @@
 //! Inline emphasis layout tests: styled spans reach positioned text runs.
 
-use notedown_ir::{Attributes, Block, DocumentGraph, DocumentId, Inline, RelationEndpoint};
+use notedown_ir::{Attributes, Block, DocumentGraph, DocumentId, Inline, NodeId, RelationEndpoint};
 use vutex_layout::{
     LayoutHint,
     document::layout_with_hint,
@@ -226,6 +226,61 @@ fn wrapped_children_keep_their_styles() {
     assert_eq!(note.style, FontStyle::Italic);
     let foot = runs.iter().find(|run| run.text == "foot").expect("note display run");
     assert_eq!(foot.style, FontStyle::Bold);
+}
+
+#[test]
+fn external_link_text_run_carries_href() {
+    let graph = paragraph(vec![Inline::Link {
+        target: RelationEndpoint::ExternalUri("https://example.com".to_string()),
+        display: vec![text("guide")],
+        title: None,
+    }]);
+    let plan = layout(&graph);
+    let runs = text_runs(&plan.pages[0]);
+
+    assert_eq!(runs.len(), 1, "{runs:#?}");
+    assert_eq!(runs[0].text, "guide");
+    assert_eq!(runs[0].href.as_deref(), Some("https://example.com"));
+}
+
+#[test]
+fn internal_link_text_run_has_no_href() {
+    let graph = paragraph(vec![Inline::Link {
+        target: RelationEndpoint::Node(NodeId(7)),
+        display: vec![text("Section seven")],
+        title: None,
+    }]);
+    let plan = layout(&graph);
+    let runs = text_runs(&plan.pages[0]);
+
+    assert_eq!(runs.len(), 1, "{runs:#?}");
+    assert_eq!(runs[0].text, "Section seven");
+    assert_eq!(runs[0].href, None, "internal targets carry no destination");
+}
+
+#[test]
+fn link_text_does_not_merge_with_adjacent_text() {
+    let graph = paragraph(vec![
+        text("Read "),
+        Inline::Link {
+            target: RelationEndpoint::ExternalUri("https://example.com".to_string()),
+            display: vec![text("the guide")],
+            title: None,
+        },
+        text(" now"),
+    ]);
+    let plan = layout(&graph);
+    let runs = text_runs(&plan.pages[0]);
+
+    // The destination is part of the run key, so the plain neighbours keep
+    // their own runs instead of being pulled inside the anchor.
+    assert_eq!(runs.len(), 3, "{runs:#?}");
+    assert_eq!(runs[0].text, "Read ");
+    assert_eq!(runs[0].href, None);
+    assert_eq!(runs[1].text, "the guide");
+    assert_eq!(runs[1].href.as_deref(), Some("https://example.com"));
+    assert_eq!(runs[2].text, " now");
+    assert_eq!(runs[2].href, None);
 }
 
 #[test]

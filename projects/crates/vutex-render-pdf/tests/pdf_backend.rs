@@ -18,6 +18,7 @@ fn text(x: f64, y: f64, size: f64, family: &str, value: &str) -> DisplayItem {
         font_family: family.to_string(),
         style: FontStyle::Normal,
         text: value.to_string(),
+        href: None,
     })
 }
 

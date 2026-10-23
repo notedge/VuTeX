@@ -166,6 +166,46 @@ fn reflow_html_plain_ordered_list_omits_start_and_value() {
 }
 
 #[test]
+fn snapshot_html_wraps_link_runs_in_anchors() {
+    let mut graph = DocumentGraph::new(DocumentId(12));
+    graph.push_block(Block::Paragraph {
+        content: vec![
+            text("Read "),
+            Inline::Link {
+                target: RelationEndpoint::ExternalUri("https://example.com/guide?q=a&lang=zh".to_string()),
+                display: vec![text("the guide")],
+                title: None,
+            },
+            text("."),
+        ],
+    });
+
+    let html = render_html_snapshot(&build_display_presentation(&layout(&graph))).expect("snapshot html");
+
+    // Only the linked run is wrapped, and the attribute value stays escaped.
+    assert!(html.contains("<a href=\"https://example.com/guide?q=a&amp;lang=zh\">the guide</a>"), "{html}");
+    assert!(html.contains(">Read </div>"), "{html}");
+}
+
+#[test]
+fn snapshot_html_drops_unsafe_link_destinations() {
+    let mut graph = DocumentGraph::new(DocumentId(13));
+    graph.push_block(Block::Paragraph {
+        content: vec![Inline::Link {
+            target: RelationEndpoint::ExternalUri("javascript:alert(1)".to_string()),
+            display: vec![text("click")],
+            title: None,
+        }],
+    });
+
+    let html = render_html_snapshot(&build_display_presentation(&layout(&graph))).expect("snapshot html");
+
+    assert!(html.contains(">click</div>"), "{html}");
+    assert!(!html.contains("href="), "{html}");
+    assert!(!html.contains("javascript:"), "{html}");
+}
+
+#[test]
 fn reflow_html_drops_unsafe_link_destinations() {
     let mut graph = DocumentGraph::new(DocumentId(4));
     graph.push_block(Block::Paragraph {

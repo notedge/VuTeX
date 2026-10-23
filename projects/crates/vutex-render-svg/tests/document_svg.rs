@@ -2,8 +2,12 @@
 
 use notedown_ir::{Block, DocumentGraph, DocumentId, Inline};
 use vutex_layout::layout;
-use vutex_presentation::build_display_presentation;
+use vutex_presentation::{
+    build_display_presentation,
+    display::{DisplayItem, DisplayPage, DisplayPresentation, DisplayTextRun},
+};
 use vutex_render_svg::render_svg;
+use vutex_types::math::FontStyle;
 
 fn text(value: &str) -> Inline {
     Inline::Text { text: value.to_string() }
@@ -47,6 +51,43 @@ fn escapes_markup_in_text_runs() {
     let svg = render_svg(&build_display_presentation(&layout(&graph))).expect("svg render");
     assert!(svg.contains("A &amp; B &lt; C &gt; D"));
     assert!(!svg.contains("A & B < C"));
+}
+
+fn link_presentation(href: &str) -> DisplayPresentation {
+    DisplayPresentation {
+        pages: vec![DisplayPage {
+            width: 595.0,
+            height: 842.0,
+            items: vec![DisplayItem::TextRun(DisplayTextRun {
+                x: 72.0,
+                y: 100.0,
+                size: 12.0,
+                font_family: "serif".to_string(),
+                style: FontStyle::Normal,
+                text: "example link".to_string(),
+                href: Some(href.to_string()),
+            })],
+        }],
+    }
+}
+
+#[test]
+fn wraps_link_text_runs_in_anchors() {
+    let svg = render_svg(&link_presentation("https://example.com")).expect("svg render");
+
+    assert!(svg.contains("<a href=\"https://example.com\"><text "), "{svg}");
+    assert!(svg.contains("</text></a>"), "{svg}");
+    assert!(svg.contains("example link"), "{svg}");
+}
+
+#[test]
+fn drops_unsafe_link_destinations_but_keeps_the_text() {
+    let svg = render_svg(&link_presentation("javascript:alert(1)")).expect("svg render");
+
+    assert!(!svg.contains("javascript:"), "{svg}");
+    assert!(!svg.contains("<a "), "{svg}");
+    assert!(svg.contains("<text "), "{svg}");
+    assert!(svg.contains("example link"), "{svg}");
 }
 
 #[test]
