@@ -62,6 +62,7 @@ fn link_presentation(href: &str) -> DisplayPresentation {
                 x: 72.0,
                 y: 100.0,
                 size: 12.0,
+                width: 60.0,
                 font_family: "serif".to_string(),
                 style: FontStyle::Normal,
                 text: "example link".to_string(),

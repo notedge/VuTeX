@@ -10,7 +10,7 @@ use std::fmt::Write as _;
 use vutex_presentation::display::{
     DisplayImage, DisplayItem, DisplayPage, DisplayPresentation, DisplayRect, DisplayRule, DisplayTextRun,
 };
-use vutex_render::RenderBackend;
+use vutex_render::{RenderBackend, is_safe_href};
 use vutex_types::{Diagnostic, Severity, math::FontStyle};
 
 /// Base-14 fonts this backend can emit, in canonical resource order.
@@ -32,6 +32,17 @@ const BASE_FONTS: [&str; 12] = [
     "Times-BoldItalic",
     "Times-Italic",
 ];
+
+/// Run extent above the baseline, as a fraction of the font size.
+///
+/// This mirrors the layout contract that places every baseline at
+/// `line top + 0.8 * size`, so a link rectangle covers the whole line box.
+const ASCENT: f64 = 0.8;
+/// Run extent below the baseline, as a fraction of the font size.
+///
+/// The base-14 faces have no embedded metrics here, so the descent is the
+/// stacked complement of [`ASCENT`] rather than a per-font value.
+const DESCENDER: f64 = 0.2;
 
 /// PDF renderer. Consumes only the display presentation IR.
 pub fn render_pdf(presentation: &DisplayPresentation) -> Result<Vec<u8>, Diagnostic> {
@@ -106,25 +117,85 @@ fn used_fonts(presentation: &DisplayPresentation) -> Vec<&'static str> {
     BASE_FONTS.iter().copied().filter(|base| used.contains(base)).collect()
 }
 
+/// A link annotation produced by one safe text-run destination.
+#[derive(Debug, Clone, PartialEq)]
+struct LinkAnnotation {
+    /// Lower-left x, in PDF user space.
+    x1: f64,
+    /// Lower-left y, in PDF user space.
+    y1: f64,
+    /// Upper-right x, in PDF user space.
+    x2: f64,
+    /// Upper-right y, in PDF user space.
+    y2: f64,
+    /// Destination written into the `/URI` action.
+    uri: String,
+}
+
 /// Object strings in object-number order; index `i` is object `i + 1`.
 fn build_objects(presentation: &DisplayPresentation, fonts: &[&'static str]) -> Vec<String> {
     let page_count = presentation.pages.len();
     let first_font = 3 + 2 * page_count;
+    let first_annotation = first_font + fonts.len();
     let font_objects: Vec<(&'static str, usize)> =
         fonts.iter().enumerate().map(|(index, base)| (*base, first_font + index)).collect();
     let resources = font_resource_dict(&font_objects);
+    let page_links: Vec<Vec<LinkAnnotation>> = presentation.pages.iter().map(page_links).collect();
+    let mut next_annotation = first_annotation;
+    let mut annotation_numbers: Vec<Vec<usize>> = Vec::with_capacity(page_count);
+    for links in &page_links {
+        annotation_numbers.push((0..links.len()).map(|index| next_annotation + index).collect());
+        next_annotation += links.len();
+    }
 
     let mut objects = vec![catalog_object(), pages_object(page_count)];
     for (index, page) in presentation.pages.iter().enumerate() {
         let content_number = 4 + 2 * index;
         let content = page_content(page, &font_objects);
-        objects.push(page_object(page, &resources, content_number));
+        objects.push(page_object(page, &resources, content_number, &annotation_numbers[index]));
         objects.push(content_object(&content));
     }
     for (base, _) in &font_objects {
         objects.push(font_object(base));
     }
+    for links in &page_links {
+        for link in links {
+            objects.push(annotation_object(link));
+        }
+    }
     objects
+}
+
+/// Link annotations for every safe destination on one page, in paint order.
+///
+/// The rectangle is the run's glyph box: the baseline sits at `page_height -
+/// y`, the top at `0.8 * size` above it, and the bottom at `0.2 * size` below
+/// it. Boxes are clipped to the page MediaBox so a run that overflows the page
+/// never produces an annotation outside it.
+fn page_links(page: &DisplayPage) -> Vec<LinkAnnotation> {
+    let mut links = Vec::new();
+    for item in &page.items {
+        let DisplayItem::TextRun(run) = item
+        else {
+            continue;
+        };
+        let Some(uri) = run.href.as_deref().filter(|href| is_safe_href(href))
+        else {
+            continue;
+        };
+        if !all_finite(&[run.x, run.y, run.size, run.width]) {
+            continue;
+        }
+        let x1 = run.x.clamp(0.0, page.width);
+        let x2 = (run.x + run.width).clamp(0.0, page.width);
+        let y1 = (page.height - (run.y + DESCENDER * run.size)).clamp(0.0, page.height);
+        let y2 = (page.height - (run.y - ASCENT * run.size)).clamp(0.0, page.height);
+        if x2 <= x1 || y2 <= y1 {
+            continue;
+        }
+        links.push(LinkAnnotation { x1, y1, x2, y2, uri: uri.to_string() });
+    }
+    links
 }
 
 fn catalog_object() -> String {
@@ -142,11 +213,31 @@ fn font_resource_dict(fonts: &[(&'static str, usize)]) -> String {
     format!("<< /Font << {} >> >>", entries.join(" "))
 }
 
-fn page_object(page: &DisplayPage, resources: &str, content_number: usize) -> String {
-    format!(
-        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {} {}] /Resources {resources} /Contents {content_number} 0 R >>",
+fn page_object(page: &DisplayPage, resources: &str, content_number: usize, annotations: &[usize]) -> String {
+    let mut object = format!(
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {} {}] /Resources {resources} /Contents {content_number} 0 R",
         num(page.width),
         num(page.height),
+    );
+    if !annotations.is_empty() {
+        let references: Vec<String> = annotations.iter().map(|number| format!("{number} 0 R")).collect();
+        let _ = write!(object, " /Annots [{}]", references.join(" "));
+    }
+    object.push_str(" >>");
+    object
+}
+
+/// Link annotation: a URI action over the run's glyph rectangle.
+fn annotation_object(link: &LinkAnnotation) -> String {
+    format!(
+        "<< /Type /Annot /Subtype /Link /Rect [{} {} {} {}] /Border [0 0 0] /A << /S /URI /URI ({}) >> >>",
+        num(link.x1),
+        num(link.y1),
+        num(link.x2),
+        num(link.y2),
+        // Same literal-string escaping as text, so a destination containing
+        // parentheses or backslashes cannot break the dictionary syntax.
+        escape_text(&link.uri),
     )
 }
 
