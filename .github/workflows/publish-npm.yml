@@ -53,9 +53,98 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: node scripts/ci/require-ci-success.mjs --sha=${{ steps.bind.outputs.sha }}
 
+  build-native:
+    name: Native ${{ matrix.short }}
+    needs: provenance
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            short: win32-x64
+            target: ''
+          - os: ubuntu-latest
+            short: linux-x64
+            target: ''
+          - os: ubuntu-24.04-arm
+            short: linux-arm64
+            target: ''
+          - os: macos-latest
+            short: darwin-arm64
+            target: ''
+          - os: macos-latest
+            short: darwin-x64
+            target: x86_64-apple-darwin
+    steps:
+      - name: Checkout tag peel
+        uses: actions/checkout@v5
+        with:
+          ref: refs/tags/${{ needs.provenance.outputs.tag }}
+          fetch-depth: 0
+
+      - name: Verify HEAD is bound tag SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          head="$(git rev-parse HEAD)"
+          want="${{ needs.provenance.outputs.sha }}"
+          if [[ "$head" != "$want" ]]; then
+            echo "Refusing native build: HEAD=$head != bound tag sha=$want" >&2
+            exit 1
+          fi
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Add cross-compile target
+        if: matrix.target != ''
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: publish-native-${{ matrix.short }}
+          cache-on-failure: true
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Build native (release)
+        env:
+          NAPI_BUILD_TARGET: ${{ matrix.target }}
+        run: pnpm build:napi
+
+      - name: Assert native binary staged
+        shell: bash
+        run: |
+          set -euo pipefail
+          dir="projects/packages/vutex-${{ matrix.short }}/lib"
+          find "$dir" -name '*.node' -type f | grep -q . || {
+            echo "missing .node under $dir" >&2
+            ls -la "$dir" || true
+            exit 1
+          }
+
+      - name: Upload native artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-${{ matrix.short }}
+          path: projects/packages/vutex-${{ matrix.short }}/lib
+          if-no-files-found: error
+
   publish:
     name: Publish packages
-    needs: provenance
+    needs: [provenance, build-native]
     runs-on: ubuntu-latest
     environment: NPM_PUBLISH
     steps:
@@ -91,6 +180,35 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Build wasm bindings
+        run: pnpm build:wasm
+
+      - name: Download native artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: native-*
+          path: dist/native-artifacts
+
+      - name: Stage native artifacts into platform packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          for short in win32-x64 linux-x64 linux-arm64 darwin-arm64 darwin-x64; do
+            src="dist/native-artifacts/native-$short"
+            [[ -d "$src" ]] || { echo "missing native artifact for $short" >&2; exit 1; }
+            dir="projects/packages/vutex-$short/lib"
+            mkdir -p "$dir"
+            cp -r "$src"/. "$dir"/
+            find "$dir" -name '*.node' -type f | grep -q . || { echo "no .node staged for $short" >&2; exit 1; }
+            ls -la "$dir"
+          done
 
       - name: Typecheck gate
         run: pnpm typecheck
