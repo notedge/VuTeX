@@ -6,7 +6,7 @@ use vutex_layout::{
     document::layout_with_hint,
     hint::Margin,
     layout,
-    plan::{LayoutItem, LayoutPage, TextRun},
+    plan::{LayoutItem, LayoutPage, Rule, TextRun},
 };
 use vutex_types::math::FontStyle;
 
@@ -33,6 +33,16 @@ fn text_runs(page: &LayoutPage) -> Vec<&TextRun> {
         .iter()
         .filter_map(|item| match item {
             LayoutItem::TextRun(run) => Some(run),
+            _ => None,
+        })
+        .collect()
+}
+
+fn rules(page: &LayoutPage) -> Vec<&Rule> {
+    page.items
+        .iter()
+        .filter_map(|item| match item {
+            LayoutItem::Rule(rule) => Some(rule),
             _ => None,
         })
         .collect()
@@ -161,4 +171,45 @@ fn unstyled_paragraphs_keep_one_run_per_line() {
     assert_eq!(runs[0].text, "Pure text stays.");
     assert_eq!(runs[0].style, FontStyle::Normal);
     assert_eq!(runs[0].font_family, "serif");
+}
+
+#[test]
+fn strike_span_emits_a_rule_across_the_run() {
+    let graph = paragraph(vec![text("keep "), styled("strike", vec![text("gone")]), text(" later")]);
+    let plan = layout(&graph);
+    let page = &plan.pages[0];
+    let runs = text_runs(page);
+    let strike_run = runs.iter().find(|run| run.text == "gone").expect("strike run");
+    let tail = runs.iter().find(|run| run.text == " later").expect("run after the strike span");
+
+    assert_eq!(strike_run.style, FontStyle::Strike);
+    assert_eq!(strike_run.font_family, "serif");
+
+    let decorations = rules(page);
+    assert_eq!(decorations.len(), 1, "only the strike run draws a decoration: {decorations:#?}");
+    let rule = decorations[0];
+    assert!((rule.y1 - rule.y2).abs() < 1e-9, "the strike rule is horizontal: {rule:?}");
+
+    let baseline = strike_run.y;
+    let size = strike_run.size;
+    assert!(
+        rule.y1 > baseline - 0.5 * size && rule.y1 < baseline - 0.1 * size,
+        "the rule crosses the run between 0.1 and 0.5 em above the baseline: {rule:?}"
+    );
+
+    // The run after the span starts where the strike glyphs end, so the
+    // decoration spans exactly the measured run width.
+    assert!((rule.x1 - strike_run.x).abs() < 1e-9, "the rule starts at the run: {rule:?}");
+    assert!(
+        (rule.x2 - rule.x1 - (tail.x - strike_run.x)).abs() < 1e-9,
+        "rule {rule:?} must cover the run {strike_run:?} up to {tail:?}"
+    );
+}
+
+#[test]
+fn unstyled_text_has_no_strike_rule() {
+    let graph = paragraph(vec![text("Pure text stays.")]);
+    let plan = layout(&graph);
+
+    assert!(rules(&plan.pages[0]).is_empty(), "plain paragraphs draw no decoration: {:#?}", rules(&plan.pages[0]));
 }

@@ -187,3 +187,18 @@ fn flow_adjacent_same_style_text_merges() {
 
     assert_eq!(presentation.blocks, vec![FlowBlock::Heading { level: 1, runs: vec![run("one two", FontStyle::Bold)] }]);
 }
+
+#[test]
+fn flow_strike_span_lowers_to_strike_run() {
+    let mut graph = DocumentGraph::new(DocumentId(8));
+    graph.push_block(Block::Paragraph { content: vec![text("keep "), styled("strike", vec![text("gone")]), text(" later")] });
+
+    let presentation = build_flow_presentation(&graph);
+
+    assert_eq!(
+        presentation.blocks,
+        vec![FlowBlock::Paragraph {
+            runs: vec![run("keep ", FontStyle::Normal), run("gone", FontStyle::Strike), run(" later", FontStyle::Normal)],
+        }]
+    );
+}
