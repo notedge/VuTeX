@@ -1,11 +1,19 @@
 {
     "name": "@vutex/vutex-darwin-arm64",
-    "version": "0.0.0",
+    "version": "0.0.1",
     "description": "VuTeX Node-API binary for macOS arm64",
     "type": "module",
     "license": "MPL-2.0",
     "main": "./index.js",
-    "files": ["index.js", "lib", "readme.md"],
-    "os": ["darwin"],
-    "cpu": ["arm64"]
+    "files": [
+        "index.js",
+        "lib",
+        "readme.md"
+    ],
+    "os": [
+        "darwin"
+    ],
+    "cpu": [
+        "arm64"
+    ]
 }
