@@ -144,6 +144,57 @@ impl PendingText {
     }
 }
 
+/// How an inline image joins the atom flow of a block.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ImageMode {
+    /// Flush the atoms at the cursor and reserve an image placeholder.
+    Placeholder,
+    /// Fold the alternative text into the text flow where no image box fits.
+    AltText,
+}
+
+/// Atom buffer and pending text shared while walking inline content.
+#[derive(Debug, Clone)]
+struct AtomFlow {
+    /// Composed break atoms in reading order.
+    atoms: Vec<InlineAtom>,
+    /// Text buffered until the face changes or the content ends.
+    pending: PendingText,
+}
+
+impl AtomFlow {
+    /// Start a flow whose unstyled text uses `face`.
+    fn new(face: TextFace) -> Self {
+        Self { atoms: Vec::new(), pending: PendingText { text: String::new(), face } }
+    }
+
+    /// Close the buffered text into atoms and return the composed flow.
+    fn finish(mut self) -> Vec<InlineAtom> {
+        self.pending.flush(&mut self.atoms);
+        self.atoms
+    }
+}
+
+/// One table cell prepared for painting: wrapped lines and their column span.
+#[derive(Debug, Clone)]
+struct CellLines {
+    /// Columns occupied by the cell.
+    span: usize,
+    /// Width available to the wrapped lines, in points.
+    available: f64,
+    /// Broken lines of the cell content.
+    lines: Vec<Vec<InlineAtom>>,
+}
+
+/// Vertical extent of one composed line.
+#[derive(Debug, Clone, Copy)]
+struct LineMetrics {
+    /// Extra space above the text line box taken by a tall formula.
+    raise: f64,
+    /// Extent from the raised line top to the lowest formula depth.
+    height: f64,
+}
+
 /// A formula box carried alongside the paragraph flow.
 #[derive(Debug, Clone)]
 struct MathAtom {
@@ -240,7 +291,7 @@ impl PageBuilder {
         }
     }
 
-    fn emit_heading(&mut self, level: u8, title: &str, indent: f64) {
+    fn emit_heading(&mut self, level: u8, title: &[Inline], indent: f64) {
         let base = self.body_size();
         let size = match level {
             1 => base * 1.8,
@@ -253,7 +304,8 @@ impl PageBuilder {
         self.pad(before);
         // Keep the heading on the same page as its first body line.
         self.ensure_space(line_box * 2.0 + self.line_box(base));
-        self.emit_wrapped(title, size, SERIF, indent);
+        let atoms = self.compose_atoms(title, size, indent, BODY_FACE, ImageMode::AltText);
+        self.emit_inline_lines(atoms, size, indent);
         self.pad(base * 0.4);
     }
 
@@ -266,12 +318,26 @@ impl PageBuilder {
     /// flow, matching the display-math fallback.
     fn emit_paragraph(&mut self, content: &[Inline], indent: f64) {
         let size = self.body_size();
-        let mut pending = PendingText::body();
-        let mut atoms: Vec<InlineAtom> = Vec::new();
-        self.compose_inline(content, size, indent, &mut atoms, &mut pending, BODY_FACE);
-        pending.flush(&mut atoms);
+        let atoms = self.compose_atoms(content, size, indent, BODY_FACE, ImageMode::Placeholder);
         self.emit_inline_lines(atoms, size, indent);
         self.pad(size * 0.6);
+    }
+
+    /// Compose inline content into break atoms under `face`.
+    ///
+    /// Paragraphs and every other inline-bearing block share this composition
+    /// path, so emphasis keeps the same semantics wherever it appears.
+    fn compose_atoms(
+        &mut self,
+        content: &[Inline],
+        size: f64,
+        indent: f64,
+        face: TextFace,
+        image_mode: ImageMode,
+    ) -> Vec<InlineAtom> {
+        let mut flow = AtomFlow::new(face);
+        self.compose_inline(content, size, indent, &mut flow, face, image_mode);
+        flow.finish()
     }
 
     /// Walk inline content into paragraph atoms under the enclosing face.
@@ -280,35 +346,40 @@ impl PageBuilder {
         content: &[Inline],
         size: f64,
         indent: f64,
-        atoms: &mut Vec<InlineAtom>,
-        pending: &mut PendingText,
+        flow: &mut AtomFlow,
         face: TextFace,
+        image_mode: ImageMode,
     ) {
         for inline in content {
             match inline {
                 Inline::Image { alt, .. } => {
-                    pending.flush(atoms);
-                    self.emit_inline_lines(std::mem::take(atoms), size, indent);
                     let alt_text: String = alt.iter().map(Inline::plain_text).collect();
-                    self.emit_image_placeholder(&alt_text, indent);
+                    match image_mode {
+                        ImageMode::Placeholder => {
+                            flow.pending.flush(&mut flow.atoms);
+                            self.emit_inline_lines(std::mem::take(&mut flow.atoms), size, indent);
+                            self.emit_image_placeholder(&alt_text, indent);
+                        }
+                        ImageMode::AltText => flow.pending.push(&alt_text, face, &mut flow.atoms),
+                    }
                 }
                 Inline::InlineMath { content, .. } => {
-                    pending.flush(atoms);
+                    flow.pending.flush(&mut flow.atoms);
                     match layout_formula_with_size(content, false, size) {
-                        Ok((node, formula)) => atoms.push(InlineAtom::Math(MathAtom {
+                        Ok((node, formula)) => flow.atoms.push(InlineAtom::Math(MathAtom {
                             node,
                             width: formula.width,
                             height: formula.height,
                             depth: formula.depth,
                         })),
-                        Err(_) => atoms.extend(split_inline_atoms(content, face)),
+                        Err(_) => flow.atoms.extend(split_inline_atoms(content, face)),
                     }
                 }
                 Inline::Styled { style, children } => {
-                    self.compose_inline(children, size, indent, atoms, pending, face_for_style(style));
+                    self.compose_inline(children, size, indent, flow, face_for_style(style), image_mode);
                 }
-                Inline::InlineCode { text } => pending.push(text, CODE_FACE, atoms),
-                other => pending.push(&other.plain_text(), face, atoms),
+                Inline::InlineCode { text } => flow.pending.push(text, CODE_FACE, &mut flow.atoms),
+                other => flow.pending.push(&other.plain_text(), face, &mut flow.atoms),
             }
         }
     }
@@ -323,6 +394,21 @@ impl PageBuilder {
 
     /// Paint one composed line, sizing its box by the tallest formula it holds.
     fn emit_inline_line(&mut self, line: &[InlineAtom], size: f64, indent: f64) {
+        let line_metrics = self.inline_line_metrics(line, size);
+        self.ensure_space(line_metrics.raise + line_metrics.height);
+        let top = self.cursor + line_metrics.raise;
+        let baseline = top + ASCENT * size;
+        self.paint_line(line, size, self.left(indent), baseline, self.content_width(indent));
+        self.cursor = top + line_metrics.height;
+    }
+
+    /// Vertical extent of one composed line, grown by any tall formula.
+    ///
+    /// A formula taller than the text ascent pushes the line top down so the
+    /// formula and the text share one baseline without crossing the previous
+    /// line; the line box then covers the formula's full vertical extent, depth
+    /// included.
+    fn inline_line_metrics(&self, line: &[InlineAtom], size: f64) -> LineMetrics {
         let mut formula_height = 0.0f64;
         let mut formula_depth = 0.0f64;
         for atom in line {
@@ -331,17 +417,16 @@ impl PageBuilder {
                 formula_depth = formula_depth.max(math.depth);
             }
         }
-        // A formula taller than the text ascent pushes the line top down so the
-        // formula and the text share one baseline without crossing the previous
-        // line; the line box grows to the formula's full vertical extent, depth
-        // included.
         let raise = (formula_height - ASCENT * size).max(0.0);
-        let line_height = self.line_box(size).max(raise + ASCENT * size + formula_depth);
-        self.ensure_space(raise + line_height);
-        let top = self.cursor + raise;
-        let baseline = top + ASCENT * size;
-        let max_width = self.content_width(indent);
-        let mut x = self.left(indent);
+        LineMetrics { raise, height: self.line_box(size).max(raise + ASCENT * size + formula_depth) }
+    }
+
+    /// Paint the atoms of one composed line from `x` on one baseline.
+    ///
+    /// Consecutive atoms sharing a face stay one run, and a face change starts
+    /// a new run so emphasis survives into every renderer.
+    fn paint_line(&mut self, line: &[InlineAtom], size: f64, x: f64, baseline: f64, max_width: f64) {
+        let mut x = x;
         let mut run = PendingText::body();
         let mut run_x = x;
         for atom in line {
@@ -368,7 +453,6 @@ impl PageBuilder {
             }
         }
         self.paint_inline_run(&mut run, run_x, baseline, size);
-        self.cursor = top + line_height;
     }
 
     /// Paint the buffered paragraph text as one run and clear the buffer.
@@ -417,11 +501,12 @@ impl PageBuilder {
             };
             let marker_width = measure_text(&self.metrics, &marker, size);
             let content_indent = indent + LIST_INDENT.max(marker_width + 6.0);
-            let text: String = item.content.iter().map(Inline::plain_text).collect();
+            let atoms = self.compose_atoms(&item.content, size, content_indent, BODY_FACE, ImageMode::AltText);
             self.pad(size * 0.15);
             self.ensure_space(line_box * 2.0);
+            // The marker keeps the baseline of the first content line.
             self.emit_baseline(marker, size, SERIF, indent);
-            self.emit_wrapped(&text, size, SERIF, content_indent);
+            self.emit_inline_lines(atoms, size, content_indent);
             self.render_blocks(graph, &item.children, content_indent);
             self.pad(size * 0.2);
         }
@@ -429,21 +514,25 @@ impl PageBuilder {
 
     fn emit_quote(&mut self, content: &[Inline], indent: f64) {
         let size = self.body_size();
-        let text: String = content.iter().map(Inline::plain_text).collect();
         let quote_indent = indent + 16.0;
-        let line_box = self.line_box(size);
-        let lines = self.wrap(&text, size, quote_indent);
-        let height = line_box * lines.len() as f64;
+        let atoms = self.compose_atoms(content, size, quote_indent, BODY_FACE, ImageMode::AltText);
+        let lines = break_inline_atoms(&self.metrics, atoms, size, self.content_width(quote_indent));
+        // The rule spans the real line extents, so a tall formula inside the
+        // quote grows the rule instead of hanging outside it.
+        let height: f64 = lines
+            .iter()
+            .map(|line| {
+                let metrics = self.inline_line_metrics(line, size);
+                metrics.raise + metrics.height
+            })
+            .sum();
         self.pad(size * 0.4);
         self.ensure_space(height);
         let x = self.left(indent) + 2.0;
         let top = self.cursor;
         self.push(LayoutItem::Rule(Rule { x1: x, y1: top, x2: x, y2: top + height, thickness: 2.0 }));
-        for line in lines {
-            if line.is_empty() {
-                continue;
-            }
-            self.emit_line(line, size, SERIF, quote_indent);
+        for line in &lines {
+            self.emit_inline_line(line, size, quote_indent);
         }
         self.pad(size * 0.5);
     }
@@ -496,41 +585,31 @@ impl PageBuilder {
         }
         self.pad(size * 0.4);
         for (row_index, row) in rows.iter().enumerate() {
-            let cells: Vec<(usize, Vec<String>)> = row
+            let cells: Vec<CellLines> = row
                 .cells
                 .iter()
                 .map(|cell| {
                     let span = cell.colspan.max(1) as usize;
-                    let text: String = cell.content.iter().map(Inline::plain_text).collect();
                     let available = (column_width * span as f64 - padding * 2.0).max(24.0);
-                    (span, wrap_text(&self.metrics, &text, size, available))
+                    let atoms = self.compose_atoms(&cell.content, size, indent, BODY_FACE, ImageMode::AltText);
+                    CellLines { span, available, lines: break_inline_atoms(&self.metrics, atoms, size, available) }
                 })
                 .collect();
-            let max_lines = cells.iter().map(|(_, lines)| lines.len()).max().unwrap_or(1).max(1);
+            let max_lines = cells.iter().map(|cell| cell.lines.len()).max().unwrap_or(1).max(1);
             let height = max_lines as f64 * line_box + padding * 2.0;
             self.ensure_space(height);
             let top = self.cursor;
             let thickness = if row.is_header { 1.0 } else { 0.4 };
             self.push(LayoutItem::Rule(Rule { x1: x, y1: top, x2: x + width, y2: top, thickness }));
             let mut column = 0usize;
-            for (span, lines) in &cells {
+            for cell in &cells {
                 let cell_x = x + column_width * column as f64 + padding;
                 let mut line_top = top + padding;
-                for line in lines {
-                    if !line.is_empty() {
-                        let y = line_top + ASCENT * size;
-                        self.push(LayoutItem::TextRun(TextRun {
-                            x: cell_x,
-                            y,
-                            size,
-                            font_family: SERIF.to_string(),
-                            style: FontStyle::Normal,
-                            text: line.clone(),
-                        }));
-                    }
+                for line in &cell.lines {
+                    self.paint_line(line, size, cell_x, line_top + ASCENT * size, cell.available);
                     line_top += line_box;
                 }
-                column += span;
+                column += cell.span;
             }
             self.cursor = top + height;
             if row_index + 1 == rows.len() {
@@ -593,8 +672,7 @@ impl PageBuilder {
             };
             match &node.block {
                 Block::Section { level, title, children } => {
-                    let heading: String = title.iter().map(Inline::plain_text).collect();
-                    self.emit_heading(*level, heading.trim(), indent);
+                    self.emit_heading(*level, title, indent);
                     self.render_blocks(graph, children, indent);
                 }
                 Block::Paragraph { content } => self.emit_paragraph(content, indent),
