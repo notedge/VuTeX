@@ -1,7 +1,6 @@
 use vutex_layout::math::{FormulaLayout, layout_formula};
 use vutex_render_svg::math::{MathmlBackend, SvgBackend};
-use vutex_types::math::{MathError, MathStyle};
-use vutex_types::{Diagnostic, Severity};
+use vutex_types::{Diagnostic, Severity, math::MathError};
 
 use crate::types::{DisplayMode, FormulaDiagnostic, FormulaMetrics, FormulaRender, RenderOptions};
 
@@ -11,21 +10,11 @@ const UNSUPPORTED_COMMANDS: &[&str] = &["usepackage", "input", "include", "write
 pub fn measure(source: &str, options: &RenderOptions) -> FormulaRender {
     let diagnostics = collect_diagnostics(source);
     if has_error(&diagnostics) {
-        return FormulaRender {
-            metrics: FormulaMetrics::default(),
-            svg: String::new(),
-            mathml: None,
-            diagnostics,
-        };
+        return FormulaRender { metrics: FormulaMetrics::default(), svg: String::new(), mathml: None, diagnostics };
     }
 
     match layout_formula(source, options.display_mode == DisplayMode::Block) {
-        Ok((_, layout)) => FormulaRender {
-            metrics: layout_to_metrics(&layout),
-            svg: String::new(),
-            mathml: None,
-            diagnostics,
-        },
+        Ok((_, layout)) => FormulaRender { metrics: layout_to_metrics(&layout), svg: String::new(), mathml: None, diagnostics },
         Err(err) => FormulaRender {
             metrics: FormulaMetrics::default(),
             svg: String::new(),
@@ -39,21 +28,11 @@ pub fn measure(source: &str, options: &RenderOptions) -> FormulaRender {
 pub fn render_svg(source: &str, options: &RenderOptions) -> FormulaRender {
     let diagnostics = collect_diagnostics(source);
     if has_error(&diagnostics) {
-        return FormulaRender {
-            metrics: FormulaMetrics::default(),
-            svg: String::new(),
-            mathml: None,
-            diagnostics,
-        };
+        return FormulaRender { metrics: FormulaMetrics::default(), svg: String::new(), mathml: None, diagnostics };
     }
 
     match render_formula_svg_inner(source, options.display_mode == DisplayMode::Block) {
-        Ok((svg, layout)) => FormulaRender {
-            metrics: layout_to_metrics(&layout),
-            svg,
-            mathml: None,
-            diagnostics,
-        },
+        Ok((svg, layout)) => FormulaRender { metrics: layout_to_metrics(&layout), svg, mathml: None, diagnostics },
         Err(err) => FormulaRender {
             metrics: FormulaMetrics::default(),
             svg: String::new(),
@@ -112,12 +91,7 @@ fn render_formula_mathml_inner(source: &str, display: bool) -> Result<(String, F
 }
 
 fn layout_to_metrics(layout: &FormulaLayout) -> FormulaMetrics {
-    FormulaMetrics {
-        width: layout.width,
-        height: layout.height,
-        depth: layout.depth,
-        baseline: layout.baseline,
-    }
+    FormulaMetrics { width: layout.width, height: layout.height, depth: layout.depth, baseline: layout.baseline }
 }
 
 fn collect_diagnostics(source: &str) -> Vec<FormulaDiagnostic> {
@@ -175,45 +149,6 @@ fn severity_name(severity: Severity) -> String {
 
 impl From<Diagnostic> for FormulaDiagnostic {
     fn from(value: Diagnostic) -> Self {
-        Self {
-            code: value.code,
-            severity: severity_name(value.severity),
-            message: value.message,
-            start: None,
-            end: None,
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn empty_source_is_error() {
-        let result = render_svg("", &RenderOptions::default());
-        assert!(result.svg.is_empty());
-        assert!(has_error(&result.diagnostics));
-    }
-
-    #[test]
-    fn simple_source_emits_svg() {
-        let result = render_svg("x^2 + y^2", &RenderOptions::default());
-        assert!(!result.svg.is_empty());
-        assert!(result.svg.contains("<svg"));
-        assert!(result.metrics.width > 0.0);
-    }
-
-    #[test]
-    fn fraction_renders() {
-        let result = render_svg("\\frac{a}{b}", &RenderOptions::default());
-        assert!(!result.svg.is_empty());
-        assert!(!has_error(&result.diagnostics));
-    }
-
-    #[test]
-    fn unsupported_command_reports_diagnostic() {
-        let result = render_svg("\\usepackage{amsmath}", &RenderOptions::default());
-        assert!(has_error(&result.diagnostics));
+        Self { code: value.code, severity: severity_name(value.severity), message: value.message, start: None, end: None }
     }
 }

@@ -1,33 +1,40 @@
-pub use vutex_types::math::{MathError, Result};
-pub use vutex_layout::math::{LayoutBackend, LayoutNode, Path, render_layout_node};
+use vutex_layout::math::LayoutBackend;
+use vutex_types::math::{MathError, MathResult};
 
+/// Presentation MathML backend for math layout trees.
+#[derive(Debug)]
 pub struct MathmlBackend {
     buffer: String,
     tag_stack: Vec<&'static str>,
 }
 
+impl Default for MathmlBackend {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MathmlBackend {
+    /// Create an empty MathML backend.
     pub fn new() -> Self {
-        Self {
-            buffer: String::new(),
-            tag_stack: Vec::new(),
-        }
+        Self { buffer: String::new(), tag_stack: Vec::new() }
     }
 
+    /// Close the document and return the complete MathML string.
     pub fn finish(mut self) -> String {
         let mut final_mml = String::from(r#"<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">"#);
-        
+
         // Add a top-level mrow to hold everything
         final_mml.push_str("<mrow>");
         final_mml.push_str(&self.buffer);
-        
+
         // Close any remaining tags
         while let Some(tag) = self.tag_stack.pop() {
             final_mml.push_str("</");
             final_mml.push_str(tag);
             final_mml.push_str(">");
         }
-        
+
         final_mml.push_str("</mrow>");
         final_mml.push_str("</math>");
         final_mml
@@ -35,34 +42,27 @@ impl MathmlBackend {
 }
 
 impl LayoutBackend for MathmlBackend {
-    fn render_text(
-        &mut self,
-        text: &str,
-        x: f64,
-        y: f64,
-        font_size: f64,
-        font_family: Option<&str>,
-    ) -> MathResult<()> {
+    fn render_text(&mut self, text: &str, x: f64, y: f64, font_size: f64, font_family: Option<&str>) -> MathResult<()> {
         use std::fmt::Write;
-        
+
         // Use <mpadded> for absolute positioning relative to the group
-        write!(
-            self.buffer,
-            r#"<mpadded voffset="{}px" loffset="{}px">"#,
-            y, x
-        ).map_err(|e| MathError::backend_error(e.to_string()))?;
+        write!(self.buffer, r#"<mpadded voffset="{}px" loffset="{}px">"#, y, x)
+            .map_err(|e| MathError::backend_error(e.to_string()))?;
 
         // Determine the MathML tag based on character type
         let tag = if text.chars().count() == 1 {
             let c = text.chars().next().unwrap();
             if c.is_numeric() {
                 "mn"
-            } else if c.is_alphabetic() {
+            }
+            else if c.is_alphabetic() {
                 "mi"
-            } else {
+            }
+            else {
                 "mo"
             }
-        } else {
+        }
+        else {
             "mtext"
         };
 
@@ -71,12 +71,9 @@ impl LayoutBackend for MathmlBackend {
             write!(style, " font-family: {};", family).unwrap();
         }
 
-        write!(
-            self.buffer,
-            r#"<{tag} style="{}">{}</{tag}>"#,
-            style, escape_xml(text)
-        ).map_err(|e| MathError::backend_error(e.to_string()))?;
-        
+        write!(self.buffer, r#"<{tag} style="{}">{}</{tag}>"#, style, escape_xml(text))
+            .map_err(|e| MathError::backend_error(e.to_string()))?;
+
         self.buffer.push_str("</mpadded>");
         Ok(())
     }
@@ -94,23 +91,19 @@ impl LayoutBackend for MathmlBackend {
 
     fn render_path(&mut self, d: &str, x: f64, y: f64, scale: f64) -> MathResult<()> {
         use std::fmt::Write;
-        let transform = if scale != 1.0 {
-            format!(r#" transform="scale({})""#, scale)
-        } else {
-            String::new()
-        };
+        let transform = if scale != 1.0 { format!(r#" transform="scale({})""#, scale) } else { String::new() };
         // Embed a small SVG inside MathML
         write!(
             self.buffer,
             r#"<mpadded voffset="{}px" loffset="{}px"><mtext><svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" style="overflow: visible;"><path d="{}"{} fill="currentColor" /></svg></mtext></mpadded>"#,
-            y, d, transform
+            y, x, d, transform
         )
         .map_err(|e| MathError::backend_error(e.to_string()))
     }
 
     fn start_group(&mut self, transform: Option<&str>) -> MathResult<()> {
         use std::fmt::Write;
-        
+
         if let Some(t) = transform {
             if t.starts_with("translate(") {
                 // Parse translate(x, y)
@@ -119,7 +112,7 @@ impl LayoutBackend for MathmlBackend {
                 if parts.len() == 2 {
                     let tx: f64 = parts[0].parse().unwrap_or(0.0);
                     let ty: f64 = parts[1].parse().unwrap_or(0.0);
-                    
+
                     write!(self.buffer, r#"<mpadded voffset="{}px" loffset="{}px">"#, ty, tx)
                         .map_err(|e| MathError::backend_error(e.to_string()))?;
                     self.tag_stack.push("mpadded");
@@ -127,7 +120,7 @@ impl LayoutBackend for MathmlBackend {
                 }
             }
         }
-        
+
         self.buffer.push_str("<mrow>");
         self.tag_stack.push("mrow");
         Ok(())
@@ -136,18 +129,14 @@ impl LayoutBackend for MathmlBackend {
     fn end_group(&mut self) -> MathResult<()> {
         if let Some(tag) = self.tag_stack.pop() {
             use std::fmt::Write;
-            write!(self.buffer, "</{}>", tag)
-                .map_err(|e| MathError::backend_error(e.to_string()))
-        } else {
+            write!(self.buffer, "</{}>", tag).map_err(|e| MathError::backend_error(e.to_string()))
+        }
+        else {
             Err(MathError::backend_error("No group to end"))
         }
     }
 }
 
 fn escape_xml(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&apos;")
+    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\'', "&apos;")
 }
