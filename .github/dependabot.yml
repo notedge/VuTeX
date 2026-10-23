@@ -1,0 +1,32 @@
+version: 2
+updates:
+  - package-ecosystem: "cargo"
+    directory: "/projects/dioxus-katex"
+    target-branch: "dev"
+    schedule:
+      interval: "daily"
+  - package-ecosystem: "cargo"
+    directory: "/projects/katex-preview"
+    target-branch: "dev"
+    schedule:
+      interval: "daily"
+  - package-ecosystem: "cargo"
+    directory: "/projects/wasmbind-katex"
+    target-branch: "dev"
+    schedule:
+      interval: "daily"
+  - package-ecosystem: "cargo"
+    directory: "/projects/yew-katex"
+    target-branch: "dev"
+    schedule:
+      interval: "daily"
+  - package-ecosystem: "npm"
+    directory: "/projects/wasmbind-katex"
+    target-branch: "dev"
+    schedule:
+      interval: "daily"
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    target-branch: "dev"
+    schedule:
+      interval: "daily"

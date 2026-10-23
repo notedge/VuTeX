@@ -1,0 +1,23 @@
+package rutex:katex;
+
+interface types {
+    record options {
+        display-mode: bool,
+        leqno: bool,
+        fleqn: bool,
+        throw-on-error: bool,
+        min-rule-thickness: f64,
+        max-size: f64,
+        max-expand: s32,
+        strict: bool,
+        trust: bool,
+        global-group: bool,
+        output: string,
+        error-color: string,
+    }
+}
+
+world rutex-renderer {
+    use types.{options};
+    export render: func(expr: string, opts: options) -> string;
+}

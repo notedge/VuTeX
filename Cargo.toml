@@ -1,58 +1,21 @@
 [workspace]
 resolver = "2"
-members = ["projects/crates/*"]
+members = ["projects/*"]
 default-members = [
-    "projects/crates/vutex-types",
-    "projects/crates/vutex-document",
-    "projects/crates/vutex-style",
-    "projects/crates/vutex-layout",
-    "projects/crates/vutex-text",
-    "projects/crates/vutex-presentation",
-    "projects/crates/vutex-render",
+    "projects/rutex",
+    "projects/rutex-types",
+    "projects/rutex-parser",
+    "projects/knuth-plass",
+    "projects/rutex-wit",
+    "projects/rutex-renderer-mathml",
 ]
-
-[workspace.lints.rust]
-missing_docs = "allow"
-
-[workspace.package]
-version = "0.0.0"
-edition = "2024"
-license = "MPL-2.0"
-authors = ["Aster <192607617@qq.com>"]
-repository = "https://github.com/notedge/VuTeX"
-homepage = "https://github.com/notedge/VuTeX"
-readme = "readme.md"
-keywords = ["typesetting", "layout", "document", "rendering", "vutex"]
-categories = ["text-processing", "rendering"]
-publish = false
-
-[workspace.dependencies]
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-thiserror = "2"
-vutex-types = { path = "projects/crates/vutex-types" }
-vutex-document = { path = "projects/crates/vutex-document" }
-vutex-style = { path = "projects/crates/vutex-style" }
-vutex-layout = { path = "projects/crates/vutex-layout" }
-vutex-text = { path = "projects/crates/vutex-text" }
-vutex-presentation = { path = "projects/crates/vutex-presentation" }
-vutex-render = { path = "projects/crates/vutex-render" }
-vutex-render-pdf = { path = "projects/crates/vutex-render-pdf" }
-vutex-render-svg = { path = "projects/crates/vutex-render-svg" }
-vutex-render-html = { path = "projects/crates/vutex-render-html" }
-vutex-render-raster = { path = "projects/crates/vutex-render-raster" }
-vutex-input-notedown = { path = "projects/crates/vutex-input-notedown" }
-vutex-input-markdown = { path = "projects/crates/vutex-input-markdown" }
-vutex-input-mdx = { path = "projects/crates/vutex-input-mdx" }
-vutex-input-typst = { path = "projects/crates/vutex-input-typst" }
-vutex-input-tex = { path = "projects/crates/vutex-input-tex" }
-wetex-wasm = { path = "projects/crates/wetex-wasm" }
-vutex-napi = { path = "projects/crates/vutex-napi" }
-wasm-bindgen = "0.2.129"
-napi = { version = "3.14.2", default-features = false, features = ["napi4"] }
-napi-derive = "3.6.12"
-napi-build = "2"
+exclude = [
+    "projects/.DS_Store",
+]
 
 [profile.release]
 lto = true
-panic = "abort"
+opt-level = 'z'
+codegen-units = 1
+panic = 'abort'
+strip = true

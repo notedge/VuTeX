@@ -1,0 +1,11 @@
+[package]
+name = "rutex-knuth-plass"
+version = "0.1.0"
+edition = "2021"
+description = "Implementation of the Knuth-Plass line-breaking algorithm for RuTeX"
+
+[dependencies]
+rutex-types = { path = "../rutex-types" }
+serde = { version = "1.0", features = ["derive"] }
+
+[dev-dependencies]

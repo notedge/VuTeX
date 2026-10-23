@@ -1,0 +1,29 @@
+[package]
+name = "katex-preview"
+publish = false
+version = "0.2.0"
+authors = ["Aster <192607617@qq.com>"]
+description = "Render math with KaTeX in Yew!"
+repository = "https://github.com/GalAster/yew-katex"
+readme = "readme.md"
+license = "MPL-2.0"
+edition = "2018"
+
+[dependencies]
+log = "0.4.20"
+wasm-logger = "0.2.0"
+dioxus = "0.7.2"
+dioxus-web = "0.7.2"
+
+# Dev dependency (local path)
+rutex-wasm32-wasi = { version = "0.10.0", path = "../../projects/rutex-wasm32-wasi", optional = true }
+# Build dependency (published version)
+rutex-wasm32-wasi-prod = { version = "0.10.0", package = "rutex-wasm32-wasi", optional = true }
+
+[features]
+default = ["dev"]
+dev = ["rutex-wasm32-wasi"]
+build = ["rutex-wasm32-wasi-prod"]
+
+[dev-dependencies]
+macrowind = "0.1.1"

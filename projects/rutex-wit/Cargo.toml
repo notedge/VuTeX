@@ -1,0 +1,27 @@
+[package]
+name = "rutex-wit"
+version = "0.10.0"
+authors = ["Aster <galaster@foxmail.com>"]
+description = "KaTeX Render for wasm bind"
+repository = "https://github.com/oovm/katex-wasm"
+license = "MPL-2.0"
+readme = "Readme.md"
+edition = "2021"
+
+[dependencies]
+serde = "1.0.188"
+serde_derive = "1.0.188"
+wit-bindgen = "0.36.0"
+rutex-parser = { path = "../rutex-parser" }
+rutex-layout = { path = "../rutex-layout" }
+rutex-renderer-svg = { path = "../rutex-renderer-svg" }
+rutex-font = { path = "../rutex-font" }
+rutex-types = { path = "../rutex-types" }
+futures = "0.3"
+
+[lib]
+crate-type = ["cdylib"]
+
+[package.metadata.wee]
+t = "cargo test"
+p = "cargo publish --allow-dirty"

@@ -1,0 +1,27 @@
+[package]
+name = "rutex-wasm32-wasi"
+version = "0.10.0"
+authors = ["Aster <galaster@foxmail.com>"]
+description = "KaTeX Render for wasm bind"
+repository = "https://github.com/oovm/katex-wasm"
+license = "MPL-2.0"
+readme = "Readme.md"
+edition = "2021"
+
+[dependencies]
+serde = "1.0.188"
+serde_derive = "1.0.188"
+
+[dependencies.wasm-bindgen]
+version = "0.2.87"
+features = ["serde-serialize"]
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3.37"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[package.metadata.wee]
+t = "cargo test"
+p = "cargo publish --allow-dirty"

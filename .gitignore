@@ -1,34 +1,30 @@
 # OS
-.DS_Store/
-thumbs.db
-time-travel.*
+.DS_Store/**/*
 
 # IDE
-whitebooks/
-.vscode/
-.idea/
-.trae/
-.vs/
+.vscode/**/*
+.vs/**/*
+.idea/**/*
 *.iml
-*.txt
-*.log
 
 # Rust
-target/
+target/**/*
 Cargo.lock
-.cargo/config.toml
-
-# Node
-node_modules/
-projects/packages/vutex-unknown-wasm32/lib/
-projects/packages/vutex-*/lib/
-cache/
 dist/
-*.node
-*.wasm
-pnpm-lock.yaml
 
-# Renderer
-_tmp_render/
-*.png
-*.zip
+# Yarn
+yarn.lock
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build
+Thumbs.db
+.DS_Store
+docs/.build/
+package-lock.json
+time-travel.*
+
+*.7z
+*.nb

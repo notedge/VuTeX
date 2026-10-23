@@ -1,0 +1,16 @@
+[package]
+name = "rutex-layout"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rutex-types = { path = "../rutex-types" }
+rutex-font = { path = "../rutex-font" }
+rutex-knuth-plass = { path = "../knuth-plass" }
+serde = { version = "1.0", features = ["derive"] }
+async-trait = "0.1"
+futures = "0.3"
+async-recursion = "1.0"
+
+[dev-dependencies]
+tokio = { version = "1.0", features = ["full"] }

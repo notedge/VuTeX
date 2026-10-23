@@ -1,0 +1,11 @@
+[package]
+name = "rutex-parser"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rutex-types = { path = "../rutex-types" }
+serde = { version = "1.0", features = ["derive"] }
+hashbrown = { version = "0.14", features = ["serde"] }
+logos = "0.14"
+im = "15.1"

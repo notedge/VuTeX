@@ -1,0 +1,15 @@
+{
+    "private": true,
+    "scripts": {
+        "build": "node esbuild",
+        "t": "wee build && wasm-pack test --chrome",
+        "u": "yarn upgrade-interactive --latest",
+        "p": "cargo publish --allow-dirty"
+    },
+    "dependencies": {
+        "katex": "^0.16.8"
+    },
+    "devDependencies": {
+        "esbuild": "^0.27.2"
+    }
+}

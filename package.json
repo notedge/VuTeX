@@ -1,20 +1,8 @@
 {
     "private": true,
-    "name": "vutex-workspace",
-    "packageManager": "pnpm@9.15.0",
-    "description": "VuTeX: language-neutral document typesetting and rendering (Rust workspace)",
-    "license": "MPL-2.0",
     "scripts": {
-        "check": "cargo check --workspace",
-        "test": "cargo test --workspace && pnpm -r --if-present run test",
-        "fmt": "cargo fmt --all",
-        "build:wasm": "wasm-pack build projects/crates/wetex-wasm --target web --out-dir ../../packages/vutex-unknown-wasm32/lib --release",
-        "build:napi": "node scripts/build-napi.mjs",
-        "typecheck": "pnpm -r --if-present run typecheck"
-    },
-    "devDependencies": {
-        "@napi-rs/cli": "^3.10.9",
-        "@vutex/vutex": "workspace:*",
-        "@vutex/wetex": "workspace:*"
+        "web": "cd examples/playground && trunk serve",
+        "web:build": "cd examples/playground && trunk build --features build",
+        "u": "cargo upgrade --offline --incompatible"
     }
 }
