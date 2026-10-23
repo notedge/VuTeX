@@ -8,8 +8,10 @@ export type CreateVuTeXOptions = {
     backend?: VuTeXBackend;
 };
 
+export type DocumentOutputFormat = "svg" | "html" | "snapshot";
+
 export type RenderDocumentOptions = {
-    output?: string;
+    output?: DocumentOutputFormat | string;
     profile?: string;
     input?: string;
 };
@@ -58,6 +60,7 @@ export type RenderDocumentResult = {
     exitCode: number;
     outputFormat: string;
     svg?: string;
+    html?: string;
     reportJson: string;
     diagnostics: VuTeXDiagnostic[];
 };
@@ -100,6 +103,7 @@ export type VuTeXBindings = {
         exitCode: number;
         outputFormat: string;
         svg?: string;
+        html?: string;
         reportJson: string;
     };
 };

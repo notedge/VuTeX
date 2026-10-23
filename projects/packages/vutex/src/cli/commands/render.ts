@@ -6,7 +6,7 @@ import { ExitCode } from "../exit-codes.js";
 
 export function registerRenderCommand(cli: Cli): void {
     cli.command("render", "cli.cmd.render")
-        .option("-o, --output <file>", "cli.opt.output")
+        .option("-o, --output <format>", "cli.opt.output")
         .option("--profile <name>", "cli.opt.profile")
         .option("--input <format>", "cli.opt.input-format")
         .option("--json", "cli.opt.json")
@@ -25,8 +25,11 @@ export function registerRenderCommand(cli: Cli): void {
 
             if (options.json === true) {
                 emitJson(result);
-            } else if (result.svg) {
-                console.log(result.svg);
+            } else {
+                const body = result.outputFormat === "svg"
+                    ? result.svg ?? result.html
+                    : result.html ?? result.svg;
+                console.log(body ?? result.reportJson);
             }
 
             if (result.diagnostics.length > 0) {

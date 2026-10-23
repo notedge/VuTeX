@@ -31,7 +31,7 @@
     },
     "scripts": {
         "typecheck": "tsc --noEmit",
-        "test": "tsx --test tests/package-manager.test.ts"
+        "test": "tsx --test tests/package-manager.test.ts tests/render-runtime.test.ts"
     },
     "dependencies": {
         "@iarna/toml": "^2.2.5",
