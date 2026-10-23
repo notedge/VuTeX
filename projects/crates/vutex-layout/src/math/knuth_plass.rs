@@ -1,10 +1,8 @@
-use vutex_types::math::Fixed;
-use serde::{Deserialize, Serialize};
-
 //! Implementation of the Knuth-Plass line-breaking algorithm.
 //!
 //! This algorithm finds the optimal sequence of line breaks by minimizing the "badness"
-//! of each line, considering "boxes" (content), "glue" (flexible space), and "penalties" (break opportunities).
+//! of each line, considering "boxes" (content), "glue" (flexible space), and "penalties"
+//! (break opportunities).
 
 use serde::{Deserialize, Serialize};
 use vutex_types::math::Fixed;
@@ -19,32 +17,28 @@ pub enum Item {
         debug_info: Option<String>,
     },
     /// Flexible space between boxes.
-    Glue {
-        width: Fixed,
-        stretch: Fixed,
-        shrink: Fixed,
-    },
+    Glue { width: Fixed, stretch: Fixed, shrink: Fixed },
     /// A potential break point with an associated penalty.
-    Penalty {
-        width: Fixed,
-        penalty: f64,
-        flagged: bool,
-    },
+    Penalty { width: Fixed, penalty: f64, flagged: bool },
 }
 
 impl Item {
+    /// Whether the item is an unbreakable box.
     pub fn is_box(&self) -> bool {
         matches!(self, Item::Box { .. })
     }
 
+    /// Whether the item is glue.
     pub fn is_glue(&self) -> bool {
         matches!(self, Item::Glue { .. })
     }
 
+    /// Whether the item is a break candidate.
     pub fn is_penalty(&self) -> bool {
         matches!(self, Item::Penalty { .. })
     }
 
+    /// Width contributed by the item.
     pub fn width(&self) -> Fixed {
         match self {
             Item::Box { width, .. } => *width,
@@ -53,6 +47,7 @@ impl Item {
         }
     }
 
+    /// Penalty value of the item, or `0.0` for boxes and glue.
     pub fn penalty(&self) -> f64 {
         match self {
             Item::Penalty { penalty, .. } => *penalty,
@@ -76,8 +71,12 @@ pub struct BreakPoint {
     pub fitness_class: usize,
 }
 
+/// Knuth-Plass breaker configured with target line widths and tolerance.
+#[derive(Debug, Clone)]
 pub struct KnuthPlass {
+    /// Target width of each line; the last entry is reused once exhausted.
     pub line_widths: Vec<Fixed>,
+    /// Maximum acceptable glue ratio before a break is rejected.
     pub tolerance: f64,
 }
 
@@ -86,15 +85,13 @@ const LINE_PENALTY: f64 = 10.0; // Demerits for each line
 const FLAGGED_PENALTY: f64 = 100.0; // Penalty for two consecutive flagged breaks
 
 impl KnuthPlass {
+    /// Create a breaker for the given line widths.
     pub fn new(line_widths: Vec<Fixed>, tolerance: f64) -> Self {
-        Self {
-            line_widths,
-            tolerance,
-        }
+        Self { line_widths, tolerance }
     }
 
-    /// Calculate badness of a line.
-    /// ratio = (desired_width - actual_width) / total_stretch_or_shrink
+    /// Badness of a line for the given glue ratio
+    /// `(desired_width - actual_width) / total_stretch_or_shrink`.
     pub fn calculate_badness(ratio: f64) -> f64 {
         if ratio < -1.0 {
             return f64::INFINITY;
@@ -102,34 +99,35 @@ impl KnuthPlass {
         100.0 * ratio.abs().powi(3)
     }
 
-    /// Determine fitness class based on ratio.
+    /// Fitness class (0 = very tight … 3 = very loose) for the given glue ratio.
     pub fn fitness_class(ratio: f64) -> usize {
         if ratio < -0.5 {
             0 // Very tight
-        } else if ratio <= 0.5 {
+        }
+        else if ratio <= 0.5 {
             1 // Tight
-        } else if ratio <= 1.0 {
+        }
+        else if ratio <= 1.0 {
             2 // Loose
-        } else {
+        }
+        else {
             3 // Very loose
         }
     }
 
     /// Finds the optimal break points for a sequence of items.
     pub fn find_breaks(&self, items: &[Item]) -> Vec<usize> {
+        if items.is_empty() || self.line_widths.is_empty() {
+            return Vec::new();
+        }
+
         // Add a virtual penalty at the end to force a break.
         let mut items = items.to_vec();
         if items.is_empty() || !matches!(items.last(), Some(Item::Penalty { penalty, .. }) if *penalty <= -INFINITY) {
             items.push(Item::Penalty { width: Fixed::ZERO, penalty: -INFINITY, flagged: false });
         }
 
-        let mut all_nodes = vec![BreakPoint {
-            index: 0,
-            previous: None,
-            total_demerits: 0.0,
-            line: 0,
-            fitness_class: 1,
-        }];
+        let mut all_nodes = vec![BreakPoint { index: 0, previous: None, total_demerits: 0.0, line: 0, fitness_class: 1 }];
         let mut active_node_indices = vec![0];
 
         let mut sum_width = vec![Fixed::ZERO; items.len() + 1];
@@ -180,18 +178,12 @@ impl KnuthPlass {
 
                 let diff = (target_width.0 - actual_width.0) as f64;
                 let ratio = if diff > 0.0 {
-                    if available_stretch.0 > 0 {
-                        diff / available_stretch.0 as f64
-                    } else {
-                        INFINITY
-                    }
-                } else if diff < 0.0 {
-                    if available_shrink.0 > 0 {
-                        diff / available_shrink.0 as f64
-                    } else {
-                        -INFINITY
-                    }
-                } else {
+                    if available_stretch.0 > 0 { diff / available_stretch.0 as f64 } else { INFINITY }
+                }
+                else if diff < 0.0 {
+                    if available_shrink.0 > 0 { diff / available_shrink.0 as f64 } else { -INFINITY }
+                }
+                else {
                     0.0
                 };
 
@@ -205,7 +197,8 @@ impl KnuthPlass {
                 let mut demerits = (LINE_PENALTY + badness).powi(2);
                 if penalty >= 0.0 {
                     demerits += penalty.powi(2);
-                } else if penalty > -INFINITY {
+                }
+                else if penalty > -INFINITY {
                     demerits -= penalty.powi(2);
                 }
 
@@ -228,7 +221,7 @@ impl KnuthPlass {
                 }
 
                 let total_demerits = node.total_demerits + demerits;
-                
+
                 if let Some(ref best) = best_for_class[fitness] {
                     if total_demerits < best.total_demerits {
                         best_for_class[fitness] = Some(BreakPoint {
@@ -239,7 +232,8 @@ impl KnuthPlass {
                             fitness_class: fitness,
                         });
                     }
-                } else {
+                }
+                else {
                     best_for_class[fitness] = Some(BreakPoint {
                         index: i,
                         previous: Some(node_idx),
@@ -256,9 +250,9 @@ impl KnuthPlass {
                     new_active_node_indices.push(all_nodes.len() - 1);
                 }
             }
-            
+
             active_node_indices.extend(new_active_node_indices);
-            
+
             if let Item::Penalty { penalty, .. } = item {
                 if *penalty <= -INFINITY {
                     active_node_indices.retain(|&idx| all_nodes[idx].index == i);
