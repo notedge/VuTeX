@@ -387,6 +387,17 @@ impl PageBuilder {
                     self.compose_inline(children, size, indent, flow, face_for_style(style), image_mode);
                 }
                 Inline::InlineCode { text } => flow.pending.push(text, CODE_FACE, &mut flow.atoms),
+                // Attributes and link destinations carry no printable face, but
+                // their wrapped content keeps every authored style.
+                Inline::Attributed { children, .. } => {
+                    self.compose_inline(children, size, indent, flow, face, image_mode);
+                }
+                Inline::Link { display, .. } => {
+                    self.compose_inline(display, size, indent, flow, face, image_mode);
+                }
+                Inline::Note { display: Some(display), .. } | Inline::Citation { display: Some(display), .. } => {
+                    self.compose_inline(display, size, indent, flow, face, image_mode);
+                }
                 other => flow.pending.push(&other.plain_text(), face, &mut flow.atoms),
             }
         }

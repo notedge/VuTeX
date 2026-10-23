@@ -1,6 +1,6 @@
 //! Presentation lowering tests.
 
-use notedown_ir::{Block, DocumentGraph, DocumentId, Inline, ListItem, TableCell, TableRow};
+use notedown_ir::{Attributes, Block, DocumentGraph, DocumentId, Inline, ListItem, RelationEndpoint, TableCell, TableRow};
 use vutex_layout::layout;
 use vutex_presentation::{DisplayItem, FlowBlock, FlowRun, FlowTableRow, build_display_presentation, build_flow_presentation};
 use vutex_types::math::FontStyle;
@@ -186,6 +186,36 @@ fn flow_adjacent_same_style_text_merges() {
     let presentation = build_flow_presentation(&graph);
 
     assert_eq!(presentation.blocks, vec![FlowBlock::Heading { level: 1, runs: vec![run("one two", FontStyle::Bold)] }]);
+}
+
+#[test]
+fn flow_wrapped_children_keep_their_styles() {
+    let mut graph = DocumentGraph::new(DocumentId(9));
+    graph.push_block(Block::Paragraph {
+        content: vec![
+            Inline::Attributed { attributes: Attributes::default(), children: vec![styled("bold", vec![text("kept")])] },
+            Inline::Link {
+                target: RelationEndpoint::ExternalUri("https://example.com".to_string()),
+                display: vec![text(" see "), styled("italic", vec![text("note")])],
+                title: None,
+            },
+            Inline::Note { label: "1".to_string(), display: Some(vec![styled("bold", vec![text("foot")])]) },
+        ],
+    });
+
+    let presentation = build_flow_presentation(&graph);
+
+    assert_eq!(
+        presentation.blocks,
+        vec![FlowBlock::Paragraph {
+            runs: vec![
+                run("kept", FontStyle::Bold),
+                run(" see ", FontStyle::Normal),
+                run("note", FontStyle::Italic),
+                run("foot", FontStyle::Bold),
+            ],
+        }]
+    );
 }
 
 #[test]

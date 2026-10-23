@@ -1,6 +1,6 @@
 //! Inline emphasis layout tests: styled spans reach positioned text runs.
 
-use notedown_ir::{Block, DocumentGraph, DocumentId, Inline};
+use notedown_ir::{Attributes, Block, DocumentGraph, DocumentId, Inline, RelationEndpoint};
 use vutex_layout::{
     LayoutHint,
     document::layout_with_hint,
@@ -204,6 +204,28 @@ fn strike_span_emits_a_rule_across_the_run() {
         (rule.x2 - rule.x1 - (tail.x - strike_run.x)).abs() < 1e-9,
         "rule {rule:?} must cover the run {strike_run:?} up to {tail:?}"
     );
+}
+
+#[test]
+fn wrapped_children_keep_their_styles() {
+    let graph = paragraph(vec![
+        Inline::Attributed { attributes: Attributes::default(), children: vec![styled("bold", vec![text("kept")])] },
+        Inline::Link {
+            target: RelationEndpoint::ExternalUri("https://example.com".to_string()),
+            display: vec![text(" see "), styled("italic", vec![text("note")])],
+            title: None,
+        },
+        Inline::Note { label: "1".to_string(), display: Some(vec![styled("bold", vec![text("foot")])]) },
+    ]);
+    let plan = layout(&graph);
+    let runs = text_runs(&plan.pages[0]);
+
+    let kept = runs.iter().find(|run| run.text == "kept").expect("attributed child run");
+    assert_eq!(kept.style, FontStyle::Bold);
+    let note = runs.iter().find(|run| run.text == "note").expect("link display run");
+    assert_eq!(note.style, FontStyle::Italic);
+    let foot = runs.iter().find(|run| run.text == "foot").expect("note display run");
+    assert_eq!(foot.style, FontStyle::Bold);
 }
 
 #[test]
