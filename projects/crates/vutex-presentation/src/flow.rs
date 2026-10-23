@@ -26,6 +26,19 @@ pub struct FlowRun {
     pub href: Option<String>,
 }
 
+/// One list item: its marker-line runs plus the blocks nested under it.
+///
+/// Nested content stays inside the item so reflow targets can render a child
+/// list or paragraph inside the enclosing `<li>` instead of promoting it to a
+/// sibling at the parent list's level.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FlowListItem {
+    /// Styled runs of the item's marker line, in document order.
+    pub runs: Vec<FlowRun>,
+    /// Nested child blocks of this item, in document order.
+    pub children: Vec<FlowBlock>,
+}
+
 /// One row of a flow table, with the header role kept for `<thead>` output.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FlowTableRow {
@@ -57,8 +70,8 @@ pub enum FlowBlock {
     List {
         /// Whether list markers are numeric.
         ordered: bool,
-        /// Item runs in document order.
-        items: Vec<Vec<FlowRun>>,
+        /// Items in document order, each keeping its nested blocks.
+        items: Vec<FlowListItem>,
     },
     /// Fenced or indented code block.
     CodeBlock {

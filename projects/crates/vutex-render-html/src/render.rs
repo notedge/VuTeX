@@ -137,8 +137,11 @@ fn write_flow_block(out: &mut String, block: &FlowBlock) {
             out.push_str(&format!("<{tag} data-vutex-block=\"list\">\n"));
             for item in items {
                 out.push_str("<li>");
-                for run in item {
+                for run in &item.runs {
                     write_flow_run(out, run);
+                }
+                for child in &item.children {
+                    write_flow_block(out, child);
                 }
                 out.push_str("</li>\n");
             }
