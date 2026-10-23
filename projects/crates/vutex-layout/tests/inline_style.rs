@@ -88,6 +88,22 @@ fn inline_code_uses_the_monospace_family() {
 }
 
 #[test]
+fn inline_code_is_measured_with_monospace_advances() {
+    let hint = LayoutHint::a4();
+    let graph = paragraph(vec![text("run "), code("npm test"), text(" now")]);
+    let plan = layout(&graph);
+    let runs = text_runs(&plan.pages[0]);
+
+    let code_run = runs.iter().find(|run| run.text == "npm test").expect("inline code run");
+    let tail = runs.iter().find(|run| run.text == " now").expect("text after the code span");
+
+    // Courier-class monospace advances 0.6 em per glyph, so the run that
+    // follows the code span starts where the monospace glyphs actually end.
+    let code_advance = 8.0 * 0.6 * hint.base_font_size;
+    assert!((tail.x - code_run.x - code_advance).abs() < 1e-6, "code {} tail {}", code_run.x, tail.x);
+}
+
+#[test]
 fn mono_style_spans_also_use_the_monospace_family() {
     let graph = paragraph(vec![styled("code", vec![text("verbatim")])]);
     let plan = layout(&graph);

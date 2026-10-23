@@ -24,6 +24,8 @@ const LIST_INDENT: f64 = 18.0;
 const SERIF: &str = "serif";
 /// Font family used for code and preformatted text.
 const MONOSPACE: &str = "monospace";
+/// Fixed advance width of every monospace glyph, in em units.
+const MONOSPACE_ADVANCE: f64 = 0.6;
 
 /// Family and face style shared by consecutive inline text atoms.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -442,7 +444,7 @@ impl PageBuilder {
                         run.face = *face;
                     }
                     run.text.push_str(text);
-                    x += measure_text(&self.metrics, text, size);
+                    x += measure_text(&self.metrics, text, size, *face);
                 }
                 InlineAtom::Math(math) => {
                     self.paint_inline_run(&mut run, run_x, baseline, size);
@@ -499,7 +501,7 @@ impl PageBuilder {
                 (true, None) => format!("{}.", index + 1),
                 (false, _) => "•".to_string(),
             };
-            let marker_width = measure_text(&self.metrics, &marker, size);
+            let marker_width = measure_text(&self.metrics, &marker, size, BODY_FACE);
             let content_indent = indent + LIST_INDENT.max(marker_width + 6.0);
             let atoms = self.compose_atoms(&item.content, size, content_indent, BODY_FACE, ImageMode::AltText);
             self.pad(size * 0.15);
@@ -747,7 +749,7 @@ fn break_inline_atoms(metrics: &FontMetricsSystem, atoms: Vec<InlineAtom>, size:
         match atom {
             InlineAtom::Break => finish_inline_line(&mut lines, &mut current, &mut width),
             InlineAtom::Text { text, face } => {
-                let atom_width = measure_text(metrics, &text, size);
+                let atom_width = measure_text(metrics, &text, size, face);
                 if text.trim().is_empty() {
                     // A space never starts a line and never widens past the column.
                     if !current.is_empty() && width + atom_width <= max_width {
@@ -764,7 +766,7 @@ fn break_inline_atoms(metrics: &FontMetricsSystem, atoms: Vec<InlineAtom>, size:
                     let mut chunk = String::new();
                     let mut chunk_width = 0.0;
                     for ch in text.chars() {
-                        let advance = advance_em(metrics, ch) * size;
+                        let advance = advance_em(metrics, ch, face) * size;
                         if !chunk.is_empty() && chunk_width + advance > max_width {
                             lines.push(vec![InlineAtom::Text { text: chunk.trim_end().to_string(), face }]);
                             chunk.clear();
@@ -845,15 +847,20 @@ fn blank_page(hint: &LayoutHint) -> LayoutPage {
 }
 
 /// Sum of character advances for a run of text, in points.
-fn measure_text(metrics: &FontMetricsSystem, text: &str, size: f64) -> f64 {
-    text.chars().map(|ch| advance_em(metrics, ch) * size).sum()
+fn measure_text(metrics: &FontMetricsSystem, text: &str, size: f64, face: TextFace) -> f64 {
+    text.chars().map(|ch| advance_em(metrics, ch, face) * size).sum()
 }
 
-/// Advance width of one character in em units.
+/// Advance width of one character in em units under `face`.
 ///
 /// `vutex-text` currently exposes a uniform 0.5 em advance for known glyphs, so
 /// the character class refines that base advance for book-text line breaking.
-fn advance_em(metrics: &FontMetricsSystem, ch: char) -> f64 {
+/// Monospace text gets a fixed advance, so positioned runs line up with the
+/// monospace font the renderers actually select.
+fn advance_em(metrics: &FontMetricsSystem, ch: char, face: TextFace) -> f64 {
+    if face.family == MONOSPACE {
+        return MONOSPACE_ADVANCE;
+    }
     if ch.is_whitespace() {
         return 0.25;
     }
@@ -910,7 +917,7 @@ fn wrap_text(metrics: &FontMetricsSystem, text: &str, size: f64, max_width: f64)
         let mut line = String::new();
         let mut width = 0.0;
         for atom in split_atoms(raw) {
-            let atom_width = measure_text(metrics, &atom, size);
+            let atom_width = measure_text(metrics, &atom, size, BODY_FACE);
             if atom.trim().is_empty() {
                 if line.is_empty() || width + atom_width > max_width {
                     continue;
@@ -929,7 +936,7 @@ fn wrap_text(metrics: &FontMetricsSystem, text: &str, size: f64, max_width: f64)
                 let mut chunk = String::new();
                 let mut chunk_width = 0.0;
                 for ch in atom.chars() {
-                    let advance = advance_em(metrics, ch) * size;
+                    let advance = advance_em(metrics, ch, BODY_FACE) * size;
                     if !chunk.is_empty() && chunk_width + advance > max_width {
                         lines.push(chunk.trim_end().to_string());
                         chunk = String::new();
