@@ -115,6 +115,13 @@ fn flow_runs(inlines: &[Inline], style: FontStyle, runs: &mut Vec<FlowRun>) {
             Inline::Styled { style: name, children } => flow_runs(children, flow_style(name), runs),
             Inline::InlineCode { text } => push_run(runs, text, FontStyle::Monospace),
             Inline::Image { alt, .. } => flow_runs(alt, style, runs),
+            // Attributes and link destinations carry no printable face, but
+            // their wrapped content keeps every authored style.
+            Inline::Attributed { children, .. } => flow_runs(children, style, runs),
+            Inline::Link { display, .. } => flow_runs(display, style, runs),
+            Inline::Note { display: Some(display), .. } | Inline::Citation { display: Some(display), .. } => {
+                flow_runs(display, style, runs);
+            }
             other => push_run(runs, &other.plain_text(), style),
         }
     }
