@@ -33,6 +33,11 @@ pub struct TextRun {
     /// `None`, because layout emits no anchor ids for them and a fabricated
     /// destination would point nowhere.
     pub href: Option<String>,
+    /// Hover text authored on the link that contains the run, if any.
+    ///
+    /// Only link display content carries a title; all other runs keep `None`.
+    /// Renderers emit it with the anchor, never for a dropped destination.
+    pub title: Option<String>,
 }
 
 /// A straight stroked line, used for thematic breaks and table rules.

@@ -20,11 +20,11 @@ fn cell(content: Vec<Inline>) -> TableCell {
 }
 
 fn run(text: &str, style: FontStyle) -> FlowRun {
-    FlowRun { text: text.to_string(), style, href: None }
+    FlowRun { text: text.to_string(), style, href: None, title: None }
 }
 
 fn link_run(text: &str, style: FontStyle, href: &str) -> FlowRun {
-    FlowRun { text: text.to_string(), style, href: Some(href.to_string()) }
+    FlowRun { text: text.to_string(), style, href: Some(href.to_string()), title: None }
 }
 
 fn sample_graph() -> DocumentGraph {
@@ -327,6 +327,80 @@ fn flow_list_item_numbers_follow_authored_markers() {
             assert_eq!(bullets.iter().map(|item| item.number).collect::<Vec<_>>(), vec![None]);
         }
         other => panic!("expected an ordered and an unordered list, got {other:?}"),
+    }
+}
+
+#[test]
+fn flow_external_link_runs_carry_the_authored_title() {
+    let mut graph = DocumentGraph::new(DocumentId(14));
+    graph.push_block(Block::Paragraph {
+        content: vec![Inline::Link {
+            target: RelationEndpoint::ExternalUri("https://example.com/guide".to_string()),
+            display: vec![text("the "), styled("bold", vec![text("guide")])],
+            title: Some("Read the guide".to_string()),
+        }],
+    });
+
+    let presentation = build_flow_presentation(&graph);
+
+    match &presentation.blocks[0] {
+        FlowBlock::Paragraph { runs } => assert_eq!(
+            runs,
+            &vec![
+                FlowRun {
+                    text: "the ".to_string(),
+                    style: FontStyle::Normal,
+                    href: Some("https://example.com/guide".to_string()),
+                    title: Some("Read the guide".to_string()),
+                },
+                FlowRun {
+                    text: "guide".to_string(),
+                    style: FontStyle::Bold,
+                    href: Some("https://example.com/guide".to_string()),
+                    title: Some("Read the guide".to_string()),
+                },
+            ]
+        ),
+        other => panic!("expected a paragraph block, got {other:?}"),
+    }
+}
+
+#[test]
+fn flow_runs_with_different_titles_do_not_merge() {
+    let mut graph = DocumentGraph::new(DocumentId(15));
+    graph.push_block(Block::Paragraph {
+        content: vec![
+            Inline::Link {
+                target: RelationEndpoint::ExternalUri("https://example.com".to_string()),
+                display: vec![text("first")],
+                title: Some("First hint".to_string()),
+            },
+            Inline::Link {
+                target: RelationEndpoint::ExternalUri("https://example.com".to_string()),
+                display: vec![text("second")],
+                title: Some("Second hint".to_string()),
+            },
+            Inline::Link {
+                target: RelationEndpoint::ExternalUri("https://example.com".to_string()),
+                display: vec![text("third")],
+                title: Some(String::new()),
+            },
+        ],
+    });
+
+    let presentation = build_flow_presentation(&graph);
+
+    match &presentation.blocks[0] {
+        FlowBlock::Paragraph { runs } => {
+            assert_eq!(runs.len(), 3, "a title change must end the previous run: {runs:#?}");
+            assert_eq!(runs[0].text, "first");
+            assert_eq!(runs[0].title.as_deref(), Some("First hint"));
+            assert_eq!(runs[1].text, "second");
+            assert_eq!(runs[1].title.as_deref(), Some("Second hint"));
+            assert_eq!(runs[2].text, "third");
+            assert_eq!(runs[2].title, None, "an empty authored title carries no tooltip");
+        }
+        other => panic!("expected a paragraph block, got {other:?}"),
     }
 }
 

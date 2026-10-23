@@ -54,6 +54,10 @@ fn escapes_markup_in_text_runs() {
 }
 
 fn link_presentation(href: &str) -> DisplayPresentation {
+    titled_link_presentation(href, None)
+}
+
+fn titled_link_presentation(href: &str, title: Option<&str>) -> DisplayPresentation {
     DisplayPresentation {
         pages: vec![DisplayPage {
             width: 595.0,
@@ -67,6 +71,7 @@ fn link_presentation(href: &str) -> DisplayPresentation {
                 style: FontStyle::Normal,
                 text: "example link".to_string(),
                 href: Some(href.to_string()),
+                title: title.map(str::to_string),
             })],
         }],
     }
@@ -79,6 +84,14 @@ fn wraps_link_text_runs_in_anchors() {
     assert!(svg.contains("<a href=\"https://example.com\"><text "), "{svg}");
     assert!(svg.contains("</text></a>"), "{svg}");
     assert!(svg.contains("example link"), "{svg}");
+}
+
+#[test]
+fn writes_link_titles_inside_the_anchor() {
+    let svg = render_svg(&titled_link_presentation("https://example.com", Some("A & B"))).expect("svg render");
+
+    assert!(svg.contains("<a href=\"https://example.com\"><title>A &amp; B</title><text "), "{svg}");
+    assert!(svg.contains("</text></a>"), "{svg}");
 }
 
 #[test]

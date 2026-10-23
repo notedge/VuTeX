@@ -30,6 +30,11 @@ pub struct DisplayTextRun {
     /// Renderers must drop a destination they cannot safely emit while keeping
     /// the text.
     pub href: Option<String>,
+    /// Hover text authored on the link that contains the run, if any.
+    ///
+    /// Only link display content carries a title; all other runs keep `None`.
+    /// Renderers emit it with the anchor, never for a dropped destination.
+    pub title: Option<String>,
 }
 
 /// One stroked line in display coordinates.

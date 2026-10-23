@@ -121,11 +121,12 @@ fn write_item(out: &mut String, item: &DisplayItem) {
 ///
 /// The anchor sits inside the positioned text element so snapshot geometry is
 /// unchanged. A destination that fails [`is_safe_href`] is dropped and the text
-/// still renders as plain content.
+/// still renders as plain content; the link title is only written onto an
+/// anchor that exists.
 fn write_snapshot_text(out: &mut String, run: &DisplayTextRun) {
     let anchor = run.href.as_deref().filter(|href| is_safe_href(href));
     if let Some(href) = anchor {
-        out.push_str(&format!("<a href=\"{}\">", escape_attribute(href)));
+        write_anchor_open(out, href, run.title.as_deref());
     }
     out.push_str(&escape_text(&run.text));
     if anchor.is_some() {
@@ -230,11 +231,12 @@ fn write_flow_block(out: &mut String, block: &FlowBlock) {
 ///
 /// A run destination nests outside the emphasis element, so authored bold text
 /// inside a link renders as `<a href="…"><strong>…</strong></a>`. Runs without a
-/// destination keep the plain output.
+/// destination keep the plain output, and the link title only appears on an
+/// anchor that exists.
 fn write_flow_run(out: &mut String, run: &FlowRun) {
     let anchor = run.href.as_deref().filter(|href| is_safe_href(href));
     if let Some(href) = anchor {
-        out.push_str(&format!("<a href=\"{}\">", escape_attribute(href)));
+        write_anchor_open(out, href, run.title.as_deref());
     }
     let tag = match run.style {
         FontStyle::Bold => Some("strong"),
@@ -250,6 +252,15 @@ fn write_flow_run(out: &mut String, run: &FlowRun) {
     if anchor.is_some() {
         out.push_str("</a>");
     }
+}
+
+/// Open an anchor, adding the escaped tooltip only when the run carries one.
+fn write_anchor_open(out: &mut String, href: &str, title: Option<&str>) {
+    out.push_str(&format!("<a href=\"{}\"", escape_attribute(href)));
+    if let Some(title) = title {
+        out.push_str(&format!(" title=\"{}\"", escape_attribute(title)));
+    }
+    out.push('>');
 }
 
 /// Inline CSS declarations for a styled run inside the fixed snapshot layout.
