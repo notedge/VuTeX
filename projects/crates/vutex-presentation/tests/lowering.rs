@@ -18,7 +18,11 @@ fn cell(content: Vec<Inline>) -> TableCell {
 }
 
 fn run(text: &str, style: FontStyle) -> FlowRun {
-    FlowRun { text: text.to_string(), style }
+    FlowRun { text: text.to_string(), style, href: None }
+}
+
+fn link_run(text: &str, style: FontStyle, href: &str) -> FlowRun {
+    FlowRun { text: text.to_string(), style, href: Some(href.to_string()) }
 }
 
 fn sample_graph() -> DocumentGraph {
@@ -210,12 +214,46 @@ fn flow_wrapped_children_keep_their_styles() {
         vec![FlowBlock::Paragraph {
             runs: vec![
                 run("kept", FontStyle::Bold),
-                run(" see ", FontStyle::Normal),
-                run("note", FontStyle::Italic),
+                link_run(" see ", FontStyle::Normal, "https://example.com"),
+                link_run("note", FontStyle::Italic, "https://example.com"),
                 run("foot", FontStyle::Bold),
             ],
         }]
     );
+}
+
+#[test]
+fn flow_external_link_runs_carry_href_and_keep_authored_style() {
+    let mut graph = DocumentGraph::new(DocumentId(10));
+    graph.push_block(Block::Paragraph {
+        content: vec![
+            Inline::Link {
+                target: RelationEndpoint::ExternalUri("https://example.com/guide".to_string()),
+                display: vec![text("guide")],
+                title: None,
+            },
+            text(" then "),
+            Inline::Link {
+                target: RelationEndpoint::ExternalUri("https://example.com/bold".to_string()),
+                display: vec![styled("bold", vec![text("bold link")])],
+                title: None,
+            },
+        ],
+    });
+
+    let presentation = build_flow_presentation(&graph);
+
+    match &presentation.blocks[0] {
+        FlowBlock::Paragraph { runs } => assert_eq!(
+            runs,
+            &vec![
+                link_run("guide", FontStyle::Normal, "https://example.com/guide"),
+                run(" then ", FontStyle::Normal),
+                link_run("bold link", FontStyle::Bold, "https://example.com/bold"),
+            ]
+        ),
+        other => panic!("expected a paragraph block, got {other:?}"),
+    }
 }
 
 #[test]

@@ -17,6 +17,13 @@ pub struct FlowRun {
     pub text: String,
     /// Face style the run was authored with.
     pub style: FontStyle,
+    /// Authored external destination, such as `https://example.com/spec`.
+    ///
+    /// Only [`notedown_ir::RelationEndpoint::ExternalUri`] targets resolve to a
+    /// destination. Internal targets stay `None` because reflow HTML emits no
+    /// matching ids, so a renderer must treat a missing destination as plain
+    /// text rather than inventing an anchor.
+    pub href: Option<String>,
 }
 
 /// One row of a flow table, with the header role kept for `<thead>` output.
