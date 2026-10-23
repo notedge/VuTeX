@@ -1,6 +1,6 @@
 //! HTML tests for styled text runs in snapshots and reflow output.
 
-use notedown_ir::{Block, DocumentGraph, DocumentId, Inline};
+use notedown_ir::{Block, DocumentGraph, DocumentId, Inline, ListItem, TableCell, TableRow};
 use vutex_layout::layout;
 use vutex_presentation::{build_display_presentation, build_flow_presentation};
 use vutex_render_html::{render_html_reflow, render_html_snapshot};
@@ -11,6 +11,10 @@ fn text(value: &str) -> Inline {
 
 fn styled(style: &str, children: Vec<Inline>) -> Inline {
     Inline::Styled { style: style.to_string(), children }
+}
+
+fn cell(content: Vec<Inline>) -> TableCell {
+    TableCell { content, colspan: 1, rowspan: 1 }
 }
 
 fn graph(content: Vec<Inline>) -> DocumentGraph {
@@ -89,4 +93,84 @@ fn reflow_escapes_text_inside_styled_runs() {
     let html = render_html_reflow(&build_flow_presentation(&graph)).expect("reflow html");
 
     assert!(html.contains("<strong>A &amp; B &lt; C</strong>"), "{html}");
+}
+
+#[test]
+fn reflow_heading_emits_strong_inline() {
+    let mut graph = DocumentGraph::new(DocumentId(55));
+    graph.push_block(Block::Section {
+        level: 2,
+        title: vec![text("Plain "), styled("bold", vec![text("heavy")]), text(" title")],
+        children: Vec::new(),
+    });
+    let html = render_html_reflow(&build_flow_presentation(&graph)).expect("reflow html");
+
+    assert!(html.contains("<h2 data-vutex-block=\"heading\">Plain <strong>heavy</strong> title</h2>"), "{html}");
+}
+
+#[test]
+fn reflow_list_items_emit_italic_inline() {
+    let mut graph = DocumentGraph::new(DocumentId(56));
+    graph.push_block(Block::List {
+        ordered: false,
+        items: vec![
+            ListItem {
+                content: vec![text("plain "), styled("italic", vec![text("slanted")])],
+                children: Vec::new(),
+                number: None,
+            },
+            ListItem { content: vec![text("second")], children: Vec::new(), number: None },
+        ],
+    });
+    let html = render_html_reflow(&build_flow_presentation(&graph)).expect("reflow html");
+
+    assert!(html.contains("<li>plain <em>slanted</em></li>"), "{html}");
+    assert!(html.contains("<li>second</li>"), "{html}");
+}
+
+#[test]
+fn reflow_quote_emits_code_inline() {
+    let mut graph = DocumentGraph::new(DocumentId(57));
+    graph.push_block(Block::Quote {
+        content: vec![text("Run "), Inline::InlineCode { text: "vutex".to_string() }, text(" first")],
+    });
+    let html = render_html_reflow(&build_flow_presentation(&graph)).expect("reflow html");
+
+    assert!(html.contains("<blockquote data-vutex-block=\"quote\"><p>Run <code>vutex</code> first</p></blockquote>"), "{html}");
+}
+
+#[test]
+fn reflow_table_cells_emit_strong_and_escape_text() {
+    let mut graph = DocumentGraph::new(DocumentId(58));
+    graph.push_block(Block::Table {
+        caption: Some("Scores".to_string()),
+        rows: vec![
+            TableRow { is_header: true, cells: vec![cell(vec![styled("bold", vec![text("Metric")])])] },
+            TableRow {
+                is_header: false,
+                cells: vec![cell(vec![styled("bold", vec![text("A & B")])]), cell(vec![text("plain")])],
+            },
+        ],
+    });
+    let html = render_html_reflow(&build_flow_presentation(&graph)).expect("reflow html");
+
+    assert!(html.contains("<thead>"), "{html}");
+    assert!(html.contains("<th><strong>Metric</strong></th>"), "{html}");
+    assert!(html.contains("<tbody>"), "{html}");
+    assert!(html.contains("<td><strong>A &amp; B</strong></td>"), "{html}");
+    assert!(html.contains("<td>plain</td>"), "{html}");
+    assert!(html.contains("<caption>Scores</caption>"), "{html}");
+}
+
+#[test]
+fn reflow_heading_escapes_text_inside_styled_runs() {
+    let mut graph = DocumentGraph::new(DocumentId(59));
+    graph.push_block(Block::Section {
+        level: 1,
+        title: vec![styled("bold", vec![text("<tag> & text")])],
+        children: Vec::new(),
+    });
+    let html = render_html_reflow(&build_flow_presentation(&graph)).expect("reflow html");
+
+    assert!(html.contains("<h1 data-vutex-block=\"heading\"><strong>&lt;tag&gt; &amp; text</strong></h1>"), "{html}");
 }

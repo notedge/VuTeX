@@ -1,14 +1,16 @@
 //! Reflow presentation: semantic blocks for HTML and accessibility targets.
 //!
-//! Only paragraphs carry styled runs this round: headings, list items, quotes,
-//! and table cells stay plain text because their reflow markup is fixed by the
-//! block role. A `FlowRun` records one contiguous span of text plus the face
-//! style it was authored with, so renderers can emit `<strong>`, `<em>`, or
-//! `<code>` without re-reading the document graph.
+//! Every block variant whose content is authored inline text carries styled
+//! runs: headings, paragraphs, list items, quotes, and table cells. Only
+//! verbatim payloads such as code blocks and table captions stay plain strings
+//! because the document graph stores them as text. A `FlowRun` records one
+//! contiguous span of text plus the face style it was authored with, so
+//! renderers can emit `<strong>`, `<em>`, or `<code>` without re-reading the
+//! document graph.
 
 use vutex_types::math::FontStyle;
 
-/// One contiguous styled text span inside a reflow paragraph.
+/// One contiguous styled text span inside a reflow block.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FlowRun {
     /// Run text, escaped by the renderer.
@@ -22,8 +24,8 @@ pub struct FlowRun {
 pub struct FlowTableRow {
     /// Whether this row is a header row.
     pub is_header: bool,
-    /// Cell texts in column order.
-    pub cells: Vec<String>,
+    /// Cell runs in column order; adjacent runs of the same style are merged.
+    pub cells: Vec<Vec<FlowRun>>,
 }
 
 /// Semantic block content for reflow targets such as HTML.
@@ -36,8 +38,8 @@ pub enum FlowBlock {
     Heading {
         /// Heading level, 1 being the top level.
         level: u8,
-        /// Plain heading text.
-        text: String,
+        /// Styled heading runs in document order.
+        runs: Vec<FlowRun>,
     },
     /// Paragraph text with its styled runs in document order.
     Paragraph {
@@ -48,8 +50,8 @@ pub enum FlowBlock {
     List {
         /// Whether list markers are numeric.
         ordered: bool,
-        /// Item texts in document order.
-        items: Vec<String>,
+        /// Item runs in document order.
+        items: Vec<Vec<FlowRun>>,
     },
     /// Fenced or indented code block.
     CodeBlock {
@@ -60,8 +62,8 @@ pub enum FlowBlock {
     },
     /// Block quotation.
     Quote {
-        /// Plain quoted text.
-        text: String,
+        /// Styled quoted runs in document order.
+        runs: Vec<FlowRun>,
     },
     /// Table with caption and header rows.
     Table {
