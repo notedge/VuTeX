@@ -1,12 +1,16 @@
 //! HTML rendering tests: semantic reflow markup and snapshot geometry.
 
-use notedown_ir::{Block, DocumentGraph, DocumentId, Inline, ListItem};
+use notedown_ir::{Block, DocumentGraph, DocumentId, Inline, ListItem, NodeId, RelationEndpoint};
 use vutex_layout::layout;
 use vutex_presentation::{build_display_presentation, build_flow_presentation};
 use vutex_render_html::{render_html_reflow, render_html_snapshot};
 
 fn text(value: &str) -> Inline {
     Inline::Text { text: value.to_string() }
+}
+
+fn styled(style: &str, children: Vec<Inline>) -> Inline {
+    Inline::Styled { style: style.to_string(), children }
 }
 
 fn sample_graph() -> DocumentGraph {
@@ -56,4 +60,61 @@ fn snapshot_html_keeps_page_geometry_and_text() {
 fn reflow_html_rejects_non_element_root_tags() {
     let presentation = vutex_presentation::FlowPresentation { root_tag: "article onclick".to_string(), blocks: Vec::new() };
     assert!(render_html_reflow(&presentation).is_err());
+}
+
+#[test]
+fn reflow_html_wraps_link_runs_in_anchors() {
+    let mut graph = DocumentGraph::new(DocumentId(2));
+    graph.push_block(Block::Paragraph {
+        content: vec![
+            text("Read "),
+            Inline::Link {
+                target: RelationEndpoint::ExternalUri("https://example.com/guide?q=a&lang=zh".to_string()),
+                display: vec![styled("bold", vec![text("the guide")])],
+                title: None,
+            },
+            text("."),
+        ],
+    });
+
+    let html = render_html_reflow(&build_flow_presentation(&graph)).expect("reflow html");
+
+    assert!(html.contains(
+        "<p data-vutex-block=\"paragraph\">Read \
+         <a href=\"https://example.com/guide?q=a&amp;lang=zh\"><strong>the guide</strong></a>.</p>"
+    ));
+}
+
+#[test]
+fn reflow_html_omits_href_for_internal_links() {
+    let mut graph = DocumentGraph::new(DocumentId(3));
+    graph.push_block(Block::Paragraph {
+        content: vec![Inline::Link {
+            target: RelationEndpoint::Node(NodeId(1)),
+            display: vec![text("Section one")],
+            title: None,
+        }],
+    });
+
+    let html = render_html_reflow(&build_flow_presentation(&graph)).expect("reflow html");
+
+    assert!(html.contains("<p data-vutex-block=\"paragraph\">Section one</p>"));
+    assert!(!html.contains("href="));
+}
+
+#[test]
+fn reflow_html_drops_unsafe_link_destinations() {
+    let mut graph = DocumentGraph::new(DocumentId(4));
+    graph.push_block(Block::Paragraph {
+        content: vec![Inline::Link {
+            target: RelationEndpoint::ExternalUri("javascript:alert(1)".to_string()),
+            display: vec![text("click")],
+            title: None,
+        }],
+    });
+
+    let html = render_html_reflow(&build_flow_presentation(&graph)).expect("reflow html");
+
+    assert!(html.contains("<p data-vutex-block=\"paragraph\">click</p>"));
+    assert!(!html.contains("href="));
 }

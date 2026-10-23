@@ -183,18 +183,29 @@ fn write_flow_block(out: &mut String, block: &FlowBlock) {
 }
 
 /// Write one flow run, wrapping it in the element that carries its emphasis.
+///
+/// A run destination nests outside the emphasis element, so authored bold text
+/// inside a link renders as `<a href="…"><strong>…</strong></a>`. Runs without a
+/// destination keep the plain output.
 fn write_flow_run(out: &mut String, run: &FlowRun) {
+    let anchor = run.href.as_deref().filter(|href| is_safe_href(href));
+    if let Some(href) = anchor {
+        out.push_str(&format!("<a href=\"{}\">", escape_attribute(href)));
+    }
     let tag = match run.style {
-        FontStyle::Bold => "strong",
-        FontStyle::Italic => "em",
-        FontStyle::Monospace => "code",
-        FontStyle::Strike => "del",
-        _ => {
-            out.push_str(&escape_text(&run.text));
-            return;
-        }
+        FontStyle::Bold => Some("strong"),
+        FontStyle::Italic => Some("em"),
+        FontStyle::Monospace => Some("code"),
+        FontStyle::Strike => Some("del"),
+        _ => None,
     };
-    out.push_str(&format!("<{tag}>{}</{tag}>", escape_text(&run.text)));
+    match tag {
+        Some(tag) => out.push_str(&format!("<{tag}>{}</{tag}>", escape_text(&run.text))),
+        None => out.push_str(&escape_text(&run.text)),
+    }
+    if anchor.is_some() {
+        out.push_str("</a>");
+    }
 }
 
 /// Inline CSS declarations for a styled run inside the fixed snapshot layout.
@@ -246,4 +257,24 @@ fn escape_text(value: &str) -> String {
 
 fn escape_attribute(value: &str) -> String {
     escape_text(value).replace('"', "&quot;").replace('\'', "&#39;")
+}
+
+/// Whether a run destination may be written into an `href` attribute.
+///
+/// Relative references, fragments, and the listed schemes are emitted. Anything
+/// else, including script-capable schemes such as `javascript:`, is dropped so
+/// the text still renders but no misleading or executable destination appears.
+fn is_safe_href(value: &str) -> bool {
+    let value = value.trim();
+    if value.is_empty() {
+        return false;
+    }
+    let Some((scheme, _)) = value.split_once(':')
+    else {
+        return true;
+    };
+    if scheme.contains('/') || scheme.contains('?') || scheme.contains('#') {
+        return true;
+    }
+    matches!(scheme.to_ascii_lowercase().as_str(), "http" | "https" | "mailto" | "tel")
 }
