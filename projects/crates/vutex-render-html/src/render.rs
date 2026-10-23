@@ -134,9 +134,32 @@ fn write_flow_block(out: &mut String, block: &FlowBlock) {
         }
         FlowBlock::List { ordered, items } => {
             let tag = if *ordered { "ol" } else { "ul" };
-            out.push_str(&format!("<{tag} data-vutex-block=\"list\">\n"));
+            out.push_str(&format!("<{tag} data-vutex-block=\"list\""));
+            // The first authored number becomes the list start, so later items
+            // only need a `value` where the authored run breaks.
+            let first_number = items.first().and_then(|item| item.number);
+            if *ordered
+                && let Some(number) = first_number
+                && number != 1
+            {
+                out.push_str(&format!(" start=\"{number}\""));
+            }
+            out.push_str(">\n");
+            let mut count = first_number.unwrap_or(1);
             for item in items {
-                out.push_str("<li>");
+                out.push_str("<li");
+                if *ordered {
+                    if let Some(number) = item.number {
+                        if number != count {
+                            out.push_str(&format!(" value=\"{number}\""));
+                        }
+                        count = number.saturating_add(1);
+                    }
+                    else {
+                        count = count.saturating_add(1);
+                    }
+                }
+                out.push('>');
                 for run in &item.runs {
                     write_flow_run(out, run);
                 }

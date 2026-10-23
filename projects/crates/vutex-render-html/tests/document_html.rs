@@ -125,6 +125,47 @@ fn reflow_html_omits_href_for_internal_links() {
 }
 
 #[test]
+fn reflow_html_keeps_authored_ordered_numbers() {
+    let mut graph = DocumentGraph::new(DocumentId(6));
+    graph.push_block(Block::List {
+        ordered: true,
+        items: vec![
+            ListItem { content: vec![text("third")], children: Vec::new(), number: Some(3) },
+            ListItem { content: vec![text("ninth")], children: Vec::new(), number: Some(9) },
+        ],
+    });
+
+    let html = render_html_reflow(&build_flow_presentation(&graph)).expect("reflow html");
+
+    // The first authored number sets the list start, and the jump to nine
+    // keeps a per-item value even though the running count expected four.
+    let compact = html.replace('\n', "");
+    assert!(
+        compact.contains("<ol data-vutex-block=\"list\" start=\"3\"><li>third</li><li value=\"9\">ninth</li></ol>"),
+        "{html}"
+    );
+}
+
+#[test]
+fn reflow_html_plain_ordered_list_omits_start_and_value() {
+    let mut graph = DocumentGraph::new(DocumentId(7));
+    graph.push_block(Block::List {
+        ordered: true,
+        items: vec![
+            ListItem { content: vec![text("first")], children: Vec::new(), number: Some(1) },
+            ListItem { content: vec![text("second")], children: Vec::new(), number: Some(2) },
+        ],
+    });
+
+    let html = render_html_reflow(&build_flow_presentation(&graph)).expect("reflow html");
+
+    let compact = html.replace('\n', "");
+    assert!(compact.contains("<ol data-vutex-block=\"list\"><li>first</li><li>second</li></ol>"), "{html}");
+    assert!(!compact.contains("start="), "{html}");
+    assert!(!compact.contains("value="), "{html}");
+}
+
+#[test]
 fn reflow_html_drops_unsafe_link_destinations() {
     let mut graph = DocumentGraph::new(DocumentId(4));
     graph.push_block(Block::Paragraph {

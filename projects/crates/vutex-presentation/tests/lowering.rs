@@ -76,8 +76,8 @@ fn flow_lowering_keeps_block_semantics() {
             assert_eq!(
                 items,
                 &vec![
-                    FlowListItem { runs: vec![run("First item", FontStyle::Normal)], children: Vec::new() },
-                    FlowListItem { runs: vec![run("Second item", FontStyle::Normal)], children: Vec::new() },
+                    FlowListItem { runs: vec![run("First item", FontStyle::Normal)], number: Some(1), children: Vec::new() },
+                    FlowListItem { runs: vec![run("Second item", FontStyle::Normal)], number: Some(2), children: Vec::new() },
                 ]
             );
         }
@@ -120,8 +120,8 @@ fn flow_list_item_runs_preserve_italic_per_item() {
         vec![FlowBlock::List {
             ordered: false,
             items: vec![
-                FlowListItem { runs: vec![run("slanted", FontStyle::Italic)], children: Vec::new() },
-                FlowListItem { runs: vec![run("plain", FontStyle::Normal)], children: Vec::new() },
+                FlowListItem { runs: vec![run("slanted", FontStyle::Italic)], number: None, children: Vec::new() },
+                FlowListItem { runs: vec![run("plain", FontStyle::Normal)], number: None, children: Vec::new() },
             ],
         }]
     );
@@ -150,9 +150,14 @@ fn flow_nested_list_stays_inside_parent_item() {
             ordered: false,
             items: vec![FlowListItem {
                 runs: vec![run("parent", FontStyle::Normal)],
+                number: None,
                 children: vec![FlowBlock::List {
                     ordered: false,
-                    items: vec![FlowListItem { runs: vec![run("child", FontStyle::Normal)], children: Vec::new() }],
+                    items: vec![FlowListItem {
+                        runs: vec![run("child", FontStyle::Normal)],
+                        number: None,
+                        children: Vec::new(),
+                    }],
                 }],
             }],
         }]
@@ -296,6 +301,32 @@ fn flow_external_link_runs_carry_href_and_keep_authored_style() {
             ]
         ),
         other => panic!("expected a paragraph block, got {other:?}"),
+    }
+}
+
+#[test]
+fn flow_list_item_numbers_follow_authored_markers() {
+    let mut graph = DocumentGraph::new(DocumentId(12));
+    graph.push_block(Block::List {
+        ordered: true,
+        items: vec![
+            ListItem { content: vec![text("third")], children: Vec::new(), number: Some(3) },
+            ListItem { content: vec![text("ninth")], children: Vec::new(), number: Some(9) },
+        ],
+    });
+    graph.push_block(Block::List {
+        ordered: false,
+        items: vec![ListItem { content: vec![text("bullet")], children: Vec::new(), number: None }],
+    });
+
+    let presentation = build_flow_presentation(&graph);
+
+    match &presentation.blocks[..] {
+        [FlowBlock::List { ordered: true, items }, FlowBlock::List { ordered: false, items: bullets }] => {
+            assert_eq!(items.iter().map(|item| item.number).collect::<Vec<_>>(), vec![Some(3), Some(9)]);
+            assert_eq!(bullets.iter().map(|item| item.number).collect::<Vec<_>>(), vec![None]);
+        }
+        other => panic!("expected an ordered and an unordered list, got {other:?}"),
     }
 }
 
