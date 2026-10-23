@@ -1,22 +1,112 @@
+# Trusted Publisher contract (sole npm trusted workflow):
+#   file = publish-npm.yml
+#   repo = notedge/VuTeX
+#   env  = NPM_PUBLISH
+#
+# Triggers: push tag v* (preferred) or workflow_dispatch (retry only).
+# Do not register Trusted Publisher on any other workflow file.
+
 name: Publish npm
 
 on:
   push:
     tags:
-      - "v*"
+      - 'v*'
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Must match existing git tag vX.Y.Z (retry only; checkout forced to that tag)'
+        required: true
+        type: string
 
 permissions:
   contents: read
   id-token: write
 
 jobs:
-  gate:
-    name: publish gate
+  provenance:
+    name: Bind version ↔ tag ↔ commit
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.bind.outputs.version }}
+      sha: ${{ steps.bind.outputs.sha }}
+      tag: ${{ steps.bind.outputs.tag }}
     steps:
-      - uses: actions/checkout@v4
-      - name: Publish not configured
+      - name: Checkout (for tag fetch)
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Bind publish tag
+        id: bind
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: node scripts/ci/bind-publish-tag.mjs
+
+      - name: Require green CI on tag commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_SHA: ${{ steps.bind.outputs.sha }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node scripts/ci/require-ci-success.mjs --sha=${{ steps.bind.outputs.sha }}
+
+  publish:
+    name: Publish packages
+    needs: provenance
+    runs-on: ubuntu-latest
+    environment: NPM_PUBLISH
+    steps:
+      - name: Checkout tag peel
+        uses: actions/checkout@v5
+        with:
+          ref: refs/tags/${{ needs.provenance.outputs.tag }}
+          fetch-depth: 0
+
+      - name: Verify HEAD is bound tag SHA
+        shell: bash
         run: |
-          echo "VuTeX npm trusted publish is not wired yet."
-          echo "Tag push detected but release pipeline remains a manual follow-up."
+          set -euo pipefail
+          head="$(git rev-parse HEAD)"
+          want="${{ needs.provenance.outputs.sha }}"
+          if [[ "$head" != "$want" ]]; then
+            echo "Refusing publish: HEAD=$head != bound tag sha=$want" >&2
+            exit 1
+          fi
+          echo "publishing ${{ needs.provenance.outputs.tag }} @ $head"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      - name: Ensure npm supports Trusted Publishing
+        run: npm install -g npm@latest
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Typecheck gate
+        run: pnpm typecheck
+
+      - name: Strip token-style npmrc (OIDC only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          unset NODE_AUTH_TOKEN NPM_TOKEN || true
+          for f in "${HOME}/.npmrc" "${NPM_CONFIG_USERCONFIG:-}" "${RUNNER_TEMP:-}/.npmrc"; do
+            [[ -n "${f}" && -f "${f}" ]] || continue
+            if grep -q '_authToken' "${f}"; then
+              grep -v '_authToken' "${f}" > "${f}.oidc" && mv "${f}.oidc" "${f}"
+              echo "stripped _authToken from ${f}"
+            fi
+          done
+
+      - name: Publish packages to npm
+        run: pnpm exec nifty publish --access public --version=${{ needs.provenance.outputs.version }}
