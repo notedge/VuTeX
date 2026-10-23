@@ -4,15 +4,9 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum MathErrorKind {
-    ParseError {
-        message: String,
-        position: Option<usize>,
-    },
+    ParseError { message: String, position: Option<usize> },
     LayoutError(String),
-    FontError {
-        glyph: String,
-        message: String,
-    },
+    FontError { glyph: String, message: String },
     BackendError(String),
     InternalError(String),
 }
@@ -54,7 +48,8 @@ impl fmt::Display for MathError {
             MathErrorKind::ParseError { message, position } => {
                 if let Some(pos) = position {
                     write!(f, "Parse Error at position {}: {}", pos, message)
-                } else {
+                }
+                else {
                     write!(f, "Parse Error: {}", message)
                 }
             }
