@@ -247,8 +247,10 @@ fn all_finite(values: &[f64]) -> bool {
 /// Escape a string for a PDF literal string and encode it for WinAnsi.
 ///
 /// `\`, `(`, and `)` are backslash-escaped, printable ASCII passes through,
-/// other Latin-1 code points become three-digit octal escapes, and code points
-/// outside Latin-1 become `?` because WinAnsiEncoding cannot represent them.
+/// Latin-1 code points become three-digit octal escapes, code points that
+/// WinAnsi reaches through its upper range (typographic punctuation, the
+/// bullet, the euro sign) are remapped to their WinAnsi byte, and everything
+/// else becomes `?` because the encoding cannot represent it.
 fn escape_text(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for ch in text.chars() {
@@ -260,10 +262,55 @@ fn escape_text(text: &str) -> String {
             ch if (ch as u32) <= 0xFF => {
                 let _ = write!(out, "\\{:03o}", ch as u32);
             }
-            _ => out.push('?'),
+            ch => match winansi_byte(ch) {
+                Some(byte) => {
+                    let _ = write!(out, "\\{byte:03o}");
+                }
+                None => out.push('?'),
+            },
         }
     }
     out
+}
+
+/// WinAnsi byte for a code point above Latin-1 that the encoding still covers.
+///
+/// WinAnsiEncoding keeps the Latin-1 positions but replaces the `0x80..=0x9F`
+/// block with printable punctuation, so code points such as U+2022 BULLET
+/// (the list marker the layout pass emits) have a byte of their own instead of
+/// degrading to `?`.
+fn winansi_byte(ch: char) -> Option<u8> {
+    let byte = match ch {
+        '\u{20AC}' => 0x80,
+        '\u{201A}' => 0x82,
+        '\u{0192}' => 0x83,
+        '\u{201E}' => 0x84,
+        '\u{2026}' => 0x85,
+        '\u{2020}' => 0x86,
+        '\u{2021}' => 0x87,
+        '\u{02C6}' => 0x88,
+        '\u{2030}' => 0x89,
+        '\u{0160}' => 0x8A,
+        '\u{2039}' => 0x8B,
+        '\u{0152}' => 0x8C,
+        '\u{017D}' => 0x8E,
+        '\u{2018}' => 0x91,
+        '\u{2019}' => 0x92,
+        '\u{201C}' => 0x93,
+        '\u{201D}' => 0x94,
+        '\u{2022}' => 0x95,
+        '\u{2013}' => 0x96,
+        '\u{2014}' => 0x97,
+        '\u{02DC}' => 0x98,
+        '\u{2122}' => 0x99,
+        '\u{0161}' => 0x9A,
+        '\u{203A}' => 0x9B,
+        '\u{0153}' => 0x9C,
+        '\u{017E}' => 0x9E,
+        '\u{0178}' => 0x9F,
+        _ => return None,
+    };
+    Some(byte)
 }
 
 /// Stable decimal rendering: at most three decimals, no trailing zeros, no `-0`.
