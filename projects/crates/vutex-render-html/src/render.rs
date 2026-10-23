@@ -1,9 +1,10 @@
 //! HTML output for fixed-geometry snapshots and semantic reflow.
 
 use vutex_presentation::{
-    display::{DisplayItem, DisplayPresentation},
+    display::{DisplayItem, DisplayPresentation, DisplayTextRun},
     flow::{FlowBlock, FlowPresentation, FlowRun, FlowTableRow},
 };
+use vutex_render::is_safe_href;
 use vutex_types::{Diagnostic, Severity, math::FontStyle};
 
 /// Snapshot HTML maps fixed layout geometry into absolute-positioned markup.
@@ -65,14 +66,15 @@ fn write_item(out: &mut String, item: &DisplayItem) {
     match item {
         DisplayItem::TextRun(run) => {
             out.push_str(&format!(
-                "<div class=\"vutex-text\" data-vutex-item=\"text\" style=\"left:{}pt;top:{}pt;font-size:{}pt;font-family:{}{}\">{}</div>\n",
+                "<div class=\"vutex-text\" data-vutex-item=\"text\" style=\"left:{}pt;top:{}pt;font-size:{}pt;font-family:{}{}\">",
                 num(run.x),
                 num(run.y - 0.8 * run.size),
                 num(run.size),
                 escape_attribute(&run.font_family),
                 style_declarations(run.style),
-                escape_text(&run.text),
             ));
+            write_snapshot_text(out, run);
+            out.push_str("</div>\n");
         }
         DisplayItem::Rule(rule) => {
             let (left, top, width, height) = if (rule.y2 - rule.y1).abs() <= f64::EPSILON {
@@ -112,6 +114,22 @@ fn write_item(out: &mut String, item: &DisplayItem) {
                 escape_text(&image.alt),
             ));
         }
+    }
+}
+
+/// Write the text of a fixed snapshot run, wrapping it in its anchor.
+///
+/// The anchor sits inside the positioned text element so snapshot geometry is
+/// unchanged. A destination that fails [`is_safe_href`] is dropped and the text
+/// still renders as plain content.
+fn write_snapshot_text(out: &mut String, run: &DisplayTextRun) {
+    let anchor = run.href.as_deref().filter(|href| is_safe_href(href));
+    if let Some(href) = anchor {
+        out.push_str(&format!("<a href=\"{}\">", escape_attribute(href)));
+    }
+    out.push_str(&escape_text(&run.text));
+    if anchor.is_some() {
+        out.push_str("</a>");
     }
 }
 
@@ -283,24 +301,4 @@ fn escape_text(value: &str) -> String {
 
 fn escape_attribute(value: &str) -> String {
     escape_text(value).replace('"', "&quot;").replace('\'', "&#39;")
-}
-
-/// Whether a run destination may be written into an `href` attribute.
-///
-/// Relative references, fragments, and the listed schemes are emitted. Anything
-/// else, including script-capable schemes such as `javascript:`, is dropped so
-/// the text still renders but no misleading or executable destination appears.
-fn is_safe_href(value: &str) -> bool {
-    let value = value.trim();
-    if value.is_empty() {
-        return false;
-    }
-    let Some((scheme, _)) = value.split_once(':')
-    else {
-        return true;
-    };
-    if scheme.contains('/') || scheme.contains('?') || scheme.contains('#') {
-        return true;
-    }
-    matches!(scheme.to_ascii_lowercase().as_str(), "http" | "https" | "mailto" | "tel")
 }

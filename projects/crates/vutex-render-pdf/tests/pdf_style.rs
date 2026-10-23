@@ -12,6 +12,7 @@ fn text(family: &str, style: FontStyle, value: &str) -> DisplayItem {
         font_family: family.to_string(),
         style,
         text: value.to_string(),
+        href: None,
     })
 }
 
