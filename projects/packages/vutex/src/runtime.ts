@@ -65,6 +65,7 @@ export function createVuTeXRuntime(
                 outputFormat: response.outputFormat,
                 svg: response.svg,
                 html: response.html,
+                pdf: response.pdf,
                 reportJson: response.reportJson,
                 diagnostics: diagnosticsFromReport(response.reportJson),
             };
