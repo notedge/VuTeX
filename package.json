@@ -10,7 +10,10 @@
         "fmt": "cargo fmt --all",
         "build:wasm": "wasm-pack build projects/crates/wetex-wasm --target web --out-dir ../../packages/vutex-unknown-wasm32/lib --release",
         "build:napi": "node scripts/build-napi.mjs",
-        "typecheck": "pnpm -r --if-present run typecheck"
+        "typecheck": "pnpm -r --if-present run typecheck",
+        "placeholder": "nifty publish --placeholder --dry-run",
+        "placeholder:publish": "nifty publish --placeholder",
+        "placeholder:trust": "nifty trust"
     },
     "devDependencies": {
         "@napi-rs/cli": "^3.10.9",
