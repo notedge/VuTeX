@@ -373,8 +373,11 @@ fn build_objects(presentation: &DisplayPresentation, policy: &PdfFontPolicy) -> 
 /// Embed every scene image one presentation references, once per distinct `href`.
 ///
 /// The returned map keys an image's source `href` to the `/ImN` resource name
-/// the content stream selects. A reference that cannot be resolved is left out,
-/// so painting falls back to the dashed slot.
+/// the content stream selects. A raster with transparency contributes a pair:
+/// the `/DeviceGray` soft mask is appended first and the colour image that
+/// references it as `/SMask` receives the `/ImN` name, so both stay a single
+/// pair per `href`. A reference that cannot be resolved is left out, so
+/// painting falls back to the dashed slot.
 fn register_scene_images(
     presentation: &DisplayPresentation,
     document: &mut Document,
@@ -395,7 +398,9 @@ fn register_scene_images(
                 else {
                     return;
                 };
-                let object = document.push(PdfObject::stream(raster.dict, raster.data));
+                let smask = raster.smask().map(|(dict, alpha)| document.push(PdfObject::stream(dict, alpha.to_vec())));
+                let dict = raster.dict(smask);
+                let object = document.push(PdfObject::stream(dict, raster.data));
                 let name = format!("Im{}", images.len() + 1);
                 resources.insert("XObject", &name, object);
                 images.insert(resource.href.clone(), name);
