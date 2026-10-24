@@ -7,8 +7,9 @@
 //!
 //! Text width uses the scene crate's documented approximation
 //! (`characters * font_size * 0.6`), which is what the host reserved space
-//! with, so anchored labels land inside their boxes. Shape and group opacity is
-//! not painted yet: only fully opaque scenes render identically.
+//! with, so anchored labels land inside their boxes. Opacity reaches the page
+//! as an `/ExtGState` alpha entry: a node below full opacity opens its own
+//! graphics state, so its siblings stay fully opaque.
 //!
 //! Images carry a resource reference rather than decoded pixels, so they keep
 //! the dashed placeholder the writer already used for reserved image slots.
@@ -19,7 +20,7 @@ use davinci_scene::{DisplayScene, MarkerShape, NodeKind, PathCommand, PathData, 
 use davinci_types::{Color, Point, Rect, Transform};
 use vutex_presentation::display::DisplayGraphic;
 
-use crate::render::{EmbeddedText, base_font_for, needs_embedding, num, paint_text, scene_font_style};
+use crate::render::{EmbeddedText, OpacityResources, base_font_for, needs_embedding, num, paint_text, scene_font_style};
 
 /// Width of one character as a fraction of the font size.
 const TEXT_WIDTH: f64 = 0.6;
@@ -34,6 +35,7 @@ pub(crate) fn write_scene(
     graphic: &DisplayGraphic,
     fonts: &[(&'static str, usize)],
     embedded: Option<EmbeddedText<'_>>,
+    opacities: &OpacityResources,
 ) {
     let scene = &graphic.scene;
     if !(scene.size.width > 0.0 && scene.size.height > 0.0) {
@@ -56,7 +58,7 @@ pub(crate) fn write_scene(
     );
     let _ = write!(out, "{} 0 0 {} {} {} cm\n", num(sx), num(-sy), num(graphic.x), num(page_height - graphic.y));
     for node in &scene.nodes {
-        write_node(out, node, fonts, embedded);
+        write_node(out, node, fonts, embedded, opacities, 1.0);
     }
     out.push_str("Q\n");
 }
@@ -75,7 +77,61 @@ pub(crate) fn visit_texts(scene: &DisplayScene, visit: &mut impl FnMut(&TextStyl
     walk(&scene.nodes, visit);
 }
 
-fn write_node(out: &mut String, node: &SceneNode, fonts: &[(&'static str, usize)], embedded: Option<EmbeddedText<'_>>) {
+/// Visit the effective alpha of every painted node that is not fully opaque.
+///
+/// The traversal mirrors [`write_node`], so the collected values are exactly
+/// the ones the painter looks up again as `/ExtGState` resources.
+pub(crate) fn visit_opacities(scene: &DisplayScene, visit: &mut impl FnMut(f64)) {
+    fn walk(nodes: &[SceneNode], inherited: f64, visit: &mut impl FnMut(f64)) {
+        for node in nodes {
+            match &node.kind {
+                NodeKind::Group { children, opacity } => walk(children, alpha_of(inherited * *opacity), visit),
+                kind => {
+                    let alpha = alpha_of(inherited * kind_opacity(kind));
+                    if alpha < 1.0 {
+                        visit(alpha);
+                    }
+                }
+            }
+        }
+    }
+    walk(&scene.nodes, 1.0, visit);
+}
+
+/// Effective alpha for the product of inherited and node opacity.
+///
+/// Non-finite values are ignored, which paints the node fully opaque, and
+/// values outside `0.0..=1.0` are clamped so malformed scenes never emit an
+/// invalid `/ca` entry.
+fn alpha_of(value: f64) -> f64 {
+    if value.is_finite() { value.clamp(0.0, 1.0) } else { 1.0 }
+}
+
+/// Opacity a painted node asks for, before the inherited group alpha.
+fn kind_opacity(kind: &NodeKind) -> f64 {
+    match kind {
+        NodeKind::Path { style, .. }
+        | NodeKind::Line { style, .. }
+        | NodeKind::Rect { style, .. }
+        | NodeKind::RoundedRect { style, .. }
+        | NodeKind::Ellipse { style, .. }
+        | NodeKind::Marker { style, .. } => style.opacity,
+        NodeKind::Text { style, .. } => style.opacity,
+        NodeKind::Image { opacity, .. } => *opacity,
+        // Groups paint through their children, which [`write_node`] recurses
+        // into with the composed alpha.
+        NodeKind::Group { opacity, .. } => *opacity,
+    }
+}
+
+fn write_node(
+    out: &mut String,
+    node: &SceneNode,
+    fonts: &[(&'static str, usize)],
+    embedded: Option<EmbeddedText<'_>>,
+    opacities: &OpacityResources,
+    inherited: f64,
+) {
     out.push_str("q\n");
     if !node.transform.is_identity() {
         write_matrix(out, node.transform);
@@ -83,7 +139,25 @@ fn write_node(out: &mut String, node: &SceneNode, fonts: &[(&'static str, usize)
     if let Some(clip) = node.clip {
         let _ = write!(out, "{} {} {} {} re\nW n\n", num(clip.x), num(clip.y), num(clip.width), num(clip.height));
     }
-    write_kind(out, &node.kind, fonts, embedded);
+    if let NodeKind::Group { children, opacity } = &node.kind {
+        // A PDF transparency group would need a Form XObject, so group opacity
+        // multiplies into descendants instead: children paint one after another
+        // at the composed alpha and overlap individually rather than as one
+        // flattened layer.
+        let alpha = alpha_of(inherited * *opacity);
+        for child in children {
+            write_node(out, child, fonts, embedded, opacities, alpha);
+        }
+    }
+    else {
+        let alpha = alpha_of(inherited * kind_opacity(&node.kind));
+        // The enclosing `q` scopes the alpha to this node, so siblings stay
+        // fully opaque.
+        if let Some(name) = opacities.name(alpha) {
+            let _ = writeln!(out, "/{name} gs");
+        }
+        write_kind(out, &node.kind, fonts, embedded);
+    }
     out.push_str("Q\n");
 }
 
@@ -102,11 +176,9 @@ fn write_matrix(out: &mut String, transform: Transform) {
 
 fn write_kind(out: &mut String, kind: &NodeKind, fonts: &[(&'static str, usize)], embedded: Option<EmbeddedText<'_>>) {
     match kind {
-        NodeKind::Group { children, .. } => {
-            for child in children {
-                write_node(out, child, fonts, embedded);
-            }
-        }
+        // Groups paint through their children, which [`write_node`] recurses
+        // into so it can compose group opacity.
+        NodeKind::Group { .. } => {}
         NodeKind::Path { path, style } => {
             write_path_data(out, path);
             paint(out, style);
