@@ -1,7 +1,11 @@
 //! Presentation lowering tests.
 
+use davinci_scene::{Color, NodeKind, Rect, Scene, SceneNode, ShapeStyle, Size};
 use notedown_ir::{Attributes, Block, DocumentGraph, DocumentId, Inline, ListItem, RelationEndpoint, TableCell, TableRow};
-use vutex_layout::layout;
+use vutex_layout::{
+    layout,
+    plan::{Graphic, LayoutItem, LayoutPage, LayoutPlan},
+};
 use vutex_presentation::{
     DisplayItem, FlowBlock, FlowListItem, FlowRun, FlowTableRow, build_display_presentation, build_flow_presentation,
 };
@@ -55,6 +59,40 @@ fn display_lowering_preserves_geometry_and_items() {
 
     let first = &presentation.pages[0];
     assert!(matches!(first.items.first(), Some(DisplayItem::TextRun(run)) if run.text == "Flow heading"));
+}
+
+#[test]
+fn display_lowering_carries_diagram_scenes() {
+    let mut scene = Scene::new(Size { width: 200.0, height: 100.0 });
+    scene.push(SceneNode::new(NodeKind::Rect {
+        rect: Rect { x: 0.0, y: 0.0, width: 200.0, height: 100.0 },
+        style: ShapeStyle::stroked(Color::BLACK, 1.0),
+    }));
+    let plan = LayoutPlan {
+        pages: vec![LayoutPage {
+            width: 595.0,
+            height: 842.0,
+            items: vec![LayoutItem::Graphic(Graphic {
+                x: 72.0,
+                y: 120.0,
+                width: 400.0,
+                height: 200.0,
+                scene: scene.clone(),
+                alt: "pipeline".to_string(),
+            })],
+        }],
+    };
+
+    let presentation = build_display_presentation(&plan);
+
+    match &presentation.pages[0].items[0] {
+        DisplayItem::Graphic(graphic) => {
+            assert_eq!(graphic.alt, "pipeline");
+            assert_eq!(graphic.scene, scene);
+            assert_eq!((graphic.x, graphic.y, graphic.width, graphic.height), (72.0, 120.0, 400.0, 200.0));
+        }
+        other => panic!("expected a graphic item, got {other:?}"),
+    }
 }
 
 #[test]

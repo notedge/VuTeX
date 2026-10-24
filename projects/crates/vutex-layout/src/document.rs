@@ -11,9 +11,10 @@ use vutex_text::math::{FontMetricsSystem, builtin_font_metrics};
 use vutex_types::math::{FontStyle, GlyphKey};
 
 use crate::{
+    diagram::Diagrams,
     hint::LayoutHint,
     math::{LayoutNode, collect_layout, layout_formula_with_size},
-    plan::{ImagePlaceholder, LayoutItem, LayoutPage, LayoutPlan, Rect, Rule, TextRun},
+    plan::{Graphic, ImagePlaceholder, LayoutItem, LayoutPage, LayoutPlan, Rect, Rule, TextRun},
 };
 
 /// Text baseline height as a fraction of the font size.
@@ -101,7 +102,17 @@ pub fn layout(graph: &DocumentGraph) -> LayoutPlan {
 
 /// Compute the layout plan with explicit page geometry and body metrics.
 pub fn layout_with_hint(graph: &DocumentGraph, hint: &LayoutHint) -> LayoutPlan {
-    let mut builder = PageBuilder::new(*hint);
+    let diagrams = Diagrams::default();
+    layout_with_diagrams(graph, hint, &diagrams)
+}
+
+/// Compute the layout plan, placing the diagram scenes the host registered for
+/// `diagram` blocks.
+///
+/// A `diagram` block without a registered scene keeps its current behaviour and
+/// is dropped, because layout never invents diagram geometry on its own.
+pub fn layout_with_diagrams(graph: &DocumentGraph, hint: &LayoutHint, diagrams: &Diagrams) -> LayoutPlan {
+    let mut builder = PageBuilder::new(*hint, diagrams);
     builder.render_blocks(graph, &root_ids(graph), 0.0);
     LayoutPlan { pages: builder.pages }
 }
@@ -254,17 +265,19 @@ struct MathAtom {
 }
 
 /// Page-filling state for one layout pass.
-struct PageBuilder {
+struct PageBuilder<'a> {
     hint: LayoutHint,
     metrics: FontMetricsSystem,
     pages: Vec<LayoutPage>,
+    /// Scenes registered by the host for `diagram` blocks.
+    diagrams: &'a Diagrams,
     /// Top edge of the next line box, in page coordinates.
     cursor: f64,
 }
 
-impl PageBuilder {
-    fn new(hint: LayoutHint) -> Self {
-        Self { hint, metrics: builtin_font_metrics(), pages: vec![blank_page(&hint)], cursor: hint.margin.top }
+impl<'a> PageBuilder<'a> {
+    fn new(hint: LayoutHint, diagrams: &'a Diagrams) -> Self {
+        Self { hint, metrics: builtin_font_metrics(), pages: vec![blank_page(&hint)], diagrams, cursor: hint.margin.top }
     }
 
     fn push(&mut self, item: LayoutItem) {
@@ -594,6 +607,39 @@ impl PageBuilder {
         self.pad(size * 0.4);
     }
 
+    /// Place the scene the host registered for a `diagram` block.
+    ///
+    /// The scene keeps its aspect ratio and is scaled down to the content
+    /// column when it is wider than the column. A block without a scene, or a
+    /// scene without a positive canvas, is dropped instead of being guessed at.
+    fn emit_diagram(&mut self, id: NodeId, indent: f64) {
+        let Some(diagram) = self.diagrams.get(id)
+        else {
+            return;
+        };
+        let intrinsic = diagram.scene.size;
+        if intrinsic.width <= 0.0 || intrinsic.height <= 0.0 {
+            return;
+        }
+        let size = self.body_size();
+        let scale = (self.content_width(indent) / intrinsic.width).min(1.0);
+        let width = intrinsic.width * scale;
+        let height = intrinsic.height * scale;
+        self.pad(size * 0.4);
+        self.ensure_space(height);
+        let x = self.left(indent);
+        self.push(LayoutItem::Graphic(Graphic {
+            x,
+            y: self.cursor,
+            width,
+            height,
+            scene: diagram.scene.clone(),
+            alt: diagram.alt.clone(),
+        }));
+        self.cursor += height;
+        self.pad(size * 0.6);
+    }
+
     fn emit_list(&mut self, ordered: bool, items: &[ListItem], indent: f64, graph: &DocumentGraph) {
         let size = self.body_size();
         let line_box = self.line_box(size);
@@ -793,6 +839,9 @@ impl PageBuilder {
                 Block::Math { content, language: _ } => self.emit_math(content, indent),
                 Block::Table { caption, rows } => self.emit_table(caption.as_deref(), rows, indent),
                 Block::Opaque { kind, .. } if kind == "thematic_break" => self.emit_thematic_break(indent),
+                // A diagram block carries no geometry itself; the host-supplied
+                // scene is the only source of its placement.
+                Block::Opaque { kind, .. } if kind == "diagram" => self.emit_diagram(*id, indent),
                 // Opaque payloads with no layout meaning are dropped, not guessed.
                 Block::Opaque { .. } => {}
             }

@@ -8,7 +8,7 @@
 use std::fmt::Write as _;
 
 use vutex_presentation::display::{
-    DisplayImage, DisplayItem, DisplayPage, DisplayPresentation, DisplayRect, DisplayRule, DisplayTextRun,
+    DisplayGraphic, DisplayImage, DisplayItem, DisplayPage, DisplayPresentation, DisplayRect, DisplayRule, DisplayTextRun,
 };
 use vutex_render::{RenderBackend, is_safe_href};
 use vutex_types::{Diagnostic, Severity, math::FontStyle};
@@ -275,6 +275,7 @@ fn write_item(out: &mut String, page_height: f64, item: &DisplayItem, fonts: &[(
         DisplayItem::Rule(rule) => write_rule(out, page_height, rule),
         DisplayItem::Rect(rect) => write_rect(out, page_height, rect),
         DisplayItem::Image(image) => write_image(out, page_height, image),
+        DisplayItem::Graphic(graphic) => write_graphic(out, page_height, graphic),
     }
 }
 
@@ -336,6 +337,23 @@ fn write_image(out: &mut String, page_height: f64, image: &DisplayImage) {
         num(y),
         num(image.width),
         num(image.height),
+    );
+}
+
+fn write_graphic(out: &mut String, page_height: f64, graphic: &DisplayGraphic) {
+    // The PDF backend has no vector scene painter yet, so it reserves the same
+    // dashed box as an image slot instead of emitting guessed geometry.
+    if !all_finite(&[graphic.x, graphic.y, graphic.width, graphic.height]) {
+        return;
+    }
+    let y = page_height - (graphic.y + graphic.height);
+    let _ = write!(
+        out,
+        "0.6 G\n0.5 w\n[3 2] 0 d\n{} {} {} {} re\nS\n[] 0 d\n",
+        num(graphic.x),
+        num(y),
+        num(graphic.width),
+        num(graphic.height),
     );
 }
 
