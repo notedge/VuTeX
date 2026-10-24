@@ -440,13 +440,13 @@ impl<'a> PageBuilder<'a> {
     ) {
         for inline in content {
             match inline {
-                Inline::Image { alt, .. } => {
+                Inline::Image { source, alt, .. } => {
                     let alt_text: String = alt.iter().map(Inline::plain_text).collect();
                     match image_mode {
                         ImageMode::Placeholder => {
                             flow.pending.flush(&mut flow.atoms);
                             self.emit_inline_lines(std::mem::take(&mut flow.atoms), size, indent);
-                            self.emit_image_placeholder(&alt_text, indent);
+                            self.emit_image_placeholder(&alt_text, source, indent);
                         }
                         ImageMode::AltText => flow.pending.push(&alt_text, face, href, title, &mut flow.atoms),
                     }
@@ -603,14 +603,27 @@ impl<'a> PageBuilder<'a> {
         }
     }
 
-    fn emit_image_placeholder(&mut self, alt: &str, indent: f64) {
+    /// Reserve a fixed box for one authored image.
+    ///
+    /// The box size is independent of the source, so layout never reads image
+    /// bytes. The destination is passed through for renderers that can resolve
+    /// a `data:` payload or a local file.
+    fn emit_image_placeholder(&mut self, alt: &str, source: &str, indent: f64) {
         let size = self.body_size();
         let width = self.content_width(indent).min(240.0);
         let height = width * 0.625;
         self.pad(size * 0.3);
         self.ensure_space(height);
         let x = self.left(indent);
-        self.push(LayoutItem::ImagePlaceholder(ImagePlaceholder { x, y: self.cursor, width, height, alt: alt.to_string() }));
+        let source = (!source.trim().is_empty()).then(|| source.to_string());
+        self.push(LayoutItem::ImagePlaceholder(ImagePlaceholder {
+            x,
+            y: self.cursor,
+            width,
+            height,
+            alt: alt.to_string(),
+            source,
+        }));
         self.cursor += height;
         self.pad(size * 0.4);
     }

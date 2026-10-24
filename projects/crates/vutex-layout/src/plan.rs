@@ -83,6 +83,13 @@ pub struct ImagePlaceholder {
     pub height: f64,
     /// Alternative text carried for accessibility and diagnostics.
     pub alt: String,
+    /// Authored image location, kept so a renderer can resolve the pixels.
+    ///
+    /// The value is the destination the document named, such as a `data:` URI
+    /// or a filesystem path. Layout reserves the box without reading the
+    /// source, so a renderer keeps the dashed slot when the value is absent or
+    /// cannot be resolved.
+    pub source: Option<String>,
 }
 
 /// A diagram scene placed into a fixed box on the page.

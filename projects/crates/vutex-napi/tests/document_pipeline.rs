@@ -47,6 +47,55 @@ fn inspect_report(outcome: &vutex_napi::document::InspectOutcome) -> Value {
     serde_json::from_str(&outcome.report_json).expect("inspect report is valid JSON")
 }
 
+/// Append one PNG chunk with a zero CRC placeholder the decoder ignores.
+fn png_chunk(out: &mut Vec<u8>, kind: &[u8; 4], body: &[u8]) {
+    out.extend_from_slice(&(body.len() as u32).to_be_bytes());
+    out.extend_from_slice(kind);
+    out.extend_from_slice(body);
+    out.extend_from_slice(&[0; 4]);
+}
+
+/// A 2×2 RGB PNG whose single `IDAT` is one stored DEFLATE block.
+fn tiny_png() -> Vec<u8> {
+    let scanlines: &[u8] = &[
+        0u8, 255, 0, 0, 0, 255, 0, // filter none: red, green
+        0, 0, 0, 255, 255, 255, 255, // filter none: blue, white
+    ];
+    let length = scanlines.len() as u16;
+    let mut zlib = vec![0x78, 0x01, 0x01];
+    zlib.extend_from_slice(&length.to_le_bytes());
+    zlib.extend_from_slice(&(!length).to_le_bytes());
+    zlib.extend_from_slice(scanlines);
+    zlib.extend_from_slice(&[0; 4]);
+
+    let mut header = Vec::new();
+    header.extend_from_slice(&2u32.to_be_bytes());
+    header.extend_from_slice(&2u32.to_be_bytes());
+    header.extend_from_slice(&[8, 2, 0, 0, 0]);
+    let mut png = vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
+    png_chunk(&mut png, b"IHDR", &header);
+    png_chunk(&mut png, b"IDAT", &zlib);
+    png_chunk(&mut png, b"IEND", &[]);
+    png
+}
+
+/// Encode bytes with the standard base64 alphabet.
+fn base64(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::new();
+    for chunk in bytes.chunks(3) {
+        let first = u32::from(chunk[0]);
+        let second = u32::from(chunk.get(1).copied().unwrap_or(0));
+        let third = u32::from(chunk.get(2).copied().unwrap_or(0));
+        let value = (first << 16) | (second << 8) | third;
+        out.push(char::from(ALPHABET[(value >> 18) as usize & 63]));
+        out.push(char::from(ALPHABET[(value >> 12) as usize & 63]));
+        out.push(if chunk.len() > 1 { char::from(ALPHABET[(value >> 6) as usize & 63]) } else { '=' });
+        out.push(if chunk.len() > 2 { char::from(ALPHABET[value as usize & 63]) } else { '=' });
+    }
+    out
+}
+
 const SAMPLE: &str = "# 标题\n\n第一段正文。\n\n- 项目一\n- 项目二\n";
 
 const INSPECT_SAMPLE: &str = "# 标题\n\n第一段正文。\n\n1. 项目一\n2. 项目二\n";
@@ -196,6 +245,23 @@ fn markdown_renders_pdf_bytes() {
     assert_eq!(payload["output"]["format"], "pdf");
     assert!(payload["output"]["pages"].as_u64().unwrap_or(0) >= 1, "{payload}");
     assert!(payload["output"]["items"].as_u64().unwrap_or(0) > 0, "{payload}");
+}
+
+#[test]
+fn markdown_inline_data_uri_image_reaches_the_pdf_as_a_raster() {
+    let dir = ScratchDir::new("pdf-inline-image");
+    let href = format!("data:image/png;base64,{}", base64(&tiny_png()));
+    let path = dir.write("image.md", &format!("# 图片\n\n![图]({href})\n"));
+
+    let outcome = render_document(&path_string(&path), Some(r#"{"output":"pdf"}"#));
+    assert_eq!(outcome.exit_code, 0, "{}", outcome.report_json);
+    let pdf = outcome.pdf.expect("pdf payload");
+    let text = String::from_utf8_lossy(&pdf);
+
+    assert!(text.contains("/Type /XObject /Subtype /Image"), "the inline picture is embedded: {text}");
+    assert!(text.contains("\n/Im1 Do\n"), "the page paints the picture: {text}");
+    assert!(text.contains("/XObject << /Im1 "), "page resources register the picture: {text}");
+    assert!(!text.contains("[3 2] 0 d"), "the inline picture no longer paints the placeholder dash array: {text}");
 }
 
 #[test]
