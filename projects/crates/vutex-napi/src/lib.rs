@@ -4,6 +4,7 @@
 
 pub mod diagram;
 pub mod document;
+pub mod tikz;
 
 use napi::bindgen_prelude::Buffer;
 use napi_derive::napi;

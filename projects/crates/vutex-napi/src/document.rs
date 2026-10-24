@@ -23,7 +23,7 @@ use vutex_render_html::{render_html_reflow, render_html_snapshot};
 use vutex_render_pdf::{PdfFontPolicy, PdfResources, render_pdf_with_resources};
 use vutex_render_svg::render_svg;
 
-use crate::diagram::lower_mermaid_diagrams;
+use crate::{diagram::lower_mermaid_diagrams, tikz::lower_tikz_diagrams};
 
 /// Report schema version stamped on every report payload.
 pub const REPORT_SCHEMA_VERSION: &str = "vutex.report/v0";
@@ -248,7 +248,8 @@ pub fn render_document(input_path: &str, options_json: Option<&str>) -> RenderOu
         }
     };
 
-    let diagrams = lower_mermaid_diagrams(&graph, input_path);
+    let mut diagrams = lower_mermaid_diagrams(&graph, input_path);
+    lower_tikz_diagrams(&graph, input_path, &mut diagrams);
     let plan = layout_with_diagrams(&graph, &LayoutHint::a4(), &diagrams.diagrams);
     let display = build_display_presentation(&plan);
     let pages = display.pages.len();
