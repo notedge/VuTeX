@@ -148,6 +148,36 @@ fn html_file_is_imported_and_rendered() {
 }
 
 #[test]
+fn tex_file_is_imported_and_rendered() {
+    let dir = ScratchDir::new("tex-input");
+    let path = dir.write("sample.tex", "\\section{Introduction}\n\nHello world.\n");
+
+    let outcome = render_document(&path_string(&path), None);
+    let payload = report(&outcome);
+
+    assert_eq!(outcome.exit_code, 0, "{}", outcome.report_json);
+    assert_eq!(payload["inputs"][0]["format"], "tex");
+    let svg = outcome.svg.expect("svg payload");
+    assert!(svg.contains("<svg"), "{svg}");
+    assert!(svg.contains("Introduction"), "{svg}");
+}
+
+#[test]
+fn typst_file_is_imported_and_rendered() {
+    let dir = ScratchDir::new("typst-input");
+    let path = dir.write("sample.typ", "= Introduction\n\nHello world.\n");
+
+    let outcome = render_document(&path_string(&path), None);
+    let payload = report(&outcome);
+
+    assert_eq!(outcome.exit_code, 0, "{}", outcome.report_json);
+    assert_eq!(payload["inputs"][0]["format"], "typst");
+    let svg = outcome.svg.expect("svg payload");
+    assert!(svg.contains("<svg"), "{svg}");
+    assert!(svg.contains("Introduction"), "{svg}");
+}
+
+#[test]
 fn markdown_renders_pdf_bytes() {
     let dir = ScratchDir::new("pdf");
     let path = dir.write("sample.md", SAMPLE);
@@ -317,8 +347,12 @@ fn format_ids_match_the_report_contract() {
     assert_eq!(ImportFormat::from_path("a.md").id(), "markdown");
     assert_eq!(ImportFormat::from_path("a.nd").id(), "notedown");
     assert_eq!(ImportFormat::from_path("a.htm").id(), "html");
-    assert_eq!(ImportFormat::from_path("a.tex").id(), "unknown");
-    assert_eq!(ImportFormat::from_option("tex").id(), "unknown");
+    assert_eq!(ImportFormat::from_path("a.tex").id(), "tex");
+    assert_eq!(ImportFormat::from_path("a.latex").id(), "tex");
+    assert_eq!(ImportFormat::from_path("a.typ").id(), "typst");
+    assert_eq!(ImportFormat::from_path("a.typst").id(), "typst");
+    assert_eq!(ImportFormat::from_option("ltx").id(), "tex");
+    assert_eq!(ImportFormat::from_option("Typst").id(), "typst");
     assert_eq!(OutputFormat::from_option("SVG").map(OutputFormat::id), Some("svg"));
     assert_eq!(OutputFormat::from_option("PDF").map(OutputFormat::id), Some("pdf"));
     assert!(OutputFormat::from_option("docx").is_none());

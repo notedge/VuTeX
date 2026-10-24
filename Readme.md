@@ -11,7 +11,7 @@ Oak language frontends
   (oak-notedown / oak-markdown / oak-tex / oak-typst)
         │
         ▼
-notedown-formats::import (Markdown / Notedown / HTML / DOC)
+notedown-formats::import (Markdown / Notedown / HTML / TeX / Typst / DOCX / EPUB)
         │
         ▼
 notedown-ir::DocumentGraph   ◄──  canonical document model

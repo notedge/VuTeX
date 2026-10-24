@@ -8,7 +8,10 @@ use std::path::Path;
 
 use notedown_formats::{
     FormatError,
-    import::{html::import_html_bytes, markdown::import_markdown, notedown::import_notedown},
+    import::{
+        html::import_html_bytes, markdown::import_markdown, notedown::import_notedown, tex::import_tex,
+        typst::import_typst,
+    },
 };
 use notedown_ir::{Block, DocumentGraph};
 use serde::{Deserialize, Serialize};
@@ -40,6 +43,10 @@ pub enum ImportFormat {
     Notedown,
     /// HTML source text.
     Html,
+    /// TeX/LaTeX source text.
+    Tex,
+    /// Typst source text.
+    Typst,
     /// No supported format could be resolved.
     Unknown,
 }
@@ -51,6 +58,8 @@ impl ImportFormat {
             Self::Markdown => "markdown",
             Self::Notedown => "notedown",
             Self::Html => "html",
+            Self::Tex => "tex",
+            Self::Typst => "typst",
             Self::Unknown => "unknown",
         }
     }
@@ -61,6 +70,8 @@ impl ImportFormat {
             "markdown" | "md" => Self::Markdown,
             "notedown" | "nd" => Self::Notedown,
             "html" | "htm" => Self::Html,
+            "tex" | "latex" | "ltx" => Self::Tex,
+            "typst" | "typ" => Self::Typst,
             _ => Self::Unknown,
         }
     }
@@ -72,6 +83,8 @@ impl ImportFormat {
             "md" | "markdown" => Self::Markdown,
             "nd" | "notedown" => Self::Notedown,
             "html" | "htm" => Self::Html,
+            "tex" | "latex" | "ltx" => Self::Tex,
+            "typst" | "typ" => Self::Typst,
             _ => Self::Unknown,
         }
     }
@@ -328,6 +341,8 @@ fn import_document(input_path: &str, format: ImportFormat) -> Result<DocumentGra
                 .map_err(|error| FormatError::invalid_input(format!("failed to read {}: {error}", path.display())))?;
             import_html_bytes(&path.display().to_string(), &bytes)
         }
+        ImportFormat::Tex => import_tex(path),
+        ImportFormat::Typst => import_typst(path),
         ImportFormat::Unknown => Err(FormatError::invalid_input(format!("unsupported input format for {}", path.display()))),
     }
 }
