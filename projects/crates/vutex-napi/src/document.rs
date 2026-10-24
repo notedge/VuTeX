@@ -4,7 +4,10 @@
 //! `import -> layout -> presentation -> output` chain stays testable as plain
 //! Rust.
 
-use std::path::Path;
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+};
 
 use notedown_formats::{
     FormatError,
@@ -17,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use vutex_layout::{LayoutHint, document::layout_with_diagrams};
 use vutex_presentation::builder::{build_display_presentation, build_flow_presentation};
 use vutex_render_html::{render_html_reflow, render_html_snapshot};
-use vutex_render_pdf::render_pdf;
+use vutex_render_pdf::{PdfFontPolicy, PdfResources, render_pdf_with_resources};
 use vutex_render_svg::render_svg;
 
 use crate::diagram::lower_mermaid_diagrams;
@@ -136,6 +139,20 @@ pub struct RenderOptions {
     pub profile: Option<String>,
     /// Import format override.
     pub input: Option<String>,
+    /// Image payloads the host already fetched, keyed by source string.
+    ///
+    /// Each value is base64, either bare or wrapped in a `data:` URI. The key is
+    /// matched verbatim against the source a document carries, so an `https://…`
+    /// reference embeds without the renderer touching the network. A value that
+    /// is not a PNG or JPEG falls back to the placeholder, and a source present
+    /// here never reaches the filesystem.
+    pub resources: Option<BTreeMap<String, String>>,
+    /// Base directory for relative image sources.
+    ///
+    /// Defaults to the input document's parent directory, so a Markdown file
+    /// that references `figure.png` finds its sibling image even when the
+    /// process runs from another directory.
+    pub base_dir: Option<String>,
 }
 
 impl RenderOptions {
@@ -262,13 +279,16 @@ pub fn render_document(input_path: &str, options_json: Option<&str>) -> RenderOu
                 return render_failure(input_path, output_format.id().to_string(), format_label, record);
             }
         },
-        OutputFormat::Pdf => match render_pdf(&display) {
-            Ok(pdf) => (None, None, Some(pdf)),
-            Err(failure) => {
-                let record = error(RENDER_FAILED, failure.message, "render", input_path);
-                return render_failure(input_path, output_format.id().to_string(), format_label, record);
+        OutputFormat::Pdf => {
+            let resources = pdf_resources(input_path, &options);
+            match render_pdf_with_resources(&display, &PdfFontPolicy::Discover, &resources) {
+                Ok(pdf) => (None, None, Some(pdf)),
+                Err(failure) => {
+                    let record = error(RENDER_FAILED, failure.message, "render", input_path);
+                    return render_failure(input_path, output_format.id().to_string(), format_label, record);
+                }
             }
-        },
+        }
     };
 
     let report_json = serde_json::json!({
@@ -355,6 +375,67 @@ fn unsupported_input_message(input_path: &str, override_value: Option<&str>) -> 
         Some(value) => format!("unsupported input format `{value}` for path: {input_path}"),
         None => format!("inferred input format from path extension is not supported: {input_path}"),
     }
+}
+
+/// Build the PDF image resource context for one render request.
+///
+/// An explicit `base_dir` wins, otherwise relative sources resolve against the
+/// input document's parent directory. A payload that is not valid base64 is
+/// still registered for its source, so the slot falls back to the placeholder
+/// instead of the renderer reading the filesystem for a source the host claimed.
+fn pdf_resources(input_path: &str, options: &RenderOptions) -> PdfResources {
+    let configured = options.base_dir.as_deref().map(str::trim).filter(|value| !value.is_empty()).map(PathBuf::from);
+    let base_dir = configured
+        .or_else(|| Path::new(input_path).parent().filter(|parent| !parent.as_os_str().is_empty()).map(Path::to_path_buf));
+    let mut resources = PdfResources::new();
+    if let Some(base_dir) = base_dir {
+        resources = resources.with_base_dir(base_dir);
+    }
+    if let Some(supplied) = &options.resources {
+        for (source, payload) in supplied {
+            resources = resources.with_supplied(source.clone(), decode_payload(payload).unwrap_or_default());
+        }
+    }
+    resources
+}
+
+/// Decode one caller-supplied payload: bare base64 or a `data:` URI carrying it.
+fn decode_payload(payload: &str) -> Option<Vec<u8>> {
+    let payload = payload.trim();
+    let body = if payload.get(..5).is_some_and(|prefix| prefix.eq_ignore_ascii_case("data:")) {
+        payload.split_once(',').map(|(_, body)| body)?
+    }
+    else {
+        payload
+    };
+    base64_decode(body)
+}
+
+/// Decode standard base64, ignoring whitespace and stopping at the padding.
+fn base64_decode(text: &str) -> Option<Vec<u8>> {
+    let mut out = Vec::with_capacity(text.len() / 4 * 3);
+    let mut buffer = 0u32;
+    let mut bits = 0u32;
+    for byte in text.bytes() {
+        let value = match byte {
+            b'A'..=b'Z' => byte - b'A',
+            b'a'..=b'z' => byte - b'a' + 26,
+            b'0'..=b'9' => byte - b'0' + 52,
+            b'+' => 62,
+            b'/' => 63,
+            b'=' => break,
+            b' ' | b'\t' | b'\r' | b'\n' => continue,
+            _ => return None,
+        };
+        buffer = (buffer << 6) | u32::from(value);
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((buffer >> bits) as u8);
+            buffer &= (1 << bits) - 1;
+        }
+    }
+    Some(out)
 }
 
 /// Build one error diagnostic record.
