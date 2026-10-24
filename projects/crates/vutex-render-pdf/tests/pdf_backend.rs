@@ -1248,6 +1248,16 @@ fn render_items(items: Vec<DisplayItem>) -> Vec<u8> {
     render_pdf(&DisplayPresentation { pages: vec![page(595.0, 842.0, items)] }).expect("pdf render")
 }
 
+/// Inline `data:image/svg+xml` source holding one SVG document.
+fn svg_data_uri(document: &str) -> String {
+    format!("data:image/svg+xml;base64,{}", base64(document.as_bytes()))
+}
+
+/// Render one page-level slot carrying the given SVG document.
+fn render_svg(document: &str) -> Vec<u8> {
+    render_items(vec![page_image(Some(&svg_data_uri(document)))])
+}
+
 #[test]
 fn embeds_a_page_image_as_a_raster_xobject() {
     let href = format!("data:image/png;base64,{}", base64(&tiny_png()));
@@ -1378,6 +1388,113 @@ fn repeated_page_image_sources_share_one_xobject() {
     assert_eq!(text.matches("/Type /XObject /Subtype /Image").count(), 1, "one object per source: {text}");
     assert_eq!(text.matches("\n/Im1 Do\n").count(), 2, "both slots select the same object");
     assert!(!text.contains("/Im2"), "the repeated source gets no second name");
+    assert_xref_intact(&bytes);
+}
+
+#[test]
+fn svg_icon_paints_vector_geometry_without_an_image_xobject() {
+    let document = r##"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <title>icon</title>
+  <rect x="2" y="3" width="10" height="8" fill="#ff0000" stroke="#000000"/>
+  <circle cx="18" cy="18" r="3" fill="currentColor"/>
+</svg>"##;
+    let bytes = render_svg(document);
+    let text = lossy(&bytes);
+
+    assert!(text.contains("\nB\n"), "the rect paints fill and stroke: {text}");
+    assert!(text.contains("\nf\n"), "the circle paints fill: {text}");
+    assert!(text.contains("1 0 0 rg"), "the hex fill reaches the operator: {text}");
+    assert!(!text.contains("/XObject"), "vector artwork registers no XObject: {text}");
+    assert!(!text.contains("/Subtype /Image"), "no raster is invented for an SVG: {text}");
+    assert!(!text.contains("[3 2] 0 d"), "a supported SVG replaces the placeholder: {text}");
+    assert!(balanced_graphics_states(&text), "every q is closed: {text}");
+    assert_xref_intact(&bytes);
+}
+
+#[test]
+fn svg_path_lifts_lines_and_cubics_and_closes() {
+    let document = r##"<svg width="24" height="24"><path d="M0 0 L10 0 C10 5 5 10 0 10 Z" fill="none" stroke="#000" stroke-width="2"/></svg>"##;
+    let text = lossy(&render_svg(document));
+
+    assert!(text.contains("10 0 l\n"), "L lifts to a line: {text}");
+    assert!(text.contains(" c\n"), "C lifts to a cubic Bézier: {text}");
+    assert!(text.contains("h\n"), "Z closes the path: {text}");
+    assert!(text.contains("2 w\n"), "stroke-width reaches the operator: {text}");
+    assert!(text.contains("\nS\n"), "a stroke-only path uses S: {text}");
+    assert!(!text.contains("[3 2] 0 d"), "a supported path replaces the placeholder: {text}");
+}
+
+#[test]
+fn svg_group_transform_composes_left_to_right() {
+    let document = r##"<svg width="24" height="24"><g transform="translate(2 4) scale(3)"><rect width="2" height="2" fill="#000"/></g></svg>"##;
+    let text = lossy(&render_svg(document));
+
+    assert!(text.contains("3 0 0 3 2 4 cm\n"), "translate then scale composes to translate × scale: {text}");
+}
+
+#[test]
+fn svg_stroke_and_fill_toggles_choose_their_operators() {
+    let stroked = lossy(&render_svg(
+        r##"<svg width="24" height="24"><rect width="10" height="10" fill="none" stroke="#000" stroke-width="3"/></svg>"##,
+    ));
+    assert!(stroked.contains("3 w\n"), "stroke width reaches the operator: {stroked}");
+    assert!(stroked.contains("\nS\n"), "fill=none paints with S: {stroked}");
+    assert!(!stroked.contains("\nf\n"), "fill=none never paints a fill: {stroked}");
+
+    let filled =
+        lossy(&render_svg(r##"<svg width="24" height="24"><rect width="10" height="10" fill="#fff" stroke="none"/></svg>"##));
+    assert!(filled.contains("1 1 1 rg"), "stroke=none still paints the white fill: {filled}");
+    assert!(filled.contains("\nf\n"), "stroke=none paints with f: {filled}");
+    assert!(!filled.contains("\nS\n"), "stroke=none never paints a stroke: {filled}");
+}
+
+#[test]
+fn svg_view_box_and_slot_keep_the_aspect_ratio() {
+    // A 4:1 viewBox fitted into a square element letterboxes vertically, and
+    // the square scene then centres inside the 2:1 page slot.
+    let document = r##"<svg width="48" height="48" viewBox="0 0 96 24"><rect width="96" height="24" fill="#000"/></svg>"##;
+    let text = lossy(&render_svg(document));
+
+    assert!(text.contains("0.5 0 0 0.5 0 18 cm\n"), "the viewBox scales uniformly and centres: {text}");
+    assert!(text.contains("1.25 0 0 -1.25 102 582 cm\n"), "the slot fits uniformly, centres, and flips page y: {text}");
+}
+
+#[test]
+fn broken_svg_falls_back_to_the_dashed_placeholder() {
+    let truncated_path = render_svg(r##"<svg width="24" height="24"><path d="M0 0 L"/></svg>"##);
+    let text = lossy(&truncated_path);
+    assert!(text.contains("[3 2] 0 d"), "an incomplete path keeps the dashed box: {text}");
+    assert!(!text.contains("/Subtype /Image"), "a broken SVG invents no raster: {text}");
+    assert_xref_intact(&truncated_path);
+
+    let unterminated = render_svg(r##"<svg width="24" height="24"><rect width="4" height="4""##);
+    let text = lossy(&unterminated);
+    assert!(text.contains("[3 2] 0 d"), "malformed XML keeps the dashed box: {text}");
+    assert_xref_intact(&unterminated);
+}
+
+#[test]
+fn repeated_svg_sources_parse_once_and_paint_once_per_slot() {
+    let href = svg_data_uri(r##"<svg width="24" height="24"><rect width="24" height="24" fill="#000"/></svg>"##);
+    let bytes = render_items(vec![page_image(Some(&href)), page_image(Some(&href))]);
+    let text = lossy(&bytes);
+
+    // Both slots paint the one parsed scene, without a second registration.
+    assert_eq!(text.matches("\nf\n").count(), 2, "each slot paints exactly once: {text}");
+    assert!(!text.contains("/XObject"), "repeated SVG sources register nothing: {text}");
+    assert!(!text.contains("[3 2] 0 d"), "neither slot falls back: {text}");
+    assert_xref_intact(&bytes);
+}
+
+#[test]
+fn svg_scene_image_paints_in_scene_coordinates() {
+    let href = svg_data_uri(r##"<svg width="24" height="24"><rect width="24" height="24" fill="#000"/></svg>"##);
+    let bytes = render_scene(scene_with_images(&[(&href, None)]));
+    let text = lossy(&bytes);
+
+    assert!(text.contains("\nf\n"), "the nested scene paints its geometry: {text}");
+    assert!(!text.contains("/Subtype /Image"), "a scene SVG registers no raster: {text}");
+    assert!(!text.contains("[3 2] 0 d"), "a supported scene SVG replaces the placeholder: {text}");
     assert_xref_intact(&bytes);
 }
 

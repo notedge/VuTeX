@@ -8,13 +8,16 @@
 //! Coordinates arrive with the origin at the page top-left corner and are
 //! flipped to PDF's bottom-left origin by subtracting them from the page height.
 //!
-//! Image slots are raster XObjects when their source resolves. Sources resolve
-//! through a caller-owned [`PdfResources`] context, so a page-level image slot
-//! and a scene image node share one decoder while the host decides where the
-//! bytes come from. The object is shared by every slot that names the same
-//! source. The picture paints upright with a `q … cm /ImN Do Q` block whose
-//! matrix reverses the image rows inside the y-flipped page. An absent or
-//! unresolvable source keeps the dashed placeholder.
+//! Image slots are raster XObjects when their source resolves to a PNG or
+//! JPEG. An SVG source instead paints as vector geometry from a parsed scene,
+//! so an icon keeps its curves at any resolution and registers no `/XObject`.
+//! Sources resolve through a caller-owned [`PdfResources`] context, so a
+//! page-level image slot and a scene image node share one decoder while the
+//! host decides where the bytes come from. A raster object is shared by every
+//! slot that names the same source, and an SVG is parsed once for the whole
+//! document. The raster picture paints upright with a `q … cm /ImN Do Q` block
+//! whose matrix reverses the image rows inside the y-flipped page. An absent,
+//! unresolvable, or unsupported source keeps the dashed placeholder.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -22,6 +25,7 @@ use std::{
     path::PathBuf,
 };
 
+use davinci_scene::DisplayScene;
 use vutex_presentation::display::{
     DisplayGraphic, DisplayImage, DisplayItem, DisplayPage, DisplayPresentation, DisplayRect, DisplayRule, DisplayTextRun,
 };
@@ -347,6 +351,37 @@ impl OpacityResources {
     }
 }
 
+/// Image sources resolved once for the whole document.
+///
+/// A raster source maps to its `/ImN` resource name, while an SVG source keeps
+/// the parsed scene so the content stream can paint vector geometry. Both
+/// tables are keyed by the exact source string, so a source used twice is
+/// decoded or parsed once.
+#[derive(Debug, Default)]
+pub(crate) struct ImageResources {
+    /// `/ImN` resource name per raster source.
+    rasters: BTreeMap<String, String>,
+    /// Parsed scene per SVG source.
+    scenes: BTreeMap<String, DisplayScene>,
+}
+
+impl ImageResources {
+    /// `/ImN` name of a resolved raster, when the source was a PNG or JPEG.
+    pub(crate) fn raster(&self, source: &str) -> Option<&str> {
+        self.rasters.get(source).map(String::as_str)
+    }
+
+    /// Parsed scene of a resolved SVG source.
+    pub(crate) fn scene(&self, source: &str) -> Option<&DisplayScene> {
+        self.scenes.get(source)
+    }
+
+    /// Whether a source was already decoded or parsed.
+    fn contains(&self, source: &str) -> bool {
+        self.rasters.contains_key(source) || self.scenes.contains_key(source)
+    }
+}
+
 /// Object streams in object-number order; index `i` is object `i + 1`.
 fn build_objects(presentation: &DisplayPresentation, policy: &PdfFontPolicy, sources: &PdfResources) -> Vec<PdfObject> {
     let subset = load_subset(presentation, policy);
@@ -403,14 +438,14 @@ fn build_objects(presentation: &DisplayPresentation, policy: &PdfFontPolicy, sou
     document.finish()
 }
 
-/// Embed every image one presentation references, once per distinct source.
+/// Resolve every image one presentation references, once per distinct source.
 ///
-/// The returned map keys a source to the `/ImN` resource name the content
-/// stream selects. Both page-level image slots and scene image nodes contribute,
-/// so the whole document shares one raster object per distinct source. Sources
-/// resolve through the caller's [`PdfResources`]. A transparent raster
-/// contributes a pair: its `/DeviceGray` soft mask is appended first and the
-/// colour image that references it as `/SMask` receives the `/ImN` name. A
+/// Raster sources become `/ImN` XObjects and SVG sources become parsed scenes.
+/// Both page-level image slots and scene image nodes contribute, so the whole
+/// document shares one raster object per distinct source and parses each SVG
+/// once. Sources resolve through the caller's [`PdfResources`]. A transparent
+/// raster contributes a pair: its `/DeviceGray` soft mask is appended first and
+/// the colour image that references it as `/SMask` receives the `/ImN` name. A
 /// reference that cannot be resolved is left out, so painting falls back to the
 /// dashed slot.
 fn register_images(
@@ -418,19 +453,26 @@ fn register_images(
     document: &mut Document,
     sources: &PdfResources,
     page_resources: &mut PageResources,
-) -> BTreeMap<String, String> {
-    let mut images: BTreeMap<String, String> = BTreeMap::new();
+) -> ImageResources {
+    let mut images = ImageResources::default();
     for page in &presentation.pages {
         for item in &page.items {
             match item {
                 DisplayItem::Image(image) => {
                     if let Some(source) = &image.source {
-                        register_image(source, document, sources, page_resources, &mut images);
+                        register_image(source, None, document, sources, page_resources, &mut images);
                     }
                 }
                 DisplayItem::Graphic(graphic) => {
                     crate::scene::visit_images(&graphic.scene, &mut |resource| {
-                        register_image(&resource.href, document, sources, page_resources, &mut images);
+                        register_image(
+                            &resource.href,
+                            resource.mime.as_deref(),
+                            document,
+                            sources,
+                            page_resources,
+                            &mut images,
+                        );
                     });
                 }
                 _ => {}
@@ -440,15 +482,24 @@ fn register_images(
     images
 }
 
-/// Embed one source unless an earlier slot already registered it.
+/// Resolve one source unless an earlier slot already handled it.
+///
+/// An SVG becomes vector geometry and registers nothing in `/XObject`; anything
+/// else goes through the raster decoder, and a payload that is neither PNG nor
+/// JPEG leaves the source unresolved.
 fn register_image(
     source: &str,
+    mime: Option<&str>,
     document: &mut Document,
     sources: &PdfResources,
     page_resources: &mut PageResources,
-    images: &mut BTreeMap<String, String>,
+    images: &mut ImageResources,
 ) {
-    if images.contains_key(source) {
+    if images.contains(source) {
+        return;
+    }
+    if let Some(scene) = sources.load_svg(source, mime) {
+        images.scenes.insert(source.to_string(), scene);
         return;
     }
     let Some(raster) = sources.load(source)
@@ -457,9 +508,9 @@ fn register_image(
     };
     let smask = raster.smask().map(|(dict, alpha)| document.push(PdfObject::stream(dict, alpha.to_vec())));
     let object = document.push(PdfObject::stream(raster.dict(smask), raster.data));
-    let name = format!("Im{}", images.len() + 1);
+    let name = format!("Im{}", images.rasters.len() + 1);
     page_resources.insert("XObject", &name, object);
-    images.insert(source.to_string(), name);
+    images.rasters.insert(source.to_string(), name);
 }
 
 /// Append every link annotation and report their numbers in paint order.
@@ -715,11 +766,12 @@ fn page_content(
     fonts: &[(&'static str, usize)],
     embedded: Option<EmbeddedText<'_>>,
     opacities: &OpacityResources,
-    images: &BTreeMap<String, String>,
+    images: &ImageResources,
 ) -> String {
     let mut out = String::new();
+    let painter = crate::scene::ScenePaint { fonts, embedded, images, opacities };
     for item in &page.items {
-        write_item(&mut out, page.height, item, fonts, embedded, opacities, images);
+        write_item(&mut out, page.height, item, fonts, embedded, painter);
     }
     if out.is_empty() {
         out.push('\n');
@@ -733,15 +785,14 @@ fn write_item(
     item: &DisplayItem,
     fonts: &[(&'static str, usize)],
     embedded: Option<EmbeddedText<'_>>,
-    opacities: &OpacityResources,
-    images: &BTreeMap<String, String>,
+    painter: crate::scene::ScenePaint<'_>,
 ) {
     match item {
         DisplayItem::TextRun(run) => write_text(out, page_height, run, fonts, embedded),
         DisplayItem::Rule(rule) => write_rule(out, page_height, rule),
         DisplayItem::Rect(rect) => write_rect(out, page_height, rect),
-        DisplayItem::Image(image) => write_image(out, page_height, image, images),
-        DisplayItem::Graphic(graphic) => write_graphic(out, page_height, graphic, fonts, embedded, opacities, images),
+        DisplayItem::Image(image) => write_image(out, page_height, image, painter),
+        DisplayItem::Graphic(graphic) => write_graphic(out, page_height, graphic, painter),
     }
 }
 
@@ -832,30 +883,41 @@ fn write_rect(out: &mut String, page_height: f64, rect: &DisplayRect) {
 
 /// Paint one page-level image, or its dashed slot when the source did not resolve.
 ///
-/// PDF image space puts the first sample row at the top of the unit square,
-/// while page space counts y downward from the page top. The `d` entry is
-/// therefore positive and the translation places the unit square's bottom edge
-/// at `page_height - (image.y + image.height)`, so the first row lands on the
-/// box's top edge and the picture stays upright.
-fn write_image(out: &mut String, page_height: f64, image: &DisplayImage, images: &BTreeMap<String, String>) {
+/// A raster paints as `/ImN Do`. PDF image space puts the first sample row at
+/// the top of the unit square, while page space counts y downward from the page
+/// top. The `d` entry is therefore positive and the translation places the unit
+/// square's bottom edge at `page_height - (image.y + image.height)`, so the
+/// first row lands on the box's top edge and the picture stays upright.
+///
+/// An SVG paints through the scene painter instead. Its scene is uniformly
+/// fitted and centred inside the slot, and the painter's root matrix flips the
+/// scene's y-down coordinates into PDF's y-up page space, so the icon is right
+/// way up without any per-slot row reversal.
+fn write_image(out: &mut String, page_height: f64, image: &DisplayImage, painter: crate::scene::ScenePaint<'_>) {
     if !all_finite(&[image.x, image.y, image.width, image.height]) {
         return;
     }
-    let resolved = image.source.as_deref().and_then(|source| images.get(source));
-    if let Some(name) = resolved
-        && image.width > 0.0
+    if image.width > 0.0
         && image.height > 0.0
+        && let Some(source) = image.source.as_deref()
     {
-        let bottom = page_height - (image.y + image.height);
-        let _ = write!(
-            out,
-            "q\n{} 0 0 {} {} {} cm\n/{name} Do\nQ\n",
-            num(image.width),
-            num(image.height),
-            num(image.x),
-            num(bottom)
-        );
-        return;
+        if let Some(name) = painter.images.raster(source) {
+            let bottom = page_height - (image.y + image.height);
+            let _ = write!(
+                out,
+                "q\n{} 0 0 {} {} {} cm\n/{name} Do\nQ\n",
+                num(image.width),
+                num(image.height),
+                num(image.x),
+                num(bottom)
+            );
+            return;
+        }
+        if let Some(scene) = painter.images.scene(source)
+            && crate::scene::write_scene_slot(out, page_height, scene, image.x, image.y, image.width, image.height, painter)
+        {
+            return;
+        }
     }
     write_image_placeholder(out, page_height, image);
 }
@@ -873,19 +935,10 @@ fn write_image_placeholder(out: &mut String, page_height: f64, image: &DisplayIm
     );
 }
 
-fn write_graphic(
-    out: &mut String,
-    page_height: f64,
-    graphic: &DisplayGraphic,
-    fonts: &[(&'static str, usize)],
-    embedded: Option<EmbeddedText<'_>>,
-    opacities: &OpacityResources,
-    images: &BTreeMap<String, String>,
-) {
+fn write_graphic(out: &mut String, page_height: f64, graphic: &DisplayGraphic, painter: crate::scene::ScenePaint<'_>) {
     if !all_finite(&[graphic.x, graphic.y, graphic.width, graphic.height]) {
         return;
     }
-    let painter = crate::scene::ScenePaint { fonts, embedded, images, opacities };
     crate::scene::write_scene(out, page_height, graphic, painter);
 }
 

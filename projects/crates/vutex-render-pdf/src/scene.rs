@@ -11,13 +11,15 @@
 //! as an `/ExtGState` alpha entry: a node below full opacity opens its own
 //! graphics state, so its siblings stay fully opaque.
 //!
-//! Images are embedded as raster XObjects when their resource resolves: a PNG
+//! Images paint as raster XObjects when their resource resolves: a PNG
 //! contributes unfiltered 8-bit samples and a JPEG keeps its `DCTDecode`
 //! stream. The image matrix flips the sample rows so the picture stays upright
-//! under the scene's own y flip. A reference that cannot be resolved keeps the
-//! dashed placeholder the writer already used for reserved image slots.
+//! under the scene's own y flip. An SVG source instead paints its parsed scene
+//! as vector geometry, fitted into the slot in scene coordinates. A reference
+//! that cannot be resolved keeps the dashed placeholder the writer already
+//! used for reserved image slots.
 
-use std::{collections::BTreeMap, fmt::Write as _};
+use std::fmt::Write as _;
 
 use davinci_scene::{
     DisplayScene, MarkerShape, NodeKind, PathCommand, PathData, ResourceRef, SceneNode, ShapeStyle, TextAnchor, TextStyle,
@@ -25,7 +27,9 @@ use davinci_scene::{
 use davinci_types::{Color, Point, Rect, Transform};
 use vutex_presentation::display::DisplayGraphic;
 
-use crate::render::{EmbeddedText, OpacityResources, base_font_for, needs_embedding, num, paint_text, scene_font_style};
+use crate::render::{
+    EmbeddedText, ImageResources, OpacityResources, base_font_for, needs_embedding, num, paint_text, scene_font_style,
+};
 
 /// Width of one character as a fraction of the font size.
 const TEXT_WIDTH: f64 = 0.6;
@@ -40,34 +44,81 @@ pub(crate) struct ScenePaint<'a> {
     pub(crate) fonts: &'a [(&'static str, usize)],
     /// Embedded font subset, when the document needed one.
     pub(crate) embedded: Option<EmbeddedText<'a>>,
-    /// Embedded image object names keyed by their source `href`.
-    pub(crate) images: &'a BTreeMap<String, String>,
+    /// Raster names and parsed SVG scenes keyed by their source `href`.
+    pub(crate) images: &'a ImageResources,
     /// `/ExtGState` resources selecting the alpha a node paints with.
     pub(crate) opacities: &'a OpacityResources,
 }
 
 /// Paint one placed scene into the page content stream.
 pub(crate) fn write_scene(out: &mut String, page_height: f64, graphic: &DisplayGraphic, paint: ScenePaint<'_>) {
-    let scene = &graphic.scene;
+    write_scene_box(out, page_height, &graphic.scene, graphic.x, graphic.y, graphic.width, graphic.height, paint);
+}
+
+/// Paint an SVG scene into a page-space image slot, preserving its aspect ratio.
+///
+/// The scene is uniformly scaled to the smaller of the two slot ratios and
+/// centred, so a square icon stays square in a wide or tall slot. Returns
+/// `false` when the scene or the slot has no paintable extent, letting the
+/// caller fall back to the dashed placeholder.
+pub(crate) fn write_scene_slot(
+    out: &mut String,
+    page_height: f64,
+    scene: &DisplayScene,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    paint: ScenePaint<'_>,
+) -> bool {
+    let Some((x, y, width, height)) = fit_scene(scene, x, y, width, height)
+    else {
+        return false;
+    };
+    write_scene_box(out, page_height, scene, x, y, width, height, paint);
+    true
+}
+
+/// Uniformly fit a scene's natural size into a box, returning the centred box.
+fn fit_scene(scene: &DisplayScene, x: f64, y: f64, width: f64, height: f64) -> Option<(f64, f64, f64, f64)> {
+    let (scene_width, scene_height) = (scene.size.width, scene.size.height);
+    if !(scene_width > 0.0 && scene_height > 0.0 && width > 0.0 && height > 0.0) {
+        return None;
+    }
+    let scale = (width / scene_width).min(height / scene_height);
+    if !(scale.is_finite() && scale > 0.0) {
+        return None;
+    }
+    let fitted_width = scene_width * scale;
+    let fitted_height = scene_height * scale;
+    Some((x + (width - fitted_width) * 0.5, y + (height - fitted_height) * 0.5, fitted_width, fitted_height))
+}
+
+/// Paint a scene into one page-space box, scaling it on both axes.
+fn write_scene_box(
+    out: &mut String,
+    page_height: f64,
+    scene: &DisplayScene,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    paint: ScenePaint<'_>,
+) {
     if !(scene.size.width > 0.0 && scene.size.height > 0.0) {
         return;
     }
-    let sx = graphic.width / scene.size.width;
-    let sy = graphic.height / scene.size.height;
+    let sx = width / scene.size.width;
+    let sy = height / scene.size.height;
     if !(sx.is_finite() && sy.is_finite() && sx > 0.0 && sy > 0.0) {
         return;
     }
     out.push_str("q\n");
     // Clip to the placed box in page space before switching to scene space.
-    let _ = write!(
-        out,
-        "{} {} {} {} re\nW n\n",
-        num(graphic.x),
-        num(page_height - (graphic.y + graphic.height)),
-        num(graphic.width),
-        num(graphic.height)
-    );
-    let _ = write!(out, "{} 0 0 {} {} {} cm\n", num(sx), num(-sy), num(graphic.x), num(page_height - graphic.y));
+    let _ = write!(out, "{} {} {} {} re\nW n\n", num(x), num(page_height - (y + height)), num(width), num(height));
+    // The scene counts y down from its top edge while PDF page space counts y
+    // up, so `d` is negative and the translation is the page y of the box top.
+    let _ = write!(out, "{} 0 0 {} {} {} cm\n", num(sx), num(-sy), num(x), num(page_height - y));
     for node in &scene.nodes {
         write_node(out, node, paint, 1.0);
     }
@@ -430,18 +481,16 @@ fn write_text(out: &mut String, position: Point, text: &str, style: &TextStyle, 
 
 /// Paint one resolved image, or its reserved dashed slot when it did not resolve.
 ///
-/// PDF image space places the first sample row at the top of the unit square,
+/// A raster uses `/ImN Do`. An SVG paints its parsed scene fitted into `rect`,
+/// still in scene coordinates, so the enclosing scene's root flip keeps it
+/// upright. Raster placement is unchanged: PDF image space places the first
+/// sample row at the top of the unit square,
 /// while scene space counts y downward. The `d` entry is therefore negative and
 /// the matrix puts the unit square's bottom edge at `rect.y + rect.height`, so
 /// the first row lands on the scene's top edge. The scene root already flips y
 /// once, so the composed page matrix keeps a positive y scale and the picture
 /// stays upright.
 fn write_image(out: &mut String, rect: Rect, resource: &ResourceRef, painter: ScenePaint<'_>) {
-    let Some(name) = painter.images.get(&resource.href)
-    else {
-        write_image_placeholder(out, rect);
-        return;
-    };
     if !all_finite(&[rect.x, rect.y, rect.width, rect.height]) {
         return;
     }
@@ -449,14 +498,43 @@ fn write_image(out: &mut String, rect: Rect, resource: &ResourceRef, painter: Sc
         write_image_placeholder(out, rect);
         return;
     }
-    let _ = write!(
-        out,
-        "q\n{} 0 0 {} {} {} cm\n/{name} Do\nQ\n",
-        num(rect.width),
-        num(-rect.height),
-        num(rect.x),
-        num(rect.y + rect.height),
-    );
+    if let Some(name) = painter.images.raster(&resource.href) {
+        let _ = write!(
+            out,
+            "q\n{} 0 0 {} {} {} cm\n/{name} Do\nQ\n",
+            num(rect.width),
+            num(-rect.height),
+            num(rect.x),
+            num(rect.y + rect.height),
+        );
+        return;
+    }
+    if let Some(scene) = painter.images.scene(&resource.href)
+        && write_nested_scene(out, scene, rect, painter)
+    {
+        return;
+    }
+    write_image_placeholder(out, rect);
+}
+
+/// Paint an SVG scene inside a scene-space slot.
+///
+/// Both the nested scene and the enclosing scene count y downward, so this
+/// transformation only scales and translates: no flip is needed here because
+/// the root scene matrix already flipped the whole scene once.
+fn write_nested_scene(out: &mut String, scene: &DisplayScene, rect: Rect, painter: ScenePaint<'_>) -> bool {
+    let Some((x, y, width, _)) = fit_scene(scene, rect.x, rect.y, rect.width, rect.height)
+    else {
+        return false;
+    };
+    let scale = width / scene.size.width;
+    out.push_str("q\n");
+    let _ = write!(out, "{} 0 0 {} {} {} cm\n", num(scale), num(scale), num(x), num(y));
+    for node in &scene.nodes {
+        write_node(out, node, painter, 1.0);
+    }
+    out.push_str("Q\n");
+    true
 }
 
 /// Whether every value is a finite number.
