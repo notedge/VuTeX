@@ -1,7 +1,7 @@
 //! Integration tests for the document import, layout, and render pipeline.
 
 use std::{
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
 };
 
@@ -35,7 +35,7 @@ impl Drop for ScratchDir {
     }
 }
 
-fn path_string(path: &PathBuf) -> String {
+fn path_string(path: &Path) -> String {
     path.to_string_lossy().into_owned()
 }
 
@@ -340,6 +340,61 @@ fn markdown_semantic_blocks_reach_reflow_html_and_svg() {
     assert!(svg.contains("准确率"), "{svg}");
     assert!(svg.contains(r#"font-family="monospace""#), "{svg}");
     assert!(svg.contains("let value = 1;"), "{svg}");
+}
+
+const MERMAID_SAMPLE: &str = r##"# 流程图
+
+```mermaid
+flowchart TD
+  A[Start] --> B{Ready?}
+  B -->|yes| C[Stop]
+  B -->|no| D[Retry]
+```
+"##;
+
+const BROKEN_MERMAID_SAMPLE: &str = r##"# 流程图
+
+```mermaid
+sequenceDiagram
+  Alice->>Bob: Hello
+```
+"##;
+
+#[test]
+fn mermaid_code_block_renders_as_a_diagram_scene() {
+    let dir = ScratchDir::new("mermaid");
+    let path = dir.write("flow.md", MERMAID_SAMPLE);
+
+    let outcome = render_document(&path_string(&path), None);
+    let payload = report(&outcome);
+
+    assert_eq!(outcome.exit_code, 0, "{}", outcome.report_json);
+    assert_eq!(payload["diagnostics"], serde_json::json!([]), "{payload}");
+    let svg = outcome.svg.expect("svg payload");
+    assert!(svg.contains(r#"data-diagram="Mermaid diagram""#), "{svg}");
+    assert!(svg.contains(">Start</text>"), "{svg}");
+    assert!(svg.contains(">Stop</text>"), "{svg}");
+    assert!(!svg.contains("flowchart TD"), "the lowered scene replaces the fence text: {svg}");
+}
+
+#[test]
+fn failed_mermaid_lowering_keeps_the_fence_and_reports_a_diagnostic() {
+    let dir = ScratchDir::new("mermaid-broken");
+    let path = dir.write("broken.md", BROKEN_MERMAID_SAMPLE);
+
+    let outcome = render_document(&path_string(&path), None);
+    let payload = report(&outcome);
+
+    assert_eq!(outcome.exit_code, 0, "{}", outcome.report_json);
+    let svg = outcome.svg.expect("svg payload");
+    assert!(svg.contains("sequenceDiagram"), "the authored fence text stays visible: {svg}");
+    assert!(!svg.contains("data-diagram="), "a failed lowering invents no geometry: {svg}");
+
+    let diagnostics = payload["diagnostics"].as_array().expect("diagnostics array");
+    assert_eq!(diagnostics.len(), 1, "{payload}");
+    assert_eq!(diagnostics[0]["code"], "davinci.diagram.ast-unavailable", "{payload}");
+    assert_eq!(diagnostics[0]["severity"], "error", "{payload}");
+    assert_eq!(diagnostics[0]["stage"], "diagram", "{payload}");
 }
 
 #[test]

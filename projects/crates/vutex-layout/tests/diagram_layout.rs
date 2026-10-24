@@ -31,6 +31,10 @@ fn diagram_block(graph: &mut DocumentGraph) -> notedown_ir::NodeId {
     })
 }
 
+fn mermaid_code_block(graph: &mut DocumentGraph, source: &str) -> notedown_ir::NodeId {
+    graph.push_block(Block::Code { language: Some("mermaid".to_string()), content: source.to_string() })
+}
+
 fn graphics(plan: &vutex_layout::LayoutPlan) -> Vec<&Graphic> {
     plan.pages
         .iter()
@@ -93,4 +97,39 @@ fn drops_scene_without_a_positive_canvas() {
 
     let plan = layout_with_diagrams(&graph, &LayoutHint::a4(), &diagrams);
     assert!(graphics(&plan).is_empty());
+}
+
+#[test]
+fn places_a_registered_scene_for_a_mermaid_code_block() {
+    let mut graph = DocumentGraph::new(DocumentId(11));
+    let id = mermaid_code_block(&mut graph, "flowchart TD\n  A[Start] --> B[Stop]\n");
+    let mut diagrams = Diagrams::new();
+    diagrams.insert(id, text_scene(400.0, 300.0), "flow chart");
+
+    let plan = layout_with_diagrams(&graph, &LayoutHint::a4(), &diagrams);
+    let placed = &graphics(&plan)[0];
+
+    assert_eq!(placed.alt, "flow chart");
+    assert!(placed.scene.nodes.iter().any(|node| matches!(&node.kind, NodeKind::Text { text, .. } if text == "diagram")));
+}
+
+#[test]
+fn keeps_mermaid_fence_text_when_no_scene_is_registered() {
+    let mut graph = DocumentGraph::new(DocumentId(12));
+    mermaid_code_block(&mut graph, "flowchart TD\n  A[Start] --> B[Stop]\n");
+
+    let plan = layout_with_diagrams(&graph, &LayoutHint::a4(), &Diagrams::new());
+    assert!(graphics(&plan).is_empty());
+    let text: String = plan
+        .pages
+        .iter()
+        .flat_map(|page| page.items.iter())
+        .filter_map(|item| match item {
+            LayoutItem::TextRun(run) => Some(run.text.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(text.contains("flowchart TD"), "{text}");
+    assert!(text.contains("A[Start] --> B[Stop]"), "{text}");
 }

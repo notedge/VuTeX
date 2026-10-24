@@ -13,6 +13,7 @@ repository = "https://github.com/notedge/VuTeX"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+davinci-diagram = { workspace = true }
 napi = { workspace = true }
 napi-derive = { workspace = true }
 notedown-formats = { workspace = true }

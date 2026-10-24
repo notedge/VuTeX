@@ -14,11 +14,13 @@ use notedown_formats::{
 };
 use notedown_ir::{Block, DocumentGraph};
 use serde::{Deserialize, Serialize};
-use vutex_layout::{LayoutHint, document::layout_with_hint};
+use vutex_layout::{LayoutHint, document::layout_with_diagrams};
 use vutex_presentation::builder::{build_display_presentation, build_flow_presentation};
 use vutex_render_html::{render_html_reflow, render_html_snapshot};
 use vutex_render_pdf::render_pdf;
 use vutex_render_svg::render_svg;
+
+use crate::diagram::lower_mermaid_diagrams;
 
 /// Report schema version stamped on every report payload.
 pub const REPORT_SCHEMA_VERSION: &str = "vutex.report/v0";
@@ -229,7 +231,8 @@ pub fn render_document(input_path: &str, options_json: Option<&str>) -> RenderOu
         }
     };
 
-    let plan = layout_with_hint(&graph, &LayoutHint::a4());
+    let diagrams = lower_mermaid_diagrams(&graph, input_path);
+    let plan = layout_with_diagrams(&graph, &LayoutHint::a4(), &diagrams.diagrams);
     let display = build_display_presentation(&plan);
     let pages = display.pages.len();
     let items = display.pages.iter().map(|page| page.items.len()).sum::<usize>();
@@ -273,7 +276,7 @@ pub fn render_document(input_path: &str, options_json: Option<&str>) -> RenderOu
         "operation": "render",
         "status": "success",
         "inputs": [{ "path": input_path, "format": format_label }],
-        "diagnostics": Vec::<DiagnosticRecord>::new(),
+        "diagnostics": diagrams.diagnostics,
         "output": { "format": output_format.id(), "pages": pages, "items": items },
     })
     .to_string();
