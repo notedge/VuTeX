@@ -386,6 +386,29 @@ fn mermaid_code_block_renders_as_a_diagram_scene() {
 }
 
 #[test]
+fn mermaid_diagram_reaches_the_pdf_as_vector_geometry() {
+    let dir = ScratchDir::new("mermaid-pdf");
+    let path = dir.write("flow.md", MERMAID_SAMPLE);
+
+    let outcome = render_document(&path_string(&path), Some(r#"{"output":"pdf"}"#));
+    let payload = report(&outcome);
+
+    assert_eq!(outcome.exit_code, 0, "{}", outcome.report_json);
+    assert_eq!(payload["diagnostics"], serde_json::json!([]), "{payload}");
+    let pdf = outcome.pdf.expect("pdf payload");
+    let text = String::from_utf8_lossy(&pdf);
+
+    assert!(pdf.starts_with(b"%PDF-1.7\n"), "pdf header");
+    assert!(text.ends_with("%%EOF\n"), "pdf trailer");
+    assert!(text.contains("/Type /Page "), "the page object exists");
+    assert!(text.contains("startxref"), "the xref table closes the file");
+    assert!(text.contains("\nW n\n"), "the scene clips to its placed box: {text}");
+    assert!(text.contains("(Start) Tj") && text.contains("(Stop) Tj"), "node labels are painted: {text}");
+    assert!(text.contains("\nf\n") || text.contains("\nB\n"), "node fills reached the page: {text}");
+    assert!(!text.contains("flowchart TD"), "the lowered scene replaces the fence text: {text}");
+}
+
+#[test]
 fn failed_mermaid_lowering_keeps_the_fence_and_reports_a_diagnostic() {
     let dir = ScratchDir::new("mermaid-broken");
     let path = dir.write("broken.md", BROKEN_MERMAID_SAMPLE);
