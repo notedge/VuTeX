@@ -2,6 +2,7 @@
 
 //! Node-API export surface for VuTeX.
 
+pub mod diagram;
 pub mod document;
 
 use napi::bindgen_prelude::Buffer;
