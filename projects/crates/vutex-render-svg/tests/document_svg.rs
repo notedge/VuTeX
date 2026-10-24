@@ -130,7 +130,9 @@ fn embeds_diagram_scenes_in_a_scaled_group() {
     let svg = render_svg(&presentation).expect("svg render");
 
     assert!(
-        svg.contains(r#"<g data-diagram="pipeline &quot;A&quot; &amp; B" transform="translate(72.000, 120.000) scale(2.000, 2.000)">"#),
+        svg.contains(
+            r#"<g data-diagram="pipeline &quot;A&quot; &amp; B" transform="translate(72.000, 120.000) scale(2.000, 2.000)">"#
+        ),
         "{svg}"
     );
     assert!(svg.contains(r#"viewBox="0 0 200 100""#), "the scene keeps its own viewBox: {svg}");
