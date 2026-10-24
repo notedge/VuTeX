@@ -9,8 +9,7 @@ use std::path::Path;
 use notedown_formats::{
     FormatError,
     import::{
-        html::import_html_bytes, markdown::import_markdown, notedown::import_notedown, tex::import_tex,
-        typst::import_typst,
+        html::import_html_bytes, markdown::import_markdown, notedown::import_notedown, tex::import_tex, typst::import_typst,
     },
 };
 use notedown_ir::{Block, DocumentGraph};
