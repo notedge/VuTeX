@@ -158,6 +158,29 @@ fn load_subset(presentation: &DisplayPresentation, policy: &PdfFontPolicy) -> Op
     font.subset(&charset)
 }
 
+/// Distinct scene alphas below full opacity, in ascending order.
+///
+/// The list drives one `/ExtGState` object per value, so scenes that share an
+/// opacity share a single dictionary and resource name.
+fn scene_opacities(presentation: &DisplayPresentation) -> Vec<f64> {
+    let mut alphas: Vec<f64> = Vec::new();
+    for page in &presentation.pages {
+        for item in &page.items {
+            let DisplayItem::Graphic(graphic) = item
+            else {
+                continue;
+            };
+            crate::scene::visit_opacities(&graphic.scene, &mut |alpha| {
+                if !alphas.contains(&alpha) {
+                    alphas.push(alpha);
+                }
+            });
+        }
+    }
+    alphas.sort_by(f64::total_cmp);
+    alphas
+}
+
 /// Base-14 font for a display font family and face style.
 ///
 /// Families resolve by substring, so CSS stacks such as `sans-serif` keep
@@ -266,6 +289,27 @@ pub(crate) struct EmbeddedText<'a> {
     pub(crate) resource_index: usize,
 }
 
+/// `/ExtGState` resources for the distinct scene alphas a document paints.
+///
+/// One object serves every page, so a scene value that recurs across pages
+/// still costs a single dictionary and a single resource name.
+#[derive(Debug, Default)]
+pub(crate) struct OpacityResources {
+    /// Resource name and alpha, in ascending alpha order.
+    entries: Vec<(String, f64)>,
+}
+
+impl OpacityResources {
+    /// Resource name selecting the graphics state for an alpha.
+    ///
+    /// The collector visits the same scene tree with the same arithmetic as the
+    /// painter, so only exact matches occur and a missing name means the node
+    /// paints fully opaque.
+    pub(crate) fn name(&self, alpha: f64) -> Option<&str> {
+        self.entries.iter().find(|(_, value)| *value == alpha).map(|(name, _)| name.as_str())
+    }
+}
+
 /// Object streams in object-number order; index `i` is object `i + 1`.
 fn build_objects(presentation: &DisplayPresentation, policy: &PdfFontPolicy) -> Vec<PdfObject> {
     let subset = load_subset(presentation, policy);
@@ -289,21 +333,29 @@ fn build_objects(presentation: &DisplayPresentation, policy: &PdfFontPolicy) -> 
     let mut font_objects: Vec<(&'static str, usize)> = Vec::with_capacity(fonts.len());
     for (index, base) in fonts.iter().enumerate() {
         let object = document.push(PdfObject::Text(font_object(base)));
-        resources.insert("Font", &format!("/F{}", index + 1), object);
+        resources.insert("Font", &format!("F{}", index + 1), object);
         font_objects.push((*base, object));
     }
     let embedded_index = fonts.len() + 1;
     if let Some(subset) = &subset {
         let first = document.next_number();
-        resources.insert("Font", &format!("/F{embedded_index}"), first);
+        resources.insert("Font", &format!("F{embedded_index}"), first);
         push_embedded_font_objects(&mut document, subset, first);
     }
     let embedded = subset.as_ref().map(|subset| EmbeddedText { subset, resource_index: embedded_index });
 
+    let mut opacities = OpacityResources::default();
+    for (index, alpha) in scene_opacities(presentation).into_iter().enumerate() {
+        let name = format!("GS{}", index + 1);
+        let object = document.push(PdfObject::Text(ext_gstate_object(alpha)));
+        resources.insert("ExtGState", &name, object);
+        opacities.entries.push((name, alpha));
+    }
+
     let annotation_numbers = push_link_annotations(&mut document, &page_links);
 
     for (index, page) in presentation.pages.iter().enumerate() {
-        let content = page_content(page, &font_objects, embedded, &resources);
+        let content = page_content(page, &font_objects, embedded, &opacities);
         document.replace(content_numbers[index], content_object(&content));
         document.replace(
             page_numbers[index],
@@ -371,7 +423,6 @@ struct PageResources {
 
 impl PageResources {
     /// Register one named resource under a category.
-    #[allow(dead_code)]
     fn insert(&mut self, category: &'static str, name: &str, object: usize) {
         if !self.groups.iter().any(|group| group.category == category) {
             self.groups.push(ResourceGroup { category, entries: Vec::new() });
@@ -563,11 +614,11 @@ fn page_content(
     page: &DisplayPage,
     fonts: &[(&'static str, usize)],
     embedded: Option<EmbeddedText<'_>>,
-    resources: &PageResources,
+    opacities: &OpacityResources,
 ) -> String {
     let mut out = String::new();
     for item in &page.items {
-        write_item(&mut out, page.height, item, fonts, embedded, resources);
+        write_item(&mut out, page.height, item, fonts, embedded, opacities);
     }
     if out.is_empty() {
         out.push('\n');
@@ -581,15 +632,14 @@ fn write_item(
     item: &DisplayItem,
     fonts: &[(&'static str, usize)],
     embedded: Option<EmbeddedText<'_>>,
-    resources: &PageResources,
+    opacities: &OpacityResources,
 ) {
-    let _ = resources;
     match item {
         DisplayItem::TextRun(run) => write_text(out, page_height, run, fonts, embedded),
         DisplayItem::Rule(rule) => write_rule(out, page_height, rule),
         DisplayItem::Rect(rect) => write_rect(out, page_height, rect),
         DisplayItem::Image(image) => write_image(out, page_height, image),
-        DisplayItem::Graphic(graphic) => write_graphic(out, page_height, graphic, fonts, embedded),
+        DisplayItem::Graphic(graphic) => write_graphic(out, page_height, graphic, fonts, embedded, opacities),
     }
 }
 
@@ -699,11 +749,20 @@ fn write_graphic(
     graphic: &DisplayGraphic,
     fonts: &[(&'static str, usize)],
     embedded: Option<EmbeddedText<'_>>,
+    opacities: &OpacityResources,
 ) {
     if !all_finite(&[graphic.x, graphic.y, graphic.width, graphic.height]) {
         return;
     }
-    crate::scene::write_scene(out, page_height, graphic, fonts, embedded);
+    crate::scene::write_scene(out, page_height, graphic, fonts, embedded, opacities);
+}
+
+/// Graphics state selecting one alpha for both fill and stroke.
+///
+/// `/AIS false` keeps the alpha from applying to a soft mask, and `/BM /Normal`
+/// fixes the blend mode so every reader composites the node the same way.
+fn ext_gstate_object(alpha: f64) -> String {
+    format!("<< /Type /ExtGState /ca {} /CA {} /AIS false /BM /Normal >>", num(alpha), num(alpha))
 }
 
 fn all_finite(values: &[f64]) -> bool {
