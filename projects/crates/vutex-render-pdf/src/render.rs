@@ -8,7 +8,11 @@
 //! Coordinates arrive with the origin at the page top-left corner and are
 //! flipped to PDF's bottom-left origin by subtracting them from the page height.
 
-use std::{collections::BTreeSet, fmt::Write as _, path::PathBuf};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fmt::Write as _,
+    path::PathBuf,
+};
 
 use vutex_presentation::display::{
     DisplayGraphic, DisplayImage, DisplayItem, DisplayPage, DisplayPresentation, DisplayRect, DisplayRule, DisplayTextRun,
@@ -289,21 +293,22 @@ fn build_objects(presentation: &DisplayPresentation, policy: &PdfFontPolicy) -> 
     let mut font_objects: Vec<(&'static str, usize)> = Vec::with_capacity(fonts.len());
     for (index, base) in fonts.iter().enumerate() {
         let object = document.push(PdfObject::Text(font_object(base)));
-        resources.insert("Font", &format!("/F{}", index + 1), object);
+        resources.insert("Font", &format!("F{}", index + 1), object);
         font_objects.push((*base, object));
     }
     let embedded_index = fonts.len() + 1;
     if let Some(subset) = &subset {
         let first = document.next_number();
-        resources.insert("Font", &format!("/F{embedded_index}"), first);
+        resources.insert("Font", &format!("F{embedded_index}"), first);
         push_embedded_font_objects(&mut document, subset, first);
     }
     let embedded = subset.as_ref().map(|subset| EmbeddedText { subset, resource_index: embedded_index });
 
     let annotation_numbers = push_link_annotations(&mut document, &page_links);
+    let images = register_scene_images(presentation, &mut document, &mut resources);
 
     for (index, page) in presentation.pages.iter().enumerate() {
-        let content = page_content(page, &font_objects, embedded, &resources);
+        let content = page_content(page, &font_objects, embedded, &images);
         document.replace(content_numbers[index], content_object(&content));
         document.replace(
             page_numbers[index],
@@ -311,6 +316,41 @@ fn build_objects(presentation: &DisplayPresentation, policy: &PdfFontPolicy) -> 
         );
     }
     document.finish()
+}
+
+/// Embed every scene image one presentation references, once per distinct `href`.
+///
+/// The returned map keys an image's source `href` to the `/ImN` resource name
+/// the content stream selects. A reference that cannot be resolved is left out,
+/// so painting falls back to the dashed slot.
+fn register_scene_images(
+    presentation: &DisplayPresentation,
+    document: &mut Document,
+    resources: &mut PageResources,
+) -> BTreeMap<String, String> {
+    let mut images: BTreeMap<String, String> = BTreeMap::new();
+    for page in &presentation.pages {
+        for item in &page.items {
+            let DisplayItem::Graphic(graphic) = item
+            else {
+                continue;
+            };
+            crate::scene::visit_images(&graphic.scene, &mut |resource| {
+                if images.contains_key(&resource.href) {
+                    return;
+                }
+                let Some(raster) = crate::image::load(&resource.href)
+                else {
+                    return;
+                };
+                let object = document.push(PdfObject::stream(raster.dict, raster.data));
+                let name = format!("Im{}", images.len() + 1);
+                resources.insert("XObject", &name, object);
+                images.insert(resource.href.clone(), name);
+            });
+        }
+    }
+    images
 }
 
 /// Append every link annotation and report their numbers in paint order.
@@ -371,7 +411,9 @@ struct PageResources {
 
 impl PageResources {
     /// Register one named resource under a category.
-    #[allow(dead_code)]
+    ///
+    /// `name` is the PDF name without its leading slash, so content streams can
+    /// select it as `/Name`.
     fn insert(&mut self, category: &'static str, name: &str, object: usize) {
         if !self.groups.iter().any(|group| group.category == category) {
             self.groups.push(ResourceGroup { category, entries: Vec::new() });
@@ -563,11 +605,11 @@ fn page_content(
     page: &DisplayPage,
     fonts: &[(&'static str, usize)],
     embedded: Option<EmbeddedText<'_>>,
-    resources: &PageResources,
+    images: &BTreeMap<String, String>,
 ) -> String {
     let mut out = String::new();
     for item in &page.items {
-        write_item(&mut out, page.height, item, fonts, embedded, resources);
+        write_item(&mut out, page.height, item, fonts, embedded, images);
     }
     if out.is_empty() {
         out.push('\n');
@@ -581,15 +623,14 @@ fn write_item(
     item: &DisplayItem,
     fonts: &[(&'static str, usize)],
     embedded: Option<EmbeddedText<'_>>,
-    resources: &PageResources,
+    images: &BTreeMap<String, String>,
 ) {
-    let _ = resources;
     match item {
         DisplayItem::TextRun(run) => write_text(out, page_height, run, fonts, embedded),
         DisplayItem::Rule(rule) => write_rule(out, page_height, rule),
         DisplayItem::Rect(rect) => write_rect(out, page_height, rect),
         DisplayItem::Image(image) => write_image(out, page_height, image),
-        DisplayItem::Graphic(graphic) => write_graphic(out, page_height, graphic, fonts, embedded),
+        DisplayItem::Graphic(graphic) => write_graphic(out, page_height, graphic, fonts, embedded, images),
     }
 }
 
@@ -699,11 +740,13 @@ fn write_graphic(
     graphic: &DisplayGraphic,
     fonts: &[(&'static str, usize)],
     embedded: Option<EmbeddedText<'_>>,
+    images: &BTreeMap<String, String>,
 ) {
     if !all_finite(&[graphic.x, graphic.y, graphic.width, graphic.height]) {
         return;
     }
-    crate::scene::write_scene(out, page_height, graphic, fonts, embedded);
+    let painter = crate::scene::ScenePaint { fonts, embedded, images };
+    crate::scene::write_scene(out, page_height, graphic, painter);
 }
 
 fn all_finite(values: &[f64]) -> bool {
