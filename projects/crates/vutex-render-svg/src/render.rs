@@ -84,14 +84,25 @@ fn write_item(out: &mut String, item: &DisplayItem) -> Result<(), Diagnostic> {
             ));
         }
         DisplayItem::Image(image) => {
-            out.push_str(&format!(
-                r##"<rect x="{}" y="{}" width="{}" height="{}" fill="#fafafa" stroke="#999999" stroke-width="0.5" stroke-dasharray="3 2" data-alt="{}"/>"##,
-                num(image.x),
-                num(image.y),
-                num(image.width),
-                num(image.height),
-                escape_attribute(&image.alt),
-            ));
+            match image.source.as_deref().map(str::trim).filter(|source| !source.is_empty()) {
+                Some(source) => out.push_str(&format!(
+                    r##"<image x="{}" y="{}" width="{}" height="{}" href="{}" preserveAspectRatio="none" data-alt="{}"/>"##,
+                    num(image.x),
+                    num(image.y),
+                    num(image.width),
+                    num(image.height),
+                    escape_attribute(source),
+                    escape_attribute(&image.alt),
+                )),
+                None => out.push_str(&format!(
+                    r##"<rect x="{}" y="{}" width="{}" height="{}" fill="#fafafa" stroke="#999999" stroke-width="0.5" stroke-dasharray="3 2" data-alt="{}"/>"##,
+                    num(image.x),
+                    num(image.y),
+                    num(image.width),
+                    num(image.height),
+                    escape_attribute(&image.alt),
+                )),
+            }
         }
         DisplayItem::Graphic(graphic) => write_graphic(out, graphic)?,
     }

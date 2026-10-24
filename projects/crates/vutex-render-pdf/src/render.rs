@@ -7,6 +7,13 @@
 //! Identity-H `CIDFontType2` program, so every character reaches the page.
 //! Coordinates arrive with the origin at the page top-left corner and are
 //! flipped to PDF's bottom-left origin by subtracting them from the page height.
+//!
+//! Image slots are raster XObjects when their source resolves. A page-level
+//! `data:` URI or filesystem path is read through the same decoder scene image
+//! nodes use, and the object is shared by every slot that names the same
+//! source. The picture paints upright with a `q … cm /ImN Do Q` block whose
+//! matrix reverses the image rows inside the y-flipped page. An absent or
+//! unresolvable source keeps the dashed placeholder.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -357,7 +364,7 @@ fn build_objects(presentation: &DisplayPresentation, policy: &PdfFontPolicy) -> 
     }
 
     let annotation_numbers = push_link_annotations(&mut document, &page_links);
-    let images = register_scene_images(presentation, &mut document, &mut resources);
+    let images = register_images(presentation, &mut document, &mut resources);
 
     for (index, page) in presentation.pages.iter().enumerate() {
         let content = page_content(page, &font_objects, embedded, &opacities, &images);
@@ -370,12 +377,14 @@ fn build_objects(presentation: &DisplayPresentation, policy: &PdfFontPolicy) -> 
     document.finish()
 }
 
-/// Embed every scene image one presentation references, once per distinct `href`.
+/// Embed every image one presentation references, once per distinct source.
 ///
-/// The returned map keys an image's source `href` to the `/ImN` resource name
-/// the content stream selects. A reference that cannot be resolved is left out,
-/// so painting falls back to the dashed slot.
-fn register_scene_images(
+/// Both page-level image slots and scene image nodes contribute, so the whole
+/// document shares one raster object per distinct source. The returned map keys
+/// a source to the `/ImN` resource name the content stream selects. A reference
+/// that cannot be resolved is left out, so painting falls back to the dashed
+/// slot.
+fn register_images(
     presentation: &DisplayPresentation,
     document: &mut Document,
     resources: &mut PageResources,
@@ -383,26 +392,37 @@ fn register_scene_images(
     let mut images: BTreeMap<String, String> = BTreeMap::new();
     for page in &presentation.pages {
         for item in &page.items {
-            let DisplayItem::Graphic(graphic) = item
-            else {
-                continue;
-            };
-            crate::scene::visit_images(&graphic.scene, &mut |resource| {
-                if images.contains_key(&resource.href) {
-                    return;
+            match item {
+                DisplayItem::Image(image) => {
+                    if let Some(source) = &image.source {
+                        register_image(source, document, resources, &mut images);
+                    }
                 }
-                let Some(raster) = crate::image::load(&resource.href)
-                else {
-                    return;
-                };
-                let object = document.push(PdfObject::stream(raster.dict, raster.data));
-                let name = format!("Im{}", images.len() + 1);
-                resources.insert("XObject", &name, object);
-                images.insert(resource.href.clone(), name);
-            });
+                DisplayItem::Graphic(graphic) => {
+                    crate::scene::visit_images(&graphic.scene, &mut |resource| {
+                        register_image(&resource.href, document, resources, &mut images);
+                    });
+                }
+                _ => {}
+            }
         }
     }
     images
+}
+
+/// Embed one source unless an earlier slot already registered it.
+fn register_image(source: &str, document: &mut Document, resources: &mut PageResources, images: &mut BTreeMap<String, String>) {
+    if images.contains_key(source) {
+        return;
+    }
+    let Some(raster) = crate::image::load(source)
+    else {
+        return;
+    };
+    let object = document.push(PdfObject::stream(raster.dict, raster.data));
+    let name = format!("Im{}", images.len() + 1);
+    resources.insert("XObject", &name, object);
+    images.insert(source.to_string(), name);
 }
 
 /// Append every link annotation and report their numbers in paint order.
@@ -683,7 +703,7 @@ fn write_item(
         DisplayItem::TextRun(run) => write_text(out, page_height, run, fonts, embedded),
         DisplayItem::Rule(rule) => write_rule(out, page_height, rule),
         DisplayItem::Rect(rect) => write_rect(out, page_height, rect),
-        DisplayItem::Image(image) => write_image(out, page_height, image),
+        DisplayItem::Image(image) => write_image(out, page_height, image, images),
         DisplayItem::Graphic(graphic) => write_graphic(out, page_height, graphic, fonts, embedded, opacities, images),
     }
 }
@@ -773,10 +793,38 @@ fn write_rect(out: &mut String, page_height: f64, rect: &DisplayRect) {
     }
 }
 
-fn write_image(out: &mut String, page_height: f64, image: &DisplayImage) {
+/// Paint one page-level image, or its dashed slot when the source did not resolve.
+///
+/// PDF image space puts the first sample row at the top of the unit square,
+/// while page space counts y downward from the page top. The `d` entry is
+/// therefore positive and the translation places the unit square's bottom edge
+/// at `page_height - (image.y + image.height)`, so the first row lands on the
+/// box's top edge and the picture stays upright.
+fn write_image(out: &mut String, page_height: f64, image: &DisplayImage, images: &BTreeMap<String, String>) {
     if !all_finite(&[image.x, image.y, image.width, image.height]) {
         return;
     }
+    let resolved = image.source.as_deref().and_then(|source| images.get(source));
+    if let Some(name) = resolved
+        && image.width > 0.0
+        && image.height > 0.0
+    {
+        let bottom = page_height - (image.y + image.height);
+        let _ = write!(
+            out,
+            "q\n{} 0 0 {} {} {} cm\n/{name} Do\nQ\n",
+            num(image.width),
+            num(image.height),
+            num(image.x),
+            num(bottom)
+        );
+        return;
+    }
+    write_image_placeholder(out, page_height, image);
+}
+
+/// Reserved dashed slot for an image this backend could not resolve.
+fn write_image_placeholder(out: &mut String, page_height: f64, image: &DisplayImage) {
     let y = page_height - (image.y + image.height);
     let _ = write!(
         out,
