@@ -1,6 +1,6 @@
 //! Presentation lowering tests.
 
-use davinci_scene::{Color, NodeKind, Rect, Scene, SceneNode, ShapeStyle, Size};
+use davinci_scene::{Color, DisplayScene, NodeKind, Rect, SceneNode, ShapeStyle, Size};
 use notedown_ir::{Attributes, Block, DocumentGraph, DocumentId, Inline, ListItem, RelationEndpoint, TableCell, TableRow};
 use vutex_layout::{
     layout,
@@ -63,7 +63,7 @@ fn display_lowering_preserves_geometry_and_items() {
 
 #[test]
 fn display_lowering_carries_diagram_scenes() {
-    let mut scene = Scene::new(Size { width: 200.0, height: 100.0 });
+    let mut scene = DisplayScene::new(Size { width: 200.0, height: 100.0 });
     scene.push(SceneNode::new(NodeKind::Rect {
         rect: Rect { x: 0.0, y: 0.0, width: 200.0, height: 100.0 },
         style: ShapeStyle::stroked(Color::BLACK, 1.0),

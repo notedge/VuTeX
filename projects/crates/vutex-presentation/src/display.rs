@@ -97,8 +97,8 @@ pub struct DisplayGraphic {
     pub width: f64,
     /// Placed box height in points.
     pub height: f64,
-    /// Generic vector scene emitted by the diagram producer.
-    pub scene: davinci_scene::Scene,
+    /// Resolved display scene emitted by the diagram producer.
+    pub scene: davinci_scene::DisplayScene,
     /// Alternative text for backends that cannot paint the scene.
     pub alt: String,
 }
