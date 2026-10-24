@@ -69,7 +69,11 @@ fn lays_out_quote_code_table_break_and_image() {
     assert!(page.items.iter().any(|item| matches!(item, LayoutItem::Rule(_))), "table and thematic break rules");
     assert!(page.items.iter().any(|item| matches!(item, LayoutItem::Rect(rect) if rect.filled)), "code block frame");
     assert!(
-        page.items.iter().any(|item| matches!(item, LayoutItem::ImagePlaceholder(image) if image.alt == "Figure alt")),
-        "inline images reserve a placeholder"
+        page.items.iter().any(|item| matches!(
+            item,
+            LayoutItem::ImagePlaceholder(image)
+                if image.alt == "Figure alt" && image.source.as_deref() == Some("figure.png")
+        )),
+        "inline images reserve a placeholder and keep their source"
     );
 }

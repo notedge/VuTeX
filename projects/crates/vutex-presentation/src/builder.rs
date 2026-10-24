@@ -49,8 +49,15 @@ fn lower_item(item: &LayoutItem) -> DisplayItem {
         LayoutItem::Rect(Rect { x, y, width, height, filled }) => {
             DisplayItem::Rect(DisplayRect { x: *x, y: *y, width: *width, height: *height, filled: *filled })
         }
-        LayoutItem::ImagePlaceholder(ImagePlaceholder { x, y, width, height, alt }) => {
-            DisplayItem::Image(DisplayImage { x: *x, y: *y, width: *width, height: *height, alt: alt.clone() })
+        LayoutItem::ImagePlaceholder(ImagePlaceholder { x, y, width, height, alt, source }) => {
+            DisplayItem::Image(DisplayImage {
+                x: *x,
+                y: *y,
+                width: *width,
+                height: *height,
+                alt: alt.clone(),
+                source: source.clone(),
+            })
         }
         LayoutItem::Graphic(Graphic { x, y, width, height, scene, alt }) => DisplayItem::Graphic(DisplayGraphic {
             x: *x,

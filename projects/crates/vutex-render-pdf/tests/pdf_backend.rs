@@ -48,7 +48,14 @@ fn full_page() -> DisplayPage {
             DisplayItem::Rule(DisplayRule { x1: 72.0, y1: 120.0, x2: 523.0, y2: 120.0, thickness: 0.5 }),
             DisplayItem::Rect(DisplayRect { x: 72.0, y: 140.0, width: 200.0, height: 40.0, filled: true }),
             DisplayItem::Rect(DisplayRect { x: 72.0, y: 200.0, width: 200.0, height: 40.0, filled: false }),
-            DisplayItem::Image(DisplayImage { x: 72.0, y: 260.0, width: 120.0, height: 60.0, alt: "figure".to_string() }),
+            DisplayItem::Image(DisplayImage {
+                x: 72.0,
+                y: 260.0,
+                width: 120.0,
+                height: 60.0,
+                alt: "figure".to_string(),
+                source: None,
+            }),
         ],
     )
 }
@@ -931,6 +938,38 @@ fn png_alpha_becomes_a_device_gray_soft_mask() {
     assert_xref_intact(&bytes);
 }
 
+/// One page-level image slot carrying the authored source.
+fn page_image(source: Option<&str>) -> DisplayItem {
+    DisplayItem::Image(DisplayImage {
+        x: 72.0,
+        y: 260.0,
+        width: 120.0,
+        height: 60.0,
+        alt: "figure".to_string(),
+        source: source.map(str::to_string),
+    })
+}
+
+/// Render one page that carries the given items.
+fn render_items(items: Vec<DisplayItem>) -> Vec<u8> {
+    render_pdf(&DisplayPresentation { pages: vec![page(595.0, 842.0, items)] }).expect("pdf render")
+}
+
+#[test]
+fn embeds_a_page_image_as_a_raster_xobject() {
+    let href = format!("data:image/png;base64,{}", base64(&tiny_png()));
+    let bytes = render_items(vec![page_image(Some(&href))]);
+    let text = lossy(&bytes);
+
+    assert_eq!(text.matches("/Type /XObject /Subtype /Image").count(), 1, "one image object: {text}");
+    assert!(text.contains("/Width 2") && text.contains("/Height 2"), "PNG frame reaches the dictionary: {text}");
+    assert!(text.contains("/XObject << /Im1 "), "page resources register the image: {text}");
+    assert!(text.contains("\n/Im1 Do\n"), "the content stream paints the image: {text}");
+    assert!(!text.contains("[3 2] 0 d"), "a resolved page image replaces the dashed slot: {text}");
+    assert!(text.contains("120 0 0 60 72 522 cm"), "positive y scale puts sample row zero on the box top edge: {text}");
+    assert_xref_intact(&bytes);
+}
+
 #[test]
 fn grey_alpha_png_keeps_both_planes() {
     let href = format!("data:image/png;base64,{}", base64(&grey_alpha_png()));
@@ -948,6 +987,15 @@ fn grey_alpha_png_keeps_both_planes() {
     assert_xref_intact(&bytes);
 }
 
+fn page_image_without_a_source_keeps_the_dashed_placeholder() {
+    let bytes = render_items(vec![page_image(None)]);
+    let text = lossy(&bytes);
+
+    assert!(text.contains("[3 2] 0 d"), "a slot without a source keeps the dashed box: {text}");
+    assert!(!text.contains("/Subtype /Image"), "no object is invented for an absent source: {text}");
+    assert_xref_intact(&bytes);
+}
+
 #[test]
 fn repeated_transparent_references_share_one_mask() {
     let href = format!("data:image/png;base64,{}", base64(&alpha_png()));
@@ -959,6 +1007,17 @@ fn repeated_transparent_references_share_one_mask() {
     assert_eq!(text.matches("\n/Im1 Do\n").count(), 2, "both placements paint the colour image");
     assert!(!text.contains("/Im2"), "the mask never becomes its own resource name");
     assert_eq!(text.matches("/XObject <<").count(), 1, "page resources list the colour image once");
+    assert_xref_intact(&bytes);
+}
+
+fn repeated_page_image_sources_share_one_xobject() {
+    let href = format!("data:image/png;base64,{}", base64(&tiny_png()));
+    let bytes = render_items(vec![page_image(Some(&href)), page_image(Some(&href))]);
+    let text = lossy(&bytes);
+
+    assert_eq!(text.matches("/Type /XObject /Subtype /Image").count(), 1, "one object per source: {text}");
+    assert_eq!(text.matches("\n/Im1 Do\n").count(), 2, "both slots select the same object");
+    assert!(!text.contains("/Im2"), "the repeated source gets no second name");
     assert_xref_intact(&bytes);
 }
 
