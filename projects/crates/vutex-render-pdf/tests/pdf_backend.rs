@@ -1380,6 +1380,7 @@ fn repeated_transparent_references_share_one_mask() {
     assert_xref_intact(&bytes);
 }
 
+#[test]
 fn repeated_page_image_sources_share_one_xobject() {
     let href = format!("data:image/png;base64,{}", base64(&tiny_png()));
     let bytes = render_items(vec![page_image(Some(&href)), page_image(Some(&href))]);
