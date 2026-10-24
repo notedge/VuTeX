@@ -360,6 +360,14 @@ sequenceDiagram
 ```
 "##;
 
+const CLASS_MERMAID_SAMPLE: &str = r##"# 类图
+
+```mermaid
+classDiagram
+  Animal <|-- Duck
+```
+"##;
+
 #[test]
 fn mermaid_code_block_renders_as_a_diagram_scene() {
     let dir = ScratchDir::new("mermaid");
@@ -389,6 +397,26 @@ fn failed_mermaid_lowering_keeps_the_fence_and_reports_a_diagnostic() {
     let svg = outcome.svg.expect("svg payload");
     assert!(svg.contains("sequenceDiagram"), "the authored fence text stays visible: {svg}");
     assert!(!svg.contains("data-diagram="), "a failed lowering invents no geometry: {svg}");
+
+    let diagnostics = payload["diagnostics"].as_array().expect("diagnostics array");
+    assert_eq!(diagnostics.len(), 1, "{payload}");
+    assert_eq!(diagnostics[0]["code"], "davinci.diagram.ast-unavailable", "{payload}");
+    assert_eq!(diagnostics[0]["severity"], "error", "{payload}");
+    assert_eq!(diagnostics[0]["stage"], "diagram", "{payload}");
+}
+
+#[test]
+fn class_diagram_lowering_keeps_the_fence_and_reports_a_diagnostic() {
+    let dir = ScratchDir::new("mermaid-class");
+    let path = dir.write("class.md", CLASS_MERMAID_SAMPLE);
+
+    let outcome = render_document(&path_string(&path), None);
+    let payload = report(&outcome);
+
+    assert_eq!(outcome.exit_code, 0, "{}", outcome.report_json);
+    let svg = outcome.svg.expect("svg payload");
+    assert!(svg.contains("classDiagram"), "the authored fence text stays visible: {svg}");
+    assert!(!svg.contains("data-diagram="), "an unsupported diagram family invents no geometry: {svg}");
 
     let diagnostics = payload["diagnostics"].as_array().expect("diagnostics array");
     assert_eq!(diagnostics.len(), 1, "{payload}");
