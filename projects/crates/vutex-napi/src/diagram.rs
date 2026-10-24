@@ -35,11 +35,6 @@ pub struct LoweredDiagrams {
 /// layout falls back to the authored fence text.
 pub fn lower_mermaid_diagrams(graph: &DocumentGraph, path: &str) -> LoweredDiagrams {
     let mut lowered = LoweredDiagrams { diagrams: Diagrams::new(), diagnostics: Vec::new() };
-    let authored = std::fs::read_to_string(path)
-        .ok()
-        .map(|text| authored_mermaid_fences(&text))
-        .filter(|fences| fences.len() == mermaid_block_count(graph));
-    let mut authored = authored.iter().flatten();
     for node in &graph.blocks {
         let Block::Code { language: Some(language), content } = &node.block
         else {
@@ -48,11 +43,7 @@ pub fn lower_mermaid_diagrams(graph: &DocumentGraph, path: &str) -> LoweredDiagr
         if !language.trim().eq_ignore_ascii_case("mermaid") {
             continue;
         }
-        // The Markdown importer lowers fenced code token by token, so markers
-        // such as `[` can be lost before the graph reaches the host. When the
-        // authored fence count matches, the original fence text is authoritative.
-        let source = authored.next().map_or(content.as_str(), String::as_str);
-        match mermaid_to_scene(source) {
+        match mermaid_to_scene(content) {
             Ok(diagram) => {
                 lowered.diagnostics.extend(diagram.diagnostics.iter().map(|diagnostic| DiagnosticRecord {
                     code: diagnostic.code().as_str().to_string(),
@@ -84,63 +75,4 @@ pub fn lower_mermaid_diagrams(graph: &DocumentGraph, path: &str) -> LoweredDiagr
         }
     }
     lowered
-}
-
-/// Count the Mermaid code blocks the importer produced.
-fn mermaid_block_count(graph: &DocumentGraph) -> usize {
-    graph
-        .blocks
-        .iter()
-        .filter(|node| {
-            matches!(
-                &node.block,
-                Block::Code { language: Some(language), .. } if language.trim().eq_ignore_ascii_case("mermaid")
-            )
-        })
-        .count()
-}
-
-/// Extract the content of every top-level Mermaid fence in authored text.
-///
-/// Only fences whose opening line carries a `mermaid` info string are returned.
-/// The caller pairs them with importer blocks by order and must fall back when
-/// the counts differ, which happens for nested fences or non-Markdown sources.
-fn authored_mermaid_fences(text: &str) -> Vec<String> {
-    let mut fences = Vec::new();
-    let mut open: Option<(&str, Vec<&str>)> = None;
-    for line in text.lines() {
-        let trimmed = line.trim_start();
-        if let Some((marker, body)) = open.as_mut() {
-            if is_closing_fence(trimmed, marker) {
-                fences.push(body.join("\n"));
-                open = None;
-            }
-            else {
-                body.push(line);
-            }
-            continue;
-        }
-        if let Some((marker, info)) = opening_fence(trimmed)
-            && info.eq_ignore_ascii_case("mermaid")
-        {
-            open = Some((marker, Vec::new()));
-        }
-    }
-    fences
-}
-
-/// Split an opening fence line into its marker and info string.
-fn opening_fence(line: &str) -> Option<(&str, &str)> {
-    let fence_char = line.chars().next().filter(|character| *character == '`' || *character == '~')?;
-    let marker_len = line.chars().take_while(|character| *character == fence_char).count();
-    if marker_len < 3 {
-        return None;
-    }
-    let (marker, rest) = line.split_at(marker_len);
-    Some((marker, rest.trim()))
-}
-
-/// Whether `line` closes a fence opened with `marker`.
-fn is_closing_fence(line: &str, marker: &str) -> bool {
-    line.strip_prefix(marker).is_some_and(|rest| rest.trim().is_empty())
 }
