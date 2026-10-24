@@ -655,9 +655,9 @@ fn png_chunk(out: &mut Vec<u8>, kind: &[u8; 4], body: &[u8]) {
     out.extend_from_slice(&[0; 4]);
 }
 
-/// Wrap filtered scanlines in a 2×2 RGB PNG whose single `IDAT` is one stored
-/// DEFLATE block.
-fn png_from_scanlines(scanlines: &[u8]) -> Vec<u8> {
+/// Wrap filtered scanlines in a 2×2 PNG of the given colour type whose single
+/// `IDAT` is one stored DEFLATE block.
+fn png_with_color_type(color_type: u8, scanlines: &[u8]) -> Vec<u8> {
     let length = scanlines.len() as u16;
     // zlib header, one final stored block (`LEN`, `NLEN` = !`LEN`), the
     // filtered samples, and an Adler-32 trailer the decoder ignores.
@@ -670,12 +670,18 @@ fn png_from_scanlines(scanlines: &[u8]) -> Vec<u8> {
     let mut header = Vec::new();
     header.extend_from_slice(&2u32.to_be_bytes());
     header.extend_from_slice(&2u32.to_be_bytes());
-    header.extend_from_slice(&[8, 2, 0, 0, 0]);
+    header.extend_from_slice(&[8, color_type, 0, 0, 0]);
     let mut png = PNG_SIGNATURE.to_vec();
     png_chunk(&mut png, b"IHDR", &header);
     png_chunk(&mut png, b"IDAT", &zlib);
     png_chunk(&mut png, b"IEND", &[]);
     png
+}
+
+/// Wrap filtered scanlines in a 2×2 RGB PNG whose single `IDAT` is one stored
+/// DEFLATE block.
+fn png_from_scanlines(scanlines: &[u8]) -> Vec<u8> {
+    png_with_color_type(2, scanlines)
 }
 
 /// A 2×2 RGB PNG whose rows carry no filter.
@@ -684,6 +690,31 @@ fn tiny_png() -> Vec<u8> {
         0u8, 255, 0, 0, 0, 255, 0, // red, green
         0, 0, 0, 255, 255, 255, 255, // blue, white
     ])
+}
+
+/// A 2×2 RGBA PNG with the alpha samples 0, 64, 128, and 255.
+///
+/// The colour plane is red, green, blue, white, so it stays distinguishable
+/// from the alpha plane in the emitted file.
+fn alpha_png() -> Vec<u8> {
+    png_with_color_type(
+        6,
+        &[
+            0, 255, 0, 0, 0, 0, 255, 0, 64, // red with alpha 0, green with alpha 64
+            0, 0, 0, 255, 128, 255, 255, 255, 255, // blue with alpha 128, white
+        ],
+    )
+}
+
+/// A 2×2 grey-alpha PNG whose alpha samples are 0 and 255.
+fn grey_alpha_png() -> Vec<u8> {
+    png_with_color_type(
+        4,
+        &[
+            0, 10, 0, 20, 255, // grey 10 transparent, grey 20 opaque
+            0, 10, 0, 20, 255,
+        ],
+    )
 }
 
 /// Encode bytes with the standard base64 alphabet.
@@ -777,6 +808,7 @@ fn embeds_a_png_scene_image_as_a_raster_xobject() {
     assert!(text.contains("/Width 2"), "PNG width reaches the dictionary: {text}");
     assert!(text.contains("/Height 2"), "PNG height reaches the dictionary: {text}");
     assert!(text.contains("/ColorSpace /DeviceRGB"), "truecolour PNG stays RGB: {text}");
+    assert!(!text.contains("/SMask"), "an opaque PNG invents no soft mask: {text}");
     assert!(text.contains("/Length 12 >>"), "two rows of two RGB pixels are written unfiltered");
     assert!(!text.contains("/Filter"), "PNG samples need no stream filter: {text}");
     assert!(text.contains("/XObject << /Im1 "), "page resources register the image: {text}");
@@ -846,6 +878,87 @@ fn repeated_image_references_share_one_xobject() {
     assert_eq!(text.matches("\n/Im1 Do\n").count(), 2, "both placements select the same object");
     assert!(!text.contains("/Im2"), "the repeated reference gets no second name");
     assert!(text.contains("/XObject << /Im1 "));
+    assert_xref_intact(&bytes);
+}
+
+/// Object number the colour image references as its `/SMask`.
+fn mask_number(text: &str) -> usize {
+    let at = text.find("/SMask ").expect("/SMask reference") + "/SMask ".len();
+    let rest = &text[at..];
+    let number: usize = rest.split_whitespace().next().expect("mask object number").parse().expect("numeric mask reference");
+    assert!(rest.starts_with(&format!("{number} 0 R")), "/SMask carries an indirect reference: {rest}");
+    number
+}
+
+/// Mask stream body located through the xref, so binary samples never pass
+/// through UTF-8 decoding.
+fn mask_stream(bytes: &[u8], number: usize) -> &[u8] {
+    let offset = xref_entries(bytes)[number - 1];
+    let object = &bytes[offset..];
+    assert!(object.starts_with(format!("{number} 0 obj\n").as_bytes()), "xref points at the mask object");
+    let marker = b"stream\n";
+    let start = find(object, marker).expect("mask stream keyword") + marker.len();
+    let length = find(&object[start..], b"\nendstream").expect("mask stream terminator");
+    &object[start..start + length]
+}
+
+#[test]
+fn png_alpha_becomes_a_device_gray_soft_mask() {
+    let href = format!("data:image/png;base64,{}", base64(&alpha_png()));
+    let bytes = render_scene(scene_with_images(&[(&href, None)]));
+    let text = lossy(&bytes);
+
+    assert_eq!(text.matches("/Type /XObject /Subtype /Image").count(), 2, "a colour image and its mask: {text}");
+    assert!(text.contains("/ColorSpace /DeviceRGB"), "the colour plane stays RGB: {text}");
+    assert!(
+        text.contains(
+            "<< /Type /XObject /Subtype /Image /Width 2 /Height 2 /ColorSpace /DeviceGray /BitsPerComponent 8 /Length 4 >>"
+        ),
+        "the mask is a single-channel 8-bit image: {text}"
+    );
+    assert!(text.contains("/Length 12 >>"), "the colour plane keeps two rows of RGB samples");
+    assert!(!text.contains("/Filter"), "neither plane needs a stream filter");
+
+    let mask = mask_number(&text);
+    assert!(text.contains(&format!("/SMask {mask} 0 R")), "the colour dictionary points at its mask: {text}");
+    assert_eq!(mask_stream(&bytes, mask), [0, 64, 128, 255], "the mask carries the authored alpha samples");
+
+    let color: [u8; 12] = [255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 255];
+    assert!(
+        bytes.windows(color.len()).any(|window| window == color),
+        "the colour stream keeps the red, green, blue, white samples"
+    );
+    assert_xref_intact(&bytes);
+}
+
+#[test]
+fn grey_alpha_png_keeps_both_planes() {
+    let href = format!("data:image/png;base64,{}", base64(&grey_alpha_png()));
+    let bytes = render_scene(scene_with_images(&[(&href, None)]));
+    let text = lossy(&bytes);
+
+    assert_eq!(text.matches("/Type /XObject /Subtype /Image").count(), 2, "one colour image and one mask: {text}");
+    assert_eq!(text.matches("/ColorSpace /DeviceGray").count(), 2, "both planes are single-channel: {text}");
+    let mask = mask_number(&text);
+    assert!(text.contains(&format!("/SMask {mask} 0 R")), "the colour image references the mask: {text}");
+
+    let color: [u8; 4] = [10, 20, 10, 20];
+    assert!(bytes.windows(color.len()).any(|window| window == color), "the colour plane keeps the grey samples");
+    assert_eq!(mask_stream(&bytes, mask), [0, 255, 0, 255], "the mask keeps the authored alpha samples");
+    assert_xref_intact(&bytes);
+}
+
+#[test]
+fn repeated_transparent_references_share_one_mask() {
+    let href = format!("data:image/png;base64,{}", base64(&alpha_png()));
+    let bytes = render_scene(scene_with_images(&[(&href, None), (&href, None)]));
+    let text = lossy(&bytes);
+
+    assert_eq!(text.matches("/Type /XObject /Subtype /Image").count(), 2, "one colour image plus one mask: {text}");
+    assert_eq!(text.matches("/SMask ").count(), 1, "/SMask is written once: {text}");
+    assert_eq!(text.matches("\n/Im1 Do\n").count(), 2, "both placements paint the colour image");
+    assert!(!text.contains("/Im2"), "the mask never becomes its own resource name");
+    assert_eq!(text.matches("/XObject <<").count(), 1, "page resources list the colour image once");
     assert_xref_intact(&bytes);
 }
 
