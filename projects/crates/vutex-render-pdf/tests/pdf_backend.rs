@@ -114,6 +114,37 @@ fn trailer_size(bytes: &[u8]) -> usize {
     digits.parse().expect("/Size value")
 }
 
+/// Assert the xref table and trailer describe exactly the appended objects.
+fn assert_xref_intact(bytes: &[u8]) {
+    let entries = xref_entries(bytes);
+    let numbers = object_numbers(bytes);
+    assert_eq!(entries.len(), numbers.len(), "one xref entry per object");
+    for (index, offset) in entries.iter().enumerate() {
+        let expected = format!("{} 0 obj", index + 1);
+        assert!(bytes[*offset..].starts_with(expected.as_bytes()), "object {expected} at offset {offset}");
+    }
+    let highest = numbers.into_iter().max().expect("at least one object");
+    assert_eq!(trailer_size(bytes), highest + 1, "/Size is the highest object number plus one");
+}
+
+/// Whether every `q` operator is closed by a later `Q` in the same nesting.
+fn balanced_graphics_states(text: &str) -> bool {
+    let mut depth: i64 = 0;
+    for line in text.lines() {
+        match line.trim() {
+            "q" => depth += 1,
+            "Q" => {
+                depth -= 1;
+                if depth < 0 {
+                    return false;
+                }
+            }
+            _ => {}
+        }
+    }
+    depth == 0
+}
+
 #[test]
 fn writes_header_and_trailer() {
     let bytes = render_pdf(&DisplayPresentation { pages: vec![full_page()] }).expect("pdf render");
@@ -452,4 +483,128 @@ fn embeds_scene_labels_outside_winansi() {
 
     assert!(text.contains("/FontFile2 "), "scene label pulls in the embedded subset");
     assert!(!text.contains("(??) Tj"), "scene labels never degrade to question marks");
+}
+
+/// Scene item carrying the nodes a test builds on a 200 x 100 canvas.
+fn scene_graphic(scene: DisplayScene) -> DisplayItem {
+    DisplayItem::Graphic(DisplayGraphic { x: 72.0, y: 400.0, width: 400.0, height: 200.0, scene, alt: "faded".to_string() })
+}
+
+/// A translucent rectangle and a translucent label in one scene.
+fn translucent_graphic() -> DisplayItem {
+    let mut scene = DisplayScene::new(Size::new(200.0, 100.0));
+    scene.push(SceneNode::new(NodeKind::Rect {
+        rect: Rect::new(10.0, 10.0, 80.0, 40.0),
+        style: ShapeStyle { opacity: 0.5, ..ShapeStyle::filled(Color::BLACK) },
+    }));
+    scene.push(SceneNode::new(NodeKind::Text {
+        position: Point::new(20.0, 36.0),
+        text: "Faded".to_string(),
+        style: TextStyle { font_size: 12.0, opacity: 0.75, ..TextStyle::default() },
+    }));
+    scene_graphic(scene)
+}
+
+#[test]
+fn paints_scene_opacity_through_ext_gstates() {
+    let bytes =
+        render_pdf(&DisplayPresentation { pages: vec![page(595.0, 842.0, vec![translucent_graphic()])] }).expect("pdf render");
+    let text = lossy(&bytes);
+
+    assert_eq!(text.matches("/Type /ExtGState").count(), 2, "one state per distinct alpha: {text}");
+    assert!(text.contains("/ExtGState << /GS1 "), "resource category names the states: {text}");
+    assert!(
+        text.contains("<< /Type /ExtGState /ca 0.5 /CA 0.5 /AIS false /BM /Normal >>"),
+        "fill and stroke alpha share the shape value: {text}"
+    );
+    assert!(text.contains("/ca 0.75"), "the label keeps its own alpha");
+    assert_eq!(text.matches("/GS1 gs\n").count(), 1, "the rectangle selects the 0.5 state");
+    assert_eq!(text.matches("/GS2 gs\n").count(), 1, "the label selects the 0.75 state");
+    assert!(balanced_graphics_states(&text), "every `q` is closed by its `Q`");
+    assert_xref_intact(&bytes);
+}
+
+#[test]
+fn scenes_sharing_an_opacity_share_one_ext_gstate() {
+    let mut scene = DisplayScene::new(Size::new(100.0, 100.0));
+    scene.push(SceneNode::new(NodeKind::Rect {
+        rect: Rect::new(0.0, 0.0, 40.0, 40.0),
+        style: ShapeStyle { opacity: 0.35, ..ShapeStyle::stroked(Color::BLACK, 1.0) },
+    }));
+    scene.push(SceneNode::new(NodeKind::Ellipse {
+        center: Point::new(70.0, 70.0),
+        radii: Size::new(20.0, 20.0),
+        style: ShapeStyle { opacity: 0.35, ..ShapeStyle::filled(Color::rgb(0, 0, 255)) },
+    }));
+    let bytes =
+        render_pdf(&DisplayPresentation { pages: vec![page(595.0, 842.0, vec![scene_graphic(scene)])] }).expect("pdf render");
+    let text = lossy(&bytes);
+
+    assert_eq!(text.matches("/Type /ExtGState").count(), 1, "one object for the shared alpha: {text}");
+    assert!(text.contains("/ca 0.35"), "the shared value reaches the dictionary");
+    assert_eq!(text.matches("/GS1 gs\n").count(), 2, "both nodes select the same state");
+    assert_xref_intact(&bytes);
+}
+
+#[test]
+fn fully_opaque_scenes_emit_no_graphics_state() {
+    let bytes =
+        render_pdf(&DisplayPresentation { pages: vec![page(595.0, 842.0, vec![diagram_graphic()])] }).expect("pdf render");
+    let text = lossy(&bytes);
+
+    assert!(!text.contains("/ExtGState"), "opaque scenes need no alpha resource: {text}");
+    assert!(!text.contains(" gs\n"), "no `gs` operator appears");
+    assert!(balanced_graphics_states(&text), "existing state pairs stay balanced");
+    assert_xref_intact(&bytes);
+}
+
+#[test]
+fn group_opacity_multiplies_into_descendants() {
+    let mut children = vec![SceneNode::new(NodeKind::Rect {
+        rect: Rect::new(0.0, 0.0, 20.0, 20.0),
+        style: ShapeStyle { opacity: 0.5, ..ShapeStyle::filled(Color::BLACK) },
+    })];
+    children.push(SceneNode::new(NodeKind::Rect {
+        rect: Rect::new(60.0, 60.0, 20.0, 20.0),
+        style: ShapeStyle::filled(Color::BLACK),
+    }));
+    let mut scene = DisplayScene::new(Size::new(100.0, 100.0));
+    scene.push(SceneNode::new(NodeKind::Group { children, opacity: 0.5 }));
+    let bytes =
+        render_pdf(&DisplayPresentation { pages: vec![page(595.0, 842.0, vec![scene_graphic(scene)])] }).expect("pdf render");
+    let text = lossy(&bytes);
+
+    assert!(text.contains("/ca 0.25"), "group alpha composes with the child alpha: {text}");
+    assert!(text.contains("/ca 0.5"), "a child without its own opacity inherits the group alpha");
+    assert!(!text.contains("<< /Type /ExtGState /ca 1 "), "the group never paints one flattened state");
+    assert_eq!(text.matches("/Type /ExtGState").count(), 2, "one state per composed alpha");
+    assert_eq!(text.matches("/GS1 gs\n").count(), 1, "the translucent child selects the 0.25 state");
+    assert_eq!(text.matches("/GS2 gs\n").count(), 1, "the opaque child still inherits the 0.5 state");
+    assert!(balanced_graphics_states(&text));
+    assert_xref_intact(&bytes);
+}
+
+#[test]
+fn malformed_opacity_is_clamped_or_ignored() {
+    let mut scene = DisplayScene::new(Size::new(100.0, 50.0));
+    scene.push(SceneNode::new(NodeKind::Rect {
+        rect: Rect::new(0.0, 0.0, 10.0, 10.0),
+        style: ShapeStyle { opacity: f64::NAN, ..ShapeStyle::filled(Color::BLACK) },
+    }));
+    scene.push(SceneNode::new(NodeKind::Rect {
+        rect: Rect::new(20.0, 0.0, 10.0, 10.0),
+        style: ShapeStyle { opacity: 1.4, ..ShapeStyle::filled(Color::BLACK) },
+    }));
+    scene.push(SceneNode::new(NodeKind::Rect {
+        rect: Rect::new(40.0, 0.0, 10.0, 10.0),
+        style: ShapeStyle { opacity: -0.5, ..ShapeStyle::filled(Color::BLACK) },
+    }));
+    let bytes =
+        render_pdf(&DisplayPresentation { pages: vec![page(595.0, 842.0, vec![scene_graphic(scene)])] }).expect("pdf render");
+    let text = lossy(&bytes);
+
+    assert!(!text.contains("/ca nan") && !text.contains("/ca inf"), "non-finite alpha stays out of the file: {text}");
+    assert!(!text.contains("/ca 1.4"), "out-of-range alpha is clamped, never written raw");
+    assert!(text.contains("/ca 0 /CA 0 "), "a negative alpha clamps to fully transparent: {text}");
+    assert_xref_intact(&bytes);
 }

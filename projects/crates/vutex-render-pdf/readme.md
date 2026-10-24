@@ -3,8 +3,10 @@
 PDF output backend for VuTeX.
 
 Diagram scenes are painted as vector geometry: shapes keep their fill and
-stroke, node transforms compose under a single y-flip at the root, and labels
-stay upright with their anchored alignment.
+stroke, node transforms compose under a single y-flip at the root, labels stay
+upright with their anchored alignment, and opacity is honoured through
+`ExtGState` resources whose `/ca` and `/CA` entries select a node's alpha
+around `q` and `Q`.
 
 The writer needs no third-party crate. Text the WinAnsi encoding reaches uses
 the base-14 standard fonts, so Latin documents embed no font program. Anything
