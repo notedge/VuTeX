@@ -1,20 +1,20 @@
-//! Host-supplied diagram scenes attached to the blocks that authored them.
+//! Host-supplied diagram display scenes attached to the blocks that authored them.
 //!
 //! VuTeX does not own diagram semantics. A producer such as `davinci-diagram`
-//! lowers diagram source into a [`davinci_scene::Scene`], and the host registers
-//! that scene here under the Notedown block id it belongs to. The layout pass
-//! then places the scene when it reaches that block.
+//! resolves its semantic scene into a [`davinci_scene::DisplayScene`], and the
+//! host registers that display scene here under the Notedown block id it belongs
+//! to. The layout pass then places the scene when it reaches that block.
 
 use std::collections::HashMap;
 
-use davinci_scene::Scene;
+use davinci_scene::DisplayScene;
 use notedown_ir::NodeId;
 
-/// One diagram scene with its alternative text.
+/// One diagram display scene with its alternative text.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DiagramScene {
-    /// Vector scene the producer lowered from the diagram source.
-    pub scene: Scene,
+    /// Resolved display scene the producer lowered from the diagram source.
+    pub scene: DisplayScene,
     /// Alternative text used by backends that cannot paint the scene.
     pub alt: String,
 }
@@ -35,7 +35,7 @@ impl Diagrams {
     }
 
     /// Register the scene authored by `node`, replacing any previous scene.
-    pub fn insert(&mut self, node: NodeId, scene: Scene, alt: impl Into<String>) -> Option<DiagramScene> {
+    pub fn insert(&mut self, node: NodeId, scene: DisplayScene, alt: impl Into<String>) -> Option<DiagramScene> {
         self.scenes.insert(node, DiagramScene { scene, alt: alt.into() })
     }
 
