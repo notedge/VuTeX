@@ -1280,6 +1280,7 @@ fn grey_alpha_png_keeps_both_planes() {
     assert_xref_intact(&bytes);
 }
 
+#[test]
 fn page_image_without_a_source_keeps_the_dashed_placeholder() {
     let bytes = render_items(vec![page_image(None)]);
     let text = lossy(&bytes);
