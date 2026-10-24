@@ -8,15 +8,18 @@
 //! PNG and JPEG are decoded only as far as legal PDF embedding needs. A JPEG
 //! keeps its compressed stream and is wrapped in `/DCTDecode`, with the frame
 //! header supplying the size and colour space. A PNG is inflated to 8-bit
-//! samples and written without a filter. The crate takes no dependencies, so
-//! the module carries its own base64, zlib/DEFLATE (stored, fixed-Huffman, and
-//! dynamic-Huffman blocks), PNG filter, and JPEG marker parsers.
+//! samples and written without a filter. 16-bit samples narrow to their high
+//! byte, and Adam7-interlaced rows are de-interlaced before unfiltering. The
+//! crate takes no dependencies, so the module carries its own base64,
+//! zlib/DEFLATE (stored, fixed-Huffman, and dynamic-Huffman blocks), PNG
+//! filter, and JPEG marker parsers.
 //!
 //! Transparency survives the decode: an RGBA or grey-alpha PNG keeps its alpha
 //! channel as a separate plane, which the writer emits as a `/DeviceGray`
-//! `/SMask` XObject. Palette PNGs expand their `tRNS` entries the same way.
-//! Colour-key `tRNS` on greyscale and truecolour PNGs is ignored, and 16-bit
-//! samples are refused, so those sources keep their opaque colour plane.
+//! `/SMask` XObject. Palette PNGs expand their `tRNS` entries the same way, and
+//! a colour-key `tRNS` on a greyscale or truecolour PNG becomes a mask whose
+//! keyed pixels are fully transparent. PNG sources with 1, 2, or 4 bits per
+//! sample are still refused.
 //!
 //! Every parser is bounds-checked and fails closed: an unsupported format,
 //! corrupt header, or zero-sized image returns `None` instead of panicking or
@@ -187,14 +190,19 @@ struct PngHeader {
     height: usize,
     /// PNG colour type, which selects the channel layout.
     color_type: u8,
+    /// Bits per sample: 8 or 16.
+    bit_depth: u8,
+    /// Interlace method: 0 for none, 1 for Adam7.
+    interlace: u8,
 }
 
 impl PngHeader {
     /// Parse and validate the thirteen-byte `IHDR` body.
     ///
-    /// Only 8-bit, non-interlaced truecolour, greyscale, grey-alpha, and
-    /// RGBA inputs are accepted; 16-bit and packed low-bit-depth samples would
-    /// need a different embedding path.
+    /// Truecolour, greyscale, grey-alpha, and RGBA inputs at 8 or 16 bits per
+    /// sample are accepted. Palette inputs stay 8-bit, and packed 1, 2, or
+    /// 4-bit samples would need a different embedding path, so they are
+    /// refused.
     fn parse(body: &[u8]) -> Option<Self> {
         if body.len() < 13 {
             return None;
@@ -206,16 +214,20 @@ impl PngHeader {
         let compression = *body.get(10)?;
         let filter = *body.get(11)?;
         let interlace = *body.get(12)?;
-        if width == 0 || height == 0 || bit_depth != 8 || compression != 0 || filter != 0 || interlace != 0 {
+        if width == 0 || height == 0 || compression != 0 || filter != 0 || interlace > 1 {
             return None;
         }
         if !matches!(color_type, 0 | 2 | 3 | 4 | 6) {
             return None;
         }
-        Some(Self { width, height, color_type })
+        let depth_supported = if color_type == 3 { bit_depth == 8 } else { matches!(bit_depth, 8 | 16) };
+        if !depth_supported {
+            return None;
+        }
+        Some(Self { width, height, color_type, bit_depth, interlace })
     }
 
-    /// Samples per pixel in the inflated scanlines.
+    /// Colour channels per pixel, excluding alpha.
     fn channels(self) -> usize {
         match self.color_type {
             0 | 3 => 1,
@@ -224,10 +236,47 @@ impl PngHeader {
             _ => 3,
         }
     }
+
+    /// Bytes one sample occupies in the inflated scanlines.
+    fn bytes_per_sample(self) -> usize {
+        if self.bit_depth == 16 { 2 } else { 1 }
+    }
+
+    /// Bytes one pixel occupies in the inflated scanlines.
+    fn pixel_bytes(self) -> usize {
+        self.channels() * self.bytes_per_sample()
+    }
 }
 
-/// Decode a PNG into unfiltered 8-bit samples, plus the alpha plane when the
-/// colour type carries one.
+/// Adam7 pass origins and steps, as `(x origin, y origin, x step, y step)`.
+const ADAM7: [(usize, usize, usize, usize); 7] =
+    [(0, 0, 8, 8), (4, 0, 8, 8), (0, 4, 4, 8), (2, 0, 4, 4), (0, 2, 2, 4), (1, 0, 2, 2), (0, 1, 1, 2)];
+
+/// Pixel dimensions of one Adam7 pass, zero when the pass holds no pixel.
+fn pass_size(width: usize, height: usize, pass: (usize, usize, usize, usize)) -> (usize, usize) {
+    let (x_origin, y_origin, x_step, y_step) = pass;
+    (width.saturating_sub(x_origin).div_ceil(x_step), height.saturating_sub(y_origin).div_ceil(y_step))
+}
+
+/// Inflated byte count of the Adam7 passes, filter bytes included.
+///
+/// A pass with no columns or no rows carries no scanline at all, so it
+/// contributes nothing rather than one filter byte per row.
+fn interlaced_len(width: usize, height: usize, pixel_bytes: usize) -> Option<usize> {
+    let mut total = 0usize;
+    for pass in ADAM7 {
+        let (pass_width, pass_height) = pass_size(width, height, pass);
+        if pass_width == 0 || pass_height == 0 {
+            continue;
+        }
+        let row_bytes = pass_width.checked_mul(pixel_bytes)?;
+        total = total.checked_add(pass_height.checked_mul(row_bytes.checked_add(1)?)?)?;
+    }
+    Some(total)
+}
+
+/// Decode a PNG into unfiltered, narrowed 8-bit samples, plus the alpha or
+/// colour-key plane when the source carries transparency.
 fn decode_png(raw: &[u8]) -> Option<Raster> {
     let mut header: Option<PngHeader> = None;
     let mut palette: Option<Vec<u8>> = None;
@@ -252,31 +301,51 @@ fn decode_png(raw: &[u8]) -> Option<Raster> {
         cursor = body_end.checked_add(4)?;
     }
     let header = header?;
-    let channels = header.channels();
-    let row_bytes = header.width.checked_mul(channels)?;
-    let expected = header.height.checked_mul(row_bytes.checked_add(1)?)?;
-    if expected > MAX_SAMPLES {
+    let pixel_bytes = header.pixel_bytes();
+    let row_bytes = header.width.checked_mul(pixel_bytes)?;
+    let expected = if header.interlace == 1 {
+        interlaced_len(header.width, header.height, pixel_bytes)?
+    }
+    else {
+        header.height.checked_mul(row_bytes.checked_add(1)?)?
+    };
+    let samples_len = header.width.checked_mul(header.height)?.checked_mul(pixel_bytes)?;
+    if expected > MAX_SAMPLES || samples_len > MAX_SAMPLES {
         return None;
     }
     let inflated = inflate(&compressed, expected)?;
     let scanlines = inflated.get(..expected)?;
-    let samples = unfilter(scanlines, header.height, row_bytes, channels)?;
+    let samples = if header.interlace == 1 {
+        deinterlace(scanlines, header.width, header.height, pixel_bytes)?
+    }
+    else {
+        unfilter(scanlines, header.height, row_bytes, pixel_bytes)?
+    };
+    let depth = header.bytes_per_sample();
+    let channels = header.channels();
     let (data, color_space, sharp) = match header.color_type {
-        0 => (samples, "DeviceGray", None),
+        0 => {
+            let sharp = colour_key_alpha(&samples, header, transparency.as_deref());
+            (narrow(samples, depth), "DeviceGray", sharp)
+        }
+        2 => {
+            let sharp = colour_key_alpha(&samples, header, transparency.as_deref());
+            (narrow(samples, depth), "DeviceRGB", sharp)
+        }
         4 => {
-            let (grey, alpha) = split_alpha(&samples, channels)?;
-            (grey, "DeviceGray", Some(alpha))
+            let (grey, alpha) = split_alpha(&samples, channels, depth)?;
+            (narrow(grey, depth), "DeviceGray", Some(narrow(alpha, depth)))
         }
         6 => {
-            let (rgb, alpha) = split_alpha(&samples, channels)?;
-            (rgb, "DeviceRGB", Some(alpha))
+            let (rgb, alpha) = split_alpha(&samples, channels, depth)?;
+            (narrow(rgb, depth), "DeviceRGB", Some(narrow(alpha, depth)))
         }
         3 => (
             expand_palette(&samples, palette.as_deref()?),
             "DeviceRGB",
             expand_palette_alpha(&samples, transparency.as_deref()),
         ),
-        _ => (samples, "DeviceRGB", None),
+        _ => (narrow(samples, depth), "DeviceRGB", None),
     };
     Some(raster(header.width, header.height, color_space, None, data, sharp))
 }
@@ -309,6 +378,41 @@ fn unfilter(scanlines: &[u8], height: usize, row_bytes: usize, bpp: usize) -> Op
     Some(rows)
 }
 
+/// Reverse Adam7 interlacing into one row-major sample buffer.
+///
+/// Each pass is unfiltered on its own, with the filter state restarting at the
+/// pass's first row, then its pixels are scattered to their image column and
+/// row. Passes that hold no pixel consume no bytes.
+fn deinterlace(scanlines: &[u8], width: usize, height: usize, pixel_bytes: usize) -> Option<Vec<u8>> {
+    let total = width.checked_mul(height)?.checked_mul(pixel_bytes)?;
+    let mut samples = vec![0u8; total];
+    let mut at = 0usize;
+    for pass in ADAM7 {
+        let (pass_width, pass_height) = pass_size(width, height, pass);
+        if pass_width == 0 || pass_height == 0 {
+            continue;
+        }
+        let row_bytes = pass_width.checked_mul(pixel_bytes)?;
+        let length = pass_height.checked_mul(row_bytes.checked_add(1)?)?;
+        let block = scanlines.get(at..at.checked_add(length)?)?;
+        let rows = unfilter(block, pass_height, row_bytes, pixel_bytes)?;
+        let (x_origin, y_origin, x_step, y_step) = pass;
+        for row in 0..pass_height {
+            let y = y_origin.checked_add(row.checked_mul(y_step)?)?;
+            for column in 0..pass_width {
+                let x = x_origin.checked_add(column.checked_mul(x_step)?)?;
+                let source = row.checked_mul(row_bytes)?.checked_add(column.checked_mul(pixel_bytes)?)?;
+                let target = y.checked_mul(width)?.checked_add(x)?.checked_mul(pixel_bytes)?;
+                samples
+                    .get_mut(target..target.checked_add(pixel_bytes)?)?
+                    .copy_from_slice(rows.get(source..source.checked_add(pixel_bytes)?)?);
+            }
+        }
+        at = at.checked_add(length)?;
+    }
+    Some(samples)
+}
+
 /// PNG Paeth predictor: the neighbour closest to `left + up - up_left`.
 fn paeth(left: u8, up: u8, up_left: u8) -> u8 {
     let estimate = i16::from(left) + i16::from(up) - i16::from(up_left);
@@ -326,22 +430,82 @@ fn paeth(left: u8, up: u8, up_left: u8) -> u8 {
     }
 }
 
-/// Split the trailing alpha byte off every pixel of a grey-alpha or RGBA
-/// buffer, returning the colour plane and the alpha plane.
+/// Split the trailing alpha sample off every pixel, returning the colour and
+/// alpha planes at the source sample depth.
 ///
-/// `None` means the buffer does not hold whole pixels, so the caller keeps the
-/// image opaque instead of pairing mismatched planes.
-fn split_alpha(samples: &[u8], channels: usize) -> Option<(Vec<u8>, Vec<u8>)> {
-    if channels < 2 || samples.len() % channels != 0 {
+/// `bytes_per_sample` keeps 16-bit samples whole so the caller narrows both
+/// planes the same way. `None` means the buffer does not hold whole pixels, so
+/// the caller keeps the image opaque instead of pairing mismatched planes.
+fn split_alpha(samples: &[u8], channels: usize, bytes_per_sample: usize) -> Option<(Vec<u8>, Vec<u8>)> {
+    let pixel_bytes = channels.checked_mul(bytes_per_sample)?;
+    let color_bytes = channels.checked_sub(1)?.checked_mul(bytes_per_sample)?;
+    if channels < 2 || pixel_bytes == 0 || samples.len() % pixel_bytes != 0 {
         return None;
     }
-    let mut color = Vec::with_capacity(samples.len() / channels * (channels - 1));
-    let mut alpha = Vec::with_capacity(samples.len() / channels);
-    for pixel in samples.chunks_exact(channels) {
-        color.extend_from_slice(&pixel[..channels - 1]);
-        alpha.push(pixel[channels - 1]);
+    let pixels = samples.len() / pixel_bytes;
+    let mut color = Vec::with_capacity(pixels.checked_mul(color_bytes)?);
+    let mut alpha = Vec::with_capacity(pixels.checked_mul(bytes_per_sample)?);
+    for pixel in samples.chunks_exact(pixel_bytes) {
+        color.extend_from_slice(&pixel[..color_bytes]);
+        alpha.extend_from_slice(&pixel[color_bytes..]);
     }
     Some((color, alpha))
+}
+
+/// Downscale 16-bit samples to 8 bits by keeping each sample's high byte.
+///
+/// PNG stores 16-bit samples big-endian, so the first byte of every pair is
+/// already the truncated 8-bit value. Truncation rather than
+/// `round(value * 255 / 65535)` keeps the conversion a pure byte selection:
+/// `0x00FF` narrows to 0 instead of 1, a difference of one step in an
+/// already negligible range. Samples at 8 bits pass through unchanged.
+fn narrow(samples: Vec<u8>, bytes_per_sample: usize) -> Vec<u8> {
+    if bytes_per_sample == 1 {
+        return samples;
+    }
+    samples.chunks_exact(bytes_per_sample).map(|sample| sample[0]).collect()
+}
+
+/// Alpha plane for a colour-key `tRNS` chunk on a greyscale or truecolour PNG.
+///
+/// The chunk carries one 16-bit grey value or three 16-bit RGB values in the
+/// image's own sample depth, so the comparison runs on the source samples
+/// before 16-bit narrowing. A pixel whose every channel equals the key turns
+/// fully transparent and every other pixel stays opaque. A chunk that is
+/// absent, has the wrong length, or keys no pixel leaves the image opaque, so
+/// an all-opaque mask is never invented.
+fn colour_key_alpha(samples: &[u8], header: PngHeader, transparency: Option<&[u8]>) -> Option<Vec<u8>> {
+    let key = transparency?;
+    let channels = header.channels();
+    let bytes_per_sample = header.bytes_per_sample();
+    let pixel_bytes = header.pixel_bytes();
+    if key.len() != channels.checked_mul(2)? || pixel_bytes == 0 || samples.len() % pixel_bytes != 0 {
+        return None;
+    }
+    let mut alpha = Vec::with_capacity(samples.len() / pixel_bytes);
+    let mut keyed = false;
+    for pixel in samples.chunks_exact(pixel_bytes) {
+        let mut matches = true;
+        for channel in 0..channels {
+            let at = channel * bytes_per_sample;
+            let sample = match bytes_per_sample {
+                1 => pixel.get(at).map(|&sample| u16::from(sample)),
+                _ => u16_at(pixel, at),
+            };
+            if sample != u16_at(key, channel * 2) {
+                matches = false;
+                break;
+            }
+        }
+        if matches {
+            keyed = true;
+            alpha.push(0);
+        }
+        else {
+            alpha.push(u8::MAX);
+        }
+    }
+    keyed.then_some(alpha)
 }
 
 /// Expand a palette index buffer into RGB triplets.
