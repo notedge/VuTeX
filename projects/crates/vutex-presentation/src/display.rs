@@ -80,6 +80,12 @@ pub struct DisplayImage {
     pub height: f64,
     /// Alternative text for accessibility and diagnostics.
     pub alt: String,
+    /// Authored image location, kept so a renderer can resolve the pixels.
+    ///
+    /// The destination is carried verbatim from the document, so it may be a
+    /// `data:` URI or a filesystem path. Renderers resolve it themselves and
+    /// keep the dashed slot when the value is absent or unresolvable.
+    pub source: Option<String>,
 }
 
 /// One placed diagram scene in display coordinates.
