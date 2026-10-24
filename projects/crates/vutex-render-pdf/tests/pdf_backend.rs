@@ -3,7 +3,7 @@
 use vutex_presentation::display::{
     DisplayImage, DisplayItem, DisplayPage, DisplayPresentation, DisplayRect, DisplayRule, DisplayTextRun,
 };
-use vutex_render_pdf::render_pdf;
+use vutex_render_pdf::{PdfFontPolicy, render_pdf, render_pdf_with_font_policy};
 use vutex_types::math::FontStyle;
 
 fn page(width: f64, height: f64, items: Vec<DisplayItem>) -> DisplayPage {
@@ -176,15 +176,54 @@ fn two_pages_get_distinct_media_boxes() {
 }
 
 #[test]
-fn substitutes_characters_outside_latin1() {
-    let bytes = render_pdf(&DisplayPresentation {
-        pages: vec![page(595.0, 842.0, vec![text(72.0, 100.0, 12.0, "sans", "标题 Title")])],
-    })
+fn substitutes_characters_outside_latin1_when_embedding_is_disabled() {
+    let bytes = render_pdf_with_font_policy(
+        &DisplayPresentation { pages: vec![page(595.0, 842.0, vec![text(72.0, 100.0, 12.0, "sans", "标题 Title")])] },
+        &PdfFontPolicy::Base14Only,
+    )
     .expect("pdf render");
     let text = lossy(&bytes);
 
+    assert!(text.contains("/BaseFont /Helvetica"), "base-14 font is used");
+    assert!(!text.contains("/Type0"), "no font program is embedded");
     assert!(text.contains("(?? Title) Tj"), "non-latin1 characters become question marks");
     assert!(!text.contains("标题"), "no raw utf-8 bytes in winansi content");
+}
+
+#[test]
+fn embeds_a_subset_for_text_outside_winansi() {
+    let presentation =
+        DisplayPresentation { pages: vec![page(595.0, 842.0, vec![text(72.0, 100.0, 12.0, "sans", "标题 Title")])] };
+    let Some(_) = vutex_render_pdf_font_available()
+    else {
+        return;
+    };
+    let bytes = render_pdf(&presentation).expect("pdf render");
+    let text = lossy(&bytes);
+
+    assert!(text.contains("/Subtype /Type0"), "composite font object");
+    assert!(text.contains("/Encoding /Identity-H"), "identity cid mapping");
+    assert!(text.contains("/Subtype /CIDFontType2"), "embedded TrueType program");
+    assert!(text.contains("/FontFile2 "), "font file stream");
+    assert!(text.contains("/ToUnicode "), "code point mapping for extraction");
+    assert!(text.contains(" Tj"), "content stream still paints text");
+    assert!(!text.contains("(?? Title) Tj"), "characters no longer degrade to question marks");
+
+    let entries = xref_entries(&bytes);
+    let numbers = object_numbers(&bytes);
+    assert_eq!(entries.len(), numbers.len(), "one xref entry per object");
+    assert_eq!(trailer_size(&bytes), numbers.into_iter().max().expect("at least one object") + 1);
+}
+
+/// Whether a system font for embedding is discoverable on this machine.
+fn vutex_render_pdf_font_available() -> Option<()> {
+    render_pdf_with_font_policy(
+        &DisplayPresentation { pages: vec![page(595.0, 842.0, vec![text(72.0, 100.0, 12.0, "sans", "标题")])] },
+        &PdfFontPolicy::Discover,
+    )
+    .ok()
+    .filter(|bytes| lossy(bytes).contains("/FontFile2 "))
+    .map(|_| ())
 }
 
 #[test]
