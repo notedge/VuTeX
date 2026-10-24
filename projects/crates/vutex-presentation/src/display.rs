@@ -82,6 +82,27 @@ pub struct DisplayImage {
     pub alt: String,
 }
 
+/// One placed diagram scene in display coordinates.
+///
+/// `x`/`y`/`width`/`height` describe the page-space box; the scene keeps its own
+/// canvas coordinates, so a renderer scales the scene by
+/// `width / scene.size.width` and `height / scene.size.height`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DisplayGraphic {
+    /// Left edge in points.
+    pub x: f64,
+    /// Top edge in points.
+    pub y: f64,
+    /// Placed box width in points.
+    pub width: f64,
+    /// Placed box height in points.
+    pub height: f64,
+    /// Generic vector scene emitted by the diagram producer.
+    pub scene: davinci_scene::Scene,
+    /// Alternative text for backends that cannot paint the scene.
+    pub alt: String,
+}
+
 /// A fixed-geometry primitive painted by SVG, PDF, and raster backends.
 #[derive(Debug, Clone, PartialEq)]
 pub enum DisplayItem {
@@ -93,6 +114,8 @@ pub enum DisplayItem {
     Rect(DisplayRect),
     /// An image slot reserved at a fixed size.
     Image(DisplayImage),
+    /// A diagram scene placed at a fixed size.
+    Graphic(DisplayGraphic),
 }
 
 /// One page in a fixed-geometry display presentation.

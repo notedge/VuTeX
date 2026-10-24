@@ -10,6 +10,7 @@ readme = "readme.md"
 [dependencies]
 serde = { workspace = true, features = ["derive"] }
 notedown-ir = { workspace = true }
+davinci-scene = { workspace = true }
 vutex-types = { workspace = true, features = ["serde"] }
 vutex-style = { workspace = true }
 vutex-text = { workspace = true }

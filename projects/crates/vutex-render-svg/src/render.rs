@@ -1,8 +1,8 @@
 //! SVG output: one stacked page group per display page.
 
-use vutex_presentation::display::{DisplayItem, DisplayPresentation, DisplayTextRun};
+use vutex_presentation::display::{DisplayGraphic, DisplayItem, DisplayPresentation, DisplayTextRun};
 use vutex_render::{RenderBackend, is_safe_href};
-use vutex_types::{Diagnostic, math::FontStyle};
+use vutex_types::{Diagnostic, Severity, math::FontStyle};
 
 /// Render every display page into one SVG document.
 ///
@@ -18,11 +18,11 @@ struct SvgBackend;
 
 impl RenderBackend for SvgBackend {
     fn render_display(&self, presentation: &DisplayPresentation) -> Result<Vec<u8>, Diagnostic> {
-        Ok(render_document(presentation).into_bytes())
+        Ok(render_document(presentation)?.into_bytes())
     }
 }
 
-fn render_document(presentation: &DisplayPresentation) -> String {
+fn render_document(presentation: &DisplayPresentation) -> Result<String, Diagnostic> {
     let width = presentation.pages.iter().map(|page| page.width).fold(0.0, f64::max);
     let height: f64 = presentation.pages.iter().map(|page| page.height).sum();
     let mut out = String::new();
@@ -43,16 +43,16 @@ fn render_document(presentation: &DisplayPresentation) -> String {
         ));
         out.push('\n');
         for item in &page.items {
-            write_item(&mut out, item);
+            write_item(&mut out, item)?;
         }
         out.push_str("</g>\n");
         offset += page.height;
     }
     out.push_str("</svg>\n");
-    out
+    Ok(out)
 }
 
-fn write_item(out: &mut String, item: &DisplayItem) {
+fn write_item(out: &mut String, item: &DisplayItem) -> Result<(), Diagnostic> {
     match item {
         DisplayItem::TextRun(run) => write_text_run(out, run),
         DisplayItem::Rule(rule) => {
@@ -93,8 +93,44 @@ fn write_item(out: &mut String, item: &DisplayItem) {
                 escape_attribute(&image.alt),
             ));
         }
+        DisplayItem::Graphic(graphic) => write_graphic(out, graphic)?,
     }
     out.push('\n');
+    Ok(())
+}
+
+/// Write one placed diagram scene as a nested `<svg>` inside a scaled group.
+///
+/// The scene keeps its own canvas and `viewBox`, so the group transform only
+/// places and scales it. The per-axis scales come from the layout box, which
+/// already preserves the scene aspect ratio. A scene that cannot serialize
+/// fails the whole render instead of leaving a blank hole in the page.
+fn write_graphic(out: &mut String, graphic: &DisplayGraphic) -> Result<(), Diagnostic> {
+    let intrinsic = graphic.scene.size;
+    if intrinsic.width <= 0.0 || intrinsic.height <= 0.0 {
+        return Err(Diagnostic {
+            code: "vutex.render.svg.diagram-invalid".into(),
+            severity: Severity::Error,
+            message: format!("diagram `{}` has a non-positive canvas size", graphic.alt),
+        });
+    }
+    let scene = graphic.scene.to_svg().map_err(|error| Diagnostic {
+        code: "vutex.render.svg.diagram-invalid".into(),
+        severity: Severity::Error,
+        message: format!("diagram `{}` is not serializable: {error}", graphic.alt),
+    })?;
+    out.push_str(&format!(
+        r##"<g data-diagram="{}" transform="translate({}, {}) scale({}, {})">"##,
+        escape_attribute(&graphic.alt),
+        num(graphic.x),
+        num(graphic.y),
+        num(graphic.width / intrinsic.width),
+        num(graphic.height / intrinsic.height),
+    ));
+    out.push('\n');
+    out.push_str(&scene);
+    out.push_str("</g>\n");
+    Ok(())
 }
 
 /// Write one positioned text run, wrapping it in its anchor when the

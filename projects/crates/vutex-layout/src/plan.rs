@@ -85,6 +85,27 @@ pub struct ImagePlaceholder {
     pub alt: String,
 }
 
+/// A diagram scene placed into a fixed box on the page.
+///
+/// The scene keeps its own canvas coordinate system; `width` and `height` are
+/// the page-space box the renderer scales the scene into. Layout preserves the
+/// scene aspect ratio, so the two scales match.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Graphic {
+    /// Left edge in points.
+    pub x: f64,
+    /// Top edge in points.
+    pub y: f64,
+    /// Placed box width in points.
+    pub width: f64,
+    /// Placed box height in points.
+    pub height: f64,
+    /// Generic vector scene emitted by the diagram producer.
+    pub scene: davinci_scene::Scene,
+    /// Alternative text for backends that cannot paint the scene.
+    pub alt: String,
+}
+
 /// A positioned page primitive produced by the document layout pass.
 ///
 /// All coordinates use points with the origin at the page's top-left corner.
@@ -98,6 +119,8 @@ pub enum LayoutItem {
     Rect(Rect),
     /// An image slot reserved at a fixed size.
     ImagePlaceholder(ImagePlaceholder),
+    /// A diagram scene placed at a fixed size.
+    Graphic(Graphic),
 }
 
 /// One laid-out page before presentation lowering.

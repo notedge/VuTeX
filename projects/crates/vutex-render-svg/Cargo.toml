@@ -17,3 +17,4 @@ vutex-render = { workspace = true }
 notedown-ir = { workspace = true }
 vutex-layout = { workspace = true }
 vutex-presentation = { workspace = true }
+davinci-scene = { workspace = true }

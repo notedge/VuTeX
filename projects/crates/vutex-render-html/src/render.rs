@@ -20,6 +20,7 @@ body{margin:0;padding:24px;background:#f5f5f5}\
 .vutex-text{position:absolute;white-space:pre;line-height:1}\
 .vutex-rule{position:absolute;background:#111}\
 .vutex-image{position:absolute;box-sizing:border-box;border:1px dashed #999;color:#666;font:8pt sans-serif}\
+.vutex-graphic{position:absolute;box-sizing:border-box;border:1px dashed #999;color:#666;font:8pt sans-serif}\
 </style>\n</head>\n<body>\n",
     );
     for (index, page) in presentation.pages.iter().enumerate() {
@@ -112,6 +113,19 @@ fn write_item(out: &mut String, item: &DisplayItem) {
                 num(image.width),
                 num(image.height),
                 escape_text(&image.alt),
+            ));
+        }
+        DisplayItem::Graphic(graphic) => {
+            // Snapshot HTML cannot paint a vector scene in page coordinates, so
+            // it reserves the same box and keeps the alternative text reachable.
+            out.push_str(&format!(
+                "<div class=\"vutex-graphic\" data-vutex-item=\"graphic\" role=\"img\" aria-label=\"{}\" style=\"left:{}pt;top:{}pt;width:{}pt;height:{}pt\">{}</div>\n",
+                escape_attribute(&graphic.alt),
+                num(graphic.x),
+                num(graphic.y),
+                num(graphic.width),
+                num(graphic.height),
+                escape_text(&graphic.alt),
             ));
         }
     }
