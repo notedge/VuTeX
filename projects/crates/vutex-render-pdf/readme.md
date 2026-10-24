@@ -30,6 +30,27 @@ de-interlaced before unfiltering. PNG sources with 1, 2, or 4 bits per sample
 are still refused. An absent, unresolved, unsupported, or corrupt source
 degrades to the dashed placeholder instead of failing the document.
 
+SVG sources become vector geometry rather than rasters, so icons keep their
+curves at any output resolution and register no `/XObject`. A source counts as
+SVG when its path ends in `.svg`, its `data:` URI declares `image/svg+xml`, or
+the caller supplied that MIME type in a scene resource reference. The supported
+subset is `<svg>` with `width`, `height`, and `viewBox`, `<g>` transforms and
+opacity, `<path>`, `<rect>` with `rx`/`ry`, `<circle>`, `<ellipse>`, `<line>`,
+`<polyline>`, and `<polygon>`, path commands `M L H V C S Q T Z` (absolute and
+relative, with implicit repeats), `fill`, `stroke`, `stroke-width`,
+`fill-opacity`, `opacity`, `color`, `style` declarations for the same
+properties, `none`, `currentColor`, `#rgb`, `#rrggbb`, and a small named-colour
+table. The default `xMidYMid meet` viewBox fit centres the artwork and preserves
+its aspect ratio; a missing `width` or `height` falls back to the matching
+`viewBox` extent. The same source is parsed once and painted once per slot,
+fitted and centred in the slot.
+
+Everything outside that subset keeps the placeholder instead of painting
+something wrong: elliptical arcs, gradients and patterns, CSS classes and
+`<style>` rules, `<text>`, `<use>`, symbols, masks, clip paths, filters,
+markers, nested `<svg>`, unknown elements, malformed XML, and a path without
+usable geometry.
+
 The writer needs no third-party crate. Text the WinAnsi encoding reaches uses
 the base-14 standard fonts, so Latin documents embed no font program. Anything
 outside WinAnsi is painted with a subset of a system TrueType font, embedded as

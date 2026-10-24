@@ -271,6 +271,24 @@ fn markdown_inline_data_uri_image_reaches_the_pdf_as_a_raster() {
 }
 
 #[test]
+fn markdown_inline_svg_image_reaches_the_pdf_as_vector_geometry() {
+    let dir = ScratchDir::new("pdf-inline-svg");
+    let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><rect width="24" height="24" fill="#ff0000"/><circle cx="12" cy="12" r="6" fill="#000"/></svg>"##;
+    let href = format!("data:image/svg+xml;base64,{}", base64(svg.as_bytes()));
+    let path = dir.write("icon.md", &format!("# 图标\n\n![图标]({href})\n"));
+
+    let outcome = render_document(&path_string(&path), Some(r#"{"output":"pdf"}"#));
+    assert_eq!(outcome.exit_code, 0, "{}", outcome.report_json);
+    let pdf = outcome.pdf.expect("pdf payload");
+    let text = String::from_utf8_lossy(&pdf);
+
+    assert!(text.contains("1 0 0 rg"), "the icon fill reaches the page: {text}");
+    assert!(text.contains("\nf\n"), "the icon paints vector geometry: {text}");
+    assert!(!text.contains("/Subtype /Image"), "an SVG icon registers no raster: {text}");
+    assert!(!text.contains("[3 2] 0 d"), "the icon no longer paints the placeholder dash array: {text}");
+}
+
+#[test]
 fn relative_sibling_image_resolves_against_the_document_directory() {
     let dir = ScratchDir::new("pdf-relative-image");
     dir.write_bytes("figure.png", &tiny_png());

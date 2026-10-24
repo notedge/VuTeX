@@ -100,25 +100,8 @@ impl Raster {
     }
 }
 
-/// Resolve, sniff, and decode the image behind one scene `href`.
-///
-/// Returns `None` when the reference cannot be read, is not a PNG or JPEG, or
-/// carries a header this module cannot parse.
-pub(crate) fn load(href: &str) -> Option<Raster> {
-    let raw = read_source(href)?;
-    if raw.starts_with(&PNG_SIGNATURE) {
-        decode_png(&raw)
-    }
-    else if raw.starts_with(&JPEG_START) {
-        decode_jpeg(&raw)
-    }
-    else {
-        None
-    }
-}
-
-/// Decode bytes the caller already owns, sniffing the same signatures [`load`]
-/// accepts.
+/// Decode bytes the caller already owns, sniffing the same signatures
+/// [`decode_png`] and [`decode_jpeg`] accept.
 ///
 /// The resource context hands over a payload a host fetched itself, such as the
 /// bytes behind an `https://…` URL, and the writer still needs a raster. A
@@ -134,6 +117,14 @@ pub(crate) fn decode(raw: &[u8]) -> Option<Raster> {
     else {
         None
     }
+}
+
+/// Raw bytes behind one `href`, without decoding them.
+///
+/// The writer uses this to tell an SVG document from a PNG or JPEG raster; the
+/// raster decoders still run through [`decode`].
+pub(crate) fn bytes(href: &str) -> Option<Vec<u8>> {
+    read_source(href)
 }
 
 /// Bytes behind one `href`: an inline `data:` payload or a file's contents.
