@@ -107,8 +107,16 @@ fn representable(ch: char) -> bool {
 }
 
 /// Whether a text run needs glyphs beyond the base-14 fonts.
-fn needs_embedding(text: &str) -> bool {
+pub(crate) fn needs_embedding(text: &str) -> bool {
     text.chars().any(|ch| !representable(ch))
+}
+
+/// Base-14 face a scene text style asks for.
+pub(crate) fn scene_font_style(weight: Option<u16>) -> FontStyle {
+    match weight {
+        Some(weight) if weight >= 600 => FontStyle::Bold,
+        _ => FontStyle::Normal,
+    }
 }
 
 /// Characters painted with the embedded font, in code point order.
@@ -116,12 +124,20 @@ fn embedded_charset(presentation: &DisplayPresentation) -> BTreeSet<char> {
     let mut charset = BTreeSet::new();
     for page in &presentation.pages {
         for item in &page.items {
-            let DisplayItem::TextRun(run) = item
-            else {
-                continue;
-            };
-            if needs_embedding(&run.text) {
-                charset.extend(run.text.chars());
+            match item {
+                DisplayItem::TextRun(run) => {
+                    if needs_embedding(&run.text) {
+                        charset.extend(run.text.chars());
+                    }
+                }
+                DisplayItem::Graphic(graphic) => {
+                    crate::scene::visit_texts(&graphic.scene, &mut |_, text| {
+                        if needs_embedding(text) {
+                            charset.extend(text.chars());
+                        }
+                    });
+                }
+                _ => {}
             }
         }
     }
@@ -147,7 +163,7 @@ fn load_subset(presentation: &DisplayPresentation, policy: &PdfFontPolicy) -> Op
 /// Families resolve by substring, so CSS stacks such as `sans-serif` keep
 /// working; a style the base-14 set cannot express (math and plain sans/mono
 /// labels) falls back to the family's regular face.
-fn base_font_for(family: &str, style: FontStyle) -> &'static str {
+pub(crate) fn base_font_for(family: &str, style: FontStyle) -> &'static str {
     let lower = family.to_ascii_lowercase();
     if lower.contains("mono") {
         match style {
@@ -178,18 +194,30 @@ fn base_font_for(family: &str, style: FontStyle) -> &'static str {
 /// the policy disabled embedding or no system font was found.
 fn used_fonts(presentation: &DisplayPresentation, embed_available: bool) -> Vec<&'static str> {
     let mut used: Vec<&'static str> = Vec::new();
+    fn add(used: &mut Vec<&'static str>, base: &'static str) {
+        if !used.contains(&base) {
+            used.push(base);
+        }
+    }
     for page in &presentation.pages {
         for item in &page.items {
-            let DisplayItem::TextRun(run) = item
-            else {
-                continue;
-            };
-            if embed_available && needs_embedding(&run.text) {
-                continue;
-            }
-            let base = base_font_for(&run.font_family, run.style);
-            if !used.contains(&base) {
-                used.push(base);
+            match item {
+                DisplayItem::TextRun(run) => {
+                    if embed_available && needs_embedding(&run.text) {
+                        continue;
+                    }
+                    add(&mut used, base_font_for(&run.font_family, run.style));
+                }
+                DisplayItem::Graphic(graphic) => {
+                    crate::scene::visit_texts(&graphic.scene, &mut |style, text| {
+                        if embed_available && needs_embedding(text) {
+                            return;
+                        }
+                        let family = style.font_family.as_deref().unwrap_or("");
+                        add(&mut used, base_font_for(family, scene_font_style(style.font_weight)));
+                    });
+                }
+                _ => {}
             }
         }
     }
@@ -230,11 +258,11 @@ impl PdfObject {
 
 /// Embedded font program shared by every page, plus its resource index.
 #[derive(Debug, Clone, Copy)]
-struct EmbeddedText<'a> {
+pub(crate) struct EmbeddedText<'a> {
     /// Subset carrying the `char` to CID mapping used by content streams.
-    subset: &'a Subset,
+    pub(crate) subset: &'a Subset,
     /// One-based `/F` resource index the content stream selects.
-    resource_index: usize,
+    pub(crate) resource_index: usize,
 }
 
 /// Object streams in object-number order; index `i` is object `i + 1`.
@@ -473,7 +501,7 @@ fn write_item(
         DisplayItem::Rule(rule) => write_rule(out, page_height, rule),
         DisplayItem::Rect(rect) => write_rect(out, page_height, rect),
         DisplayItem::Image(image) => write_image(out, page_height, image),
-        DisplayItem::Graphic(graphic) => write_graphic(out, page_height, graphic),
+        DisplayItem::Graphic(graphic) => write_graphic(out, page_height, graphic, fonts, embedded),
     }
 }
 
@@ -487,33 +515,50 @@ fn write_text(
     if !all_finite(&[run.x, run.y, run.size]) {
         return;
     }
+    let resource_index = if embedded.is_some() && needs_embedding(&run.text) {
+        embedded.map(|embedded| embedded.resource_index)
+    }
+    else {
+        let base = base_font_for(&run.font_family, run.style);
+        fonts.iter().position(|(font, _)| *font == base).map(|index| index + 1)
+    };
+    let Some(resource_index) = resource_index
+    else {
+        return;
+    };
+    paint_text(out, run.x, page_height - run.y, run.size, resource_index, &run.text, embedded, false);
+}
+
+/// Emit one text object at a page-space position.
+///
+/// `flip` inverts the text matrix so glyphs stay upright inside a y-flipped
+/// scene-to-page matrix.
+pub(crate) fn paint_text(
+    out: &mut String,
+    x: f64,
+    y: f64,
+    size: f64,
+    resource_index: usize,
+    text: &str,
+    embedded: Option<EmbeddedText<'_>>,
+    flip: bool,
+) {
+    let down = if flip { -1.0 } else { 1.0 };
     if let Some(embedded) = embedded
-        && needs_embedding(&run.text)
+        && needs_embedding(text)
     {
-        let glyphs: String =
-            run.text.chars().filter_map(|ch| embedded.subset.cid(ch)).map(|cid| format!("{cid:04X}")).collect();
-        let y = page_height - run.y;
-        let _ = write!(
-            out,
-            "BT\n/F{} {} Tf\n1 0 0 1 {} {} Tm\n<{glyphs}> Tj\nET\n",
-            embedded.resource_index,
-            num(run.size),
-            num(run.x),
-            num(y),
-        );
+        let glyphs: String = text.chars().filter_map(|ch| embedded.subset.cid(ch)).map(|cid| format!("{cid:04X}")).collect();
+        let _ =
+            write!(out, "BT\n/F{resource_index} {} Tf\n1 0 0 {down} {} {} Tm\n<{glyphs}> Tj\nET\n", num(size), num(x), num(y),);
         return;
     }
-    let base = base_font_for(&run.font_family, run.style);
-    let position = fonts.iter().position(|(font, _)| *font == base).unwrap_or(0);
-    let y = page_height - run.y;
     let _ = write!(
         out,
-        "BT\n/F{} {} Tf\n1 0 0 1 {} {} Tm\n({}) Tj\nET\n",
-        position + 1,
-        num(run.size),
-        num(run.x),
+        "BT\n/F{resource_index} {} Tf\n1 0 0 {down} {} {} Tm\n({}) Tj\nET\n",
+        num(size),
+        num(x),
         num(y),
-        escape_text(&run.text),
+        escape_text(text),
     );
 }
 
@@ -560,21 +605,17 @@ fn write_image(out: &mut String, page_height: f64, image: &DisplayImage) {
     );
 }
 
-fn write_graphic(out: &mut String, page_height: f64, graphic: &DisplayGraphic) {
-    // The PDF backend has no vector scene painter yet, so it reserves the same
-    // dashed box as an image slot instead of emitting guessed geometry.
+fn write_graphic(
+    out: &mut String,
+    page_height: f64,
+    graphic: &DisplayGraphic,
+    fonts: &[(&'static str, usize)],
+    embedded: Option<EmbeddedText<'_>>,
+) {
     if !all_finite(&[graphic.x, graphic.y, graphic.width, graphic.height]) {
         return;
     }
-    let y = page_height - (graphic.y + graphic.height);
-    let _ = write!(
-        out,
-        "0.6 G\n0.5 w\n[3 2] 0 d\n{} {} {} {} re\nS\n[] 0 d\n",
-        num(graphic.x),
-        num(y),
-        num(graphic.width),
-        num(graphic.height),
-    );
+    crate::scene::write_scene(out, page_height, graphic, fonts, embedded);
 }
 
 fn all_finite(values: &[f64]) -> bool {
@@ -588,7 +629,7 @@ fn all_finite(values: &[f64]) -> bool {
 /// WinAnsi reaches through its upper range (typographic punctuation, the
 /// bullet, the euro sign) are remapped to their WinAnsi byte, and everything
 /// else becomes `?` because the encoding cannot represent it.
-fn escape_text(text: &str) -> String {
+pub(crate) fn escape_text(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for ch in text.chars() {
         match ch {
@@ -651,7 +692,7 @@ fn winansi_byte(ch: char) -> Option<u8> {
 }
 
 /// Stable decimal rendering: at most three decimals, no trailing zeros, no `-0`.
-fn num(value: f64) -> String {
+pub(crate) fn num(value: f64) -> String {
     let text = format!("{value:.3}");
     let trimmed = text.trim_end_matches('0').trim_end_matches('.');
     if trimmed.is_empty() || trimmed == "-0" { "0".to_string() } else { trimmed.to_string() }
