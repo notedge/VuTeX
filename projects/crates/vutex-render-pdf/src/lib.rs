@@ -3,6 +3,7 @@
 #![doc = include_str!("../readme.md")]
 
 mod font;
+mod image;
 pub mod render;
 mod scene;
 
