@@ -1,10 +1,11 @@
-//! Host-side Mermaid lowering into DaVinci scenes.
+//! Host-side Mermaid lowering into resolved DaVinci display scenes.
 //!
 //! `notedown-formats` keeps a Mermaid fence as `Block::Code` with its language
 //! tag, so this adapter lowers those code blocks through `davinci-diagram` and
-//! registers each scene under the block id that authored it. Layout then places
-//! the scene instead of the fence text. A failed lowering registers no scene,
-//! which keeps the authored fence visible and never invents diagram geometry.
+//! registers each display scene under the block id that authored it. Layout then
+//! places the scene instead of the fence text. A failed lowering registers no
+//! scene, which keeps the authored fence visible and never invents diagram
+//! geometry.
 
 use davinci_diagram::mermaid_to_scene;
 use notedown_ir::{Block, DocumentGraph};
@@ -18,10 +19,10 @@ pub const MERMAID_ALT: &str = "Mermaid diagram";
 /// Diagnostic code for a scene whose canvas cannot be placed.
 pub const DIAGRAM_INVALID_CANVAS: &str = "VUTEX_DIAGRAM_INVALID_CANVAS";
 
-/// Scenes lowered from Mermaid code blocks together with their diagnostics.
+/// Display scenes lowered from Mermaid code blocks together with their diagnostics.
 #[derive(Debug)]
 pub struct LoweredDiagrams {
-    /// Scenes keyed by the code block that authored them.
+    /// Display scenes keyed by the code block that authored them.
     pub diagrams: Diagrams,
     /// Lowering diagnostics in document order.
     pub diagnostics: Vec<DiagnosticRecord>,

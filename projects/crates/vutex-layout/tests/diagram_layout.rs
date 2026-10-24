@@ -1,6 +1,6 @@
 //! Diagram scenes placed by the document layout pass.
 
-use davinci_scene::{Color, NodeKind, Point, Rect, Scene, SceneNode, ShapeStyle, Size};
+use davinci_scene::{Color, DisplayScene, NodeKind, Point, Rect, SceneNode, ShapeStyle, Size};
 use notedown_ir::{Block, DocumentGraph, DocumentId, SemanticStatus};
 use vutex_layout::{
     Diagrams, LayoutHint,
@@ -9,8 +9,8 @@ use vutex_layout::{
     plan::{Graphic, LayoutItem},
 };
 
-fn text_scene(width: f64, height: f64) -> Scene {
-    let mut scene = Scene::new(Size { width, height });
+fn text_scene(width: f64, height: f64) -> DisplayScene {
+    let mut scene = DisplayScene::new(Size { width, height });
     scene.push(SceneNode::new(NodeKind::Rect {
         rect: Rect { x: 0.0, y: 0.0, width, height },
         style: ShapeStyle::stroked(Color::BLACK, 1.0),

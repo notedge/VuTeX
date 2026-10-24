@@ -1,6 +1,6 @@
 //! SVG rendering tests: page groups, geometry, and document text.
 
-use davinci_scene::{Color, NodeKind, Rect, Scene, SceneNode, ShapeStyle, Size};
+use davinci_scene::{Color, DisplayScene, NodeKind, Rect, SceneNode, ShapeStyle, Size};
 use notedown_ir::{Block, DocumentGraph, DocumentId, Inline};
 use vutex_layout::layout;
 use vutex_presentation::{
@@ -107,7 +107,7 @@ fn drops_unsafe_link_destinations_but_keeps_the_text() {
 
 #[test]
 fn embeds_diagram_scenes_in_a_scaled_group() {
-    let mut scene = Scene::new(Size { width: 200.0, height: 100.0 });
+    let mut scene = DisplayScene::new(Size { width: 200.0, height: 100.0 });
     scene.push(SceneNode::new(NodeKind::Rect {
         rect: Rect { x: 0.0, y: 0.0, width: 200.0, height: 100.0 },
         style: ShapeStyle::stroked(Color::BLACK, 1.0),
@@ -150,7 +150,7 @@ fn fails_the_render_when_a_scene_cannot_serialize() {
                 y: 0.0,
                 width: 10.0,
                 height: 10.0,
-                scene: Scene::new(Size { width: 0.0, height: 10.0 }),
+                scene: DisplayScene::new(Size { width: 0.0, height: 10.0 }),
                 alt: "empty".to_string(),
             })],
         }],
