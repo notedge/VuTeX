@@ -242,6 +242,7 @@ struct LinkAnnotation {
 }
 
 /// One indirect object: a dictionary whose body is text, or a stream with bytes.
+#[derive(Debug)]
 enum PdfObject {
     /// A dictionary or array serialized as ASCII.
     Text(String),
@@ -270,52 +271,141 @@ fn build_objects(presentation: &DisplayPresentation, policy: &PdfFontPolicy) -> 
     let subset = load_subset(presentation, policy);
     let fonts = used_fonts(presentation, subset.is_some());
     let page_count = presentation.pages.len();
-    let first_font = 3 + 2 * page_count;
-    let font_objects: Vec<(&'static str, usize)> =
-        fonts.iter().enumerate().map(|(index, base)| (*base, first_font + index)).collect();
-    let first_embedded = first_font + fonts.len();
-    let first_annotation = first_embedded + if subset.is_some() { 5 } else { 0 };
-    let embedded = subset.as_ref().map(|subset| EmbeddedText { subset, resource_index: fonts.len() + 1 });
-    let resources = font_resource_dict(&font_objects, subset.as_ref().map(|_| first_embedded));
     let page_links: Vec<Vec<LinkAnnotation>> = presentation.pages.iter().map(page_links).collect();
-    let mut next_annotation = first_annotation;
-    let mut annotation_numbers: Vec<Vec<usize>> = Vec::with_capacity(page_count);
-    for links in &page_links {
-        annotation_numbers.push((0..links.len()).map(|index| next_annotation + index).collect());
-        next_annotation += links.len();
+
+    let mut document = Document::default();
+    document.push(PdfObject::Text(catalog_object()));
+    document.push(PdfObject::Text(pages_object(page_count)));
+    // Pages and their content come first so the page tree keeps object numbers
+    // that do not shift when a document gains shared resources.
+    let mut page_numbers = Vec::with_capacity(page_count);
+    let mut content_numbers = Vec::with_capacity(page_count);
+    for _ in 0..page_count {
+        page_numbers.push(document.push(PdfObject::Text(String::new())));
+        content_numbers.push(document.push(PdfObject::Text(String::new())));
     }
 
-    let mut objects = vec![PdfObject::Text(catalog_object()), PdfObject::Text(pages_object(page_count))];
-    for (index, page) in presentation.pages.iter().enumerate() {
-        let content_number = 4 + 2 * index;
-        let content = page_content(page, &font_objects, embedded);
-        objects.push(PdfObject::Text(page_object(page, &resources, content_number, &annotation_numbers[index])));
-        objects.push(content_object(&content));
+    let mut resources = PageResources::default();
+    let mut font_objects: Vec<(&'static str, usize)> = Vec::with_capacity(fonts.len());
+    for (index, base) in fonts.iter().enumerate() {
+        let object = document.push(PdfObject::Text(font_object(base)));
+        resources.insert("Font", &format!("/F{}", index + 1), object);
+        font_objects.push((*base, object));
     }
-    for (base, _) in &font_objects {
-        objects.push(PdfObject::Text(font_object(base)));
-    }
+    let embedded_index = fonts.len() + 1;
     if let Some(subset) = &subset {
-        push_embedded_font_objects(&mut objects, subset, first_embedded);
+        let first = document.next_number();
+        resources.insert("Font", &format!("/F{embedded_index}"), first);
+        push_embedded_font_objects(&mut document, subset, first);
     }
-    for links in &page_links {
-        for link in links {
-            objects.push(PdfObject::Text(annotation_object(link)));
+    let embedded = subset.as_ref().map(|subset| EmbeddedText { subset, resource_index: embedded_index });
+
+    let annotation_numbers = push_link_annotations(&mut document, &page_links);
+
+    for (index, page) in presentation.pages.iter().enumerate() {
+        let content = page_content(page, &font_objects, embedded, &resources);
+        document.replace(content_numbers[index], content_object(&content));
+        document.replace(
+            page_numbers[index],
+            PdfObject::Text(page_object(page, &resources.dict(), content_numbers[index], &annotation_numbers[index])),
+        );
+    }
+    document.finish()
+}
+
+/// Append every link annotation and report their numbers in paint order.
+fn push_link_annotations(document: &mut Document, page_links: &[Vec<LinkAnnotation>]) -> Vec<Vec<usize>> {
+    let mut numbers = Vec::with_capacity(page_links.len());
+    for links in page_links {
+        numbers.push(links.iter().map(|link| document.push(PdfObject::Text(annotation_object(link)))).collect());
+    }
+    numbers
+}
+
+/// Indirect objects in append order; object number `n` is `objects[n - 1]`.
+#[derive(Debug, Default)]
+struct Document {
+    objects: Vec<PdfObject>,
+}
+
+impl Document {
+    /// Append an object and return its one-based object number.
+    fn push(&mut self, object: PdfObject) -> usize {
+        self.objects.push(object);
+        self.objects.len()
+    }
+
+    /// Number the next appended object receives.
+    fn next_number(&self) -> usize {
+        self.objects.len() + 1
+    }
+
+    /// Replace the object stored at a one-based object number.
+    fn replace(&mut self, number: usize, object: PdfObject) {
+        if let Some(slot) = self.objects.get_mut(number.saturating_sub(1)) {
+            *slot = object;
         }
     }
-    objects
+
+    /// Objects in object-number order.
+    fn finish(self) -> Vec<PdfObject> {
+        self.objects
+    }
+}
+
+/// One category of a page `/Resources` dictionary, such as `Font` or `ExtGState`.
+#[derive(Debug)]
+struct ResourceGroup {
+    /// PDF resource category written as the dictionary key.
+    category: &'static str,
+    /// Resource name and object number, in insertion order.
+    entries: Vec<(String, usize)>,
+}
+
+/// Named resources shared by every page.
+#[derive(Debug, Default)]
+struct PageResources {
+    /// Resource categories in first-insertion order.
+    groups: Vec<ResourceGroup>,
+}
+
+impl PageResources {
+    /// Register one named resource under a category.
+    #[allow(dead_code)]
+    fn insert(&mut self, category: &'static str, name: &str, object: usize) {
+        if !self.groups.iter().any(|group| group.category == category) {
+            self.groups.push(ResourceGroup { category, entries: Vec::new() });
+        }
+        if let Some(group) = self.groups.iter_mut().find(|group| group.category == category) {
+            group.entries.push((name.to_string(), object));
+        }
+    }
+
+    /// The `/Resources` dictionary body.
+    fn dict(&self) -> String {
+        let groups: Vec<String> = self
+            .groups
+            .iter()
+            .filter(|group| !group.entries.is_empty())
+            .map(|group| {
+                let entries: Vec<String> = group.entries.iter().map(|(name, object)| format!("/{name} {object} 0 R")).collect();
+                format!("/{} << {} >>", group.category, entries.join(" "))
+            })
+            .collect();
+        if groups.is_empty() { "<< >>".to_string() } else { format!("<< {} >>", groups.join(" ")) }
+    }
 }
 
 /// Append the five objects of an embedded font program, in object order.
 ///
 /// The order is fixed by [`build_objects`]: Type0 font, CIDFont, font
 /// descriptor, `FontFile2` stream, then the `ToUnicode` stream.
-fn push_embedded_font_objects(objects: &mut Vec<PdfObject>, subset: &Subset, first: usize) {
-    objects.push(PdfObject::Text(type0_font_object(EMBEDDED_NAME, first + 1, first + 4)));
-    objects.push(PdfObject::Text(cid_font_object(EMBEDDED_NAME, first + 2, subset)));
-    objects.push(PdfObject::Text(font_descriptor_object(EMBEDDED_NAME, first + 3, subset)));
-    objects.push(PdfObject::stream(format!("<< /Length1 {} >>", subset.data.len()), subset.data.clone()));
-    objects.push(PdfObject::stream(String::new(), to_unicode_cmap(subset)));
+fn push_embedded_font_objects(document: &mut Document, subset: &Subset, first: usize) {
+    document.push(PdfObject::Text(type0_font_object(EMBEDDED_NAME, first + 1, first + 4)));
+    document.push(PdfObject::Text(cid_font_object(EMBEDDED_NAME, first + 2, subset)));
+    document.push(PdfObject::Text(font_descriptor_object(EMBEDDED_NAME, first + 3, subset)));
+    document.push(PdfObject::stream(format!("<< /Length1 {} >>", subset.data.len()), subset.data.clone()));
+    document.push(PdfObject::stream(String::new(), to_unicode_cmap(subset)));
 }
 
 /// Base font name of every embedded subset.
@@ -362,15 +452,6 @@ fn catalog_object() -> String {
 fn pages_object(page_count: usize) -> String {
     let kids: Vec<String> = (0..page_count).map(|index| format!("{} 0 R", 3 + 2 * index)).collect();
     format!("<< /Type /Pages /Kids [{}] /Count {page_count} >>", kids.join(" "))
-}
-
-fn font_resource_dict(fonts: &[(&'static str, usize)], embedded: Option<usize>) -> String {
-    let mut entries: Vec<String> =
-        fonts.iter().enumerate().map(|(index, (_, object))| format!("/F{} {object} 0 R", index + 1)).collect();
-    if let Some(object) = embedded {
-        entries.push(format!("/F{} {object} 0 R", fonts.len() + 1));
-    }
-    format!("<< /Font << {} >> >>", entries.join(" "))
 }
 
 fn page_object(page: &DisplayPage, resources: &str, content_number: usize, annotations: &[usize]) -> String {
@@ -478,10 +559,15 @@ fn content_object(content: &str) -> PdfObject {
 }
 
 /// Content stream operators for one page; always ends with a newline.
-fn page_content(page: &DisplayPage, fonts: &[(&'static str, usize)], embedded: Option<EmbeddedText<'_>>) -> String {
+fn page_content(
+    page: &DisplayPage,
+    fonts: &[(&'static str, usize)],
+    embedded: Option<EmbeddedText<'_>>,
+    resources: &PageResources,
+) -> String {
     let mut out = String::new();
     for item in &page.items {
-        write_item(&mut out, page.height, item, fonts, embedded);
+        write_item(&mut out, page.height, item, fonts, embedded, resources);
     }
     if out.is_empty() {
         out.push('\n');
@@ -495,7 +581,9 @@ fn write_item(
     item: &DisplayItem,
     fonts: &[(&'static str, usize)],
     embedded: Option<EmbeddedText<'_>>,
+    resources: &PageResources,
 ) {
+    let _ = resources;
     match item {
         DisplayItem::TextRun(run) => write_text(out, page_height, run, fonts, embedded),
         DisplayItem::Rule(rule) => write_rule(out, page_height, rule),
