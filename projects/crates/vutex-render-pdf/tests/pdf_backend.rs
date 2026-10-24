@@ -662,9 +662,17 @@ fn png_chunk(out: &mut Vec<u8>, kind: &[u8; 4], body: &[u8]) {
     out.extend_from_slice(&[0; 4]);
 }
 
-/// Wrap filtered scanlines in a 2×2 PNG of the given colour type whose single
-/// `IDAT` is one stored DEFLATE block.
-fn png_with_color_type(color_type: u8, scanlines: &[u8]) -> Vec<u8> {
+/// Wrap filtered scanlines in a PNG whose single `IDAT` is one stored DEFLATE
+/// block.
+fn png_fixture(
+    width: u32,
+    height: u32,
+    bit_depth: u8,
+    color_type: u8,
+    interlace: u8,
+    transparency: Option<&[u8]>,
+    scanlines: &[u8],
+) -> Vec<u8> {
     let length = scanlines.len() as u16;
     // zlib header, one final stored block (`LEN`, `NLEN` = !`LEN`), the
     // filtered samples, and an Adler-32 trailer the decoder ignores.
@@ -675,14 +683,23 @@ fn png_with_color_type(color_type: u8, scanlines: &[u8]) -> Vec<u8> {
     zlib.extend_from_slice(&[0; 4]);
 
     let mut header = Vec::new();
-    header.extend_from_slice(&2u32.to_be_bytes());
-    header.extend_from_slice(&2u32.to_be_bytes());
-    header.extend_from_slice(&[8, color_type, 0, 0, 0]);
+    header.extend_from_slice(&width.to_be_bytes());
+    header.extend_from_slice(&height.to_be_bytes());
+    header.extend_from_slice(&[bit_depth, color_type, 0, 0, interlace]);
     let mut png = PNG_SIGNATURE.to_vec();
     png_chunk(&mut png, b"IHDR", &header);
+    if let Some(body) = transparency {
+        png_chunk(&mut png, b"tRNS", body);
+    }
     png_chunk(&mut png, b"IDAT", &zlib);
     png_chunk(&mut png, b"IEND", &[]);
     png
+}
+
+/// Wrap filtered scanlines in a 2×2 PNG of the given colour type whose single
+/// `IDAT` is one stored DEFLATE block.
+fn png_with_color_type(color_type: u8, scanlines: &[u8]) -> Vec<u8> {
+    png_fixture(2, 2, 8, color_type, 0, None, scanlines)
 }
 
 /// Wrap filtered scanlines in a 2×2 RGB PNG whose single `IDAT` is one stored
@@ -691,12 +708,61 @@ fn png_from_scanlines(scanlines: &[u8]) -> Vec<u8> {
     png_with_color_type(2, scanlines)
 }
 
+/// Unfiltered 2×2 truecolour scanlines: red and green, then blue and white.
+const TINY_RGB_SCANLINES: [u8; 14] = [
+    0, 255, 0, 0, 0, 255, 0, // red, green
+    0, 0, 0, 255, 255, 255, 255, // blue, white
+];
+
 /// A 2×2 RGB PNG whose rows carry no filter.
 fn tiny_png() -> Vec<u8> {
-    png_from_scanlines(&[
-        0u8, 255, 0, 0, 0, 255, 0, // red, green
-        0, 0, 0, 255, 255, 255, 255, // blue, white
-    ])
+    png_from_scanlines(&TINY_RGB_SCANLINES)
+}
+
+/// A 2×2 truecolour PNG whose `tRNS` body names the given colour key.
+fn keyed_truecolour_png(key: &[u8]) -> Vec<u8> {
+    png_fixture(2, 2, 8, 2, 0, Some(key), &TINY_RGB_SCANLINES)
+}
+
+/// Filtered 16-bit truecolour scanlines: the high bytes spell `12 56 9A`,
+/// `FF 00 80`, `01 03 05`, and `AB EF 23`.
+const SIXTEEN_BIT_RGB_SCANLINES: [u8; 26] = [
+    0, // filter none
+    0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, // first pixel
+    0xFF, 0x00, 0x00, 0xFF, 0x80, 0x00, // second pixel
+    0,    // filter none
+    0x01, 0x02, 0x03, 0x04, 0x05, 0x06, //
+    0xAB, 0xCD, 0xEF, 0x01, 0x23, 0x45, //
+];
+
+/// A 2×2 truecolour PNG with 16-bit samples.
+fn sixteen_bit_png() -> Vec<u8> {
+    png_fixture(2, 2, 16, 2, 0, None, &SIXTEEN_BIT_RGB_SCANLINES)
+}
+
+/// A 2×2 RGBA PNG with 16-bit colour and alpha samples.
+fn sixteen_bit_alpha_png() -> Vec<u8> {
+    png_fixture(
+        2,
+        2,
+        16,
+        6,
+        0,
+        None,
+        &[
+            0, // filter none
+            0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // red, alpha 0
+            0x00, 0x00, 0xFF, 0xFF, 0x00, 0x00, 0x40, 0x00, // green, alpha 64
+            0,    // filter none
+            0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0x80, 0x00, // blue, alpha 128
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // white, alpha 255
+        ],
+    )
+}
+
+/// A 2×2 greyscale PNG whose samples are 10, 20, 30, and 20 with a colour key.
+fn keyed_grey_png(key: &[u8]) -> Vec<u8> {
+    png_fixture(2, 2, 8, 0, 0, Some(key), &[0, 10, 20, 0, 30, 20])
 }
 
 /// A 2×2 RGBA PNG with the alpha samples 0, 64, 128, and 255.
@@ -909,6 +975,16 @@ fn mask_stream(bytes: &[u8], number: usize) -> &[u8] {
     &object[start..start + length]
 }
 
+/// Colour stream body of the first image XObject, located without UTF-8
+/// decoding.
+fn image_stream(bytes: &[u8]) -> &[u8] {
+    let at = find(bytes, b"/Subtype /Image").expect("image dictionary");
+    let marker = b"stream\n";
+    let start = find(&bytes[at..], marker).expect("image stream keyword") + at + marker.len();
+    let length = find(&bytes[start..], b"\nendstream").expect("image stream terminator");
+    &bytes[start..start + length]
+}
+
 #[test]
 fn png_alpha_becomes_a_device_gray_soft_mask() {
     let href = format!("data:image/png;base64,{}", base64(&alpha_png()));
@@ -936,6 +1012,184 @@ fn png_alpha_becomes_a_device_gray_soft_mask() {
         "the colour stream keeps the red, green, blue, white samples"
     );
     assert_xref_intact(&bytes);
+}
+
+#[test]
+fn sixteen_bit_png_narrows_to_its_high_bytes() {
+    let href = format!("data:image/png;base64,{}", base64(&sixteen_bit_png()));
+    let bytes = render_scene(scene_with_images(&[(&href, None)]));
+    let text = lossy(&bytes);
+
+    assert_eq!(text.matches("/Type /XObject /Subtype /Image").count(), 1, "one image object: {text}");
+    assert!(text.contains("/Width 2") && text.contains("/Height 2"), "the frame reaches the dictionary: {text}");
+    assert!(text.contains("/ColorSpace /DeviceRGB"), "truecolour stays RGB: {text}");
+    assert!(text.contains("/BitsPerComponent 8"), "16-bit samples embed as 8-bit components: {text}");
+    assert!(!text.contains("/SMask"), "an opaque 16-bit PNG invents no soft mask: {text}");
+    assert!(text.contains("/Length 12 >>"), "narrowing turns two rows of 16-bit samples into twelve bytes: {text}");
+    assert_eq!(
+        image_stream(&bytes),
+        [0x12, 0x56, 0x9A, 0xFF, 0x00, 0x80, 0x01, 0x03, 0x05, 0xAB, 0xEF, 0x23],
+        "every sample keeps its high byte"
+    );
+    assert_xref_intact(&bytes);
+}
+
+#[test]
+fn sixteen_bit_alpha_png_keeps_both_planes() {
+    let href = format!("data:image/png;base64,{}", base64(&sixteen_bit_alpha_png()));
+    let bytes = render_scene(scene_with_images(&[(&href, None)]));
+    let text = lossy(&bytes);
+
+    assert_eq!(text.matches("/Type /XObject /Subtype /Image").count(), 2, "one colour image and one mask: {text}");
+    assert_eq!(text.matches("/BitsPerComponent 8").count(), 2, "both planes embed as 8-bit components: {text}");
+    let mask = mask_number(&text);
+    assert!(text.contains(&format!("/SMask {mask} 0 R")), "the colour image references the mask: {text}");
+    assert_eq!(mask_stream(&bytes, mask), [0, 64, 128, 255], "the alpha plane narrows the same way");
+
+    let color: [u8; 12] = [255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 255];
+    assert!(bytes.windows(color.len()).any(|window| window == color), "the colour plane keeps the high bytes");
+    assert_xref_intact(&bytes);
+}
+
+#[test]
+fn truecolour_colour_key_becomes_a_soft_mask() {
+    // The key names green: red is `(0, 255, 0)` in the second pixel.
+    let href = format!("data:image/png;base64,{}", base64(&keyed_truecolour_png(&[0x00, 0x00, 0x00, 0xFF, 0x00, 0x00])));
+    let bytes = render_scene(scene_with_images(&[(&href, None)]));
+    let text = lossy(&bytes);
+
+    assert_eq!(text.matches("/Type /XObject /Subtype /Image").count(), 2, "the colour image plus its key mask: {text}");
+    let mask = mask_number(&text);
+    let alpha = mask_stream(&bytes, mask);
+    assert_eq!(alpha, [255, 0, 255, 255], "only the keyed green pixel turns transparent");
+    assert_eq!(alpha.iter().filter(|&&sample| sample == 0).count(), 1, "the mask carries exactly one zero byte");
+
+    let color: [u8; 12] = [255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 255];
+    assert!(bytes.windows(color.len()).any(|window| window == color), "the colour plane keeps every sample: {text}");
+    assert_xref_intact(&bytes);
+}
+
+#[test]
+fn colour_key_that_keys_no_pixel_leaves_the_image_opaque() {
+    let href = format!("data:image/png;base64,{}", base64(&keyed_truecolour_png(&[0x00, 0x01, 0x00, 0x02, 0x00, 0x03])));
+    let bytes = render_scene(scene_with_images(&[(&href, None)]));
+    let text = lossy(&bytes);
+
+    assert_eq!(text.matches("/Type /XObject /Subtype /Image").count(), 1, "a key that misses invents no mask: {text}");
+    assert!(!text.contains("/SMask"), "an all-opaque mask is never written: {text}");
+    assert!(text.contains("/Length 12 >>"), "the colour plane still paints: {text}");
+    assert_xref_intact(&bytes);
+}
+
+#[test]
+fn colour_key_compares_in_the_source_sample_depth() {
+    // `0x1200` narrows to the same high byte as the `0x1234` sample, so a
+    // truncated comparison would key the first pixel while the full-depth
+    // one matches nothing.
+    let key = [0x12, 0x00, 0x56, 0x78, 0x9A, 0xBC];
+    let png = png_fixture(2, 2, 16, 2, 0, Some(&key), &SIXTEEN_BIT_RGB_SCANLINES);
+    let href = format!("data:image/png;base64,{}", base64(&png));
+    let bytes = render_scene(scene_with_images(&[(&href, None)]));
+    let text = lossy(&bytes);
+
+    assert!(text.contains("/Length 12 >>"), "the 16-bit image still decodes: {text}");
+    assert!(!text.contains("/SMask"), "a key that misses every full-depth sample invents no mask: {text}");
+    assert_xref_intact(&bytes);
+}
+
+#[test]
+fn greyscale_colour_key_becomes_a_soft_mask() {
+    let href = format!("data:image/png;base64,{}", base64(&keyed_grey_png(&[0x00, 0x14])));
+    let bytes = render_scene(scene_with_images(&[(&href, None)]));
+    let text = lossy(&bytes);
+
+    assert_eq!(text.matches("/Type /XObject /Subtype /Image").count(), 2, "the colour image plus its key mask: {text}");
+    assert_eq!(text.matches("/ColorSpace /DeviceGray").count(), 2, "both planes are single-channel: {text}");
+    let mask = mask_number(&text);
+    assert_eq!(mask_stream(&bytes, mask), [255, 0, 255, 0], "both samples equal to the key turn transparent");
+
+    let color: [u8; 4] = [10, 20, 30, 20];
+    assert!(bytes.windows(color.len()).any(|window| window == color), "the colour plane keeps the grey samples: {text}");
+    assert_xref_intact(&bytes);
+}
+
+/// Adam7 pass rectangles, as `(x origin, y origin, x step, y step)`.
+const ADAM7_PASSES: [(usize, usize, usize, usize); 7] =
+    [(0, 0, 8, 8), (4, 0, 8, 8), (0, 4, 4, 8), (2, 0, 4, 4), (0, 2, 2, 4), (1, 0, 2, 2), (0, 1, 1, 2)];
+
+/// Filtered scanlines of a row-major image, one filter byte per row.
+fn row_major_scanlines(pixel: impl Fn(usize, usize) -> Vec<u8>, width: usize, height: usize) -> Vec<u8> {
+    let mut out = Vec::new();
+    for y in 0..height {
+        out.push(0);
+        for x in 0..width {
+            out.extend_from_slice(&pixel(x, y));
+        }
+    }
+    out
+}
+
+/// Filtered scanlines of the same image stored in Adam7 pass order, one filter
+/// byte per pass row.
+fn adam7_scanlines(pixel: impl Fn(usize, usize) -> Vec<u8>, width: usize, height: usize) -> Vec<u8> {
+    let mut out = Vec::new();
+    for (x_origin, y_origin, x_step, y_step) in ADAM7_PASSES {
+        let pass_width = width.saturating_sub(x_origin).div_ceil(x_step);
+        let pass_height = height.saturating_sub(y_origin).div_ceil(y_step);
+        if pass_width == 0 || pass_height == 0 {
+            continue;
+        }
+        for row in 0..pass_height {
+            out.push(0);
+            for column in 0..pass_width {
+                out.extend_from_slice(&pixel(x_origin + column * x_step, y_origin + row * y_step));
+            }
+        }
+    }
+    out
+}
+
+#[test]
+fn adam7_interlaced_png_matches_its_row_major_twin() {
+    let pixel = |x: usize, y: usize| vec![x as u8 * 60 + 1, y as u8 * 60 + 2, (x * 10 + y) as u8];
+    let plain = png_fixture(3, 3, 8, 2, 0, None, &row_major_scanlines(pixel, 3, 3));
+    let interlaced = png_fixture(3, 3, 8, 2, 1, None, &adam7_scanlines(pixel, 3, 3));
+    let plain_href = format!("data:image/png;base64,{}", base64(&plain));
+    let interlaced_href = format!("data:image/png;base64,{}", base64(&interlaced));
+    let plain_bytes = render_scene(scene_with_images(&[(&plain_href, None)]));
+    let interlaced_bytes = render_scene(scene_with_images(&[(&interlaced_href, None)]));
+    let text = lossy(&interlaced_bytes);
+
+    assert!(text.contains("/Width 3") && text.contains("/Height 3"), "the frame survives interlacing: {text}");
+    assert!(text.contains("/Length 27 >>"), "a 3×3 RGB image writes 27 narrow samples: {text}");
+    assert!(!text.contains("/SMask"), "interlacing invents no transparency: {text}");
+    assert_eq!(
+        image_stream(&interlaced_bytes),
+        image_stream(&plain_bytes),
+        "de-interlacing restores the same rows as the non-interlaced twin"
+    );
+    assert_xref_intact(&interlaced_bytes);
+}
+
+#[test]
+fn adam7_interlaced_sixteen_bit_png_matches_its_row_major_twin() {
+    let pixel = |x: usize, y: usize| vec![0x10 + x as u8, 0xAA, 0x20 + y as u8, 0xBB, 0x30 + x as u8, 0xCC];
+    let plain = png_fixture(3, 3, 16, 2, 0, None, &row_major_scanlines(pixel, 3, 3));
+    let interlaced = png_fixture(3, 3, 16, 2, 1, None, &adam7_scanlines(pixel, 3, 3));
+    let plain_href = format!("data:image/png;base64,{}", base64(&plain));
+    let interlaced_href = format!("data:image/png;base64,{}", base64(&interlaced));
+    let plain_bytes = render_scene(scene_with_images(&[(&plain_href, None)]));
+    let interlaced_bytes = render_scene(scene_with_images(&[(&interlaced_href, None)]));
+    let stream = image_stream(&interlaced_bytes);
+
+    assert_eq!(stream.len(), 27, "nine pixels narrow to three samples each");
+    assert_eq!(stream, image_stream(&plain_bytes), "de-interlacing restores the same rows as the non-interlaced twin");
+    assert_eq!(
+        &stream[..9],
+        [0x10, 0x20, 0x30, 0x11, 0x20, 0x31, 0x12, 0x20, 0x32],
+        "the first row keeps its authored high bytes"
+    );
+    assert_xref_intact(&interlaced_bytes);
 }
 
 /// One page-level image slot carrying the authored source.
