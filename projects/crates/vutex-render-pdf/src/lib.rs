@@ -4,5 +4,6 @@
 
 mod font;
 pub mod render;
+mod scene;
 
 pub use render::{PdfFontPolicy, render_pdf, render_pdf_with_font_policy};

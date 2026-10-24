@@ -8,6 +8,8 @@ edition.workspace = true
 readme = "readme.md"
 
 [dependencies]
+davinci-scene = { workspace = true }
+davinci-types = { workspace = true }
 vutex-types = { workspace = true, features = ["serde"] }
 vutex-presentation = { workspace = true }
 vutex-render = { workspace = true }
