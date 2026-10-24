@@ -12,6 +12,12 @@
 //! the module carries its own base64, zlib/DEFLATE (stored, fixed-Huffman, and
 //! dynamic-Huffman blocks), PNG filter, and JPEG marker parsers.
 //!
+//! Transparency survives the decode: an RGBA or grey-alpha PNG keeps its alpha
+//! channel as a separate plane, which the writer emits as a `/DeviceGray`
+//! `/SMask` XObject. Palette PNGs expand their `tRNS` entries the same way.
+//! Colour-key `tRNS` on greyscale and truecolour PNGs is ignored, and 16-bit
+//! samples are refused, so those sources keep their opaque colour plane.
+//!
 //! Every parser is bounds-checked and fails closed: an unsupported format,
 //! corrupt header, or zero-sized image returns `None` instead of panicking or
 //! emitting an invalid dictionary.
@@ -34,12 +40,61 @@ const MAX_SAMPLES: usize = 64 * 1024 * 1024;
 const MAX_BITS: usize = 15;
 
 /// A raster image ready to become a PDF image XObject.
+///
+/// A source with an alpha channel keeps both planes: `data` holds the colour
+/// samples the colour image paints, and `sharp` holds one 8-bit alpha sample
+/// per pixel. The writer turns the latter into a `/DeviceGray` soft mask, so
+/// transparency reaches the page instead of being flattened away.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Raster {
-    /// Complete image stream dictionary, including `/Length`.
-    pub(crate) dict: String,
-    /// Stream body: a JPEG stream or unfiltered 8-bit samples.
+    /// Pixel width in samples.
+    width: usize,
+    /// Pixel height in rows.
+    height: usize,
+    /// PDF colour space name, without the dictionary's leading slash.
+    color_space: &'static str,
+    /// Stream filter, when `data` is a stream the reader decodes itself.
+    filter: Option<&'static str>,
+    /// Colour stream body: a JPEG stream or unfiltered 8-bit samples.
     pub(crate) data: Vec<u8>,
+    /// One 8-bit alpha sample per pixel, when the source carried transparency.
+    sharp: Option<Vec<u8>>,
+}
+
+impl Raster {
+    /// Colour image dictionary, referencing `smask` when the raster has one.
+    pub(crate) fn dict(&self, smask: Option<usize>) -> String {
+        let filter = self.filter.map(|filter| format!(" /Filter /{filter}")).unwrap_or_default();
+        let smask = smask.map(|number| format!(" /SMask {number} 0 R")).unwrap_or_default();
+        format!(
+            "<< /Type /XObject /Subtype /Image /Width {} /Height {} \
+             /ColorSpace /{}{filter}{smask} /BitsPerComponent 8 /Length {} >>",
+            self.width,
+            self.height,
+            self.color_space,
+            self.data.len()
+        )
+    }
+
+    /// Dictionary and bytes of the soft mask the alpha plane becomes.
+    ///
+    /// Returns `None` when the source carried no alpha, or when the plane does
+    /// not hold exactly one sample per pixel or the image has no pixels; a
+    /// malformed plane then costs the transparency rather than the whole image.
+    pub(crate) fn smask(&self) -> Option<(String, &[u8])> {
+        let alpha = self.sharp.as_deref()?;
+        if self.width == 0 || self.height == 0 || self.width.checked_mul(self.height)? != alpha.len() {
+            return None;
+        }
+        let dict = format!(
+            "<< /Type /XObject /Subtype /Image /Width {} /Height {} /ColorSpace /DeviceGray \
+             /BitsPerComponent 8 /Length {} >>",
+            self.width,
+            self.height,
+            alpha.len()
+        );
+        Some((dict, alpha))
+    }
 }
 
 /// Resolve, sniff, and decode the image behind one scene `href`.
@@ -171,10 +226,12 @@ impl PngHeader {
     }
 }
 
-/// Decode a PNG into unfiltered 8-bit samples.
+/// Decode a PNG into unfiltered 8-bit samples, plus the alpha plane when the
+/// colour type carries one.
 fn decode_png(raw: &[u8]) -> Option<Raster> {
     let mut header: Option<PngHeader> = None;
     let mut palette: Option<Vec<u8>> = None;
+    let mut transparency: Option<Vec<u8>> = None;
     let mut compressed = Vec::new();
     let mut cursor = PNG_SIGNATURE.len();
     loop {
@@ -186,6 +243,7 @@ fn decode_png(raw: &[u8]) -> Option<Raster> {
         match kind {
             b"IHDR" => header = Some(PngHeader::parse(body)?),
             b"PLTE" => palette = Some(body.to_vec()),
+            b"tRNS" => transparency = Some(body.to_vec()),
             b"IDAT" => compressed.extend_from_slice(body),
             b"IEND" => break,
             _ => {}
@@ -203,14 +261,24 @@ fn decode_png(raw: &[u8]) -> Option<Raster> {
     let inflated = inflate(&compressed, expected)?;
     let scanlines = inflated.get(..expected)?;
     let samples = unfilter(scanlines, header.height, row_bytes, channels)?;
-    let (data, color_space) = match header.color_type {
-        0 => (samples, "DeviceGray"),
-        4 => (drop_alpha(&samples, channels), "DeviceGray"),
-        6 => (drop_alpha(&samples, channels), "DeviceRGB"),
-        3 => (expand_palette(&samples, palette.as_deref()?), "DeviceRGB"),
-        _ => (samples, "DeviceRGB"),
+    let (data, color_space, sharp) = match header.color_type {
+        0 => (samples, "DeviceGray", None),
+        4 => {
+            let (grey, alpha) = split_alpha(&samples, channels)?;
+            (grey, "DeviceGray", Some(alpha))
+        }
+        6 => {
+            let (rgb, alpha) = split_alpha(&samples, channels)?;
+            (rgb, "DeviceRGB", Some(alpha))
+        }
+        3 => (
+            expand_palette(&samples, palette.as_deref()?),
+            "DeviceRGB",
+            expand_palette_alpha(&samples, transparency.as_deref()),
+        ),
+        _ => (samples, "DeviceRGB", None),
     };
-    Some(raster(header.width, header.height, color_space, None, data))
+    Some(raster(header.width, header.height, color_space, None, data, sharp))
 }
 
 /// Reverse PNG scanline filters, returning rows without filter bytes.
@@ -258,9 +326,22 @@ fn paeth(left: u8, up: u8, up_left: u8) -> u8 {
     }
 }
 
-/// Drop the alpha byte of every pixel in a grey-alpha or RGBA buffer.
-fn drop_alpha(samples: &[u8], channels: usize) -> Vec<u8> {
-    samples.chunks_exact(channels).flat_map(|pixel| pixel.iter().copied().take(channels - 1)).collect()
+/// Split the trailing alpha byte off every pixel of a grey-alpha or RGBA
+/// buffer, returning the colour plane and the alpha plane.
+///
+/// `None` means the buffer does not hold whole pixels, so the caller keeps the
+/// image opaque instead of pairing mismatched planes.
+fn split_alpha(samples: &[u8], channels: usize) -> Option<(Vec<u8>, Vec<u8>)> {
+    if channels < 2 || samples.len() % channels != 0 {
+        return None;
+    }
+    let mut color = Vec::with_capacity(samples.len() / channels * (channels - 1));
+    let mut alpha = Vec::with_capacity(samples.len() / channels);
+    for pixel in samples.chunks_exact(channels) {
+        color.extend_from_slice(&pixel[..channels - 1]);
+        alpha.push(pixel[channels - 1]);
+    }
+    Some((color, alpha))
 }
 
 /// Expand a palette index buffer into RGB triplets.
@@ -279,15 +360,26 @@ fn expand_palette(samples: &[u8], palette: &[u8]) -> Vec<u8> {
     rgb
 }
 
-/// Image dictionary plus stream body for one decoded raster.
-fn raster(width: usize, height: usize, color_space: &str, filter: Option<&str>, data: Vec<u8>) -> Raster {
-    let filter = filter.map(|filter| format!(" /Filter /{filter}")).unwrap_or_default();
-    let dict = format!(
-        "<< /Type /XObject /Subtype /Image /Width {width} /Height {height} \
-         /ColorSpace /{color_space} /BitsPerComponent 8{filter} /Length {} >>",
-        data.len()
-    );
-    Raster { dict, data }
+/// Alpha plane for a palette PNG, from the `tRNS` entries that name one.
+///
+/// A `tRNS` chunk shorter than the palette leaves the remaining entries fully
+/// opaque, and an absent chunk means the palette carries no transparency at
+/// all, so the image stays opaque.
+fn expand_palette_alpha(samples: &[u8], transparency: Option<&[u8]>) -> Option<Vec<u8>> {
+    let table = transparency.filter(|table| !table.is_empty())?;
+    Some(samples.iter().map(|&index| table.get(usize::from(index)).copied().unwrap_or(u8::MAX)).collect())
+}
+
+/// Image fields plus stream body for one decoded raster.
+fn raster(
+    width: usize,
+    height: usize,
+    color_space: &'static str,
+    filter: Option<&'static str>,
+    data: Vec<u8>,
+    sharp: Option<Vec<u8>>,
+) -> Raster {
+    Raster { width, height, color_space, filter, data, sharp }
 }
 
 /// Parse a JPEG frame header and keep the compressed stream unchanged.
@@ -356,7 +448,7 @@ fn jpeg_frame(raw: &[u8], body: &[u8]) -> Option<Raster> {
     if width == 0 || height == 0 {
         return None;
     }
-    Some(raster(width, height, color_space, Some("DCTDecode"), raw.to_vec()))
+    Some(raster(width, height, color_space, Some("DCTDecode"), raw.to_vec(), None))
 }
 
 /// Inflate a zlib stream, refusing more output than `limit` bytes.
