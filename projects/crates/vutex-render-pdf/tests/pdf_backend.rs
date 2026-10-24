@@ -1,7 +1,9 @@
 //! PDF backend tests: file structure, xref integrity, and painted primitives.
 
+use davinci_scene::{DisplayScene, NodeKind, SceneNode, ShapeStyle, TextAnchor, TextStyle};
+use davinci_types::{Color, Point, Rect, Size, Transform};
 use vutex_presentation::display::{
-    DisplayImage, DisplayItem, DisplayPage, DisplayPresentation, DisplayRect, DisplayRule, DisplayTextRun,
+    DisplayGraphic, DisplayImage, DisplayItem, DisplayPage, DisplayPresentation, DisplayRect, DisplayRule, DisplayTextRun,
 };
 use vutex_render_pdf::{PdfFontPolicy, render_pdf, render_pdf_with_font_policy};
 use vutex_types::math::FontStyle;
@@ -369,4 +371,85 @@ fn link_annotations_keep_the_xref_table_intact() {
     }
     let highest = numbers.into_iter().max().expect("at least one object");
     assert_eq!(trailer_size(&bytes), highest + 1, "/Size is the highest object number plus one");
+}
+
+/// A scene with one shape of each family a diagram producer emits.
+fn diagram_graphic() -> DisplayItem {
+    let mut scene = DisplayScene::new(Size::new(200.0, 100.0));
+    scene.push(SceneNode::new(NodeKind::RoundedRect {
+        rect: Rect::new(10.0, 10.0, 80.0, 40.0),
+        radius: 6.0,
+        style: ShapeStyle::filled(Color::rgb(240, 240, 240)),
+    }));
+    scene.push(SceneNode::new(NodeKind::Line {
+        from: Point::new(90.0, 30.0),
+        to: Point::new(150.0, 60.0),
+        style: ShapeStyle::stroked(Color::BLACK, 1.5),
+    }));
+    scene.push(SceneNode::new(NodeKind::Ellipse {
+        center: Point::new(170.0, 70.0),
+        radii: Size::new(12.0, 12.0),
+        style: ShapeStyle::stroked(Color::BLACK, 1.0),
+    }));
+    let mut text = SceneNode::new(NodeKind::Text {
+        position: Point::new(50.0, 36.0),
+        text: "Start".to_string(),
+        style: TextStyle { font_size: 12.0, text_anchor: TextAnchor::Middle, ..TextStyle::default() },
+    });
+    text.transform = Transform::new(1.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+    scene.push(text);
+    DisplayItem::Graphic(DisplayGraphic { x: 72.0, y: 400.0, width: 400.0, height: 200.0, scene, alt: "diagram".to_string() })
+}
+
+#[test]
+fn paints_a_diagram_scene_inside_its_box() {
+    let bytes =
+        render_pdf(&DisplayPresentation { pages: vec![page(595.0, 842.0, vec![diagram_graphic()])] }).expect("pdf render");
+    let text = lossy(&bytes);
+
+    assert!(text.contains("72 242 400 200 re\nW n"), "scene clips to the placed box: {text}");
+    assert!(text.contains("2 0 0 -2 72 442 cm"), "scene space maps onto the box top edge with a y flip");
+    assert!(text.contains("h\n"), "closed subpaths: {text}");
+    assert!(text.contains(" c\n"), "corners and ellipses are cubic Béziers");
+    assert!(text.contains("1.5 w\n"), "stroke width reaches the content stream");
+    assert!(text.contains("(Start) Tj"), "label text is painted");
+    assert!(text.contains("1 0 0 -1 32 36 Tm"), "anchored label stays upright under the flipped matrix");
+}
+
+#[test]
+fn skips_a_scene_without_a_canvas() {
+    let mut scene = DisplayScene::new(Size::new(0.0, 0.0));
+    scene.push(SceneNode::new(NodeKind::Rect {
+        rect: Rect::new(0.0, 0.0, 10.0, 10.0),
+        style: ShapeStyle::filled(Color::BLACK),
+    }));
+    let graphic =
+        DisplayItem::Graphic(DisplayGraphic { x: 0.0, y: 0.0, width: 10.0, height: 10.0, scene, alt: "empty".to_string() });
+    let bytes = render_pdf(&DisplayPresentation { pages: vec![page(595.0, 842.0, vec![graphic])] }).expect("pdf render");
+    let text = lossy(&bytes);
+
+    assert!(!text.contains(" cm\n"), "a zero-sized canvas paints nothing: {text}");
+}
+
+#[test]
+fn embeds_scene_labels_outside_winansi() {
+    let Some(_) = vutex_render_pdf_font_available()
+    else {
+        return;
+    };
+    let mut scene = DisplayScene::new(Size::new(100.0, 50.0));
+    scene.push(SceneNode::new(NodeKind::Text {
+        position: Point::new(10.0, 30.0),
+        text: "开始".to_string(),
+        style: TextStyle { font_size: 12.0, ..TextStyle::default() },
+    }));
+    let graphic =
+        DisplayItem::Graphic(DisplayGraphic {
+            x: 72.0, y: 100.0, width: 200.0, height: 100.0, scene, alt: "节点".to_string()
+        });
+    let bytes = render_pdf(&DisplayPresentation { pages: vec![page(595.0, 842.0, vec![graphic])] }).expect("pdf render");
+    let text = lossy(&bytes);
+
+    assert!(text.contains("/FontFile2 "), "scene label pulls in the embedded subset");
+    assert!(!text.contains("(??) Tj"), "scene labels never degrade to question marks");
 }
