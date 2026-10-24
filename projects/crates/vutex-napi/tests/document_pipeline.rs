@@ -27,6 +27,12 @@ impl ScratchDir {
         std::fs::write(&path, content).expect("write scratch file");
         path
     }
+
+    fn write_bytes(&self, file_name: &str, content: &[u8]) -> PathBuf {
+        let path = self.path.join(file_name);
+        std::fs::write(&path, content).expect("write scratch file");
+        path
+    }
 }
 
 impl Drop for ScratchDir {
@@ -262,6 +268,42 @@ fn markdown_inline_data_uri_image_reaches_the_pdf_as_a_raster() {
     assert!(text.contains("\n/Im1 Do\n"), "the page paints the picture: {text}");
     assert!(text.contains("/XObject << /Im1 "), "page resources register the picture: {text}");
     assert!(!text.contains("[3 2] 0 d"), "the inline picture no longer paints the placeholder dash array: {text}");
+}
+
+#[test]
+fn relative_sibling_image_resolves_against_the_document_directory() {
+    let dir = ScratchDir::new("pdf-relative-image");
+    dir.write_bytes("figure.png", &tiny_png());
+    let path = dir.write("image.md", "# 图片\n\n![图](figure.png)\n");
+
+    let outcome = render_document(&path_string(&path), Some(r#"{"output":"pdf"}"#));
+    assert_eq!(outcome.exit_code, 0, "{}", outcome.report_json);
+    let pdf = outcome.pdf.expect("pdf payload");
+    let text = String::from_utf8_lossy(&pdf);
+
+    assert!(text.contains("/Subtype /Image"), "the sibling picture is embedded: {text}");
+    assert!(text.contains("\n/Im1 Do\n"), "the page paints the picture: {text}");
+    assert!(!text.contains("[3 2] 0 d"), "the resolved sibling replaces the placeholder: {text}");
+}
+
+#[test]
+fn supplied_resource_payload_embeds_a_remote_image() {
+    let dir = ScratchDir::new("pdf-supplied-image");
+    let path = dir.write("remote.md", "# 图片\n\n![图](https://example.com/figure.png)\n");
+    let options = serde_json::json!({
+        "output": "pdf",
+        "resources": { "https://example.com/figure.png": base64(&tiny_png()) },
+    })
+    .to_string();
+
+    let outcome = render_document(&path_string(&path), Some(&options));
+    assert_eq!(outcome.exit_code, 0, "{}", outcome.report_json);
+    let pdf = outcome.pdf.expect("pdf payload");
+    let text = String::from_utf8_lossy(&pdf);
+
+    assert!(text.contains("/Subtype /Image"), "the supplied payload is embedded: {text}");
+    assert!(text.contains("\n/Im1 Do\n"), "the page paints the supplied picture: {text}");
+    assert!(!text.contains("[3 2] 0 d"), "a supplied remote source replaces the placeholder: {text}");
 }
 
 #[test]

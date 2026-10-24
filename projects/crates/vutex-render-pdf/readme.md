@@ -9,10 +9,17 @@ upright with their anchored alignment, and opacity is honoured through
 around `q` and `Q`.
 
 Image nodes and page-level image slots are embedded as raster XObjects when
-their source resolves: a `data:` URI with a base64 payload or a filesystem path
-is read, PNG samples are inflated to 8-bit data, and JPEG streams pass through
-`/DCTDecode`. One object serves every slot naming the same source. An RGBA or
-grey-alpha PNG keeps its alpha channel instead of losing it: the writer emits
+their source resolves. Sources resolve through `PdfResources`, the caller-owned
+context: a supplied byte payload wins, then a `data:` URI with a base64 payload,
+then an absolute filesystem path, then a path relative to the configured base
+directory, then, only for backwards compatibility, the process working
+directory. Anything else stays unresolved, including an `http(s)` or `file:`
+URL the caller did not supply. A host that already fetched a remote asset hands
+its bytes to `PdfResources::with_supplied`, so the backend embeds a picture it
+cannot fetch itself, and `PdfResources::with_base_dir` keeps a document's
+relative references next to the document instead of the process. One object
+serves every slot naming the same source. An RGBA or grey-alpha PNG keeps its
+alpha channel instead of losing it: the writer emits
 the alpha plane as a single-channel `/DeviceGray` image, appends a
 `/SMask <n> 0 R` entry to the colour image dictionary, and registers only the
 colour image as the `/ImN` resource. Palette transparency from an 8-bit `tRNS`
@@ -28,4 +35,5 @@ the base-14 standard fonts, so Latin documents embed no font program. Anything
 outside WinAnsi is painted with a subset of a system TrueType font, embedded as
 an Identity-H `CIDFontType2` program with a `ToUnicode` map, so the glyphs reach
 the page and extracted text stays readable. `PdfFontPolicy` pins or disables
-that lookup.
+that lookup, and `render_pdf_with_resources` accepts both the font policy and the
+caller's `PdfResources` context.

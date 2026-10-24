@@ -5,6 +5,8 @@
 mod font;
 mod image;
 pub mod render;
+mod resources;
 mod scene;
 
-pub use render::{PdfFontPolicy, render_pdf, render_pdf_with_font_policy};
+pub use render::{PdfFontPolicy, render_pdf, render_pdf_with_font_policy, render_pdf_with_resources};
+pub use resources::PdfResources;
