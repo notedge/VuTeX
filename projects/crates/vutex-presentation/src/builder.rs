@@ -3,11 +3,13 @@
 use std::collections::HashSet;
 
 use notedown_ir::{Block, DocumentGraph, Inline, NodeId, RelationEndpoint};
-use vutex_layout::plan::{ImagePlaceholder, LayoutItem, LayoutPlan, Rect, Rule, TextRun};
+use vutex_layout::plan::{Graphic, ImagePlaceholder, LayoutItem, LayoutPlan, Rect, Rule, TextRun};
 use vutex_types::math::FontStyle;
 
 use crate::{
-    display::{DisplayImage, DisplayItem, DisplayPage, DisplayPresentation, DisplayRect, DisplayRule, DisplayTextRun},
+    display::{
+        DisplayGraphic, DisplayImage, DisplayItem, DisplayPage, DisplayPresentation, DisplayRect, DisplayRule, DisplayTextRun,
+    },
     flow::{FlowBlock, FlowListItem, FlowPresentation, FlowRun, FlowTableRow},
 };
 
@@ -50,6 +52,14 @@ fn lower_item(item: &LayoutItem) -> DisplayItem {
         LayoutItem::ImagePlaceholder(ImagePlaceholder { x, y, width, height, alt }) => {
             DisplayItem::Image(DisplayImage { x: *x, y: *y, width: *width, height: *height, alt: alt.clone() })
         }
+        LayoutItem::Graphic(Graphic { x, y, width, height, scene, alt }) => DisplayItem::Graphic(DisplayGraphic {
+            x: *x,
+            y: *y,
+            width: *width,
+            height: *height,
+            scene: scene.clone(),
+            alt: alt.clone(),
+        }),
     }
 }
 

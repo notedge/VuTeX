@@ -1,10 +1,11 @@
 //! SVG rendering tests: page groups, geometry, and document text.
 
+use davinci_scene::{Color, NodeKind, Rect, Scene, SceneNode, ShapeStyle, Size};
 use notedown_ir::{Block, DocumentGraph, DocumentId, Inline};
 use vutex_layout::layout;
 use vutex_presentation::{
     build_display_presentation,
-    display::{DisplayItem, DisplayPage, DisplayPresentation, DisplayTextRun},
+    display::{DisplayGraphic, DisplayItem, DisplayPage, DisplayPresentation, DisplayTextRun},
 };
 use vutex_render_svg::render_svg;
 use vutex_types::math::FontStyle;
@@ -102,6 +103,59 @@ fn drops_unsafe_link_destinations_but_keeps_the_text() {
     assert!(!svg.contains("<a "), "{svg}");
     assert!(svg.contains("<text "), "{svg}");
     assert!(svg.contains("example link"), "{svg}");
+}
+
+#[test]
+fn embeds_diagram_scenes_in_a_scaled_group() {
+    let mut scene = Scene::new(Size { width: 200.0, height: 100.0 });
+    scene.push(SceneNode::new(NodeKind::Rect {
+        rect: Rect { x: 0.0, y: 0.0, width: 200.0, height: 100.0 },
+        style: ShapeStyle::stroked(Color::BLACK, 1.0),
+    }));
+    let presentation = DisplayPresentation {
+        pages: vec![DisplayPage {
+            width: 595.0,
+            height: 842.0,
+            items: vec![DisplayItem::Graphic(DisplayGraphic {
+                x: 72.0,
+                y: 120.0,
+                width: 400.0,
+                height: 200.0,
+                scene,
+                alt: "pipeline \"A\" & B".to_string(),
+            })],
+        }],
+    };
+
+    let svg = render_svg(&presentation).expect("svg render");
+
+    assert!(
+        svg.contains(r#"<g data-diagram="pipeline &quot;A&quot; &amp; B" transform="translate(72.000, 120.000) scale(2.000, 2.000)">"#),
+        "{svg}"
+    );
+    assert!(svg.contains(r#"viewBox="0 0 200 100""#), "the scene keeps its own viewBox: {svg}");
+    assert!(svg.contains("</g>"), "{svg}");
+}
+
+#[test]
+fn fails_the_render_when_a_scene_cannot_serialize() {
+    let presentation = DisplayPresentation {
+        pages: vec![DisplayPage {
+            width: 595.0,
+            height: 842.0,
+            items: vec![DisplayItem::Graphic(DisplayGraphic {
+                x: 0.0,
+                y: 0.0,
+                width: 10.0,
+                height: 10.0,
+                scene: Scene::new(Size { width: 0.0, height: 10.0 }),
+                alt: "empty".to_string(),
+            })],
+        }],
+    };
+
+    let failure = render_svg(&presentation).expect_err("an empty canvas must not render as a blank hole");
+    assert_eq!(failure.code, "vutex.render.svg.diagram-invalid");
 }
 
 #[test]
