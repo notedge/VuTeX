@@ -1,17 +1,22 @@
 //! PDF output: a minimal, dependency-free PDF 1.7 writer.
 //!
-//! The writer paints the same display primitives as the SVG backend with the
-//! base-14 standard fonts, so no font program has to be embedded. Coordinates
-//! arrive with the origin at the page top-left corner and are flipped to PDF's
-//! bottom-left origin by subtracting them from the page height.
+//! The writer paints the same display primitives as the SVG backend.
+//! WinAnsi-representable text uses the base-14 standard fonts, so Latin
+//! documents embed no font program. Text the WinAnsi encoding cannot reach is
+//! painted with a subset of a discovered system TrueType font, embedded as an
+//! Identity-H `CIDFontType2` program, so every character reaches the page.
+//! Coordinates arrive with the origin at the page top-left corner and are
+//! flipped to PDF's bottom-left origin by subtracting them from the page height.
 
-use std::fmt::Write as _;
+use std::{collections::BTreeSet, fmt::Write as _, path::PathBuf};
 
 use vutex_presentation::display::{
     DisplayGraphic, DisplayImage, DisplayItem, DisplayPage, DisplayPresentation, DisplayRect, DisplayRule, DisplayTextRun,
 };
 use vutex_render::{RenderBackend, is_safe_href};
 use vutex_types::{Diagnostic, Severity, math::FontStyle};
+
+use crate::font::{Subset, SystemFont};
 
 /// Base-14 fonts this backend can emit, in canonical resource order.
 ///
@@ -45,20 +50,46 @@ const ASCENT: f64 = 0.8;
 const DESCENDER: f64 = 0.2;
 
 /// PDF renderer. Consumes only the display presentation IR.
+///
+/// Fonts for text outside WinAnsi are discovered on the system; use
+/// [`render_pdf_with_font_policy`] to pin or disable that lookup.
 pub fn render_pdf(presentation: &DisplayPresentation) -> Result<Vec<u8>, Diagnostic> {
+    render_pdf_with_font_policy(presentation, &PdfFontPolicy::Discover)
+}
+
+/// Where glyphs for text outside WinAnsi come from.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum PdfFontPolicy {
+    /// Discover a system TrueType font when a document needs one.
+    #[default]
+    Discover,
+    /// Never embed a font; characters outside WinAnsi degrade to `?`.
+    Base14Only,
+    /// Embed subsets loaded from this font file.
+    File(PathBuf),
+}
+
+/// PDF renderer with an explicit font policy.
+pub fn render_pdf_with_font_policy(presentation: &DisplayPresentation, policy: &PdfFontPolicy) -> Result<Vec<u8>, Diagnostic> {
     let backend = PdfBackend;
-    backend.render_display(presentation)
+    backend.render_display_with(presentation, policy)
 }
 
 struct PdfBackend;
 
-impl RenderBackend for PdfBackend {
-    fn render_display(&self, presentation: &DisplayPresentation) -> Result<Vec<u8>, Diagnostic> {
-        render_document(presentation)
+impl PdfBackend {
+    fn render_display_with(&self, presentation: &DisplayPresentation, policy: &PdfFontPolicy) -> Result<Vec<u8>, Diagnostic> {
+        render_document(presentation, policy)
     }
 }
 
-fn render_document(presentation: &DisplayPresentation) -> Result<Vec<u8>, Diagnostic> {
+impl RenderBackend for PdfBackend {
+    fn render_display(&self, presentation: &DisplayPresentation) -> Result<Vec<u8>, Diagnostic> {
+        render_document(presentation, &PdfFontPolicy::Discover)
+    }
+}
+
+fn render_document(presentation: &DisplayPresentation, policy: &PdfFontPolicy) -> Result<Vec<u8>, Diagnostic> {
     if presentation.pages.is_empty() {
         return Err(Diagnostic {
             code: "vutex.render.pdf.no_pages".into(),
@@ -66,9 +97,49 @@ fn render_document(presentation: &DisplayPresentation) -> Result<Vec<u8>, Diagno
             message: "PDF output needs at least one display page with page geometry".into(),
         });
     }
-    let fonts = used_fonts(presentation);
-    let objects = build_objects(presentation, &fonts);
+    let objects = build_objects(presentation, policy);
     Ok(assemble(&objects))
+}
+
+/// Whether a character has a byte in the WinAnsi encoding this writer emits.
+fn representable(ch: char) -> bool {
+    matches!(ch, ' '..='~') || (ch as u32) <= 0xFF || winansi_byte(ch).is_some()
+}
+
+/// Whether a text run needs glyphs beyond the base-14 fonts.
+fn needs_embedding(text: &str) -> bool {
+    text.chars().any(|ch| !representable(ch))
+}
+
+/// Characters painted with the embedded font, in code point order.
+fn embedded_charset(presentation: &DisplayPresentation) -> BTreeSet<char> {
+    let mut charset = BTreeSet::new();
+    for page in &presentation.pages {
+        for item in &page.items {
+            let DisplayItem::TextRun(run) = item
+            else {
+                continue;
+            };
+            if needs_embedding(&run.text) {
+                charset.extend(run.text.chars());
+            }
+        }
+    }
+    charset
+}
+
+/// Load and subset the font a document needs, when its policy allows it.
+fn load_subset(presentation: &DisplayPresentation, policy: &PdfFontPolicy) -> Option<Subset> {
+    let charset = embedded_charset(presentation);
+    if charset.is_empty() {
+        return None;
+    }
+    let font = match policy {
+        PdfFontPolicy::Base14Only => return None,
+        PdfFontPolicy::Discover => SystemFont::discover(&charset)?,
+        PdfFontPolicy::File(path) => SystemFont::load(path)?,
+    };
+    font.subset(&charset)
 }
 
 /// Base-14 font for a display font family and face style.
@@ -101,16 +172,24 @@ fn base_font_for(family: &str, style: FontStyle) -> &'static str {
     }
 }
 
-/// Distinct base-14 fonts referenced by any text run, in canonical order.
-fn used_fonts(presentation: &DisplayPresentation) -> Vec<&'static str> {
+/// Distinct base-14 fonts referenced by text runs, in canonical order.
+///
+/// Runs painted with the embedded font need no base-14 entry, but they do when
+/// the policy disabled embedding or no system font was found.
+fn used_fonts(presentation: &DisplayPresentation, embed_available: bool) -> Vec<&'static str> {
     let mut used: Vec<&'static str> = Vec::new();
     for page in &presentation.pages {
         for item in &page.items {
-            if let DisplayItem::TextRun(run) = item {
-                let base = base_font_for(&run.font_family, run.style);
-                if !used.contains(&base) {
-                    used.push(base);
-                }
+            let DisplayItem::TextRun(run) = item
+            else {
+                continue;
+            };
+            if embed_available && needs_embedding(&run.text) {
+                continue;
+            }
+            let base = base_font_for(&run.font_family, run.style);
+            if !used.contains(&base) {
+                used.push(base);
             }
         }
     }
@@ -134,14 +213,42 @@ struct LinkAnnotation {
     title: Option<String>,
 }
 
-/// Object strings in object-number order; index `i` is object `i + 1`.
-fn build_objects(presentation: &DisplayPresentation, fonts: &[&'static str]) -> Vec<String> {
+/// One indirect object: a dictionary whose body is text, or a stream with bytes.
+enum PdfObject {
+    /// A dictionary or array serialized as ASCII.
+    Text(String),
+    /// A dictionary plus a `/Length`-prefixed binary stream body.
+    Stream { dict: String, data: Vec<u8> },
+}
+
+impl PdfObject {
+    /// Dictionary of a stream object, without its `/Length` entry.
+    fn stream(dict: String, data: Vec<u8>) -> Self {
+        Self::Stream { dict, data }
+    }
+}
+
+/// Embedded font program shared by every page, plus its resource index.
+#[derive(Debug, Clone, Copy)]
+struct EmbeddedText<'a> {
+    /// Subset carrying the `char` to CID mapping used by content streams.
+    subset: &'a Subset,
+    /// One-based `/F` resource index the content stream selects.
+    resource_index: usize,
+}
+
+/// Object streams in object-number order; index `i` is object `i + 1`.
+fn build_objects(presentation: &DisplayPresentation, policy: &PdfFontPolicy) -> Vec<PdfObject> {
+    let subset = load_subset(presentation, policy);
+    let fonts = used_fonts(presentation, subset.is_some());
     let page_count = presentation.pages.len();
     let first_font = 3 + 2 * page_count;
-    let first_annotation = first_font + fonts.len();
     let font_objects: Vec<(&'static str, usize)> =
         fonts.iter().enumerate().map(|(index, base)| (*base, first_font + index)).collect();
-    let resources = font_resource_dict(&font_objects);
+    let first_embedded = first_font + fonts.len();
+    let first_annotation = first_embedded + if subset.is_some() { 5 } else { 0 };
+    let embedded = subset.as_ref().map(|subset| EmbeddedText { subset, resource_index: fonts.len() + 1 });
+    let resources = font_resource_dict(&font_objects, subset.as_ref().map(|_| first_embedded));
     let page_links: Vec<Vec<LinkAnnotation>> = presentation.pages.iter().map(page_links).collect();
     let mut next_annotation = first_annotation;
     let mut annotation_numbers: Vec<Vec<usize>> = Vec::with_capacity(page_count);
@@ -150,23 +257,43 @@ fn build_objects(presentation: &DisplayPresentation, fonts: &[&'static str]) -> 
         next_annotation += links.len();
     }
 
-    let mut objects = vec![catalog_object(), pages_object(page_count)];
+    let mut objects = vec![PdfObject::Text(catalog_object()), PdfObject::Text(pages_object(page_count))];
     for (index, page) in presentation.pages.iter().enumerate() {
         let content_number = 4 + 2 * index;
-        let content = page_content(page, &font_objects);
-        objects.push(page_object(page, &resources, content_number, &annotation_numbers[index]));
+        let content = page_content(page, &font_objects, embedded);
+        objects.push(PdfObject::Text(page_object(page, &resources, content_number, &annotation_numbers[index])));
         objects.push(content_object(&content));
     }
     for (base, _) in &font_objects {
-        objects.push(font_object(base));
+        objects.push(PdfObject::Text(font_object(base)));
+    }
+    if let Some(subset) = &subset {
+        push_embedded_font_objects(&mut objects, subset, first_embedded);
     }
     for links in &page_links {
         for link in links {
-            objects.push(annotation_object(link));
+            objects.push(PdfObject::Text(annotation_object(link)));
         }
     }
     objects
 }
+
+/// Append the five objects of an embedded font program, in object order.
+///
+/// The order is fixed by [`build_objects`]: Type0 font, CIDFont, font
+/// descriptor, `FontFile2` stream, then the `ToUnicode` stream.
+fn push_embedded_font_objects(objects: &mut Vec<PdfObject>, subset: &Subset, first: usize) {
+    objects.push(PdfObject::Text(type0_font_object(EMBEDDED_NAME, first + 1, first + 4)));
+    objects.push(PdfObject::Text(cid_font_object(EMBEDDED_NAME, first + 2, subset)));
+    objects.push(PdfObject::Text(font_descriptor_object(EMBEDDED_NAME, first + 3, subset)));
+    objects.push(PdfObject::stream(format!("<< /Length1 {} >>", subset.data.len()), subset.data.clone()));
+    objects.push(PdfObject::stream(String::new(), to_unicode_cmap(subset)));
+}
+
+/// Base font name of every embedded subset.
+///
+/// The six-letter prefix marks the program as a subset, as the PDF spec asks.
+const EMBEDDED_NAME: &str = "AAAAAA+VutexSystemFont";
 
 /// Link annotations for every safe destination on one page, in paint order.
 ///
@@ -209,9 +336,12 @@ fn pages_object(page_count: usize) -> String {
     format!("<< /Type /Pages /Kids [{}] /Count {page_count} >>", kids.join(" "))
 }
 
-fn font_resource_dict(fonts: &[(&'static str, usize)]) -> String {
-    let entries: Vec<String> =
+fn font_resource_dict(fonts: &[(&'static str, usize)], embedded: Option<usize>) -> String {
+    let mut entries: Vec<String> =
         fonts.iter().enumerate().map(|(index, (_, object))| format!("/F{} {object} 0 R", index + 1)).collect();
+    if let Some(object) = embedded {
+        entries.push(format!("/F{} {object} 0 R", fonts.len() + 1));
+    }
     format!("<< /Font << {} >> >>", entries.join(" "))
 }
 
@@ -253,15 +383,77 @@ fn font_object(base: &str) -> String {
     format!("<< /Type /Font /Subtype /Type1 /BaseFont /{base} /Encoding /WinAnsiEncoding >>")
 }
 
-fn content_object(content: &str) -> String {
-    format!("<< /Length {} >>\nstream\n{content}endstream", content.len())
+/// Type0 font that selects the embedded CID program with `Identity-H`.
+///
+/// With an identity CMap the CID of a glyph equals its glyph id, so the
+/// content stream can address subset glyphs by number.
+fn type0_font_object(name: &str, cid_object: usize, to_unicode_object: usize) -> String {
+    format!(
+        "<< /Type /Font /Subtype /Type0 /BaseFont /{name} /Encoding /Identity-H \
+         /DescendantFonts [{cid_object} 0 R] /ToUnicode {to_unicode_object} 0 R >>"
+    )
+}
+
+fn cid_font_object(name: &str, descriptor_object: usize, subset: &Subset) -> String {
+    let widths: Vec<String> = subset.widths.iter().map(|(cid, width)| format!("{cid} [{width}]")).collect();
+    format!(
+        "<< /Type /Font /Subtype /CIDFontType2 /BaseFont /{name} \
+         /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> \
+         /FontDescriptor {descriptor_object} 0 R /CIDToGIDMap /Identity /DW 1000 /W [{}] >>",
+        widths.join(" ")
+    )
+}
+
+fn font_descriptor_object(name: &str, font_file_object: usize, subset: &Subset) -> String {
+    format!(
+        "<< /Type /FontDescriptor /FontName /{name} /Flags 4 \
+         /FontBBox [{} {} {} {}] /ItalicAngle {} /Ascent {} /Descent {} /CapHeight {} /StemV 80 \
+         /FontFile2 {font_file_object} 0 R >>",
+        subset.bbox[0],
+        subset.bbox[1],
+        subset.bbox[2],
+        subset.bbox[3],
+        num(subset.italic_angle),
+        subset.ascent,
+        subset.descent,
+        subset.cap_height,
+    )
+}
+
+/// `ToUnicode` CMap mapping subset CIDs back to the code points they paint.
+///
+/// The mapping keeps copied text and text extraction readable even though the
+/// content stream addresses glyph ids rather than characters.
+fn to_unicode_cmap(subset: &Subset) -> Vec<u8> {
+    let mut out = Vec::new();
+    out.extend_from_slice(
+        b"/CIDInit /ProcSet findresource begin\n12 dict begin\nbegincmap\n\
+          /CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def\n\
+          /CMapName /Adobe-Identity-UCS def\n/CMapType 2 def\n\
+          1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n",
+    );
+    let entries: Vec<(&char, &u16)> = subset.cids.iter().collect();
+    for chunk in entries.chunks(100) {
+        out.extend_from_slice(format!("{} beginbfchar\n", chunk.len()).as_bytes());
+        for (ch, cid) in chunk {
+            let code = **ch as u32;
+            out.extend_from_slice(format!("<{cid:04X}> <{code:04X}>\n").as_bytes());
+        }
+        out.extend_from_slice(b"endbfchar\n");
+    }
+    out.extend_from_slice(b"endcmap\nCMapName currentdict /CMap defineresource pop\nend\nend\n");
+    out
+}
+
+fn content_object(content: &str) -> PdfObject {
+    PdfObject::stream(format!("<< /Length {} >>", content.len()), content.as_bytes().to_vec())
 }
 
 /// Content stream operators for one page; always ends with a newline.
-fn page_content(page: &DisplayPage, fonts: &[(&'static str, usize)]) -> String {
+fn page_content(page: &DisplayPage, fonts: &[(&'static str, usize)], embedded: Option<EmbeddedText<'_>>) -> String {
     let mut out = String::new();
     for item in &page.items {
-        write_item(&mut out, page.height, item, fonts);
+        write_item(&mut out, page.height, item, fonts, embedded);
     }
     if out.is_empty() {
         out.push('\n');
@@ -269,9 +461,15 @@ fn page_content(page: &DisplayPage, fonts: &[(&'static str, usize)]) -> String {
     out
 }
 
-fn write_item(out: &mut String, page_height: f64, item: &DisplayItem, fonts: &[(&'static str, usize)]) {
+fn write_item(
+    out: &mut String,
+    page_height: f64,
+    item: &DisplayItem,
+    fonts: &[(&'static str, usize)],
+    embedded: Option<EmbeddedText<'_>>,
+) {
     match item {
-        DisplayItem::TextRun(run) => write_text(out, page_height, run, fonts),
+        DisplayItem::TextRun(run) => write_text(out, page_height, run, fonts, embedded),
         DisplayItem::Rule(rule) => write_rule(out, page_height, rule),
         DisplayItem::Rect(rect) => write_rect(out, page_height, rect),
         DisplayItem::Image(image) => write_image(out, page_height, image),
@@ -279,8 +477,30 @@ fn write_item(out: &mut String, page_height: f64, item: &DisplayItem, fonts: &[(
     }
 }
 
-fn write_text(out: &mut String, page_height: f64, run: &DisplayTextRun, fonts: &[(&'static str, usize)]) {
+fn write_text(
+    out: &mut String,
+    page_height: f64,
+    run: &DisplayTextRun,
+    fonts: &[(&'static str, usize)],
+    embedded: Option<EmbeddedText<'_>>,
+) {
     if !all_finite(&[run.x, run.y, run.size]) {
+        return;
+    }
+    if let Some(embedded) = embedded
+        && needs_embedding(&run.text)
+    {
+        let glyphs: String =
+            run.text.chars().filter_map(|ch| embedded.subset.cid(ch)).map(|cid| format!("{cid:04X}")).collect();
+        let y = page_height - run.y;
+        let _ = write!(
+            out,
+            "BT\n/F{} {} Tf\n1 0 0 1 {} {} Tm\n<{glyphs}> Tj\nET\n",
+            embedded.resource_index,
+            num(run.size),
+            num(run.x),
+            num(y),
+        );
         return;
     }
     let base = base_font_for(&run.font_family, run.style);
@@ -438,14 +658,23 @@ fn num(value: f64) -> String {
 }
 
 /// Serialize objects into a complete PDF file with a byte-exact xref table.
-fn assemble(objects: &[String]) -> Vec<u8> {
+fn assemble(objects: &[PdfObject]) -> Vec<u8> {
     let mut out = Vec::new();
     out.extend_from_slice(b"%PDF-1.7\n%\xE2\xE3\xCF\xD3\n");
     let mut offsets = Vec::with_capacity(objects.len());
-    for (index, body) in objects.iter().enumerate() {
+    for (index, object) in objects.iter().enumerate() {
         offsets.push(out.len());
         out.extend_from_slice(format!("{} 0 obj\n", index + 1).as_bytes());
-        out.extend_from_slice(body.as_bytes());
+        match object {
+            PdfObject::Text(body) => out.extend_from_slice(body.as_bytes()),
+            PdfObject::Stream { dict, data } => {
+                let dict = if dict.is_empty() { format!("<< /Length {} >>", data.len()) } else { dict.clone() };
+                out.extend_from_slice(dict.as_bytes());
+                out.extend_from_slice(b"\nstream\n");
+                out.extend_from_slice(data);
+                out.extend_from_slice(b"\nendstream");
+            }
+        }
         out.extend_from_slice(b"\nendobj\n");
     }
     let xref_offset = out.len();

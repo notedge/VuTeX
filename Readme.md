@@ -69,7 +69,7 @@ vutex-napi / wetex-wasm (host adapters)
 |---------|--------|
 | `vutex-render-svg` | Implemented: one stacked SVG document per render. |
 | `vutex-render-html` | Implemented: semantic reflow HTML and fixed-geometry snapshot HTML. |
-| `vutex-render-pdf` | Implemented: dependency-free PDF 1.7 writer over the base-14 fonts, Latin-1 text only. |
+| `vutex-render-pdf` | Implemented: dependency-free PDF 1.7 writer over the base-14 fonts, plus a subset of a discovered system TrueType font for text outside WinAnsi. |
 | `vutex-render-raster` | Stub: returns the `vutex.render.raster.unimplemented` diagnostic. |
 
 ## Quick start
