@@ -516,6 +516,115 @@ fn mermaid_diagram_reaches_the_pdf_as_vector_geometry() {
     assert!(!text.contains("flowchart TD"), "the lowered scene replaces the fence text: {text}");
 }
 
+const TIKZ_SAMPLE: &str = r##"# TikZ
+
+```tikz
+\begin{tikzpicture}[scale=1.5]
+\draw[thick, blue] (0,0) -- (2,1) -- (4,0);
+\fill[red] (0,0) rectangle (1,1);
+\filldraw[green, dashed] (3,0) circle (0.5);
+\draw (0,0) -- (2,0) node[above] {Peak} -- (3,1);
+\end{tikzpicture}
+```
+
+```tikz
+\begin{tikzpicture}
+\draw[very thick, dashed, opacity=0.7] (0,0) rectangle (2,1);
+\end{tikzpicture}
+```
+"##;
+
+const BROKEN_TIKZ_SAMPLE: &str = r##"# TikZ
+
+```tikz
+\begin{tikzpicture}
+\draw[foo] (0,0) -- (1,0);
+\end{tikzpicture}
+```
+"##;
+
+const TEX_TIKZ_SAMPLE: &str = r##"\section{TikZ}
+
+\begin{tikzpicture}
+\draw[blue] (0,0) -- (3,1);
+\fill[red] (1,0) rectangle (2,1);
+\end{tikzpicture}
+"##;
+
+#[test]
+fn tikz_code_block_renders_as_a_diagram_scene() {
+    let dir = ScratchDir::new("tikz");
+    let path = dir.write("picture.md", TIKZ_SAMPLE);
+
+    let outcome = render_document(&path_string(&path), None);
+    let payload = report(&outcome);
+
+    assert_eq!(outcome.exit_code, 0, "{}", outcome.report_json);
+    assert_eq!(payload["diagnostics"], serde_json::json!([]), "{payload}");
+    let svg = outcome.svg.expect("svg payload");
+    assert_eq!(svg.matches(r#"data-diagram="TikZ picture""#).count(), 2, "both pictures become graphic scenes: {svg}");
+    assert!(svg.contains(">Peak</text>"), "the node label is painted: {svg}");
+    assert!(!svg.contains("tikzpicture"), "the lowered scene replaces the fence text: {svg}");
+    assert!(!svg.contains(r"\draw"), "no raw TikZ source reaches the output: {svg}");
+}
+
+#[test]
+fn tikz_picture_reaches_the_pdf_as_vector_geometry() {
+    let dir = ScratchDir::new("tikz-pdf");
+    let path = dir.write("picture.md", TIKZ_SAMPLE);
+
+    let outcome = render_document(&path_string(&path), Some(r#"{"output":"pdf"}"#));
+    let payload = report(&outcome);
+
+    assert_eq!(outcome.exit_code, 0, "{}", outcome.report_json);
+    assert_eq!(payload["diagnostics"], serde_json::json!([]), "{payload}");
+    let pdf = outcome.pdf.expect("pdf payload");
+    let text = String::from_utf8_lossy(&pdf);
+
+    assert!(pdf.starts_with(b"%PDF-1.7\n"), "pdf header");
+    assert!(text.ends_with("%%EOF\n"), "pdf trailer");
+    assert!(text.contains("\nW n\n"), "the scene clips to its placed box: {text}");
+    assert!(text.contains("(Peak) Tj"), "node labels are painted: {text}");
+    assert!(text.contains("\nf\n") || text.contains("\nB\n"), "fill geometry reached the page: {text}");
+    assert!(text.contains("\nS\n"), "stroke geometry reached the page: {text}");
+    assert!(!text.contains("tikzpicture"), "the lowered scene replaces the fence text: {text}");
+}
+
+#[test]
+fn tex_tikzpicture_environment_renders_as_a_diagram_scene() {
+    let dir = ScratchDir::new("tikz-tex");
+    let path = dir.write("picture.tex", TEX_TIKZ_SAMPLE);
+
+    let outcome = render_document(&path_string(&path), None);
+    let payload = report(&outcome);
+
+    assert_eq!(outcome.exit_code, 0, "{}", outcome.report_json);
+    assert_eq!(payload["diagnostics"], serde_json::json!([]), "{payload}");
+    let svg = outcome.svg.expect("svg payload");
+    assert!(svg.contains(r#"data-diagram="TikZ picture""#), "the TeX picture becomes a scene: {svg}");
+    assert!(!svg.contains("tikzpicture"), "the lowered scene replaces the environment source: {svg}");
+}
+
+#[test]
+fn unsupported_tikz_keeps_the_fence_and_reports_a_diagnostic() {
+    let dir = ScratchDir::new("tikz-broken");
+    let path = dir.write("broken.md", BROKEN_TIKZ_SAMPLE);
+
+    let outcome = render_document(&path_string(&path), None);
+    let payload = report(&outcome);
+
+    assert_eq!(outcome.exit_code, 0, "{}", outcome.report_json);
+    let svg = outcome.svg.expect("svg payload");
+    assert!(svg.contains("draw[foo]"), "the authored fence text stays visible: {svg}");
+    assert!(!svg.contains("data-diagram="), "a failed lowering invents no geometry: {svg}");
+
+    let diagnostics = payload["diagnostics"].as_array().expect("diagnostics array");
+    assert_eq!(diagnostics.len(), 1, "{payload}");
+    assert_eq!(diagnostics[0]["code"], "VUTEX_TIKZ_UNSUPPORTED", "{payload}");
+    assert_eq!(diagnostics[0]["severity"], "error", "{payload}");
+    assert_eq!(diagnostics[0]["stage"], "diagram", "{payload}");
+}
+
 #[test]
 fn failed_mermaid_lowering_keeps_the_fence_and_reports_a_diagnostic() {
     let dir = ScratchDir::new("mermaid-broken");

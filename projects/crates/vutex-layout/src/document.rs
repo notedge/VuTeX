@@ -91,12 +91,16 @@ fn link_title(title: Option<&String>) -> Option<&str> {
     title.map(String::as_str).filter(|value| !value.is_empty())
 }
 
-/// Whether a code fence language tag names a diagram producer.
+/// Whether a code fence language tag names a host-lowerable diagram producer.
 ///
-/// Only Mermaid fences can carry a host-registered diagram scene. Any other
-/// tag stays preformatted code even when a scene is registered for its block.
+/// Mermaid fences and TikZ pictures can carry a host-registered diagram scene.
+/// Any other tag stays preformatted code even when a scene is registered for
+/// its block.
 fn is_diagram_language(language: Option<&str>) -> bool {
-    language.is_some_and(|value| value.trim().eq_ignore_ascii_case("mermaid"))
+    language.is_some_and(|value| {
+        let value = value.trim();
+        value.eq_ignore_ascii_case("mermaid") || value.eq_ignore_ascii_case("tikz")
+    })
 }
 
 /// Compute the layout plan for a Notedown document graph.
@@ -869,9 +873,12 @@ impl<'a> PageBuilder<'a> {
                 Block::Math { content, language: _ } => self.emit_math(content, indent),
                 Block::Table { caption, rows } => self.emit_table(caption.as_deref(), rows, indent),
                 Block::Opaque { kind, .. } if kind == "thematic_break" => self.emit_thematic_break(indent),
-                // A diagram block carries no geometry itself; the host-supplied
-                // scene is the only source of its placement.
-                Block::Opaque { kind, .. } if kind == "diagram" => {
+                // A diagram block and an imported TeX picture environment carry
+                // no geometry themselves; the host-supplied scene is the only
+                // source of their placement. A picture without a scene is
+                // dropped, which matches the previous treatment of the opaque
+                // environment.
+                Block::Opaque { kind, .. } if kind == "diagram" || kind == "tex.environment.tikzpicture" => {
                     self.emit_diagram(*id, indent);
                 }
                 // Opaque payloads with no layout meaning are dropped, not guessed.
