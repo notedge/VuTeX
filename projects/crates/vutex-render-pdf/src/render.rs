@@ -8,9 +8,10 @@
 //! Coordinates arrive with the origin at the page top-left corner and are
 //! flipped to PDF's bottom-left origin by subtracting them from the page height.
 //!
-//! Image slots are raster XObjects when their source resolves. A page-level
-//! `data:` URI or filesystem path is read through the same decoder scene image
-//! nodes use, and the object is shared by every slot that names the same
+//! Image slots are raster XObjects when their source resolves. Sources resolve
+//! through a caller-owned [`PdfResources`] context, so a page-level image slot
+//! and a scene image node share one decoder while the host decides where the
+//! bytes come from. The object is shared by every slot that names the same
 //! source. The picture paints upright with a `q … cm /ImN Do Q` block whose
 //! matrix reverses the image rows inside the y-flipped page. An absent or
 //! unresolvable source keeps the dashed placeholder.
@@ -27,7 +28,10 @@ use vutex_presentation::display::{
 use vutex_render::{RenderBackend, is_safe_href};
 use vutex_types::{Diagnostic, Severity, math::FontStyle};
 
-use crate::font::{Subset, SystemFont};
+use crate::{
+    font::{Subset, SystemFont},
+    resources::PdfResources,
+};
 
 /// Base-14 fonts this backend can emit, in canonical resource order.
 ///
@@ -82,25 +86,47 @@ pub enum PdfFontPolicy {
 
 /// PDF renderer with an explicit font policy.
 pub fn render_pdf_with_font_policy(presentation: &DisplayPresentation, policy: &PdfFontPolicy) -> Result<Vec<u8>, Diagnostic> {
+    render_pdf_with_resources(presentation, policy, &PdfResources::default())
+}
+
+/// PDF renderer with an explicit font policy and caller-owned image resources.
+///
+/// Sources resolve through `resources`, so a host can point relative paths at a
+/// base directory or hand over bytes it already fetched. The default context
+/// reproduces the behaviour of [`render_pdf`] and [`render_pdf_with_font_policy`].
+pub fn render_pdf_with_resources(
+    presentation: &DisplayPresentation,
+    policy: &PdfFontPolicy,
+    resources: &PdfResources,
+) -> Result<Vec<u8>, Diagnostic> {
     let backend = PdfBackend;
-    backend.render_display_with(presentation, policy)
+    backend.render_display_with(presentation, policy, resources)
 }
 
 struct PdfBackend;
 
 impl PdfBackend {
-    fn render_display_with(&self, presentation: &DisplayPresentation, policy: &PdfFontPolicy) -> Result<Vec<u8>, Diagnostic> {
-        render_document(presentation, policy)
+    fn render_display_with(
+        &self,
+        presentation: &DisplayPresentation,
+        policy: &PdfFontPolicy,
+        resources: &PdfResources,
+    ) -> Result<Vec<u8>, Diagnostic> {
+        render_document(presentation, policy, resources)
     }
 }
 
 impl RenderBackend for PdfBackend {
     fn render_display(&self, presentation: &DisplayPresentation) -> Result<Vec<u8>, Diagnostic> {
-        render_document(presentation, &PdfFontPolicy::Discover)
+        render_document(presentation, &PdfFontPolicy::Discover, &PdfResources::default())
     }
 }
 
-fn render_document(presentation: &DisplayPresentation, policy: &PdfFontPolicy) -> Result<Vec<u8>, Diagnostic> {
+fn render_document(
+    presentation: &DisplayPresentation,
+    policy: &PdfFontPolicy,
+    resources: &PdfResources,
+) -> Result<Vec<u8>, Diagnostic> {
     if presentation.pages.is_empty() {
         return Err(Diagnostic {
             code: "vutex.render.pdf.no_pages".into(),
@@ -108,7 +134,7 @@ fn render_document(presentation: &DisplayPresentation, policy: &PdfFontPolicy) -
             message: "PDF output needs at least one display page with page geometry".into(),
         });
     }
-    let objects = build_objects(presentation, policy);
+    let objects = build_objects(presentation, policy, resources);
     Ok(assemble(&objects))
 }
 
@@ -322,7 +348,7 @@ impl OpacityResources {
 }
 
 /// Object streams in object-number order; index `i` is object `i + 1`.
-fn build_objects(presentation: &DisplayPresentation, policy: &PdfFontPolicy) -> Vec<PdfObject> {
+fn build_objects(presentation: &DisplayPresentation, policy: &PdfFontPolicy, sources: &PdfResources) -> Vec<PdfObject> {
     let subset = load_subset(presentation, policy);
     let fonts = used_fonts(presentation, subset.is_some());
     let page_count = presentation.pages.len();
@@ -340,17 +366,17 @@ fn build_objects(presentation: &DisplayPresentation, policy: &PdfFontPolicy) -> 
         content_numbers.push(document.push(PdfObject::Text(String::new())));
     }
 
-    let mut resources = PageResources::default();
+    let mut page_resources = PageResources::default();
     let mut font_objects: Vec<(&'static str, usize)> = Vec::with_capacity(fonts.len());
     for (index, base) in fonts.iter().enumerate() {
         let object = document.push(PdfObject::Text(font_object(base)));
-        resources.insert("Font", &format!("F{}", index + 1), object);
+        page_resources.insert("Font", &format!("F{}", index + 1), object);
         font_objects.push((*base, object));
     }
     let embedded_index = fonts.len() + 1;
     if let Some(subset) = &subset {
         let first = document.next_number();
-        resources.insert("Font", &format!("F{embedded_index}"), first);
+        page_resources.insert("Font", &format!("F{embedded_index}"), first);
         push_embedded_font_objects(&mut document, subset, first);
     }
     let embedded = subset.as_ref().map(|subset| EmbeddedText { subset, resource_index: embedded_index });
@@ -359,19 +385,19 @@ fn build_objects(presentation: &DisplayPresentation, policy: &PdfFontPolicy) -> 
     for (index, alpha) in scene_opacities(presentation).into_iter().enumerate() {
         let name = format!("GS{}", index + 1);
         let object = document.push(PdfObject::Text(ext_gstate_object(alpha)));
-        resources.insert("ExtGState", &name, object);
+        page_resources.insert("ExtGState", &name, object);
         opacities.entries.push((name, alpha));
     }
 
     let annotation_numbers = push_link_annotations(&mut document, &page_links);
-    let images = register_images(presentation, &mut document, &mut resources);
+    let images = register_images(presentation, &mut document, sources, &mut page_resources);
 
     for (index, page) in presentation.pages.iter().enumerate() {
         let content = page_content(page, &font_objects, embedded, &opacities, &images);
         document.replace(content_numbers[index], content_object(&content));
         document.replace(
             page_numbers[index],
-            PdfObject::Text(page_object(page, &resources.dict(), content_numbers[index], &annotation_numbers[index])),
+            PdfObject::Text(page_object(page, &page_resources.dict(), content_numbers[index], &annotation_numbers[index])),
         );
     }
     document.finish()
@@ -381,15 +407,17 @@ fn build_objects(presentation: &DisplayPresentation, policy: &PdfFontPolicy) -> 
 ///
 /// The returned map keys a source to the `/ImN` resource name the content
 /// stream selects. Both page-level image slots and scene image nodes contribute,
-/// so the whole document shares one raster object per distinct source. A
-/// transparent raster contributes a pair: its `/DeviceGray` soft mask is
-/// appended first and the colour image that references it as `/SMask` receives
-/// the `/ImN` name. A reference that cannot be resolved is left out, so painting
-/// falls back to the dashed slot.
+/// so the whole document shares one raster object per distinct source. Sources
+/// resolve through the caller's [`PdfResources`]. A transparent raster
+/// contributes a pair: its `/DeviceGray` soft mask is appended first and the
+/// colour image that references it as `/SMask` receives the `/ImN` name. A
+/// reference that cannot be resolved is left out, so painting falls back to the
+/// dashed slot.
 fn register_images(
     presentation: &DisplayPresentation,
     document: &mut Document,
-    resources: &mut PageResources,
+    sources: &PdfResources,
+    page_resources: &mut PageResources,
 ) -> BTreeMap<String, String> {
     let mut images: BTreeMap<String, String> = BTreeMap::new();
     for page in &presentation.pages {
@@ -397,12 +425,12 @@ fn register_images(
             match item {
                 DisplayItem::Image(image) => {
                     if let Some(source) = &image.source {
-                        register_image(source, document, resources, &mut images);
+                        register_image(source, document, sources, page_resources, &mut images);
                     }
                 }
                 DisplayItem::Graphic(graphic) => {
                     crate::scene::visit_images(&graphic.scene, &mut |resource| {
-                        register_image(&resource.href, document, resources, &mut images);
+                        register_image(&resource.href, document, sources, page_resources, &mut images);
                     });
                 }
                 _ => {}
@@ -413,18 +441,24 @@ fn register_images(
 }
 
 /// Embed one source unless an earlier slot already registered it.
-fn register_image(source: &str, document: &mut Document, resources: &mut PageResources, images: &mut BTreeMap<String, String>) {
+fn register_image(
+    source: &str,
+    document: &mut Document,
+    sources: &PdfResources,
+    page_resources: &mut PageResources,
+    images: &mut BTreeMap<String, String>,
+) {
     if images.contains_key(source) {
         return;
     }
-    let Some(raster) = crate::image::load(source)
+    let Some(raster) = sources.load(source)
     else {
         return;
     };
     let smask = raster.smask().map(|(dict, alpha)| document.push(PdfObject::stream(dict, alpha.to_vec())));
     let object = document.push(PdfObject::stream(raster.dict(smask), raster.data));
     let name = format!("Im{}", images.len() + 1);
-    resources.insert("XObject", &name, object);
+    page_resources.insert("XObject", &name, object);
     images.insert(source.to_string(), name);
 }
 

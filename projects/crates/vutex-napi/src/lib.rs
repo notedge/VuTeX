@@ -86,6 +86,11 @@ pub fn inspect_document(input_path: String) -> InspectDocumentResponse {
 }
 
 /// Render a document file into SVG, reflow HTML, snapshot HTML, or PDF.
+///
+/// `options_json` carries `output`, `input`, and for PDF output `resources` and
+/// `base_dir`. `resources` maps a source string to base64 payload the host
+/// already fetched, and `base_dir` overrides the default of the input document's
+/// parent directory for relative image sources.
 #[napi]
 pub fn render_document(input_path: String, options_json: Option<String>) -> RenderDocumentResponse {
     let outcome = document::render_document(&input_path, options_json.as_deref());

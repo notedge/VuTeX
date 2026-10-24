@@ -10,7 +10,7 @@ use davinci_types::{Color, Point, Rect, Size, Transform};
 use vutex_presentation::display::{
     DisplayGraphic, DisplayImage, DisplayItem, DisplayPage, DisplayPresentation, DisplayRect, DisplayRule, DisplayTextRun,
 };
-use vutex_render_pdf::{PdfFontPolicy, render_pdf, render_pdf_with_font_policy};
+use vutex_render_pdf::{PdfFontPolicy, PdfResources, render_pdf, render_pdf_with_font_policy, render_pdf_with_resources};
 use vutex_types::math::FontStyle;
 
 fn page(width: f64, height: f64, items: Vec<DisplayItem>) -> DisplayPage {
@@ -651,6 +651,35 @@ impl Drop for ScratchImage {
     }
 }
 
+/// Scratch directory holding images a relative source can resolve against.
+struct ScratchDir {
+    path: PathBuf,
+}
+
+impl ScratchDir {
+    /// Create a unique directory in the system temp directory.
+    fn new(name: &str) -> Self {
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let sequence = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!("vutex-pdf-dir-{}-{sequence}-{name}", std::process::id()));
+        std::fs::create_dir_all(&path).expect("create scratch directory");
+        Self { path }
+    }
+
+    /// Write `bytes` under `name` inside the directory.
+    fn write(&self, name: &str, bytes: &[u8]) -> PathBuf {
+        let path = self.path.join(name);
+        std::fs::write(&path, bytes).expect("write scratch image");
+        path
+    }
+}
+
+impl Drop for ScratchDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.path);
+    }
+}
+
 /// Append one PNG chunk with a zero CRC placeholder.
 ///
 /// The writer's decoder does not verify chunk checksums, so the fixture stays
@@ -761,6 +790,16 @@ fn scene_with_images(images: &[(&str, Option<&str>)]) -> DisplayItem {
 /// Render one page that carries the given scene item.
 fn render_scene(item: DisplayItem) -> Vec<u8> {
     render_pdf(&DisplayPresentation { pages: vec![page(595.0, 842.0, vec![item])] }).expect("pdf render")
+}
+
+/// Render one scene item through an explicit resource context.
+fn render_scene_with(item: DisplayItem, resources: &PdfResources) -> Vec<u8> {
+    render_pdf_with_resources(
+        &DisplayPresentation { pages: vec![page(595.0, 842.0, vec![item])] },
+        &PdfFontPolicy::Discover,
+        resources,
+    )
+    .expect("pdf render")
 }
 
 /// A minimal baseline JPEG: SOI, `APP0`, `DQT`, `SOF0` for a 2×2 RGB frame,
@@ -994,6 +1033,72 @@ fn page_image_without_a_source_keeps_the_dashed_placeholder() {
     assert!(text.contains("[3 2] 0 d"), "a slot without a source keeps the dashed box: {text}");
     assert!(!text.contains("/Subtype /Image"), "no object is invented for an absent source: {text}");
     assert_xref_intact(&bytes);
+}
+
+#[test]
+fn relative_image_resolves_against_the_base_directory() {
+    let dir = ScratchDir::new("base");
+    dir.write("figure.png", &tiny_png());
+    let resources = PdfResources::new().with_base_dir(dir.path.clone());
+    let bytes = render_scene_with(scene_with_images(&[("figure.png", None)]), &resources);
+    let text = lossy(&bytes);
+
+    assert!(text.contains("/Type /XObject /Subtype /Image"), "the base directory makes the sibling readable: {text}");
+    assert!(text.contains("\n/Im1 Do\n"), "the content stream paints the picture: {text}");
+    assert!(!text.contains("[3 2] 0 d"), "a resolved relative source replaces the placeholder");
+    assert_xref_intact(&bytes);
+}
+
+#[test]
+fn relative_image_without_a_base_directory_keeps_the_placeholder() {
+    let absent = format!("vutex-pdf-cwd-absent-{}.png", std::process::id());
+    let bytes = render_scene(scene_with_images(&[(&absent, None)]));
+    let text = lossy(&bytes);
+
+    assert!(text.contains("[3 2] 0 d"), "an unresolvable relative source keeps the dashed box: {text}");
+    assert!(!text.contains("/Subtype /Image"), "no object is invented for an absent file: {text}");
+    assert_xref_intact(&bytes);
+}
+
+#[test]
+fn supplied_payload_embeds_a_remote_source() {
+    let source = "https://example.com/figure.png";
+    let bytes = render_scene(scene_with_images(&[(source, None)]));
+    let refused = lossy(&bytes);
+    assert!(!refused.contains("/Subtype /Image"), "a remote scheme resolves to nothing without a payload: {refused}");
+
+    let resources = PdfResources::new().with_supplied(source, tiny_png());
+    let bytes = render_scene_with(scene_with_images(&[(source, None)]), &resources);
+    let text = lossy(&bytes);
+
+    assert!(text.contains("/Type /XObject /Subtype /Image"), "the supplied bytes embed despite the scheme: {text}");
+    assert!(text.contains("\n/Im1 Do\n"), "the content stream paints the picture: {text}");
+    assert!(!text.contains("[3 2] 0 d"), "a supplied source replaces the placeholder");
+    assert_xref_intact(&bytes);
+}
+
+#[test]
+fn supplied_payload_that_is_not_an_image_keeps_the_placeholder() {
+    let source = "https://example.com/broken.png";
+    let resources = PdfResources::new().with_supplied(source, b"not an image".to_vec());
+    let bytes = render_scene_with(scene_with_images(&[(source, None)]), &resources);
+    let text = lossy(&bytes);
+
+    assert!(text.contains("[3 2] 0 d"), "an undecodable payload keeps the dashed box: {text}");
+    assert!(!text.contains("/Subtype /Image"), "no raster is invented from a non-image payload: {text}");
+    assert_xref_intact(&bytes);
+}
+
+#[test]
+fn default_resource_context_matches_the_previous_render() {
+    let href = format!("data:image/png;base64,{}", base64(&tiny_png()));
+    let presentation = DisplayPresentation { pages: vec![page(595.0, 842.0, vec![scene_with_images(&[(&href, None)])])] };
+    let previous = render_pdf(&presentation).expect("pdf render");
+    let explicit =
+        render_pdf_with_resources(&presentation, &PdfFontPolicy::Discover, &PdfResources::default()).expect("pdf render");
+
+    assert_eq!(previous, explicit, "an empty context reproduces the historical resolution order");
+    assert!(lossy(&previous).contains("/Type /XObject /Subtype /Image"), "inline sources still embed");
 }
 
 #[test]

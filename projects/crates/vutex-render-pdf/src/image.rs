@@ -114,6 +114,25 @@ pub(crate) fn load(href: &str) -> Option<Raster> {
     }
 }
 
+/// Decode bytes the caller already owns, sniffing the same signatures [`load`]
+/// accepts.
+///
+/// The resource context hands over a payload a host fetched itself, such as the
+/// bytes behind an `https://…` URL, and the writer still needs a raster. A
+/// payload that is not a PNG or JPEG returns `None`, so the slot keeps its
+/// placeholder.
+pub(crate) fn decode(raw: &[u8]) -> Option<Raster> {
+    if raw.starts_with(&PNG_SIGNATURE) {
+        decode_png(raw)
+    }
+    else if raw.starts_with(&JPEG_START) {
+        decode_jpeg(raw)
+    }
+    else {
+        None
+    }
+}
+
 /// Bytes behind one `href`: an inline `data:` payload or a file's contents.
 fn read_source(href: &str) -> Option<Vec<u8>> {
     let href = href.trim();
