@@ -91,6 +91,14 @@ fn link_title(title: Option<&String>) -> Option<&str> {
     title.map(String::as_str).filter(|value| !value.is_empty())
 }
 
+/// Whether a code fence language tag names a diagram producer.
+///
+/// Only Mermaid fences can carry a host-registered diagram scene. Any other
+/// tag stays preformatted code even when a scene is registered for its block.
+fn is_diagram_language(language: Option<&str>) -> bool {
+    language.is_some_and(|value| value.trim().eq_ignore_ascii_case("mermaid"))
+}
+
 /// Compute the layout plan for a Notedown document graph.
 ///
 /// The document layout pass walks the Notedown block tree, measures inline
@@ -612,14 +620,15 @@ impl<'a> PageBuilder<'a> {
     /// The scene keeps its aspect ratio and is scaled down to the content
     /// column when it is wider than the column. A block without a scene, or a
     /// scene without a positive canvas, is dropped instead of being guessed at.
-    fn emit_diagram(&mut self, id: NodeId, indent: f64) {
+    /// Returns whether a graphic was placed.
+    fn emit_diagram(&mut self, id: NodeId, indent: f64) -> bool {
         let Some(diagram) = self.diagrams.get(id)
         else {
-            return;
+            return false;
         };
         let intrinsic = diagram.scene.size;
         if intrinsic.width <= 0.0 || intrinsic.height <= 0.0 {
-            return;
+            return false;
         }
         let size = self.body_size();
         let scale = (self.content_width(indent) / intrinsic.width).min(1.0);
@@ -638,6 +647,7 @@ impl<'a> PageBuilder<'a> {
         }));
         self.cursor += height;
         self.pad(size * 0.6);
+        true
     }
 
     fn emit_list(&mut self, ordered: bool, items: &[ListItem], indent: f64, graph: &DocumentGraph) {
@@ -835,13 +845,22 @@ impl<'a> PageBuilder<'a> {
                     self.pad(self.body_size() * 0.4);
                 }
                 Block::Quote { content } => self.emit_quote(content, indent),
-                Block::Code { content, language: _ } => self.emit_code(content, indent),
+                Block::Code { content, language } => {
+                    // A Mermaid fence whose scene the host registered is a
+                    // diagram, not preformatted code. A failed or missing
+                    // lowering keeps the authored fence text visible.
+                    if !is_diagram_language(language.as_deref()) || !self.emit_diagram(*id, indent) {
+                        self.emit_code(content, indent);
+                    }
+                }
                 Block::Math { content, language: _ } => self.emit_math(content, indent),
                 Block::Table { caption, rows } => self.emit_table(caption.as_deref(), rows, indent),
                 Block::Opaque { kind, .. } if kind == "thematic_break" => self.emit_thematic_break(indent),
                 // A diagram block carries no geometry itself; the host-supplied
                 // scene is the only source of its placement.
-                Block::Opaque { kind, .. } if kind == "diagram" => self.emit_diagram(*id, indent),
+                Block::Opaque { kind, .. } if kind == "diagram" => {
+                    self.emit_diagram(*id, indent);
+                }
                 // Opaque payloads with no layout meaning are dropped, not guessed.
                 Block::Opaque { .. } => {}
             }
