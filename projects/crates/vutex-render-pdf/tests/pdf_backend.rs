@@ -1,6 +1,11 @@
 //! PDF backend tests: file structure, xref integrity, and painted primitives.
 
-use davinci_scene::{DisplayScene, NodeKind, SceneNode, ShapeStyle, TextAnchor, TextStyle};
+use std::{
+    path::PathBuf,
+    sync::atomic::{AtomicU64, Ordering},
+};
+
+use davinci_scene::{DisplayScene, NodeKind, ResourceRef, SceneNode, ShapeStyle, TextAnchor, TextStyle};
 use davinci_types::{Color, Point, Rect, Size, Transform};
 use vutex_presentation::display::{
     DisplayGraphic, DisplayImage, DisplayItem, DisplayPage, DisplayPresentation, DisplayRect, DisplayRule, DisplayTextRun,
@@ -607,4 +612,250 @@ fn malformed_opacity_is_clamped_or_ignored() {
     assert!(!text.contains("/ca 1.4"), "out-of-range alpha is clamped, never written raw");
     assert!(text.contains("/ca 0 /CA 0 "), "a negative alpha clamps to fully transparent: {text}");
     assert_xref_intact(&bytes);
+}
+
+/// PNG file signature, as authored by the test fixture builder.
+const PNG_SIGNATURE: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
+
+/// Scratch image file removed when its test ends.
+struct ScratchImage {
+    path: PathBuf,
+}
+
+impl ScratchImage {
+    /// Write `bytes` under a unique name in the system temp directory.
+    fn write(name: &str, bytes: &[u8]) -> Self {
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let sequence = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!("vutex-pdf-image-{}-{sequence}-{name}", std::process::id()));
+        std::fs::write(&path, bytes).expect("write scratch image");
+        Self { path }
+    }
+
+    /// Path a scene resource can reference.
+    fn href(&self) -> String {
+        self.path.to_string_lossy().into_owned()
+    }
+}
+
+impl Drop for ScratchImage {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+/// Append one PNG chunk with a zero CRC placeholder.
+///
+/// The writer's decoder does not verify chunk checksums, so the fixture stays
+/// deterministic without carrying a CRC implementation.
+fn png_chunk(out: &mut Vec<u8>, kind: &[u8; 4], body: &[u8]) {
+    out.extend_from_slice(&(body.len() as u32).to_be_bytes());
+    out.extend_from_slice(kind);
+    out.extend_from_slice(body);
+    out.extend_from_slice(&[0; 4]);
+}
+
+/// Wrap filtered scanlines in a 2×2 RGB PNG whose single `IDAT` is one stored
+/// DEFLATE block.
+fn png_from_scanlines(scanlines: &[u8]) -> Vec<u8> {
+    let length = scanlines.len() as u16;
+    // zlib header, one final stored block (`LEN`, `NLEN` = !`LEN`), the
+    // filtered samples, and an Adler-32 trailer the decoder ignores.
+    let mut zlib = vec![0x78, 0x01, 0x01];
+    zlib.extend_from_slice(&length.to_le_bytes());
+    zlib.extend_from_slice(&(!length).to_le_bytes());
+    zlib.extend_from_slice(scanlines);
+    zlib.extend_from_slice(&[0; 4]);
+
+    let mut header = Vec::new();
+    header.extend_from_slice(&2u32.to_be_bytes());
+    header.extend_from_slice(&2u32.to_be_bytes());
+    header.extend_from_slice(&[8, 2, 0, 0, 0]);
+    let mut png = PNG_SIGNATURE.to_vec();
+    png_chunk(&mut png, b"IHDR", &header);
+    png_chunk(&mut png, b"IDAT", &zlib);
+    png_chunk(&mut png, b"IEND", &[]);
+    png
+}
+
+/// A 2×2 RGB PNG whose rows carry no filter.
+fn tiny_png() -> Vec<u8> {
+    png_from_scanlines(&[
+        0u8, 255, 0, 0, 0, 255, 0, // red, green
+        0, 0, 0, 255, 255, 255, 255, // blue, white
+    ])
+}
+
+/// Encode bytes with the standard base64 alphabet.
+fn base64(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::new();
+    for chunk in bytes.chunks(3) {
+        let first = u32::from(chunk[0]);
+        let second = u32::from(chunk.get(1).copied().unwrap_or(0));
+        let third = u32::from(chunk.get(2).copied().unwrap_or(0));
+        let value = (first << 16) | (second << 8) | third;
+        out.push(char::from(ALPHABET[(value >> 18) as usize & 63]));
+        out.push(char::from(ALPHABET[(value >> 12) as usize & 63]));
+        out.push(if chunk.len() > 1 { char::from(ALPHABET[(value >> 6) as usize & 63]) } else { '=' });
+        out.push(if chunk.len() > 2 { char::from(ALPHABET[value as usize & 63]) } else { '=' });
+    }
+    out
+}
+
+/// A scene that places one image node per `(href, mime)` pair.
+fn scene_with_images(images: &[(&str, Option<&str>)]) -> DisplayItem {
+    let mut scene = DisplayScene::new(Size::new(100.0, 50.0));
+    for (index, (href, mime)) in images.iter().enumerate() {
+        let mut resource = ResourceRef::new(*href);
+        if let Some(mime) = mime {
+            resource = resource.with_mime(*mime);
+        }
+        scene.push(SceneNode::new(NodeKind::Image {
+            rect: Rect::new(10.0, 10.0 + 20.0 * index as f64, 20.0, 10.0),
+            resource,
+            opacity: 1.0,
+        }));
+    }
+    DisplayItem::Graphic(DisplayGraphic { x: 72.0, y: 100.0, width: 200.0, height: 100.0, scene, alt: "图片".to_string() })
+}
+
+/// Render one page that carries the given scene item.
+fn render_scene(item: DisplayItem) -> Vec<u8> {
+    render_pdf(&DisplayPresentation { pages: vec![page(595.0, 842.0, vec![item])] }).expect("pdf render")
+}
+
+/// A minimal baseline JPEG: SOI, `APP0`, `DQT`, `SOF0` for a 2×2 RGB frame,
+/// `DHT`, `SOS`, and `EOI`, with two bytes of scan data.
+const JPEG: &[u8] = &[
+    0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00,
+    0xFF, 0xDB, 0x00, 0x43, 0x00, 0x03, 0x02, 0x02, 0x03, 0x02, 0x02, 0x03, 0x03, 0x03, 0x03, 0x04, 0x03, 0x03, 0x04, 0x05,
+    0x08, 0x05, 0x05, 0x04, 0x04, 0x05, 0x0A, 0x07, 0x07, 0x06, 0x08, 0x0C, 0x0A, 0x0C, 0x0C, 0x0B, 0x0A, 0x0B, 0x0B, 0x0D,
+    0x0E, 0x12, 0x10, 0x0D, 0x0E, 0x11, 0x0E, 0x0B, 0x0B, 0x10, 0x16, 0x10, 0x11, 0x13, 0x14, 0x15, 0x15, 0x15, 0x0C, 0x0F,
+    0x17, 0x18, 0x16, 0x14, 0x18, 0x12, 0x14, 0x15, 0x14, 0xFF, 0xDB, 0x00, 0x43, 0x01, 0x03, 0x04, 0x04, 0x05, 0x04, 0x05,
+    0x09, 0x05, 0x05, 0x09, 0x14, 0x0D, 0x0B, 0x0D, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14,
+    0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14,
+    0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0xFF, 0xC0,
+    0x00, 0x11, 0x08, 0x00, 0x02, 0x00, 0x02, 0x03, 0x01, 0x11, 0x00, 0x02, 0x11, 0x01, 0x03, 0x11, 0x01, 0xFF, 0xC4, 0x00,
+    0x1F, 0x00, 0x00, 0x01, 0x05, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+    0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0xFF, 0xC4, 0x00, 0xB5, 0x10, 0x00, 0x02, 0x01, 0x03, 0x03,
+    0x02, 0x04, 0x03, 0x05, 0x05, 0x04, 0x04, 0x00, 0x00, 0x01, 0x7D, 0x01, 0x02, 0x03, 0x00, 0x04, 0x11, 0x05, 0x12, 0x21,
+    0x31, 0x41, 0x06, 0x13, 0x51, 0x61, 0x07, 0x22, 0x71, 0x14, 0x32, 0x81, 0x91, 0xA1, 0x08, 0x23, 0x42, 0xB1, 0xC1, 0x15,
+    0x52, 0xD1, 0xF0, 0x24, 0x33, 0x62, 0x72, 0x82, 0x09, 0x0A, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x25, 0x26, 0x27, 0x28, 0x29,
+    0x2A, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3A, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49, 0x4A, 0x53, 0x54, 0x55, 0x56,
+    0x57, 0x58, 0x59, 0x5A, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69, 0x6A, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78, 0x79, 0x7A,
+    0x83, 0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8A, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97, 0x98, 0x99, 0x9A, 0xA2, 0xA3, 0xA4,
+    0xA5, 0xA6, 0xA7, 0xA8, 0xA9, 0xAA, 0xB2, 0xB3, 0xB4, 0xB5, 0xB6, 0xB7, 0xB8, 0xB9, 0xBA, 0xC2, 0xC3, 0xC4, 0xC5, 0xC6,
+    0xC7, 0xC8, 0xC9, 0xCA, 0xD2, 0xD3, 0xD4, 0xD5, 0xD6, 0xD7, 0xD8, 0xD9, 0xDA, 0xE1, 0xE2, 0xE3, 0xE4, 0xE5, 0xE6, 0xE7,
+    0xE8, 0xE9, 0xEA, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5, 0xF6, 0xF7, 0xF8, 0xF9, 0xFA, 0xFF, 0xC4, 0x00, 0x1F, 0x01, 0x00, 0x03,
+    0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05,
+    0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0xFF, 0xC4, 0x00, 0xB5, 0x11, 0x00, 0x02, 0x01, 0x02, 0x04, 0x04, 0x03, 0x04, 0x07,
+    0x05, 0x04, 0x04, 0x00, 0x01, 0x02, 0x77, 0x00, 0x01, 0x02, 0x03, 0x11, 0x04, 0x05, 0x21, 0x31, 0x06, 0x12, 0x41, 0x51,
+    0x07, 0x61, 0x71, 0x13, 0x22, 0x32, 0x81, 0x08, 0x14, 0x42, 0x91, 0xA1, 0xB1, 0xC1, 0x09, 0x23, 0x33, 0x52, 0xF0, 0x15,
+    0x62, 0x72, 0xD1, 0x0A, 0x16, 0x24, 0x34, 0xE1, 0x25, 0xF1, 0x17, 0x18, 0x19, 0x1A, 0x26, 0x27, 0x28, 0x29, 0x2A, 0x35,
+    0x36, 0x37, 0x38, 0x39, 0x3A, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49, 0x4A, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59,
+    0x5A, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69, 0x6A, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78, 0x79, 0x7A, 0x82, 0x83, 0x84,
+    0x85, 0x86, 0x87, 0x88, 0x89, 0x8A, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97, 0x98, 0x99, 0x9A, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6,
+    0xA7, 0xA8, 0xA9, 0xAA, 0xB2, 0xB3, 0xB4, 0xB5, 0xB6, 0xB7, 0xB8, 0xB9, 0xBA, 0xC2, 0xC3, 0xC4, 0xC5, 0xC6, 0xC7, 0xC8,
+    0xC9, 0xCA, 0xD2, 0xD3, 0xD4, 0xD5, 0xD6, 0xD7, 0xD8, 0xD9, 0xDA, 0xE2, 0xE3, 0xE4, 0xE5, 0xE6, 0xE7, 0xE8, 0xE9, 0xEA,
+    0xF2, 0xF3, 0xF4, 0xF5, 0xF6, 0xF7, 0xF8, 0xF9, 0xFA, 0xFF, 0xDA, 0x00, 0x0C, 0x03, 0x01, 0x00, 0x02, 0x11, 0x03, 0x11,
+    0x00, 0x3F, 0x00, 0xFB, 0xAF, 0xF6, 0x6F, 0xF0, 0x1F, 0x86, 0xB5, 0x2F, 0xD9, 0xE3, 0xE1, 0x75, 0xDD, 0xDF, 0x87, 0x74,
+    0x9B, 0xAB, 0xBB, 0x8F, 0x0B, 0x69, 0x72, 0xCD, 0x3C, 0xF6, 0x31, 0x3C, 0x92, 0x3B, 0x5A, 0x44, 0x59, 0x99, 0x8A, 0xE4,
+    0x92, 0x49, 0x24, 0x9E, 0xB9, 0xAE, 0xBE, 0x28, 0xE1, 0xEC, 0x9A, 0x96, 0x7D, 0x8F, 0xA7, 0x4F, 0x07, 0x49, 0x45, 0x56,
+    0xAA, 0x92, 0x54, 0xE0, 0x92, 0x4A, 0x72, 0xB2, 0x4A, 0xDB, 0x1F, 0x3F, 0x53, 0x25, 0xCA, 0xF1, 0xF3, 0x78, 0xCC, 0x66,
+    0x16, 0x9D, 0x4A, 0xB5, 0x1F, 0x34, 0xA5, 0x28, 0x46, 0x52, 0x94, 0xA5, 0xAC, 0xA5, 0x29, 0x34, 0xDB, 0x93, 0x6D, 0xB6,
+    0xDB, 0x6D, 0xB7, 0x76, 0x7F, 0xFF, 0xD9,
+];
+
+#[test]
+fn embeds_a_png_scene_image_as_a_raster_xobject() {
+    let href = format!("data:image/png;base64,{}", base64(&tiny_png()));
+    let bytes = render_scene(scene_with_images(&[(&href, None)]));
+    let text = lossy(&bytes);
+
+    assert_eq!(text.matches("/Type /XObject /Subtype /Image").count(), 1, "one image object: {text}");
+    assert!(text.contains("/Width 2"), "PNG width reaches the dictionary: {text}");
+    assert!(text.contains("/Height 2"), "PNG height reaches the dictionary: {text}");
+    assert!(text.contains("/ColorSpace /DeviceRGB"), "truecolour PNG stays RGB: {text}");
+    assert!(text.contains("/Length 12 >>"), "two rows of two RGB pixels are written unfiltered");
+    assert!(!text.contains("/Filter"), "PNG samples need no stream filter: {text}");
+    assert!(text.contains("/XObject << /Im1 "), "page resources register the image: {text}");
+    assert!(text.contains("\n/Im1 Do\n"), "the content stream paints the image: {text}");
+    assert!(!text.contains("[3 2] 0 d"), "a resolved image replaces the dashed slot");
+    assert_image_orientation(&text);
+    assert_xref_intact(&bytes);
+}
+
+#[test]
+fn embeds_a_jpeg_scene_image_through_dct_decode() {
+    let file = ScratchImage::write("tiny.jpg", JPEG);
+    let href = file.href();
+    let bytes = render_scene(scene_with_images(&[(&href, None)]));
+    let text = lossy(&bytes);
+
+    assert!(text.contains("/Filter /DCTDecode"), "JPEG keeps its compressed stream: {text}");
+    assert!(text.contains("/Width 2"), "SOF width reaches the dictionary: {text}");
+    assert!(text.contains("/Height 2"), "SOF height reaches the dictionary: {text}");
+    assert!(text.contains("/ColorSpace /DeviceRGB"), "three components mean RGB: {text}");
+    assert!(text.contains("\n/Im1 Do\n"), "the content stream paints the image: {text}");
+    assert!(!text.contains("[3 2] 0 d"));
+    assert_image_orientation(&text);
+    assert_xref_intact(&bytes);
+}
+
+#[test]
+fn unresolved_scene_images_keep_the_dashed_placeholder() {
+    let missing = std::env::temp_dir().join(format!("vutex-pdf-absent-{}.png", std::process::id()));
+    let _ = std::fs::remove_file(&missing);
+    let missing = missing.to_string_lossy().into_owned();
+    let gif = format!("data:image/gif;base64,{}", base64(b"GIF89a\x01\x00\x01\x00\x80\x00\x00"));
+    let bytes = render_scene(scene_with_images(&[(&missing, None), (&gif, Some("image/gif"))]));
+    let text = lossy(&bytes);
+
+    assert_eq!(text.matches("[3 2] 0 d").count(), 2, "both slots fall back to the dashed box: {text}");
+    assert!(!text.contains("/Subtype /Image"), "no object is invented for an unresolved reference");
+    assert_xref_intact(&bytes);
+}
+
+#[test]
+fn rebuilds_paeth_filtered_png_rows() {
+    // Row zero is unfiltered. Row one uses the Paeth predictor, so its bytes
+    // are deltas against the row above and only a correct reconstruction
+    // yields the authored blue and white pixels.
+    let png = png_from_scanlines(&[
+        0, 255, 0, 0, 0, 255, 0, // filter none: red, green
+        4, 1, 0, 255, 255, 0, 0, // filter paeth: blue, white
+    ]);
+    let href = format!("data:image/png;base64,{}", base64(&png));
+    let bytes = render_scene(scene_with_images(&[(&href, None)]));
+
+    let samples = [255u8, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 255];
+    assert!(
+        bytes.windows(samples.len()).any(|window| window == samples),
+        "reconstructed rows must be red, green, blue, white in that order"
+    );
+}
+
+#[test]
+fn repeated_image_references_share_one_xobject() {
+    let href = format!("data:image/png;base64,{}", base64(&tiny_png()));
+    let bytes = render_scene(scene_with_images(&[(&href, None), (&href, None)]));
+    let text = lossy(&bytes);
+
+    assert_eq!(text.matches("/Type /XObject /Subtype /Image").count(), 1, "one image object: {text}");
+    assert_eq!(text.matches("\n/Im1 Do\n").count(), 2, "both placements select the same object");
+    assert!(!text.contains("/Im2"), "the repeated reference gets no second name");
+    assert!(text.contains("/XObject << /Im1 "));
+    assert_xref_intact(&bytes);
+}
+
+/// The image matrix reverses the sample rows under the scene's own y flip.
+///
+/// The scene root maps scene-space y downward with a negative `d`. The image
+/// matrix must then also be negative and translate the unit square so its
+/// bottom edge sits at `rect.y + rect.height`; the product of the two negative
+/// scales is positive, so sample row zero lands on the page's upper edge.
+fn assert_image_orientation(text: &str) {
+    assert!(text.contains("2 0 0 -2 72 742 cm"), "scene root flips y once: {text}");
+    assert!(text.contains("20 0 0 -10 10 20 cm"), "image matrix flips sample rows: {text}");
 }

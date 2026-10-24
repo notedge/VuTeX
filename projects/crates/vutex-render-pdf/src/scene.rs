@@ -11,12 +11,17 @@
 //! as an `/ExtGState` alpha entry: a node below full opacity opens its own
 //! graphics state, so its siblings stay fully opaque.
 //!
-//! Images carry a resource reference rather than decoded pixels, so they keep
-//! the dashed placeholder the writer already used for reserved image slots.
+//! Images are embedded as raster XObjects when their resource resolves: a PNG
+//! contributes unfiltered 8-bit samples and a JPEG keeps its `DCTDecode`
+//! stream. The image matrix flips the sample rows so the picture stays upright
+//! under the scene's own y flip. A reference that cannot be resolved keeps the
+//! dashed placeholder the writer already used for reserved image slots.
 
-use std::fmt::Write as _;
+use std::{collections::BTreeMap, fmt::Write as _};
 
-use davinci_scene::{DisplayScene, MarkerShape, NodeKind, PathCommand, PathData, SceneNode, ShapeStyle, TextAnchor, TextStyle};
+use davinci_scene::{
+    DisplayScene, MarkerShape, NodeKind, PathCommand, PathData, ResourceRef, SceneNode, ShapeStyle, TextAnchor, TextStyle,
+};
 use davinci_types::{Color, Point, Rect, Transform};
 use vutex_presentation::display::DisplayGraphic;
 
@@ -28,15 +33,21 @@ const TEXT_WIDTH: f64 = 0.6;
 /// Control-point offset that turns a quarter ellipse into a cubic Bézier.
 const KAPPA: f64 = 0.552_284_749_830_793_4;
 
+/// Paint context shared by every node of one placed scene.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ScenePaint<'a> {
+    /// Base-14 font resources available to text, in resource order.
+    pub(crate) fonts: &'a [(&'static str, usize)],
+    /// Embedded font subset, when the document needed one.
+    pub(crate) embedded: Option<EmbeddedText<'a>>,
+    /// Embedded image object names keyed by their source `href`.
+    pub(crate) images: &'a BTreeMap<String, String>,
+    /// `/ExtGState` resources selecting the alpha a node paints with.
+    pub(crate) opacities: &'a OpacityResources,
+}
+
 /// Paint one placed scene into the page content stream.
-pub(crate) fn write_scene(
-    out: &mut String,
-    page_height: f64,
-    graphic: &DisplayGraphic,
-    fonts: &[(&'static str, usize)],
-    embedded: Option<EmbeddedText<'_>>,
-    opacities: &OpacityResources,
-) {
+pub(crate) fn write_scene(out: &mut String, page_height: f64, graphic: &DisplayGraphic, paint: ScenePaint<'_>) {
     let scene = &graphic.scene;
     if !(scene.size.width > 0.0 && scene.size.height > 0.0) {
         return;
@@ -58,9 +69,23 @@ pub(crate) fn write_scene(
     );
     let _ = write!(out, "{} 0 0 {} {} {} cm\n", num(sx), num(-sy), num(graphic.x), num(page_height - graphic.y));
     for node in &scene.nodes {
-        write_node(out, node, fonts, embedded, opacities, 1.0);
+        write_node(out, node, paint, 1.0);
     }
     out.push_str("Q\n");
+}
+
+/// Visit every image resource in the scene tree, in paint order.
+pub(crate) fn visit_images(scene: &DisplayScene, visit: &mut impl FnMut(&ResourceRef)) {
+    fn walk(nodes: &[SceneNode], visit: &mut impl FnMut(&ResourceRef)) {
+        for node in nodes {
+            match &node.kind {
+                NodeKind::Image { resource, .. } => visit(resource),
+                NodeKind::Group { children, .. } => walk(children, visit),
+                _ => {}
+            }
+        }
+    }
+    walk(&scene.nodes, visit);
 }
 
 /// Visit every text in the scene tree, with its style and content.
@@ -124,14 +149,7 @@ fn kind_opacity(kind: &NodeKind) -> f64 {
     }
 }
 
-fn write_node(
-    out: &mut String,
-    node: &SceneNode,
-    fonts: &[(&'static str, usize)],
-    embedded: Option<EmbeddedText<'_>>,
-    opacities: &OpacityResources,
-    inherited: f64,
-) {
+fn write_node(out: &mut String, node: &SceneNode, paint: ScenePaint<'_>, inherited: f64) {
     out.push_str("q\n");
     if !node.transform.is_identity() {
         write_matrix(out, node.transform);
@@ -146,17 +164,17 @@ fn write_node(
         // flattened layer.
         let alpha = alpha_of(inherited * *opacity);
         for child in children {
-            write_node(out, child, fonts, embedded, opacities, alpha);
+            write_node(out, child, paint, alpha);
         }
     }
     else {
         let alpha = alpha_of(inherited * kind_opacity(&node.kind));
         // The enclosing `q` scopes the alpha to this node, so siblings stay
         // fully opaque.
-        if let Some(name) = opacities.name(alpha) {
+        if let Some(name) = paint.opacities.name(alpha) {
             let _ = writeln!(out, "/{name} gs");
         }
-        write_kind(out, &node.kind, fonts, embedded);
+        write_kind(out, &node.kind, paint);
     }
     out.push_str("Q\n");
 }
@@ -174,7 +192,7 @@ fn write_matrix(out: &mut String, transform: Transform) {
     );
 }
 
-fn write_kind(out: &mut String, kind: &NodeKind, fonts: &[(&'static str, usize)], embedded: Option<EmbeddedText<'_>>) {
+fn write_kind(out: &mut String, kind: &NodeKind, painter: ScenePaint<'_>) {
     match kind {
         // Groups paint through their children, which [`write_node`] recurses
         // into so it can compose group opacity.
@@ -199,8 +217,8 @@ fn write_kind(out: &mut String, kind: &NodeKind, fonts: &[(&'static str, usize)]
             write_ellipse(out, *center, radii.width, radii.height);
             paint(out, style);
         }
-        NodeKind::Text { position, text, style } => write_text(out, *position, text, style, fonts, embedded),
-        NodeKind::Image { rect, .. } => write_image_placeholder(out, *rect),
+        NodeKind::Text { position, text, style } => write_text(out, *position, text, style, painter),
+        NodeKind::Image { rect, resource, .. } => write_image(out, *rect, resource, painter),
         NodeKind::Marker { at, shape, size, style } => {
             write_marker(out, *at, *shape, *size);
             paint(out, style);
@@ -381,24 +399,18 @@ fn write_color(out: &mut String, color: Color, fill: bool) {
     );
 }
 
-fn write_text(
-    out: &mut String,
-    position: Point,
-    text: &str,
-    style: &TextStyle,
-    fonts: &[(&'static str, usize)],
-    embedded: Option<EmbeddedText<'_>>,
-) {
+fn write_text(out: &mut String, position: Point, text: &str, style: &TextStyle, painter: ScenePaint<'_>) {
     if text.is_empty() || !(style.font_size > 0.0) {
         return;
     }
+    let embedded = painter.embedded;
     let anchor = if embedded.is_some() && needs_embedding(text) {
         embedded.map(|embedded| embedded.resource_index)
     }
     else {
         let family = style.font_family.as_deref().unwrap_or("");
         let base = base_font_for(family, scene_font_style(style.font_weight));
-        fonts.iter().position(|(font, _)| *font == base).map(|index| index + 1)
+        painter.fonts.iter().position(|(font, _)| *font == base).map(|index| index + 1)
     };
     let Some(resource_index) = anchor
     else {
@@ -416,7 +428,43 @@ fn write_text(
     paint_text(out, x, position.y, style.font_size, resource_index, text, embedded, true);
 }
 
-/// Reserved image slot: the scene carries a reference, not pixels.
+/// Paint one resolved image, or its reserved dashed slot when it did not resolve.
+///
+/// PDF image space places the first sample row at the top of the unit square,
+/// while scene space counts y downward. The `d` entry is therefore negative and
+/// the matrix puts the unit square's bottom edge at `rect.y + rect.height`, so
+/// the first row lands on the scene's top edge. The scene root already flips y
+/// once, so the composed page matrix keeps a positive y scale and the picture
+/// stays upright.
+fn write_image(out: &mut String, rect: Rect, resource: &ResourceRef, painter: ScenePaint<'_>) {
+    let Some(name) = painter.images.get(&resource.href)
+    else {
+        write_image_placeholder(out, rect);
+        return;
+    };
+    if !all_finite(&[rect.x, rect.y, rect.width, rect.height]) {
+        return;
+    }
+    if !(rect.width > 0.0 && rect.height > 0.0) {
+        write_image_placeholder(out, rect);
+        return;
+    }
+    let _ = write!(
+        out,
+        "q\n{} 0 0 {} {} {} cm\n/{name} Do\nQ\n",
+        num(rect.width),
+        num(-rect.height),
+        num(rect.x),
+        num(rect.y + rect.height),
+    );
+}
+
+/// Whether every value is a finite number.
+fn all_finite(values: &[f64]) -> bool {
+    values.iter().copied().all(f64::is_finite)
+}
+
+/// Reserved image slot for a reference this backend could not resolve.
 fn write_image_placeholder(out: &mut String, rect: Rect) {
     let _ = write!(
         out,
