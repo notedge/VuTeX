@@ -365,7 +365,7 @@ fn hex_cid_text(text: &str) -> Vec<&str> {
 }
 
 /// Body of one indirect object, between its `N 0 obj` line and `endobj`.
-fn object_body<'a>(text: &'a str, number: usize) -> Option<&'a str> {
+fn object_body(text: &str, number: usize) -> Option<&str> {
     let marker = format!("\n{number} 0 obj\n");
     let start = text.find(&marker)? + marker.len();
     let end = start + text[start..].find("\nendobj")?;
@@ -373,7 +373,7 @@ fn object_body<'a>(text: &'a str, number: usize) -> Option<&'a str> {
 }
 
 /// Payload of one indirect stream object, without its dictionary or markers.
-fn stream_payload<'a>(text: &'a str, number: usize) -> Option<&'a str> {
+fn stream_payload(text: &str, number: usize) -> Option<&str> {
     let body = object_body(text, number)?;
     let start = body.find("stream\n")? + "stream\n".len();
     let end = body.rfind("\nendstream")?;
