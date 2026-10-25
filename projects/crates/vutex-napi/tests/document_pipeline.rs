@@ -495,7 +495,7 @@ classDiagram
 "##;
 
 #[test]
-fn mermaid_code_block_renders_as_a_diagram_scene() {
+fn mermaid_diagram_renders_as_a_diagram_scene() {
     let dir = ScratchDir::new("mermaid");
     let path = dir.write("flow.md", MERMAID_SAMPLE);
 

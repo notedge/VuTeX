@@ -476,7 +476,8 @@ fn failure_report(operation: &str, input_path: &str, format_label: &str, record:
 
 /// Structural block counts for the inspect report.
 fn summarize_document(graph: &DocumentGraph) -> serde_json::Value {
-    let (mut sections, mut paragraphs, mut lists, mut code, mut quotes, mut tables, mut math) = (0, 0, 0, 0, 0, 0, 0);
+    let (mut sections, mut paragraphs, mut lists, mut code, mut quotes, mut tables, mut math, mut diagrams) =
+        (0, 0, 0, 0, 0, 0, 0, 0);
     for node in &graph.blocks {
         match &node.block {
             Block::Section { .. } => sections += 1,
@@ -486,6 +487,7 @@ fn summarize_document(graph: &DocumentGraph) -> serde_json::Value {
             Block::Quote { .. } => quotes += 1,
             Block::Table { .. } => tables += 1,
             Block::Math { .. } => math += 1,
+            Block::Diagram { .. } => diagrams += 1,
             Block::Opaque { .. } => {}
         }
     }
@@ -500,6 +502,7 @@ fn summarize_document(graph: &DocumentGraph) -> serde_json::Value {
         "quotes": quotes,
         "tables": tables,
         "math": math,
+        "diagrams": diagrams,
         "assets": graph.assets.len(),
         "relations": graph.relations.len(),
         "coverage_complete": graph.coverage.complete,

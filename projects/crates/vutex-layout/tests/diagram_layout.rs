@@ -1,11 +1,10 @@
 //! Diagram scenes placed by the document layout pass.
 
 use davinci_scene::{Color, DisplayScene, NodeKind, Point, Rect, SceneNode, ShapeStyle, Size};
-use notedown_ir::{Block, DocumentGraph, DocumentId, SemanticStatus};
+use notedown_ir::{Block, DocumentGraph, DocumentId};
 use vutex_layout::{
     Diagrams, LayoutHint,
     document::layout_with_diagrams,
-    layout,
     plan::{Graphic, LayoutItem},
 };
 
@@ -24,15 +23,11 @@ fn text_scene(width: f64, height: f64) -> DisplayScene {
 }
 
 fn diagram_block(graph: &mut DocumentGraph) -> notedown_ir::NodeId {
-    graph.push_block(Block::Opaque {
-        kind: "diagram".to_string(),
-        payload_hint: "mermaid".to_string(),
-        status: SemanticStatus::Partial,
-    })
+    mermaid_diagram(graph, "flowchart TD\n  A[Start] --> B[Stop]\n")
 }
 
-fn mermaid_code_block(graph: &mut DocumentGraph, source: &str) -> notedown_ir::NodeId {
-    graph.push_block(Block::Code { language: Some("mermaid".to_string()), content: source.to_string() })
+fn mermaid_diagram(graph: &mut DocumentGraph, source: &str) -> notedown_ir::NodeId {
+    graph.push_block(Block::Diagram { language: "mermaid".to_string(), source: source.to_string() })
 }
 
 fn graphics(plan: &vutex_layout::LayoutPlan) -> Vec<&Graphic> {
@@ -78,18 +73,33 @@ fn scales_wide_scene_down_to_the_content_column() {
     assert!((placed.width / placed.height - 3.0).abs() < 1e-9);
 }
 
+fn laid_out_text(plan: &vutex_layout::LayoutPlan) -> String {
+    plan.pages
+        .iter()
+        .flat_map(|page| page.items.iter())
+        .filter_map(|item| match item {
+            LayoutItem::TextRun(run) => Some(run.text.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 #[test]
-fn drops_diagram_block_without_a_registered_scene() {
+fn keeps_diagram_source_visible_without_a_registered_scene() {
     let mut graph = DocumentGraph::new(DocumentId(9));
     diagram_block(&mut graph);
 
     let plan = layout_with_diagrams(&graph, &LayoutHint::a4(), &Diagrams::new());
     assert!(graphics(&plan).is_empty());
-    assert!(layout(&graph).pages[0].items.is_empty());
+    assert!(!plan.pages[0].items.is_empty(), "a missing scene must not leave a blank region");
+    let text = laid_out_text(&plan);
+    assert!(text.contains("flowchart TD"), "{text}");
+    assert!(text.contains("A[Start] --> B[Stop]"), "{text}");
 }
 
 #[test]
-fn drops_scene_without_a_positive_canvas() {
+fn falls_back_to_source_for_a_scene_without_a_positive_canvas() {
     let mut graph = DocumentGraph::new(DocumentId(10));
     let id = diagram_block(&mut graph);
     let mut diagrams = Diagrams::new();
@@ -97,12 +107,13 @@ fn drops_scene_without_a_positive_canvas() {
 
     let plan = layout_with_diagrams(&graph, &LayoutHint::a4(), &diagrams);
     assert!(graphics(&plan).is_empty());
+    assert!(laid_out_text(&plan).contains("flowchart TD"));
 }
 
 #[test]
-fn places_a_registered_scene_for_a_mermaid_code_block() {
+fn places_a_registered_scene_for_a_mermaid_diagram() {
     let mut graph = DocumentGraph::new(DocumentId(11));
-    let id = mermaid_code_block(&mut graph, "flowchart TD\n  A[Start] --> B[Stop]\n");
+    let id = mermaid_diagram(&mut graph, "flowchart TD\n  A[Start] --> B[Stop]\n");
     let mut diagrams = Diagrams::new();
     diagrams.insert(id, text_scene(400.0, 300.0), "flow chart");
 
@@ -113,23 +124,3 @@ fn places_a_registered_scene_for_a_mermaid_code_block() {
     assert!(placed.scene.nodes.iter().any(|node| matches!(&node.kind, NodeKind::Text { text, .. } if text == "diagram")));
 }
 
-#[test]
-fn keeps_mermaid_fence_text_when_no_scene_is_registered() {
-    let mut graph = DocumentGraph::new(DocumentId(12));
-    mermaid_code_block(&mut graph, "flowchart TD\n  A[Start] --> B[Stop]\n");
-
-    let plan = layout_with_diagrams(&graph, &LayoutHint::a4(), &Diagrams::new());
-    assert!(graphics(&plan).is_empty());
-    let text: String = plan
-        .pages
-        .iter()
-        .flat_map(|page| page.items.iter())
-        .filter_map(|item| match item {
-            LayoutItem::TextRun(run) => Some(run.text.as_str()),
-            _ => None,
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-    assert!(text.contains("flowchart TD"), "{text}");
-    assert!(text.contains("A[Start] --> B[Stop]"), "{text}");
-}

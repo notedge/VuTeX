@@ -91,16 +91,13 @@ fn link_title(title: Option<&String>) -> Option<&str> {
     title.map(String::as_str).filter(|value| !value.is_empty())
 }
 
-/// Whether a code fence language tag names a host-lowerable diagram producer.
+/// Whether a code fence language tag names a host-lowerable TikZ picture.
 ///
-/// Mermaid fences and TikZ pictures can carry a host-registered diagram scene.
-/// Any other tag stays preformatted code even when a scene is registered for
-/// its block.
-fn is_diagram_language(language: Option<&str>) -> bool {
-    language.is_some_and(|value| {
-        let value = value.trim();
-        value.eq_ignore_ascii_case("mermaid") || value.eq_ignore_ascii_case("tikz")
-    })
+/// TikZ pictures still arrive as a code fence tagged `tikz`, so a registered
+/// scene replaces that fence. Mermaid arrives as `Block::Diagram` and never
+/// reaches this helper.
+fn is_tikz_language(language: Option<&str>) -> bool {
+    language.is_some_and(|value| value.trim().eq_ignore_ascii_case("tikz"))
 }
 
 /// Compute the layout plan for a Notedown document graph.
@@ -121,8 +118,8 @@ pub fn layout_with_hint(graph: &DocumentGraph, hint: &LayoutHint) -> LayoutPlan 
 /// Compute the layout plan, placing the diagram scenes the host registered for
 /// `diagram` blocks.
 ///
-/// A `diagram` block without a registered scene keeps its current behaviour and
-/// is dropped, because layout never invents diagram geometry on its own.
+/// A diagram block without a registered scene falls back to its authored source
+/// text, because layout never invents diagram geometry on its own.
 pub fn layout_with_diagrams(graph: &DocumentGraph, hint: &LayoutHint, diagrams: &Diagrams) -> LayoutPlan {
     let mut builder = PageBuilder::new(*hint, diagrams);
     builder.render_blocks(graph, &root_ids(graph), 0.0);
@@ -863,22 +860,29 @@ impl<'a> PageBuilder<'a> {
                 }
                 Block::Quote { content } => self.emit_quote(content, indent),
                 Block::Code { content, language } => {
-                    // A Mermaid fence whose scene the host registered is a
+                    // A TikZ fence whose scene the host registered is a
                     // diagram, not preformatted code. A failed or missing
                     // lowering keeps the authored fence text visible.
-                    if !is_diagram_language(language.as_deref()) || !self.emit_diagram(*id, indent) {
+                    if !is_tikz_language(language.as_deref()) || !self.emit_diagram(*id, indent) {
                         self.emit_code(content, indent);
+                    }
+                }
+                // A formal diagram block is either placed from the scene the
+                // host registered or keeps its authored source visible, so a
+                // missing lowering never leaves a blank page region.
+                Block::Diagram { source, .. } => {
+                    if !self.emit_diagram(*id, indent) {
+                        self.emit_code(source, indent);
                     }
                 }
                 Block::Math { content, language: _ } => self.emit_math(content, indent),
                 Block::Table { caption, rows } => self.emit_table(caption.as_deref(), rows, indent),
                 Block::Opaque { kind, .. } if kind == "thematic_break" => self.emit_thematic_break(indent),
-                // A diagram block and an imported TeX picture environment carry
-                // no geometry themselves; the host-supplied scene is the only
-                // source of their placement. A picture without a scene is
-                // dropped, which matches the previous treatment of the opaque
-                // environment.
-                Block::Opaque { kind, .. } if kind == "diagram" || kind == "tex.environment.tikzpicture" => {
+                // An imported TeX picture environment carries no geometry
+                // itself; the host-supplied scene is the only source of its
+                // placement. A picture without a scene is dropped, which
+                // matches the previous treatment of the opaque environment.
+                Block::Opaque { kind, .. } if kind == "tex.environment.tikzpicture" => {
                     self.emit_diagram(*id, indent);
                 }
                 // Opaque payloads with no layout meaning are dropped, not guessed.
