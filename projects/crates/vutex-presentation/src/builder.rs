@@ -240,6 +240,11 @@ fn collect_flow(graph: &DocumentGraph, ids: &[NodeId], blocks: &mut Vec<FlowBloc
             Block::Code { language, content } => {
                 blocks.push(FlowBlock::CodeBlock { language: language.clone(), text: content.clone() });
             }
+            // Reflow HTML has no scene surface, so the authored diagram source
+            // stays visible under its language tag instead of disappearing.
+            Block::Diagram { language, source } => {
+                blocks.push(FlowBlock::CodeBlock { language: Some(language.clone()), text: source.clone() });
+            }
             Block::Math { content, .. } => {
                 blocks.push(FlowBlock::CodeBlock { language: None, text: content.clone() });
             }

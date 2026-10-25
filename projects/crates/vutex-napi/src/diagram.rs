@@ -1,10 +1,10 @@
 //! Host-side Mermaid lowering into resolved DaVinci display scenes.
 //!
-//! `notedown-formats` keeps a Mermaid fence as `Block::Code` with its language
-//! tag, so this adapter lowers those code blocks through `davinci-diagram` and
+//! `notedown-formats` lowers an explicit Mermaid fence to `Block::Diagram`, so
+//! this adapter lowers those diagram blocks through `davinci-diagram` and
 //! registers each display scene under the block id that authored it. Layout then
-//! places the scene instead of the fence text. A failed lowering registers no
-//! scene, which keeps the authored fence visible and never invents diagram
+//! places the scene instead of the source text. A failed lowering registers no
+//! scene, which keeps the authored source visible and never invents diagram
 //! geometry.
 
 use davinci_diagram::mermaid_to_scene;
@@ -19,32 +19,32 @@ pub const MERMAID_ALT: &str = "Mermaid diagram";
 /// Diagnostic code for a scene whose canvas cannot be placed.
 pub const DIAGRAM_INVALID_CANVAS: &str = "VUTEX_DIAGRAM_INVALID_CANVAS";
 
-/// Display scenes lowered from Mermaid code blocks together with their diagnostics.
+/// Display scenes lowered from Mermaid diagram blocks together with their diagnostics.
 #[derive(Debug)]
 pub struct LoweredDiagrams {
-    /// Display scenes keyed by the code block that authored them.
+    /// Display scenes keyed by the diagram block that authored them.
     pub diagrams: Diagrams,
     /// Lowering diagnostics in document order.
     pub diagnostics: Vec<DiagnosticRecord>,
 }
 
-/// Lower every Mermaid code block in `graph` into a diagram scene.
+/// Lower every Mermaid diagram block in `graph` into a diagram scene.
 ///
-/// Only `Block::Code` blocks whose language tag is `mermaid` are considered.
+/// Only `Block::Diagram` blocks whose language tag is `mermaid` are considered.
 /// Fatal lowering failures and non-fatal layout loss both become diagnostics;
 /// a block with a fatal failure or an unplaceable canvas keeps no scene, so
-/// layout falls back to the authored fence text.
+/// layout falls back to the authored source text.
 pub fn lower_mermaid_diagrams(graph: &DocumentGraph, path: &str) -> LoweredDiagrams {
     let mut lowered = LoweredDiagrams { diagrams: Diagrams::new(), diagnostics: Vec::new() };
     for node in &graph.blocks {
-        let Block::Code { language: Some(language), content } = &node.block
+        let Block::Diagram { language, source } = &node.block
         else {
             continue;
         };
         if !language.trim().eq_ignore_ascii_case("mermaid") {
             continue;
         }
-        match mermaid_to_scene(content) {
+        match mermaid_to_scene(source) {
             Ok(diagram) => {
                 lowered.diagnostics.extend(diagram.diagnostics.iter().map(|diagnostic| DiagnosticRecord {
                     code: diagnostic.code().as_str().to_string(),
