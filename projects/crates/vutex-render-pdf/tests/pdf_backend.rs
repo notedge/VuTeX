@@ -181,6 +181,25 @@ fn renders_all_primitives_on_one_page() {
 }
 
 #[test]
+fn code_block_background_keeps_text_black() {
+    let items = vec![
+        DisplayItem::Rect(DisplayRect { x: 72.0, y: 656.0, width: 451.0, height: 54.0, filled: true }),
+        text(78.0, 696.0, 10.0, "monospace", "fn main() {"),
+        text(78.0, 682.0, 10.0, "monospace", "    let value = 42;"),
+        text(78.0, 668.0, 10.0, "monospace", "}"),
+    ];
+    let bytes = render_pdf(&DisplayPresentation { pages: vec![page(595.0, 842.0, items)] }).expect("pdf render");
+    let text = lossy(&bytes);
+
+    assert!(text.contains("q\n0.949 g\n"), "the background fill is scoped by `q`: {text}");
+    let scoped = text.find("f\nQ\n").expect("the background closes its graphics state");
+    assert!(text[scoped..].contains("(fn main\\(\\) {) Tj"), "code text paints after the background state closes");
+    assert!(text[scoped..].contains("(    let value = 42;) Tj"), "each code line reaches the content stream");
+    assert!(!text.contains("(rust) Tj") && !text.contains("(```) Tj"), "fence and language tag stay out of the body");
+    assert!(balanced_graphics_states(&text), "the added state pair stays balanced");
+}
+
+#[test]
 fn xref_offsets_point_at_object_starts() {
     let bytes =
         render_pdf(&DisplayPresentation { pages: vec![full_page(), page(612.0, 792.0, Vec::new())] }).expect("pdf render");

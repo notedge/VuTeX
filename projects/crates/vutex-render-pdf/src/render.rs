@@ -914,11 +914,14 @@ fn write_rect(out: &mut String, page_height: f64, rect: &DisplayRect) {
         return;
     }
     let y = page_height - (rect.y + rect.height);
+    // The fill colour stays inside `q`/`Q` so later text keeps the default
+    // black fill instead of inheriting the background grey.
     if rect.filled {
-        let _ = write!(out, "0.949 g\n{} {} {} {} re\nf\n", num(rect.x), num(y), num(rect.width), num(rect.height));
+        let _ =
+            write!(out, "q\n0.949 g\n{} {} {} {} re\nf\nQ\n", num(rect.x), num(y), num(rect.width), num(rect.height));
     }
     else {
-        let _ = write!(out, "0.6 G\n0.5 w\n{} {} {} {} re\nS\n", num(rect.x), num(y), num(rect.width), num(rect.height));
+        let _ = write!(out, "q\n0.6 G\n0.5 w\n{} {} {} {} re\nS\nQ\n", num(rect.x), num(y), num(rect.width), num(rect.height));
     }
 }
 
