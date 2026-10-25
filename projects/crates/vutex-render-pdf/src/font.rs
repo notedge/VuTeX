@@ -89,6 +89,11 @@ impl SystemFont {
         charset.iter().filter(|ch| self.glyph_id(**ch).is_some()).count()
     }
 
+    /// Characters in `charset` this font has no glyph for, in code point order.
+    pub(crate) fn missing(&self, charset: &BTreeSet<char>) -> Vec<char> {
+        charset.iter().copied().filter(|ch| self.glyph_id(*ch).is_none()).collect()
+    }
+
     /// Load one font file, rejecting CFF outlines and malformed tables.
     pub(crate) fn load(path: &Path) -> Option<Self> {
         let raw = fs::read(path).ok()?;
