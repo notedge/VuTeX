@@ -236,39 +236,81 @@ fn substitutes_characters_outside_latin1_when_embedding_is_disabled() {
 }
 
 #[test]
-fn embeds_a_subset_for_text_outside_winansi() {
-    let presentation =
-        DisplayPresentation { pages: vec![page(595.0, 842.0, vec![text(72.0, 100.0, 12.0, "sans", "标题 Title")])] };
-    let Some(_) = vutex_render_pdf_font_available()
-    else {
-        return;
-    };
-    let bytes = render_pdf(&presentation).expect("pdf render");
+fn embeds_a_subset_from_an_explicit_font_file() {
+    let bytes = render_pdf_with_font_policy(&cjk_presentation("标题 → ∑ αβγ"), &PdfFontPolicy::File(simhei_path()))
+        .expect("pdf render");
     let text = lossy(&bytes);
 
     assert!(text.contains("/Subtype /Type0"), "composite font object");
     assert!(text.contains("/Encoding /Identity-H"), "identity cid mapping");
     assert!(text.contains("/Subtype /CIDFontType2"), "embedded TrueType program");
     assert!(text.contains("/FontFile2 "), "font file stream");
+    assert!(text.contains("/Length1 "), "font program length");
     assert!(text.contains("/ToUnicode "), "code point mapping for extraction");
-    assert!(text.contains(" Tj"), "content stream still paints text");
-    assert!(!text.contains("(?? Title) Tj"), "characters no longer degrade to question marks");
+    assert!(text.contains("/BaseFont /AAAAAA+VutexSystemFont"), "subset base font");
+    let cids = hex_cid_text(&text);
+    assert!(cids.iter().any(|hex| hex.len() >= 4), "content stream paints hexadecimal CIDs: {cids:?}");
+    assert!(!text.contains("(??"), "explicit font files never degrade to question marks");
 
-    let entries = xref_entries(&bytes);
-    let numbers = object_numbers(&bytes);
-    assert_eq!(entries.len(), numbers.len(), "one xref entry per object");
-    assert_eq!(trailer_size(&bytes), numbers.into_iter().max().expect("at least one object") + 1);
+    assert_xref_intact(&bytes);
 }
 
-/// Whether a system font for embedding is discoverable on this machine.
-fn vutex_render_pdf_font_available() -> Option<()> {
-    render_pdf_with_font_policy(
-        &DisplayPresentation { pages: vec![page(595.0, 842.0, vec![text(72.0, 100.0, 12.0, "sans", "标题")])] },
-        &PdfFontPolicy::Discover,
-    )
-    .ok()
-    .filter(|bytes| lossy(bytes).contains("/FontFile2 "))
-    .map(|_| ())
+#[test]
+fn discovers_a_system_font_for_cjk_text() {
+    let bytes = render_pdf(&cjk_presentation("标题 → ∑ αβγ")).expect("pdf render");
+    let text = lossy(&bytes);
+
+    assert!(text.contains("/Subtype /Type0"), "discovery selects a composite font");
+    assert!(text.contains("/FontFile2 "), "discovered font program is embedded");
+    assert!(hex_cid_text(&text).iter().any(|hex| hex.len() >= 4), "CID text is painted");
+}
+
+#[test]
+fn reports_a_missing_font_file() {
+    let presentation = cjk_presentation("标题");
+    let missing = PathBuf::from(r"C:\Windows\Fonts\vutex-absent-font.ttf");
+    let diagnostic = render_pdf_with_font_policy(&presentation, &PdfFontPolicy::File(missing))
+        .expect_err("an absent font file must not fall back to question marks");
+
+    assert_eq!(diagnostic.code, "vutex.render.pdf.font_unavailable");
+    assert_eq!(diagnostic.severity, vutex_types::Severity::Error);
+}
+
+#[test]
+fn reports_glyphs_the_selected_font_does_not_cover() {
+    let presentation = cjk_presentation("emoji 😂");
+    let diagnostic = render_pdf_with_font_policy(&presentation, &PdfFontPolicy::File(simhei_path()))
+        .expect_err("a missing glyph must not be dropped silently");
+
+    assert_eq!(diagnostic.code, "vutex.render.pdf.glyph_missing");
+    assert_eq!(diagnostic.severity, vutex_types::Severity::Error);
+    assert!(diagnostic.message.contains("U+1F602"), "diagnostic names the missing code point: {}", diagnostic.message);
+}
+
+/// Presentation holding one text run, used by the embedding tests.
+fn cjk_presentation(value: &str) -> DisplayPresentation {
+    DisplayPresentation { pages: vec![page(595.0, 842.0, vec![text(72.0, 100.0, 12.0, "sans", value)])] }
+}
+
+/// SimHei, the glyf TrueType face the Windows font tests embed.
+///
+/// The tests assert on the real program rather than skipping when the machine
+/// lacks the file, so a broken embedding path can never pass unnoticed.
+fn simhei_path() -> PathBuf {
+    let path = PathBuf::from(r"C:\Windows\Fonts\simhei.ttf");
+    assert!(path.exists(), "SimHei is required for the PDF font tests: {}", path.display());
+    path
+}
+
+/// Hexadecimal CID strings painted by text-showing operators, in content order.
+fn hex_cid_text(text: &str) -> Vec<&str> {
+    text.lines()
+        .filter_map(|line| {
+            let body = line.trim().strip_suffix(" Tj")?;
+            let hex = body.strip_prefix('<')?.strip_suffix('>')?;
+            (hex.len() >= 4 && hex.len() % 4 == 0 && hex.chars().all(|ch| ch.is_ascii_hexdigit())).then_some(hex)
+        })
+        .collect()
 }
 
 #[test]
@@ -476,10 +518,6 @@ fn skips_a_scene_without_a_canvas() {
 
 #[test]
 fn embeds_scene_labels_outside_winansi() {
-    let Some(_) = vutex_render_pdf_font_available()
-    else {
-        return;
-    };
     let mut scene = DisplayScene::new(Size::new(100.0, 50.0));
     scene.push(SceneNode::new(NodeKind::Text {
         position: Point::new(10.0, 30.0),
@@ -490,7 +528,11 @@ fn embeds_scene_labels_outside_winansi() {
         DisplayItem::Graphic(DisplayGraphic {
             x: 72.0, y: 100.0, width: 200.0, height: 100.0, scene, alt: "节点".to_string()
         });
-    let bytes = render_pdf(&DisplayPresentation { pages: vec![page(595.0, 842.0, vec![graphic])] }).expect("pdf render");
+    let bytes = render_pdf_with_font_policy(
+        &DisplayPresentation { pages: vec![page(595.0, 842.0, vec![graphic])] },
+        &PdfFontPolicy::File(simhei_path()),
+    )
+    .expect("pdf render");
     let text = lossy(&bytes);
 
     assert!(text.contains("/FontFile2 "), "scene label pulls in the embedded subset");

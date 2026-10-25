@@ -138,7 +138,7 @@ fn render_document(
             message: "PDF output needs at least one display page with page geometry".into(),
         });
     }
-    let objects = build_objects(presentation, policy, resources);
+    let objects = build_objects(presentation, policy, resources)?;
     Ok(assemble(&objects))
 }
 
@@ -186,17 +186,54 @@ fn embedded_charset(presentation: &DisplayPresentation) -> BTreeSet<char> {
 }
 
 /// Load and subset the font a document needs, when its policy allows it.
-fn load_subset(presentation: &DisplayPresentation, policy: &PdfFontPolicy) -> Option<Subset> {
+///
+/// `Base14Only` deliberately keeps its degraded `?` output and `Ok(None)`. Any
+/// other policy that cannot provide a glyph for every character returns a
+/// diagnostic instead of silently dropping text or substituting `?`.
+fn load_subset(presentation: &DisplayPresentation, policy: &PdfFontPolicy) -> Result<Option<Subset>, Diagnostic> {
     let charset = embedded_charset(presentation);
     if charset.is_empty() {
-        return None;
+        return Ok(None);
+    }
+    if matches!(policy, PdfFontPolicy::Base14Only) {
+        return Ok(None);
     }
     let font = match policy {
-        PdfFontPolicy::Base14Only => return None,
-        PdfFontPolicy::Discover => SystemFont::discover(&charset)?,
-        PdfFontPolicy::File(path) => SystemFont::load(path)?,
+        PdfFontPolicy::Discover => SystemFont::discover(&charset).ok_or_else(|| Diagnostic {
+            code: "vutex.render.pdf.font_unavailable".into(),
+            severity: Severity::Error,
+            message: "no system glyf TrueType font was found for the document charset".into(),
+        })?,
+        PdfFontPolicy::File(path) => SystemFont::load(path).ok_or_else(|| Diagnostic {
+            code: "vutex.render.pdf.font_unavailable".into(),
+            severity: Severity::Error,
+            message: format!("font file {} is not a readable glyf TrueType font", path.display()),
+        })?,
+        PdfFontPolicy::Base14Only => return Ok(None),
     };
-    font.subset(&charset)
+    let missing = font.missing(&charset);
+    if !missing.is_empty() {
+        return Err(Diagnostic {
+            code: "vutex.render.pdf.glyph_missing".into(),
+            severity: Severity::Error,
+            message: format!("the embedded font has no glyph for {}", codepoints(&missing)),
+        });
+    }
+    font.subset(&charset).map(Some).ok_or_else(|| Diagnostic {
+        code: "vutex.render.pdf.glyph_missing".into(),
+        severity: Severity::Error,
+        message: "the embedded font subset produced no glyphs for the document charset".into(),
+    })
+}
+
+/// Code points in `chars`, as `U+XXXX` tokens, for a diagnostic message.
+fn codepoints(chars: &[char]) -> String {
+    const LIMIT: usize = 16;
+    let mut tokens: Vec<String> = chars.iter().take(LIMIT).map(|ch| format!("U+{:04X}", *ch as u32)).collect();
+    if chars.len() > LIMIT {
+        tokens.push(format!("and {} more", chars.len() - LIMIT));
+    }
+    tokens.join(" ")
 }
 
 /// Distinct scene alphas below full opacity, in ascending order.
@@ -383,8 +420,12 @@ impl ImageResources {
 }
 
 /// Object streams in object-number order; index `i` is object `i + 1`.
-fn build_objects(presentation: &DisplayPresentation, policy: &PdfFontPolicy, sources: &PdfResources) -> Vec<PdfObject> {
-    let subset = load_subset(presentation, policy);
+fn build_objects(
+    presentation: &DisplayPresentation,
+    policy: &PdfFontPolicy,
+    sources: &PdfResources,
+) -> Result<Vec<PdfObject>, Diagnostic> {
+    let subset = load_subset(presentation, policy)?;
     let fonts = used_fonts(presentation, subset.is_some());
     let page_count = presentation.pages.len();
     let page_links: Vec<Vec<LinkAnnotation>> = presentation.pages.iter().map(page_links).collect();
@@ -435,7 +476,7 @@ fn build_objects(presentation: &DisplayPresentation, policy: &PdfFontPolicy, sou
             PdfObject::Text(page_object(page, &page_resources.dict(), content_numbers[index], &annotation_numbers[index])),
         );
     }
-    document.finish()
+    Ok(document.finish())
 }
 
 /// Resolve every image one presentation references, once per distinct source.
