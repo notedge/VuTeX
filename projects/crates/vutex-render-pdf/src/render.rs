@@ -33,7 +33,7 @@ use vutex_render::{RenderBackend, is_safe_href};
 use vutex_types::{Diagnostic, Severity, math::FontStyle};
 
 use crate::{
-    font::{Subset, SystemFont},
+    font::{FontChain, Subset, SystemFont},
     resources::PdfResources,
 };
 
@@ -77,15 +77,26 @@ pub fn render_pdf(presentation: &DisplayPresentation) -> Result<Vec<u8>, Diagnos
 }
 
 /// Where glyphs for text outside WinAnsi come from.
+///
+/// `Discover` and both file variants build a fallback chain: the first font
+/// supplies the characters it covers and later fonts fill in the rest. For
+/// `Discover` the candidates are system faces with `glyf` outlines. For
+/// `File` and `Files` they are exactly the authored paths, in order.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum PdfFontPolicy {
-    /// Discover a system TrueType font when a document needs one.
+    /// Discover system TrueType fonts when a document needs them.
     #[default]
     Discover,
     /// Never embed a font; characters outside WinAnsi degrade to `?`.
     Base14Only,
     /// Embed subsets loaded from this font file.
     File(PathBuf),
+    /// Embed subsets loaded from these font files, in fallback order.
+    ///
+    /// Every entry must be a readable `glyf` TrueType font, and together they
+    /// must cover the document; a character no entry covers is an error rather
+    /// than a silently dropped glyph or a `?`.
+    Files(Vec<PathBuf>),
 }
 
 /// PDF renderer with an explicit font policy.
@@ -185,44 +196,58 @@ fn embedded_charset(presentation: &DisplayPresentation) -> BTreeSet<char> {
     charset
 }
 
-/// Load and subset the font a document needs, when its policy allows it.
+/// Load and subset the fonts a document needs, when its policy allows it.
 ///
 /// `Base14Only` deliberately keeps its degraded `?` output and `Ok(None)`. Any
 /// other policy that cannot provide a glyph for every character returns a
-/// diagnostic instead of silently dropping text or substituting `?`.
-fn load_subset(presentation: &DisplayPresentation, policy: &PdfFontPolicy) -> Result<Option<Subset>, Diagnostic> {
+/// diagnostic instead of silently dropping text or substituting `?`. Fonts that
+/// cannot be read are reported, but a discovered candidate that is merely
+/// absent contributes nothing rather than failing the document.
+fn load_chain(presentation: &DisplayPresentation, policy: &PdfFontPolicy) -> Result<Option<FontChain>, Diagnostic> {
     let charset = embedded_charset(presentation);
     if charset.is_empty() {
         return Ok(None);
     }
-    if matches!(policy, PdfFontPolicy::Base14Only) {
-        return Ok(None);
-    }
-    let font = match policy {
-        PdfFontPolicy::Discover => SystemFont::discover(&charset).ok_or_else(|| Diagnostic {
+    let fonts = match policy {
+        PdfFontPolicy::Base14Only => return Ok(None),
+        PdfFontPolicy::Discover => SystemFont::discover_fonts(&charset),
+        PdfFontPolicy::File(path) => vec![load_font_file(path)?],
+        PdfFontPolicy::Files(paths) => {
+            if paths.is_empty() {
+                return Err(Diagnostic {
+                    code: "vutex.render.pdf.font_unavailable".into(),
+                    severity: Severity::Error,
+                    message: "the explicit font file list is empty".into(),
+                });
+            }
+            paths.iter().map(|path| load_font_file(path)).collect::<Result<Vec<_>, _>>()?
+        }
+    };
+    if fonts.is_empty() {
+        return Err(Diagnostic {
             code: "vutex.render.pdf.font_unavailable".into(),
             severity: Severity::Error,
             message: "no system glyf TrueType font was found for the document charset".into(),
-        })?,
-        PdfFontPolicy::File(path) => SystemFont::load(path).ok_or_else(|| Diagnostic {
-            code: "vutex.render.pdf.font_unavailable".into(),
-            severity: Severity::Error,
-            message: format!("font file {} is not a readable glyf TrueType font", path.display()),
-        })?,
-        PdfFontPolicy::Base14Only => return Ok(None),
-    };
-    let missing = font.missing(&charset);
+        });
+    }
+    let chain = FontChain::build(&fonts, &charset);
+    let missing = chain.missing(&charset);
     if !missing.is_empty() {
         return Err(Diagnostic {
             code: "vutex.render.pdf.glyph_missing".into(),
             severity: Severity::Error,
-            message: format!("the embedded font has no glyph for {}", codepoints(&missing)),
+            message: format!("the embedded font chain has no glyph for {}", codepoints(&missing)),
         });
     }
-    font.subset(&charset).map(Some).ok_or_else(|| Diagnostic {
-        code: "vutex.render.pdf.glyph_missing".into(),
+    Ok(Some(chain))
+}
+
+/// Load one explicitly authored font file, or report why it cannot be used.
+fn load_font_file(path: &PathBuf) -> Result<SystemFont, Diagnostic> {
+    SystemFont::load(path).ok_or_else(|| Diagnostic {
+        code: "vutex.render.pdf.font_unavailable".into(),
         severity: Severity::Error,
-        message: "the embedded font subset produced no glyphs for the document charset".into(),
+        message: format!("font file {} is not a readable glyf TrueType font", path.display()),
     })
 }
 
@@ -358,13 +383,23 @@ impl PdfObject {
     }
 }
 
-/// Embedded font program shared by every page, plus its resource index.
+/// Embedded font programs shared by every page, plus their resource range.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct EmbeddedText<'a> {
-    /// Subset carrying the `char` to CID mapping used by content streams.
-    pub(crate) subset: &'a Subset,
-    /// One-based `/F` resource index the content stream selects.
-    pub(crate) resource_index: usize,
+    /// Subsets in fallback order, carrying the `char` to CID mappings.
+    pub(crate) chain: &'a FontChain,
+    /// One-based `/F` resource index of the chain's first subset.
+    ///
+    /// Subset `i` is registered as `/F{first_index + i}`, so a character's
+    /// subset index turns straight into the resource a content stream selects.
+    pub(crate) first_index: usize,
+}
+
+impl EmbeddedText<'_> {
+    /// `/F` resource index and CID that paint one character.
+    fn glyph(&self, ch: char) -> Option<(usize, u16)> {
+        self.chain.glyph(ch).map(|(subset, cid)| (self.first_index + subset, cid))
+    }
 }
 
 /// `/ExtGState` resources for the distinct scene alphas a document paints.
@@ -425,8 +460,8 @@ fn build_objects(
     policy: &PdfFontPolicy,
     sources: &PdfResources,
 ) -> Result<Vec<PdfObject>, Diagnostic> {
-    let subset = load_subset(presentation, policy)?;
-    let fonts = used_fonts(presentation, subset.is_some());
+    let chain = load_chain(presentation, policy)?;
+    let fonts = used_fonts(presentation, chain.is_some());
     let page_count = presentation.pages.len();
     let page_links: Vec<Vec<LinkAnnotation>> = presentation.pages.iter().map(page_links).collect();
 
@@ -449,13 +484,16 @@ fn build_objects(
         page_resources.insert("Font", &format!("F{}", index + 1), object);
         font_objects.push((*base, object));
     }
-    let embedded_index = fonts.len() + 1;
-    if let Some(subset) = &subset {
-        let first = document.next_number();
-        page_resources.insert("Font", &format!("F{embedded_index}"), first);
-        push_embedded_font_objects(&mut document, subset, first);
+    let embedded_first = fonts.len() + 1;
+    let mut embedded = None;
+    if let Some(chain) = &chain {
+        for (index, subset) in chain.subsets().iter().enumerate() {
+            let first = document.next_number();
+            page_resources.insert("Font", &format!("F{}", embedded_first + index), first);
+            push_embedded_font_objects(&mut document, subset, first, &embedded_name(index));
+        }
+        embedded = Some(EmbeddedText { chain, first_index: embedded_first });
     }
-    let embedded = subset.as_ref().map(|subset| EmbeddedText { subset, resource_index: embedded_index });
 
     let mut opacities = OpacityResources::default();
     for (index, alpha) in scene_opacities(presentation).into_iter().enumerate() {
@@ -639,22 +677,31 @@ impl PageResources {
     }
 }
 
-/// Append the five objects of an embedded font program, in object order.
+/// Append the five objects of one embedded font program, in object order.
 ///
 /// The order is fixed by [`build_objects`]: Type0 font, CIDFont, font
 /// descriptor, `FontFile2` stream, then the `ToUnicode` stream.
-fn push_embedded_font_objects(document: &mut Document, subset: &Subset, first: usize) {
-    document.push(PdfObject::Text(type0_font_object(EMBEDDED_NAME, first + 1, first + 4)));
-    document.push(PdfObject::Text(cid_font_object(EMBEDDED_NAME, first + 2, subset)));
-    document.push(PdfObject::Text(font_descriptor_object(EMBEDDED_NAME, first + 3, subset)));
+fn push_embedded_font_objects(document: &mut Document, subset: &Subset, first: usize, name: &str) {
+    document.push(PdfObject::Text(type0_font_object(name, first + 1, first + 4)));
+    document.push(PdfObject::Text(cid_font_object(name, first + 2, subset)));
+    document.push(PdfObject::Text(font_descriptor_object(name, first + 3, subset)));
     document.push(PdfObject::stream(format!("<< /Length1 {} >>", subset.data.len()), subset.data.clone()));
     document.push(PdfObject::stream(String::new(), to_unicode_cmap(subset)));
 }
 
-/// Base font name of every embedded subset.
+/// Base font name of one embedded subset.
 ///
-/// The six-letter prefix marks the program as a subset, as the PDF spec asks.
-const EMBEDDED_NAME: &str = "AAAAAA+VutexSystemFont";
+/// The six-letter prefix marks the program as a subset, as the PDF spec asks,
+/// and its position in the fallback chain keeps every program distinct.
+fn embedded_name(index: usize) -> String {
+    let mut tag = *b"AAAAAA";
+    let mut value = index;
+    for slot in tag.iter_mut().rev() {
+        *slot = b'A' + (value % 26) as u8;
+        value /= 26;
+    }
+    format!("{}+VutexSystemFont", String::from_utf8(tag.to_vec()).expect("subset tags are ascii"))
+}
 
 /// Link annotations for every safe destination on one page, in paint order.
 ///
@@ -775,7 +822,8 @@ fn font_descriptor_object(name: &str, font_file_object: usize, subset: &Subset) 
 /// `ToUnicode` CMap mapping subset CIDs back to the code points they paint.
 ///
 /// The mapping keeps copied text and text extraction readable even though the
-/// content stream addresses glyph ids rather than characters.
+/// content stream addresses glyph ids rather than characters. Destinations are
+/// UTF-16BE, so a code point above the BMP becomes its surrogate pair.
 fn to_unicode_cmap(subset: &Subset) -> Vec<u8> {
     let mut out = Vec::new();
     out.extend_from_slice(
@@ -788,13 +836,18 @@ fn to_unicode_cmap(subset: &Subset) -> Vec<u8> {
     for chunk in entries.chunks(100) {
         out.extend_from_slice(format!("{} beginbfchar\n", chunk.len()).as_bytes());
         for (ch, cid) in chunk {
-            let code = **ch as u32;
-            out.extend_from_slice(format!("<{cid:04X}> <{code:04X}>\n").as_bytes());
+            out.extend_from_slice(format!("<{cid:04X}> <{}>\n", utf16_hex(**ch)).as_bytes());
         }
         out.extend_from_slice(b"endbfchar\n");
     }
     out.extend_from_slice(b"endcmap\nCMapName currentdict /CMap defineresource pop\nend\nend\n");
     out
+}
+
+/// UTF-16BE hexadecimal form of one character, as `ToUnicode` expects.
+fn utf16_hex(ch: char) -> String {
+    let mut units = [0u16; 2];
+    ch.encode_utf16(&mut units).iter().map(|unit| format!("{unit:04X}")).collect()
 }
 
 fn content_object(content: &str) -> PdfObject {
@@ -848,7 +901,7 @@ fn write_text(
         return;
     }
     let resource_index = if embedded.is_some() && needs_embedding(&run.text) {
-        embedded.map(|embedded| embedded.resource_index)
+        embedded.map(|embedded| embedded.first_index)
     }
     else {
         let base = base_font_for(&run.font_family, run.style);
@@ -864,7 +917,10 @@ fn write_text(
 /// Emit one text object at a page-space position.
 ///
 /// `flip` inverts the text matrix so glyphs stay upright inside a y-flipped
-/// scene-to-page matrix.
+/// scene-to-page matrix. Text painted from the embedded chain is split into one
+/// `Tj` per subset, and the font is switched between the groups: the text
+/// position keeps advancing, so a run mixing Han characters with an emoji
+/// still reads as one uninterrupted line.
 pub(crate) fn paint_text(
     out: &mut String,
     x: f64,
@@ -879,9 +935,27 @@ pub(crate) fn paint_text(
     if let Some(embedded) = embedded
         && needs_embedding(text)
     {
-        let glyphs: String = text.chars().filter_map(|ch| embedded.subset.cid(ch)).map(|cid| format!("{cid:04X}")).collect();
-        let _ =
-            write!(out, "BT\n/F{resource_index} {} Tf\n1 0 0 {down} {} {} Tm\n<{glyphs}> Tj\nET\n", num(size), num(x), num(y),);
+        let _ = write!(out, "BT\n1 0 0 {down} {} {} Tm\n", num(x), num(y));
+        let mut current: Option<usize> = None;
+        let mut glyphs = String::new();
+        for ch in text.chars() {
+            let Some((font, cid)) = embedded.glyph(ch)
+            else {
+                continue;
+            };
+            if current != Some(font) {
+                if let Some(index) = current {
+                    let _ = write!(out, "/F{index} {} Tf\n<{glyphs}> Tj\n", num(size));
+                }
+                current = Some(font);
+                glyphs.clear();
+            }
+            let _ = write!(glyphs, "{cid:04X}");
+        }
+        if let Some(index) = current {
+            let _ = write!(out, "/F{index} {} Tf\n<{glyphs}> Tj\n", num(size));
+        }
+        out.push_str("ET\n");
         return;
     }
     let _ = write!(
