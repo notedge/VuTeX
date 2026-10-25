@@ -256,7 +256,7 @@ fn substitutes_characters_outside_latin1_when_embedding_is_disabled() {
 
 #[test]
 fn embeds_a_subset_from_an_explicit_font_file() {
-    let bytes = render_pdf_with_font_policy(&cjk_presentation("标题 → ∑ αβγ"), &PdfFontPolicy::File(simhei_path()))
+    let bytes = render_pdf_with_font_policy(&cjk_presentation("标题 → ∑ αβγ"), &PdfFontPolicy::File(test_font_path()))
         .expect("pdf render");
     let text = lossy(&bytes);
 
@@ -297,8 +297,8 @@ fn reports_a_missing_font_file() {
 
 #[test]
 fn reports_glyphs_the_selected_font_does_not_cover() {
-    let presentation = cjk_presentation("emoji 😂");
-    let diagnostic = render_pdf_with_font_policy(&presentation, &PdfFontPolicy::File(simhei_path()))
+    let presentation = cjk_presentation("😂");
+    let diagnostic = render_pdf_with_font_policy(&presentation, &PdfFontPolicy::File(test_font_path()))
         .expect_err("a missing glyph must not be dropped silently");
 
     assert_eq!(diagnostic.code, "vutex.render.pdf.glyph_missing");
@@ -311,13 +311,15 @@ fn cjk_presentation(value: &str) -> DisplayPresentation {
     DisplayPresentation { pages: vec![page(595.0, 842.0, vec![text(72.0, 100.0, 12.0, "sans", value)])] }
 }
 
-/// SimHei, the glyf TrueType face the Windows font tests embed.
+/// Repository fixture font with `glyf` outlines covering the labels these
+/// tests paint, so explicit-file embedding behaves the same on every runner.
 ///
-/// The tests assert on the real program rather than skipping when the machine
-/// lacks the file, so a broken embedding path can never pass unnoticed.
-fn simhei_path() -> PathBuf {
-    let path = PathBuf::from(r"C:\Windows\Fonts\simhei.ttf");
-    assert!(path.exists(), "SimHei is required for the PDF font tests: {}", path.display());
+/// The tests assert on the real program rather than skipping when a machine
+/// lacks a system CJK face, so a broken embedding path can never pass
+/// unnoticed.
+fn test_font_path() -> PathBuf {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/vutex-test-font.ttf");
+    assert!(path.exists(), "the PDF font fixture must ship with the crate: {}", path.display());
     path
 }
 
@@ -549,7 +551,7 @@ fn embeds_scene_labels_outside_winansi() {
         });
     let bytes = render_pdf_with_font_policy(
         &DisplayPresentation { pages: vec![page(595.0, 842.0, vec![graphic])] },
-        &PdfFontPolicy::File(simhei_path()),
+        &PdfFontPolicy::File(test_font_path()),
     )
     .expect("pdf render");
     let text = lossy(&bytes);
