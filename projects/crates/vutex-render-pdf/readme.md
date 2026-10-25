@@ -53,8 +53,21 @@ usable geometry.
 
 The writer needs no third-party crate. Text the WinAnsi encoding reaches uses
 the base-14 standard fonts, so Latin documents embed no font program. Anything
-outside WinAnsi is painted with a subset of a system TrueType font, embedded as
-an Identity-H `CIDFontType2` program with a `ToUnicode` map, so the glyphs reach
-the page and extracted text stays readable. `PdfFontPolicy` pins or disables
-that lookup, and `render_pdf_with_resources` accepts both the font policy and the
-caller's `PdfResources` context.
+outside WinAnsi is painted with subsets of `glyf` TrueType fonts, embedded as
+Identity-H `CIDFontType2` programs with a `ToUnicode` map, so the glyphs reach
+the page and extracted text stays readable, including code points above the
+Basic Multilingual Plane.
+
+Characters come from a fallback chain rather than one face: a Han body font
+rarely carries emoji, and an emoji face rarely carries Han characters. Each
+program covers the characters no earlier program covered, so a run mixing both
+paints from two subsets while keeping one text matrix, and the font is switched
+between glyph groups. `PdfFontPolicy` selects the chain: `Discover` probes
+system TrueType fonts (symbol and Latin faces, then CJK faces, then monochrome
+emoji; absent or unusable candidates are skipped), `File` embeds one file, and
+`Files` embeds the authored list in order. With an explicit list every entry
+must be readable, and a character no program covers is an
+`vutex.render.pdf.glyph_missing` error naming the code points rather than a
+dropped glyph or a `?`. `Base14Only` intentionally keeps the `?` degradation.
+`render_pdf_with_resources` accepts both the font policy and the caller's
+`PdfResources` context.

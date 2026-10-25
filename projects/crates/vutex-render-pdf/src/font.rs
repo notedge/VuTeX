@@ -18,9 +18,16 @@ use std::{
 
 /// Absolute paths probed for a `glyf`-outline font, in preference order.
 ///
-/// Windows, macOS, and Linux installers put their CJK faces in different
-/// places, so the list is flat and every entry is simply skipped when absent.
+/// Windows, macOS, and Linux installers put their faces in different places, so
+/// the list is flat and every entry is simply skipped when absent. Fonts that
+/// cover a document's characters form a fallback chain in this order: general
+/// symbol and Latin faces first, CJK faces next, and emoji last, so a document
+/// mixing prose with symbols picks each face for what it covers best.
 const CANDIDATES: &[&str] = &[
+    // Windows: Segoe UI Symbol has `glyf` outlines for arrows, maths, dingbats,
+    // and the monochrome emoji shapes. Segoe UI Emoji is not listed: its emoji
+    // glyphs are colour layers, so its empty outlines would paint blanks.
+    r"C:\Windows\Fonts\seguisym.ttf",
     // Windows: SimHei and DengXian ship single-face TrueType files.
     r"C:\Windows\Fonts\simhei.ttf",
     r"C:\Windows\Fonts\Deng.ttf",
@@ -29,13 +36,20 @@ const CANDIDATES: &[&str] = &[
     r"C:\Windows\Fonts\msyh.ttc",
     r"C:\Windows\Fonts\simsun.ttc",
     // macOS keeps a TrueType fallback next to the CFF system faces.
+    "/System/Library/Fonts/Apple Symbols.ttf",
     "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
     "/Library/Fonts/Arial Unicode.ttf",
+    // Linux: DejaVu covers Latin, arrows, maths, and dingbats with `glyf`.
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
     // Linux distributions that install Droid Sans Fallback or WenQuanYi.
     "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
     "/usr/share/fonts/truetype/droid/DroidSansFallback.ttf",
     "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
     "/usr/share/fonts/truetype/arphic/uming.ttc",
+    // Linux: monochrome Noto Emoji keeps TrueType outlines. The colour build
+    // (`fonts-noto-color-emoji`) is a bitmap font, so this module skips it.
+    "/usr/share/fonts/truetype/noto/NotoEmoji-Regular.ttf",
+    "/usr/share/fonts/noto/NotoEmoji-Regular.ttf",
 ];
 
 /// Shorthand for a four-byte sfnt table tag.
@@ -61,37 +75,34 @@ pub(crate) struct SystemFont {
 }
 
 impl SystemFont {
-    /// Load the system font that covers the most characters in `charset`.
+    /// Load every system font that covers characters in `charset`.
     ///
-    /// Candidates differ in coverage — a CJK face may lack accented Latin — so
-    /// the first font that reaches every character wins, and otherwise the one
-    /// with the best coverage is kept.
-    pub(crate) fn discover(charset: &BTreeSet<char>) -> Option<Self> {
-        let mut best: Option<(usize, Self)> = None;
+    /// A document that needs glyphs outside WinAnsi usually needs more than one
+    /// face: a CJK body font rarely carries emoji, and a symbol face rarely
+    /// carries Han characters. Candidates are visited in [`CANDIDATES`] order
+    /// and each one is only kept when it covers a character no earlier font
+    /// already provided, so the returned list is the fallback chain and its
+    /// subsets are disjoint. A candidate that is absent, unreadable, or offers
+    /// nothing new is skipped.
+    pub(crate) fn discover_fonts(charset: &BTreeSet<char>) -> Vec<Self> {
+        let mut remaining = charset.clone();
+        let mut fonts = Vec::new();
         for path in CANDIDATES {
+            if remaining.is_empty() {
+                break;
+            }
             let Some(font) = Self::load(Path::new(path))
             else {
                 continue;
             };
-            let covered = font.coverage(charset);
-            if covered == charset.len() {
-                return Some(font);
+            let covered: BTreeSet<char> = remaining.iter().copied().filter(|ch| font.glyph_id(*ch).is_some()).collect();
+            if covered.is_empty() {
+                continue;
             }
-            if best.as_ref().is_none_or(|(best_covered, _)| covered > *best_covered) {
-                best = Some((covered, font));
-            }
+            remaining.retain(|ch| !covered.contains(ch));
+            fonts.push(font);
         }
-        best.filter(|(covered, _)| *covered > 0).map(|(_, font)| font)
-    }
-
-    /// Number of characters in `charset` this font has a glyph for.
-    fn coverage(&self, charset: &BTreeSet<char>) -> usize {
-        charset.iter().filter(|ch| self.glyph_id(**ch).is_some()).count()
-    }
-
-    /// Characters in `charset` this font has no glyph for, in code point order.
-    pub(crate) fn missing(&self, charset: &BTreeSet<char>) -> Vec<char> {
-        charset.iter().copied().filter(|ch| self.glyph_id(*ch).is_none()).collect()
+        fonts
     }
 
     /// Load one font file, rejecting CFF outlines and malformed tables.
@@ -325,10 +336,60 @@ pub(crate) struct Subset {
     pub(crate) italic_angle: f64,
 }
 
-impl Subset {
-    /// CID for one character, or `None` when the subset has no glyph for it.
-    pub(crate) fn cid(&self, ch: char) -> Option<u16> {
-        self.cids.get(&ch).copied()
+/// Ordered font programs that together cover one document charset.
+///
+/// Each subset owns the characters no earlier subset covered, so a character
+/// resolves to exactly one `(subset index, CID)` pair. A text run mixing Han
+/// characters with an emoji therefore paints from two programs, and each
+/// program's `ToUnicode` map keeps the extracted text readable.
+#[derive(Debug, Default)]
+pub(crate) struct FontChain {
+    /// Subsets in fallback order, as embedded in the PDF.
+    subsets: Vec<Subset>,
+    /// Character to `(subset index, CID)`.
+    glyphs: BTreeMap<char, (usize, u16)>,
+}
+
+impl FontChain {
+    /// Subset every character `fonts` can cover, in fallback order.
+    ///
+    /// Characters no font covers stay out of the chain, so [`Self::missing`]
+    /// reports them to the caller instead of painting an empty glyph.
+    pub(crate) fn build(fonts: &[SystemFont], charset: &BTreeSet<char>) -> Self {
+        let mut chain = Self::default();
+        let mut remaining = charset.clone();
+        for font in fonts {
+            let covered: BTreeSet<char> = remaining.iter().copied().filter(|ch| font.glyph_id(*ch).is_some()).collect();
+            if covered.is_empty() {
+                continue;
+            }
+            let Some(subset) = font.subset(&covered)
+            else {
+                continue;
+            };
+            let index = chain.subsets.len();
+            for (&ch, &cid) in &subset.cids {
+                chain.glyphs.insert(ch, (index, cid));
+                remaining.remove(&ch);
+            }
+            chain.subsets.push(subset);
+        }
+        chain
+    }
+
+    /// Subsets in fallback order.
+    pub(crate) fn subsets(&self) -> &[Subset] {
+        &self.subsets
+    }
+
+    /// Subset index and CID that paint one character.
+    pub(crate) fn glyph(&self, ch: char) -> Option<(usize, u16)> {
+        self.glyphs.get(&ch).copied()
+    }
+
+    /// Characters in `charset` no subset covers, in code point order.
+    pub(crate) fn missing(&self, charset: &BTreeSet<char>) -> Vec<char> {
+        charset.iter().copied().filter(|ch| !self.glyphs.contains_key(ch)).collect()
     }
 }
 

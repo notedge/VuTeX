@@ -1,6 +1,7 @@
 //! PDF backend tests: file structure, xref integrity, and painted primitives.
 
 use std::{
+    collections::BTreeMap,
     path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
 };
@@ -332,6 +333,257 @@ fn hex_cid_text(text: &str) -> Vec<&str> {
             (hex.len() >= 4 && hex.len() % 4 == 0 && hex.chars().all(|ch| ch.is_ascii_hexdigit())).then_some(hex)
         })
         .collect()
+}
+
+/// Body of one indirect object, between its `N 0 obj` line and `endobj`.
+fn object_body<'a>(text: &'a str, number: usize) -> Option<&'a str> {
+    let marker = format!("\n{number} 0 obj\n");
+    let start = text.find(&marker)? + marker.len();
+    let end = start + text[start..].find("\nendobj")?;
+    Some(&text[start..end])
+}
+
+/// Payload of one indirect stream object, without its dictionary or markers.
+fn stream_payload<'a>(text: &'a str, number: usize) -> Option<&'a str> {
+    let body = object_body(text, number)?;
+    let start = body.find("stream\n")? + "stream\n".len();
+    let end = body.rfind("\nendstream")?;
+    Some(&body[start..end])
+}
+
+/// Page content stream object numbers, read from `/Contents N 0 R`.
+fn page_content_numbers(text: &str) -> Vec<usize> {
+    let mut numbers = Vec::new();
+    let mut cursor = 0;
+    while let Some(found) = text[cursor..].find("/Contents ") {
+        let at = cursor + found + "/Contents ".len();
+        let digits: String = text[at..].chars().take_while(char::is_ascii_digit).collect();
+        if let Ok(number) = digits.parse() {
+            numbers.push(number);
+        }
+        cursor = at;
+    }
+    numbers
+}
+
+/// Font resource names and the object numbers they point at.
+fn font_resources(text: &str) -> BTreeMap<usize, usize> {
+    let mut resources = BTreeMap::new();
+    let Some(found) = text.find("/Font << ")
+    else {
+        return resources;
+    };
+    let start = found + "/Font << ".len();
+    let end = start + text[start..].find(" >>").expect("the font resource dictionary closes");
+    for entry in text[start..end].split_whitespace().collect::<Vec<_>>().chunks(4) {
+        let [name, object, "0", "R"] = entry
+        else {
+            continue;
+        };
+        let (Some(resource), Ok(object)) = (name.strip_prefix("/F").and_then(|name| name.parse().ok()), object.parse())
+        else {
+            continue;
+        };
+        resources.insert(resource, object);
+    }
+    resources
+}
+
+/// `ToUnicode` CID maps keyed by `/F` resource index, for composite fonts only.
+fn embedded_cmaps(text: &str) -> BTreeMap<usize, BTreeMap<u16, char>> {
+    let mut maps = BTreeMap::new();
+    for (resource, object) in font_resources(text) {
+        let Some(body) = object_body(text, object)
+        else {
+            continue;
+        };
+        if !body.contains("/Subtype /Type0") {
+            continue;
+        }
+        let Some(found) = body.find("/ToUnicode ")
+        else {
+            continue;
+        };
+        let digits: String = body[found + "/ToUnicode ".len()..].chars().take_while(char::is_ascii_digit).collect();
+        let Some(map) = digits.parse().ok().and_then(|number| stream_payload(text, number)).map(decode_cmap)
+        else {
+            continue;
+        };
+        maps.insert(resource, map);
+    }
+    maps
+}
+
+/// CID-to-character pairs from one `beginbfchar` section of a CMap.
+fn decode_cmap(cmap: &str) -> BTreeMap<u16, char> {
+    let mut map = BTreeMap::new();
+    let mut inside = false;
+    for line in cmap.lines() {
+        let line = line.trim();
+        if line.ends_with("beginbfchar") {
+            inside = true;
+            continue;
+        }
+        if line == "endbfchar" {
+            inside = false;
+            continue;
+        }
+        let Some((source, target)) = inside.then_some(line).and_then(|line| line.split_once(' '))
+        else {
+            continue;
+        };
+        let source = source.trim_matches(|ch| ch == '<' || ch == '>');
+        let target = target.trim_matches(|ch| ch == '<' || ch == '>');
+        let (Ok(cid), Some(ch)) = (u16::from_str_radix(source, 16), decode_utf16_hex(target))
+        else {
+            continue;
+        };
+        map.insert(cid, ch);
+    }
+    map
+}
+
+/// One character from its UTF-16BE hexadecimal form, surrogate pairs included.
+fn decode_utf16_hex(hex: &str) -> Option<char> {
+    let units: Vec<u16> = hex
+        .as_bytes()
+        .chunks(4)
+        .map(|chunk| u16::from_str_radix(std::str::from_utf8(chunk).ok()?, 16).ok())
+        .collect::<Option<_>>()?;
+    char::decode_utf16(units).collect::<Result<String, _>>().ok()?.chars().next()
+}
+
+/// Text-showing operators of every page, decoded through each font's `ToUnicode`.
+///
+/// Entries pair the `/F` resource index with the characters it actually paints,
+/// so a test can assert both the text and which font program produced it.
+fn painted_text(bytes: &[u8]) -> Vec<(usize, String)> {
+    let text = lossy(bytes);
+    let cmaps = embedded_cmaps(&text);
+    let mut painted = Vec::new();
+    for number in page_content_numbers(&text) {
+        let Some(content) = stream_payload(&text, number)
+        else {
+            continue;
+        };
+        let mut font = 0;
+        for line in content.lines() {
+            if let Some(name) = line.trim_end().strip_suffix(" Tf") {
+                if let Some(index) =
+                    name.split_whitespace().next().and_then(|name| name.strip_prefix("/F")).and_then(|name| name.parse().ok())
+                {
+                    font = index;
+                }
+                continue;
+            }
+            let Some(shown) = line.trim_end().strip_suffix(" Tj")
+            else {
+                continue;
+            };
+            if let Some(hex) = shown.strip_prefix('<').and_then(|shown| shown.strip_suffix('>')) {
+                let decoded = hex
+                    .as_bytes()
+                    .chunks(4)
+                    .filter_map(|chunk| u16::from_str_radix(std::str::from_utf8(chunk).ok()?, 16).ok())
+                    .filter_map(|cid| cmaps.get(&font).and_then(|map| map.get(&cid)).copied())
+                    .collect();
+                painted.push((font, decoded));
+            }
+            else if let Some(literal) = shown.strip_prefix('(').and_then(|shown| shown.strip_suffix(')')) {
+                painted.push((font, unescape_text(literal)));
+            }
+        }
+    }
+    painted
+}
+
+/// Decode a PDF literal string, including its octal escapes.
+fn unescape_text(literal: &str) -> String {
+    let mut out = String::new();
+    let mut chars = literal.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch != '\\' {
+            out.push(ch);
+            continue;
+        }
+        match chars.peek().copied() {
+            Some('\\' | '(' | ')') => out.push(chars.next().expect("an escaped character")),
+            Some(digit) if ('0'..='7').contains(&digit) => {
+                let mut value = 0;
+                for _ in 0..3 {
+                    let Some(digit) = chars.peek().copied().filter(|ch| ('0'..='7').contains(ch))
+                    else {
+                        break;
+                    };
+                    value = value * 8 + digit.to_digit(8).expect("an octal digit");
+                    chars.next();
+                }
+                out.extend(char::from_u32(value));
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+#[test]
+fn non_bmp_glyphs_map_back_through_utf16_surrogates() {
+    let bytes =
+        render_pdf_with_font_policy(&cjk_presentation("😂✅"), &PdfFontPolicy::File(symbol_font_path())).expect("pdf render");
+    let text = lossy(&bytes);
+
+    assert!(text.contains("<D83DDE02>"), "an astral code point becomes a surrogate pair: {text}");
+    assert!(!text.contains("<1F602>"), "a five-digit code point is not valid UTF-16BE: {text}");
+
+    let painted = painted_text(&bytes);
+    let decoded: String = painted.iter().map(|(_, shown)| shown.as_str()).collect();
+    assert_eq!(decoded, "😂✅", "text extraction round-trips through the ToUnicode map");
+}
+
+/// Repository fixture font with `glyf` outlines covering printable ASCII,
+/// monochrome emoji, and the symbol code points these tests paint.
+fn symbol_font_path() -> PathBuf {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/vutex-symbol-font.ttf");
+    assert!(path.exists(), "the PDF font fixture must ship with the crate: {}", path.display());
+    path
+}
+
+#[test]
+fn fallback_chain_paints_one_run_from_two_programs() {
+    let bytes = render_pdf_with_font_policy(
+        &cjk_presentation("标题 😂"),
+        &PdfFontPolicy::Files(vec![test_font_path(), symbol_font_path()]),
+    )
+    .expect("pdf render");
+    let text = lossy(&bytes);
+
+    assert_eq!(text.matches("/Subtype /Type0").count(), 2, "one composite font per covered program: {text}");
+    assert!(text.contains("/BaseFont /AAAAAA+VutexSystemFont"), "the first program keeps the leading tag");
+    assert!(text.contains("/BaseFont /AAAAAB+VutexSystemFont"), "the fallback program gets its own tag");
+    assert_eq!(text.matches("BT\n").count(), 1, "the run stays one text object: {text}");
+    assert_eq!(text.matches(" Tm\n").count(), 1, "switching fonts keeps the text matrix: {text}");
+
+    let painted = painted_text(&bytes);
+    let shown: Vec<&str> = painted.iter().map(|(_, shown)| shown.as_str()).collect();
+    assert_eq!(shown, ["标题 ", "😂"], "both programs contribute to the same run");
+    assert_ne!(painted[0].0, painted[1].0, "the emoji switches to the fallback font");
+}
+
+#[test]
+fn reports_a_character_no_font_in_the_chain_covers() {
+    let diagnostic = render_pdf_with_font_policy(&cjk_presentation("标题 😂"), &PdfFontPolicy::Files(vec![symbol_font_path()]))
+        .expect_err("a chain without a Han face must not paint empty glyphs");
+
+    assert_eq!(diagnostic.code, "vutex.render.pdf.glyph_missing");
+    assert!(diagnostic.message.contains("U+6807"), "the diagnostic names the uncovered Han character: {}", diagnostic.message);
+}
+
+#[test]
+fn rejects_an_empty_font_file_list() {
+    let diagnostic = render_pdf_with_font_policy(&cjk_presentation("标题"), &PdfFontPolicy::Files(Vec::new()))
+        .expect_err("an empty chain cannot embed anything");
+
+    assert_eq!(diagnostic.code, "vutex.render.pdf.font_unavailable");
 }
 
 #[test]

@@ -456,7 +456,7 @@ fn write_text(out: &mut String, position: Point, text: &str, style: &TextStyle, 
     }
     let embedded = painter.embedded;
     let anchor = if embedded.is_some() && needs_embedding(text) {
-        embedded.map(|embedded| embedded.resource_index)
+        embedded.map(|embedded| embedded.first_index)
     }
     else {
         let family = style.font_family.as_deref().unwrap_or("");
