@@ -8,6 +8,7 @@ use vutex_layout::{
 };
 use vutex_presentation::{
     DisplayItem, FlowBlock, FlowListItem, FlowRun, FlowTableRow, build_display_presentation, build_flow_presentation,
+    display::DisplayTextRun,
 };
 use vutex_types::math::FontStyle;
 
@@ -454,5 +455,43 @@ fn flow_strike_span_lowers_to_strike_run() {
         vec![FlowBlock::Paragraph {
             runs: vec![run("keep ", FontStyle::Normal), run("gone", FontStyle::Strike), run(" later", FontStyle::Normal)],
         }]
+    );
+}
+
+#[test]
+fn code_block_lowering_keeps_verbatim_lines_over_a_background() {
+    let mut graph = DocumentGraph::new(DocumentId(9));
+    graph.push_block(Block::Code {
+        language: Some("rust".to_string()),
+        content: "fn main() {\n    let value = 42;\n}".to_string(),
+    });
+
+    let plan = layout(&graph);
+    let presentation = build_display_presentation(&plan);
+    let items = &presentation.pages[0].items;
+
+    let background = items
+        .iter()
+        .position(|item| matches!(item, DisplayItem::Rect(rect) if rect.filled))
+        .expect("code block paints a filled background");
+    let runs: Vec<&DisplayTextRun> = items
+        .iter()
+        .filter_map(|item| match item {
+            DisplayItem::TextRun(run) => Some(run),
+            _ => None,
+        })
+        .collect();
+
+    assert_eq!(
+        runs.iter().map(|run| run.text.as_str()).collect::<Vec<_>>(),
+        ["fn main() {", "    let value = 42;", "}"],
+        "code lines stay verbatim and split by authored newline"
+    );
+    assert!(runs.iter().all(|run| run.font_family == "monospace"), "code runs use the monospace face");
+    let first_run = items.iter().position(|item| matches!(item, DisplayItem::TextRun(_))).expect("code text");
+    assert!(background < first_run, "background paints before its lines");
+    assert!(
+        runs.iter().all(|run| !run.text.contains("rust") && !run.text.contains("```")),
+        "fence and language tag never become body text"
     );
 }
