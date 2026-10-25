@@ -123,4 +123,3 @@ fn places_a_registered_scene_for_a_mermaid_diagram() {
     assert_eq!(placed.alt, "flow chart");
     assert!(placed.scene.nodes.iter().any(|node| matches!(&node.kind, NodeKind::Text { text, .. } if text == "diagram")));
 }
-
