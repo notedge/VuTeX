@@ -6,7 +6,9 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
-use davinci_scene::{DisplayScene, NodeKind, ResourceRef, SceneNode, ShapeStyle, TextAnchor, TextStyle};
+use davinci_scene::{
+    DisplayScene, MarkerShape, NodeKind, PathCommand, PathData, ResourceRef, SceneNode, ShapeStyle, TextAnchor, TextStyle,
+};
 use davinci_types::{Color, Point, Rect, Size, Transform};
 use vutex_presentation::display::{
     DisplayGraphic, DisplayImage, DisplayItem, DisplayPage, DisplayPresentation, DisplayRect, DisplayRule, DisplayTextRun,
@@ -201,6 +203,33 @@ fn code_block_background_keeps_text_black() {
 }
 
 #[test]
+fn code_block_text_reaches_the_painted_stream() {
+    let items = vec![
+        DisplayItem::Rect(DisplayRect { x: 72.0, y: 656.0, width: 451.0, height: 54.0, filled: true }),
+        text(78.0, 696.0, 10.0, "monospace", "fn main() {"),
+        text(78.0, 682.0, 10.0, "monospace", "// 标题 😂"),
+        text(78.0, 668.0, 10.0, "monospace", "}"),
+    ];
+    let bytes = render_pdf_with_font_policy(
+        &DisplayPresentation { pages: vec![page(595.0, 842.0, items)] },
+        &PdfFontPolicy::Files(vec![test_font_path(), symbol_font_path()]),
+    )
+    .expect("pdf render");
+    let content = page_content(&bytes);
+
+    assert!(content.contains("(fn main\\(\\) {) Tj"), "ASCII code stays a literal string: {content}");
+    assert!(!content.contains("标题"), "embedded glyphs never appear as raw UTF-8: {content}");
+    let background = content.find("f\nQ\n").expect("the code background closes its state");
+    assert!(content[background..].contains("(fn main"), "code paints after the background closes");
+
+    let painted = painted_text(&bytes);
+    let shown: Vec<&str> = painted.iter().map(|(_, shown)| shown.as_str()).collect();
+    assert_eq!(shown, ["fn main() {", "//", " 标题 ", "😂", "}"], "every code line and comment glyph is painted");
+    assert_eq!(painted[1].0, painted[3].0, "the comment's ASCII and emoji share the symbol program");
+    assert_ne!(painted[1].0, painted[2].0, "the Han comment text comes from the CJK program");
+}
+
+#[test]
 fn xref_offsets_point_at_object_starts() {
     let bytes =
         render_pdf(&DisplayPresentation { pages: vec![full_page(), page(612.0, 792.0, Vec::new())] }).expect("pdf render");
@@ -364,6 +393,12 @@ fn page_content_numbers(text: &str) -> Vec<usize> {
         cursor = at;
     }
     numbers
+}
+
+/// Every page content stream, joined so tests can read paint operators alone.
+fn page_content(bytes: &[u8]) -> String {
+    let text = lossy(bytes);
+    page_content_numbers(&text).iter().filter_map(|number| stream_payload(&text, *number)).collect::<Vec<_>>().join("\n")
 }
 
 /// Font resource names and the object numbers they point at.
@@ -772,6 +807,83 @@ fn paints_a_diagram_scene_inside_its_box() {
     assert!(text.contains("1.5 w\n"), "stroke width reaches the content stream");
     assert!(text.contains("(Start) Tj"), "label text is painted");
     assert!(text.contains("1 0 0 -1 32 36 Tm"), "anchored label stays upright under the flipped matrix");
+}
+
+/// A Mermaid-style node plus edge and a TikZ-style curve with end-anchored label.
+fn flowchart_and_curve_graphic() -> DisplayItem {
+    let mut scene = DisplayScene::new(Size::new(200.0, 100.0));
+    let mut node = SceneNode::new(NodeKind::Group {
+        children: vec![
+            SceneNode::new(NodeKind::RoundedRect {
+                rect: Rect::new(10.0, 10.0, 80.0, 40.0),
+                radius: 6.0,
+                style: ShapeStyle::filled(Color::rgb(240, 240, 240)),
+            }),
+            SceneNode::new(NodeKind::Text {
+                position: Point::new(50.0, 36.0),
+                text: "Start".to_string(),
+                style: TextStyle { font_size: 12.0, text_anchor: TextAnchor::Middle, ..TextStyle::default() },
+            }),
+        ],
+        opacity: 1.0,
+    });
+    node.transform = Transform::new(1.0, 0.0, 0.0, 1.0, 10.0, 20.0);
+    node.clip = Some(Rect::new(0.0, 0.0, 100.0, 60.0));
+    scene.push(node);
+    scene.push(SceneNode::new(NodeKind::Line {
+        from: Point::new(120.0, 30.0),
+        to: Point::new(160.0, 60.0),
+        style: ShapeStyle::stroked(Color::BLACK, 1.5),
+    }));
+    scene.push(SceneNode::new(NodeKind::Marker {
+        at: Point::new(160.0, 60.0),
+        shape: MarkerShape::Triangle,
+        size: 8.0,
+        style: ShapeStyle::filled(Color::BLACK),
+    }));
+    let path = PathData {
+        commands: vec![
+            PathCommand::MoveTo(Point::new(20.0, 80.0)),
+            PathCommand::LineTo(Point::new(60.0, 80.0)),
+            PathCommand::CubicTo {
+                control1: Point::new(80.0, 70.0),
+                control2: Point::new(100.0, 90.0),
+                to: Point::new(120.0, 80.0),
+            },
+        ],
+    };
+    scene.push(SceneNode::new(NodeKind::Path { path, style: ShapeStyle::stroked(Color::BLACK, 1.0) }));
+    scene.push(SceneNode::new(NodeKind::Text {
+        position: Point::new(150.0, 54.0),
+        text: "Done".to_string(),
+        style: TextStyle { font_size: 12.0, text_anchor: TextAnchor::End, ..TextStyle::default() },
+    }));
+    scene_graphic(scene)
+}
+
+#[test]
+fn flowchart_and_curve_scenes_paint_paths_text_clip_and_transform() {
+    let bytes = render_pdf(&DisplayPresentation { pages: vec![page(595.0, 842.0, vec![flowchart_and_curve_graphic()])] })
+        .expect("pdf render");
+    let content = page_content(&bytes);
+
+    let transform = content.find("1 0 0 1 10 20 cm\n").expect("the node group transform reaches the stream");
+    let clip = content.find("0 0 100 60 re\nW n\n").expect("the node clip reaches the stream");
+    assert!(transform < clip, "the clip applies after the group transform");
+
+    assert_eq!(content.matches(" m\n").count(), 4, "one open subpath each for the node, edge, marker, and curve");
+    assert_eq!(content.matches(" l\n").count(), 8, "rounded corners, edge, marker sides, and curve segment");
+    assert_eq!(content.matches(" c\n").count(), 5, "four rounded corners plus the TikZ cubic");
+    assert_eq!(content.matches("\nh\n").count(), 2, "the node outline closes and the marker closes");
+    assert_eq!(content.matches(" re\n").count(), 2, "one clip per placed scene box and per clipped node");
+    assert!(content.contains("120 30 m\n160 60 l\n"), "the edge keeps its endpoints");
+    assert!(content.contains("20 80 m\n60 80 l\n"), "the curve keeps its start and first segment");
+
+    assert_eq!(content.matches(" Tm\n").count(), 2, "each label gets its own text matrix");
+    assert!(content.contains("1 0 0 -1 32 36 Tm"), "the middle-anchored node label offsets by half its width");
+    assert!(content.contains("1 0 0 -1 121.2 54 Tm"), "the end-anchored curve label ends at its position");
+    assert!(content.contains("(Start) Tj") && content.contains("(Done) Tj"), "both labels are painted");
+    assert!(balanced_graphics_states(&content), "the nested node states stay balanced");
 }
 
 #[test]
@@ -1730,22 +1842,30 @@ fn svg_icon_paints_vector_geometry_without_an_image_xobject() {
 #[test]
 fn svg_path_lifts_lines_and_cubics_and_closes() {
     let document = r##"<svg width="24" height="24"><path d="M0 0 L10 0 C10 5 5 10 0 10 Z" fill="none" stroke="#000" stroke-width="2"/></svg>"##;
-    let text = lossy(&render_svg(document));
+    let bytes = render_svg(document);
+    let text = lossy(&bytes);
+    let content = page_content(&bytes);
 
-    assert!(text.contains("10 0 l\n"), "L lifts to a line: {text}");
-    assert!(text.contains(" c\n"), "C lifts to a cubic Bézier: {text}");
-    assert!(text.contains("h\n"), "Z closes the path: {text}");
-    assert!(text.contains("2 w\n"), "stroke-width reaches the operator: {text}");
-    assert!(text.contains("\nS\n"), "a stroke-only path uses S: {text}");
+    assert!(content.contains("0 0 m\n"), "the start point keeps its coordinate: {content}");
+    assert!(content.contains("10 0 l\n"), "L lifts to a line: {content}");
+    assert!(content.contains("10 5 5 10 0 10 c\n"), "C lifts its control points and endpoint: {content}");
+    assert!(content.contains("\nh\n"), "Z closes the path: {content}");
+    assert_eq!(content.matches(" m\n").count(), 1, "one subpath reaches the stream: {content}");
+    assert_eq!(content.matches(" l\n").count(), 1, "one line segment reaches the stream: {content}");
+    assert_eq!(content.matches(" c\n").count(), 1, "one cubic segment reaches the stream: {content}");
+    assert!(content.contains("2 w\n"), "stroke-width reaches the operator: {content}");
+    assert!(content.contains("\nS\n"), "a stroke-only path uses S: {content}");
     assert!(!text.contains("[3 2] 0 d"), "a supported path replaces the placeholder: {text}");
 }
 
 #[test]
 fn svg_group_transform_composes_left_to_right() {
     let document = r##"<svg width="24" height="24"><g transform="translate(2 4) scale(3)"><rect width="2" height="2" fill="#000"/></g></svg>"##;
-    let text = lossy(&render_svg(document));
+    let bytes = render_svg(document);
+    let text = lossy(&bytes);
 
     assert!(text.contains("3 0 0 3 2 4 cm\n"), "translate then scale composes to translate × scale: {text}");
+    assert!(page_content(&bytes).contains("0 0 2 2 re\n"), "the rect keeps its local size under the group matrix: {text}");
 }
 
 #[test]
