@@ -154,6 +154,12 @@ pub struct RenderOptions {
     /// that references `figure.png` finds its sibling image even when the
     /// process runs from another directory.
     pub base_dir: Option<String>,
+    /// Optional PDF font policy override: `base14only`, `discover` (default).
+    ///
+    /// Exposed mainly for testing and advanced hosts that want to cap PDF size
+    /// or force degraded output for charset diagnostics. Unrecognised values
+    /// fall back to `discover`.
+    pub font_policy: Option<String>,
 }
 
 impl RenderOptions {
@@ -283,7 +289,8 @@ pub fn render_document(input_path: &str, options_json: Option<&str>) -> RenderOu
         },
         OutputFormat::Pdf => {
             let resources = pdf_resources(input_path, &options);
-            match render_pdf_with_resources_and_diagnostics(&display, &PdfFontPolicy::Discover, &resources) {
+            let policy = pdf_font_policy(&options);
+            match render_pdf_with_resources_and_diagnostics(&display, &policy, &resources) {
                 Ok(outcome) => {
                     for d in outcome.diagnostics {
                         diagrams.diagnostics.push(render_diagnostic_to_record(&d, input_path));
@@ -404,6 +411,15 @@ fn pdf_resources(input_path: &str, options: &RenderOptions) -> PdfResources {
         }
     }
     resources
+}
+
+/// Resolve the PDF font policy from the caller-supplied option, defaulting to
+/// discovery.
+fn pdf_font_policy(options: &RenderOptions) -> PdfFontPolicy {
+    match options.font_policy.as_deref().map(str::trim).map(str::to_ascii_lowercase) {
+        Some(value) if value == "base14only" => PdfFontPolicy::Base14Only,
+        _ => PdfFontPolicy::Discover,
+    }
 }
 
 /// Decode one caller-supplied payload: bare base64 or a `data:` URI carrying it.
