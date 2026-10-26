@@ -23,7 +23,7 @@ use std::{
 /// cover a document's characters form a fallback chain in this order: general
 /// symbol and Latin faces first, CJK faces next, and emoji last, so a document
 /// mixing prose with symbols picks each face for what it covers best.
-const CANDIDATES: &[&str] = &[
+pub(crate) const CANDIDATES: &[&str] = &[
     // Windows: Segoe UI Symbol has `glyf` outlines for arrows, maths, dingbats,
     // and the monochrome emoji shapes. Segoe UI Emoji is not listed: its emoji
     // glyphs are colour layers, so its empty outlines would paint blanks.
@@ -160,7 +160,7 @@ impl SystemFont {
     }
 
     /// Glyph id for one character, if the font covers it.
-    fn glyph_id(&self, ch: char) -> Option<u16> {
+    pub(crate) fn glyph_id(&self, ch: char) -> Option<u16> {
         self.cmap.lookup(ch as u32).filter(|glyph| *glyph < self.num_glyphs)
     }
 

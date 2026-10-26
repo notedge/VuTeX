@@ -68,6 +68,19 @@ const ASCENT: f64 = 0.8;
 /// stacked complement of [`ASCENT`] rather than a per-font value.
 const DESCENDER: f64 = 0.2;
 
+/// Result of a PDF render that succeeded, carrying both the PDF bytes and any
+/// warnings the pipeline emitted while producing them.
+#[derive(Debug)]
+pub struct PdfRenderOutcome {
+    /// Complete PDF 1.7 bytes ready to write.
+    pub pdf: Vec<u8>,
+    /// Warnings and info diagnostics the pipeline recorded while rendering.
+    ///
+    /// Only non-error diagnostics appear here; the first fatal error short-circuits
+    /// the render and returns from the function directly.
+    pub diagnostics: Vec<Diagnostic>,
+}
+
 /// PDF renderer. Consumes only the display presentation IR.
 ///
 /// Fonts for text outside WinAnsi are discovered on the system; use
@@ -114,8 +127,31 @@ pub fn render_pdf_with_resources(
     policy: &PdfFontPolicy,
     resources: &PdfResources,
 ) -> Result<Vec<u8>, Diagnostic> {
-    let backend = PdfBackend;
-    backend.render_display_with(presentation, policy, resources)
+    render_pdf_with_resources_and_diagnostics(presentation, policy, resources).map(|outcome| outcome.pdf)
+}
+
+/// Like [`render_pdf`] but returns the warnings the pipeline collected.
+pub fn render_pdf_with_diagnostics(presentation: &DisplayPresentation) -> Result<PdfRenderOutcome, Diagnostic> {
+    render_pdf_with_font_policy_and_diagnostics(presentation, &PdfFontPolicy::Discover)
+}
+
+/// Like [`render_pdf_with_font_policy`] but returns the warnings the pipeline collected.
+pub fn render_pdf_with_font_policy_and_diagnostics(
+    presentation: &DisplayPresentation,
+    policy: &PdfFontPolicy,
+) -> Result<PdfRenderOutcome, Diagnostic> {
+    render_pdf_with_resources_and_diagnostics(presentation, policy, &PdfResources::default())
+}
+
+/// Like [`render_pdf_with_resources`] but returns the warnings the pipeline collected.
+pub fn render_pdf_with_resources_and_diagnostics(
+    presentation: &DisplayPresentation,
+    policy: &PdfFontPolicy,
+    resources: &PdfResources,
+) -> Result<PdfRenderOutcome, Diagnostic> {
+    let mut diagnostics = Vec::new();
+    let pdf = render_document(presentation, policy, resources, &mut diagnostics)?;
+    Ok(PdfRenderOutcome { pdf, diagnostics })
 }
 
 struct PdfBackend;
@@ -127,13 +163,13 @@ impl PdfBackend {
         policy: &PdfFontPolicy,
         resources: &PdfResources,
     ) -> Result<Vec<u8>, Diagnostic> {
-        render_document(presentation, policy, resources)
+        render_pdf_with_resources(presentation, policy, resources)
     }
 }
 
 impl RenderBackend for PdfBackend {
     fn render_display(&self, presentation: &DisplayPresentation) -> Result<Vec<u8>, Diagnostic> {
-        render_document(presentation, &PdfFontPolicy::Discover, &PdfResources::default())
+        render_pdf(presentation)
     }
 }
 
@@ -141,6 +177,7 @@ fn render_document(
     presentation: &DisplayPresentation,
     policy: &PdfFontPolicy,
     resources: &PdfResources,
+    diagnostics: &mut Vec<Diagnostic>,
 ) -> Result<Vec<u8>, Diagnostic> {
     if presentation.pages.is_empty() {
         return Err(Diagnostic {
@@ -149,7 +186,7 @@ fn render_document(
             message: "PDF output needs at least one display page with page geometry".into(),
         });
     }
-    let objects = build_objects(presentation, policy, resources)?;
+    let objects = build_objects(presentation, policy, resources, diagnostics)?;
     Ok(assemble(&objects))
 }
 
@@ -203,14 +240,30 @@ fn embedded_charset(presentation: &DisplayPresentation) -> BTreeSet<char> {
 /// diagnostic instead of silently dropping text or substituting `?`. Fonts that
 /// cannot be read are reported, but a discovered candidate that is merely
 /// absent contributes nothing rather than failing the document.
-fn load_chain(presentation: &DisplayPresentation, policy: &PdfFontPolicy) -> Result<Option<FontChain>, Diagnostic> {
+///
+/// Non-fatal diagnostics (warnings) are appended to `diagnostics`.
+fn load_chain(
+    presentation: &DisplayPresentation,
+    policy: &PdfFontPolicy,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Result<Option<FontChain>, Diagnostic> {
     let charset = embedded_charset(presentation);
     if charset.is_empty() {
         return Ok(None);
     }
     let fonts = match policy {
-        PdfFontPolicy::Base14Only => return Ok(None),
-        PdfFontPolicy::Discover => SystemFont::discover_fonts(&charset),
+        PdfFontPolicy::Base14Only => {
+            append_warning(
+                diagnostics,
+                "vutex.render.pdf.font_unavailable",
+                format!(
+                    "PdfFontPolicy::Base14Only degrades {} characters to '?' because the WinAnsi encoding cannot represent them; switch to Discover or provide explicit font files to embed glyphs",
+                    charset.len()
+                ),
+            );
+            return Ok(None);
+        }
+        PdfFontPolicy::Discover => discover_fonts_with_warnings(&charset, diagnostics),
         PdfFontPolicy::File(path) => vec![load_font_file(path)?],
         PdfFontPolicy::Files(paths) => {
             if paths.is_empty() {
@@ -240,6 +293,42 @@ fn load_chain(presentation: &DisplayPresentation, policy: &PdfFontPolicy) -> Res
         });
     }
     Ok(Some(chain))
+}
+
+/// Discover system fonts for `charset`, appending a warning for each candidate
+/// path that could not be read as a `glyf` TrueType file.
+fn discover_fonts_with_warnings(charset: &BTreeSet<char>, diagnostics: &mut Vec<Diagnostic>) -> Vec<SystemFont> {
+    let mut remaining = charset.clone();
+    let mut fonts = Vec::new();
+    for path in crate::font::CANDIDATES {
+        if remaining.is_empty() {
+            break;
+        }
+        match SystemFont::load(std::path::Path::new(path)) {
+            Some(font) => {
+                let covered: BTreeSet<char> =
+                    remaining.iter().copied().filter(|ch| font.glyph_id(*ch).is_some()).collect();
+                if covered.is_empty() {
+                    continue;
+                }
+                remaining.retain(|ch| !covered.contains(ch));
+                fonts.push(font);
+            }
+            None => {
+                append_warning(
+                    diagnostics,
+                    "vutex.render.pdf.font_unavailable",
+                    format!("system font candidate {} could not be loaded as a glyf TrueType font", path),
+                );
+            }
+        }
+    }
+    fonts
+}
+
+/// Append one warning diagnostic to `diagnostics`.
+fn append_warning(diagnostics: &mut Vec<Diagnostic>, code: &str, message: String) {
+    diagnostics.push(Diagnostic { code: code.to_string(), severity: Severity::Warning, message });
 }
 
 /// Load one explicitly authored font file, or report why it cannot be used.
@@ -459,8 +548,9 @@ fn build_objects(
     presentation: &DisplayPresentation,
     policy: &PdfFontPolicy,
     sources: &PdfResources,
+    diagnostics: &mut Vec<Diagnostic>,
 ) -> Result<Vec<PdfObject>, Diagnostic> {
-    let chain = load_chain(presentation, policy)?;
+    let chain = load_chain(presentation, policy, diagnostics)?;
     let fonts = used_fonts(presentation, chain.is_some());
     let page_count = presentation.pages.len();
     let page_links: Vec<Vec<LinkAnnotation>> = presentation.pages.iter().map(page_links).collect();
