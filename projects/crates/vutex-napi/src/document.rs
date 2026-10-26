@@ -20,7 +20,8 @@ use serde::{Deserialize, Serialize};
 use vutex_layout::{LayoutHint, document::layout_with_diagrams};
 use vutex_presentation::builder::{build_display_presentation, build_flow_presentation};
 use vutex_render_html::{render_html_reflow, render_html_snapshot};
-use vutex_render_pdf::{PdfFontPolicy, PdfResources, render_pdf_with_resources};
+use vutex_render_pdf::{PdfFontPolicy, PdfResources, render_pdf_with_resources_and_diagnostics};
+use vutex_types::{Diagnostic as RenderDiagnostic, Severity};
 use vutex_render_svg::render_svg;
 
 use crate::{diagram::lower_mermaid_diagrams, tikz::lower_tikz_diagrams};
@@ -282,8 +283,13 @@ pub fn render_document(input_path: &str, options_json: Option<&str>) -> RenderOu
         },
         OutputFormat::Pdf => {
             let resources = pdf_resources(input_path, &options);
-            match render_pdf_with_resources(&display, &PdfFontPolicy::Discover, &resources) {
-                Ok(pdf) => (None, None, Some(pdf)),
+            match render_pdf_with_resources_and_diagnostics(&display, &PdfFontPolicy::Discover, &resources) {
+                Ok(outcome) => {
+                    for d in outcome.diagnostics {
+                        diagrams.diagnostics.push(render_diagnostic_to_record(&d, input_path));
+                    }
+                    (None, None, Some(outcome.pdf))
+                }
                 Err(failure) => {
                     let record = error(RENDER_FAILED, failure.message, "render", input_path);
                     return render_failure(input_path, output_format.id().to_string(), format_label, record);
@@ -447,6 +453,26 @@ fn error(code: &str, message: String, stage: &str, path: &str) -> DiagnosticReco
         message,
         stage: stage.to_string(),
         path: Some(path.to_string()),
+    }
+}
+
+/// Convert a render-layer diagnostic into the pipeline report record.
+fn render_diagnostic_to_record(d: &RenderDiagnostic, path: &str) -> DiagnosticRecord {
+    DiagnosticRecord {
+        code: d.code.clone(),
+        severity: severity_label(d.severity),
+        message: d.message.clone(),
+        stage: "render".to_string(),
+        path: Some(path.to_string()),
+    }
+}
+
+/// Serialize a render severity into the report's three-value string.
+fn severity_label(severity: Severity) -> String {
+    match severity {
+        Severity::Info => "info".to_string(),
+        Severity::Warning => "warning".to_string(),
+        Severity::Error => "error".to_string(),
     }
 }
 
