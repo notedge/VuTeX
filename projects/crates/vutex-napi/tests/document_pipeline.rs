@@ -738,3 +738,53 @@ fn format_ids_match_the_report_contract() {
     assert_eq!(OutputFormat::from_option("PDF").map(OutputFormat::id), Some("pdf"));
     assert!(OutputFormat::from_option("docx").is_none());
 }
+
+const CJK_ARROW_SAMPLE: &str = r#"# 中文与箭头
+
+这是一段中文正文：你好，世界！
+
+箭头符号：→ ← ↑ ↓ ⇒ ⇐
+
+数学符号：∑ ∞ ≤ ≥
+"#;
+
+#[test]
+fn pdf_render_diagnostics_reach_the_report_json() {
+    // Chinese prose and arrows force an embedded font lookup. With Base14Only
+    // every non-WinAnsi character degrades to `?`, and the escape_text path
+    // emits font_unavailable warnings that the PDF backend now pipes into the
+    // pipeline report's diagnostics array.
+    let dir = ScratchDir::new("pdf-diag");
+    let path = dir.write("cjk-arrows.md", CJK_ARROW_SAMPLE);
+
+    let outcome = render_document(
+        &path_string(&path),
+        Some(r#"{"output":"pdf","font_policy":"base14only"}"#),
+    );
+    assert_eq!(outcome.exit_code, 0, "{}", outcome.report_json);
+    assert_eq!(outcome.output_format, "pdf");
+
+    let payload = report(&outcome);
+    let diagnostics = payload["diagnostics"].as_array().expect("diagnostics array");
+
+    let font_warnings: Vec<_> = diagnostics
+        .iter()
+        .filter(|d| d["code"] == "vutex.render.pdf.font_unavailable")
+        .collect();
+
+    assert!(
+        !font_warnings.is_empty(),
+        "expected at least one font_unavailable warning, got {}",
+        diagnostics.len()
+    );
+
+    for record in &font_warnings {
+        assert_eq!(record["severity"], "warning", "{record}");
+        assert_eq!(record["stage"], "render", "{record}");
+        assert!(record["message"].is_string() && !record["message"].as_str().unwrap_or("").is_empty(), "{record}");
+        assert!(
+            record["path"].as_str().is_some_and(|p| p.ends_with("cjk-arrows.md")),
+            "{record}"
+        );
+    }
+}
