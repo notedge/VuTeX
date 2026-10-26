@@ -27,8 +27,11 @@ use davinci_scene::{
 use davinci_types::{Color, Point, Rect, Transform};
 use vutex_presentation::display::DisplayGraphic;
 
+use vutex_types::Diagnostic;
+
 use crate::render::{
-    EmbeddedText, ImageResources, OpacityResources, base_font_for, needs_embedding, num, paint_text, scene_font_style,
+    EmbeddedText, ImageResources, OpacityResources, append_warning, base_font_for, needs_embedding, num, paint_text,
+    scene_font_style,
 };
 
 /// Width of one character as a fraction of the font size.
@@ -38,8 +41,8 @@ const TEXT_WIDTH: f64 = 0.6;
 const KAPPA: f64 = 0.552_284_749_830_793_4;
 
 /// Paint context shared by every node of one placed scene.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct ScenePaint<'a> {
+#[derive(Debug)]
+pub(crate) struct ScenePaint<'a, 'd> {
     /// Base-14 font resources available to text, in resource order.
     pub(crate) fonts: &'a [(&'static str, usize)],
     /// Embedded font subset, when the document needed one.
@@ -48,10 +51,17 @@ pub(crate) struct ScenePaint<'a> {
     pub(crate) images: &'a ImageResources,
     /// `/ExtGState` resources selecting the alpha a node paints with.
     pub(crate) opacities: &'a OpacityResources,
+    /// Non-fatal diagnostics the painter can append to.
+    pub(crate) diagnostics: Option<&'d mut Vec<Diagnostic>>,
 }
 
 /// Paint one placed scene into the page content stream.
-pub(crate) fn write_scene(out: &mut String, page_height: f64, graphic: &DisplayGraphic, paint: ScenePaint<'_>) {
+pub(crate) fn write_scene<'d>(
+    out: &mut String,
+    page_height: f64,
+    graphic: &DisplayGraphic,
+    paint: &mut ScenePaint<'_, 'd>,
+) {
     write_scene_box(out, page_height, &graphic.scene, graphic.x, graphic.y, graphic.width, graphic.height, paint);
 }
 
@@ -61,7 +71,7 @@ pub(crate) fn write_scene(out: &mut String, page_height: f64, graphic: &DisplayG
 /// centred, so a square icon stays square in a wide or tall slot. Returns
 /// `false` when the scene or the slot has no paintable extent, letting the
 /// caller fall back to the dashed placeholder.
-pub(crate) fn write_scene_slot(
+pub(crate) fn write_scene_slot<'d>(
     out: &mut String,
     page_height: f64,
     scene: &DisplayScene,
@@ -69,7 +79,7 @@ pub(crate) fn write_scene_slot(
     y: f64,
     width: f64,
     height: f64,
-    paint: ScenePaint<'_>,
+    paint: &mut ScenePaint<'_, 'd>,
 ) -> bool {
     let Some((x, y, width, height)) = fit_scene(scene, x, y, width, height)
     else {
@@ -95,7 +105,7 @@ fn fit_scene(scene: &DisplayScene, x: f64, y: f64, width: f64, height: f64) -> O
 }
 
 /// Paint a scene into one page-space box, scaling it on both axes.
-fn write_scene_box(
+fn write_scene_box<'d>(
     out: &mut String,
     page_height: f64,
     scene: &DisplayScene,
@@ -103,7 +113,7 @@ fn write_scene_box(
     y: f64,
     width: f64,
     height: f64,
-    paint: ScenePaint<'_>,
+    paint: &mut ScenePaint<'_, 'd>,
 ) {
     if !(scene.size.width > 0.0 && scene.size.height > 0.0) {
         return;
@@ -200,7 +210,7 @@ fn kind_opacity(kind: &NodeKind) -> f64 {
     }
 }
 
-fn write_node(out: &mut String, node: &SceneNode, paint: ScenePaint<'_>, inherited: f64) {
+fn write_node<'d>(out: &mut String, node: &SceneNode, paint: &mut ScenePaint<'_, 'd>, inherited: f64) {
     out.push_str("q\n");
     if !node.transform.is_identity() {
         write_matrix(out, node.transform);
@@ -243,7 +253,7 @@ fn write_matrix(out: &mut String, transform: Transform) {
     );
 }
 
-fn write_kind(out: &mut String, kind: &NodeKind, painter: ScenePaint<'_>) {
+fn write_kind<'d>(out: &mut String, kind: &NodeKind, painter: &mut ScenePaint<'_, 'd>) {
     match kind {
         // Groups paint through their children, which [`write_node`] recurses
         // into so it can compose group opacity.
@@ -450,7 +460,13 @@ fn write_color(out: &mut String, color: Color, fill: bool) {
     );
 }
 
-fn write_text(out: &mut String, position: Point, text: &str, style: &TextStyle, painter: ScenePaint<'_>) {
+fn write_text<'d>(
+    out: &mut String,
+    position: Point,
+    text: &str,
+    style: &TextStyle,
+    painter: &mut ScenePaint<'_, 'd>,
+) {
     if text.is_empty() || !(style.font_size > 0.0) {
         return;
     }
@@ -476,7 +492,17 @@ fn write_text(out: &mut String, position: Point, text: &str, style: &TextStyle, 
         TextAnchor::Middle => position.x - width * 0.5,
         TextAnchor::End => position.x - width,
     };
-    paint_text(out, x, position.y, style.font_size, resource_index, text, embedded, true);
+    paint_text(
+        out,
+        x,
+        position.y,
+        style.font_size,
+        resource_index,
+        text,
+        embedded,
+        true,
+        painter.diagnostics.as_deref_mut(),
+    );
 }
 
 /// Paint one resolved image, or its reserved dashed slot when it did not resolve.
@@ -490,7 +516,12 @@ fn write_text(out: &mut String, position: Point, text: &str, style: &TextStyle, 
 /// the first row lands on the scene's top edge. The scene root already flips y
 /// once, so the composed page matrix keeps a positive y scale and the picture
 /// stays upright.
-fn write_image(out: &mut String, rect: Rect, resource: &ResourceRef, painter: ScenePaint<'_>) {
+fn write_image<'d>(
+    out: &mut String,
+    rect: Rect,
+    resource: &ResourceRef,
+    painter: &mut ScenePaint<'_, 'd>,
+) {
     if !all_finite(&[rect.x, rect.y, rect.width, rect.height]) {
         return;
     }
@@ -522,7 +553,12 @@ fn write_image(out: &mut String, rect: Rect, resource: &ResourceRef, painter: Sc
 /// Both the nested scene and the enclosing scene count y downward, so this
 /// transformation only scales and translates: no flip is needed here because
 /// the root scene matrix already flipped the whole scene once.
-fn write_nested_scene(out: &mut String, scene: &DisplayScene, rect: Rect, painter: ScenePaint<'_>) -> bool {
+fn write_nested_scene<'d>(
+    out: &mut String,
+    scene: &DisplayScene,
+    rect: Rect,
+    painter: &mut ScenePaint<'_, 'd>,
+) -> bool {
     let Some((x, y, width, _)) = fit_scene(scene, rect.x, rect.y, rect.width, rect.height)
     else {
         return false;

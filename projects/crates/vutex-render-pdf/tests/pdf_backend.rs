@@ -13,7 +13,10 @@ use davinci_types::{Color, Point, Rect, Size, Transform};
 use vutex_presentation::display::{
     DisplayGraphic, DisplayImage, DisplayItem, DisplayPage, DisplayPresentation, DisplayRect, DisplayRule, DisplayTextRun,
 };
-use vutex_render_pdf::{PdfFontPolicy, PdfResources, render_pdf, render_pdf_with_font_policy, render_pdf_with_resources};
+use vutex_render_pdf::{
+    PdfFontPolicy, PdfRenderOutcome, PdfResources, render_pdf, render_pdf_with_font_policy,
+    render_pdf_with_font_policy_and_diagnostics, render_pdf_with_resources,
+};
 use vutex_types::math::FontStyle;
 
 fn page(width: f64, height: f64, items: Vec<DisplayItem>) -> DisplayPage {
@@ -1943,4 +1946,51 @@ fn svg_scene_image_paints_in_scene_coordinates() {
 fn assert_image_orientation(text: &str) {
     assert!(text.contains("2 0 0 -2 72 742 cm"), "scene root flips y once: {text}");
     assert!(text.contains("20 0 0 -10 10 20 cm"), "image matrix flips sample rows: {text}");
+}
+
+// ---------------------------------------------------------------------------
+// Render-level diagnostics: warnings are returned alongside PDF bytes instead
+// of silently substituting `?` or skipping glyphs.
+
+#[test]
+fn base14_only_emits_a_warning_when_characters_would_degrade_to_question_marks() {
+    let outcome: PdfRenderOutcome = render_pdf_with_font_policy_and_diagnostics(
+        &DisplayPresentation { pages: vec![page(595.0, 842.0, vec![text(72.0, 100.0, 12.0, "sans", "标题 Title")])] },
+        &PdfFontPolicy::Base14Only,
+    )
+    .expect("pdf render with warnings");
+
+    assert!(!outcome.pdf.is_empty(), "pdf is still produced");
+    let degraded = outcome
+        .diagnostics
+        .iter()
+        .find(|d| d.code == "vutex.render.pdf.font_unavailable");
+    assert!(degraded.is_some(), "Base14Only degradation must surface as a Warning: {:?}", outcome.diagnostics);
+    let degraded = degraded.unwrap();
+    assert_eq!(degraded.severity, vutex_types::Severity::Warning);
+    assert!(degraded.message.contains("degrades"), "message says characters are being degraded: {}", degraded.message);
+}
+
+#[test]
+fn discover_policy_emits_no_warnings_for_fully_covered_text() {
+    let outcome = render_pdf_with_font_policy_and_diagnostics(
+        &cjk_presentation("αβγ"),
+        &PdfFontPolicy::Discover,
+    )
+    .expect("pdf render");
+
+    // "αβγ" fits in WinAnsi; discover succeeds cleanly with no warnings.
+    let unexpected = outcome.diagnostics.iter().filter(|d| d.severity == vutex_types::Severity::Warning).count();
+    assert_eq!(unexpected, 0, "no warnings expected for ascii-latin text: {:?}", outcome.diagnostics);
+}
+
+#[test]
+fn discover_policy_still_errors_when_no_font_covers_a_glyph() {
+    let diagnostic = render_pdf_with_font_policy_and_diagnostics(
+        &cjk_presentation("😂"),
+        &PdfFontPolicy::File(test_font_path()),
+    )
+    .expect_err("a missing glyph must still short-circuit with Error");
+
+    assert_eq!(diagnostic.code, "vutex.render.pdf.glyph_missing");
 }

@@ -254,7 +254,7 @@ fn load_chain(
     let fonts = match policy {
         PdfFontPolicy::Base14Only => {
             append_warning(
-                diagnostics,
+                Some(diagnostics),
                 "vutex.render.pdf.font_unavailable",
                 format!(
                     "PdfFontPolicy::Base14Only degrades {} characters to '?' because the WinAnsi encoding cannot represent them; switch to Discover or provide explicit font files to embed glyphs",
@@ -316,7 +316,7 @@ fn discover_fonts_with_warnings(charset: &BTreeSet<char>, diagnostics: &mut Vec<
             }
             None => {
                 append_warning(
-                    diagnostics,
+                    Some(diagnostics),
                     "vutex.render.pdf.font_unavailable",
                     format!("system font candidate {} could not be loaded as a glyf TrueType font", path),
                 );
@@ -327,8 +327,17 @@ fn discover_fonts_with_warnings(charset: &BTreeSet<char>, diagnostics: &mut Vec<
 }
 
 /// Append one warning diagnostic to `diagnostics`.
-fn append_warning(diagnostics: &mut Vec<Diagnostic>, code: &str, message: String) {
-    diagnostics.push(Diagnostic { code: code.to_string(), severity: Severity::Warning, message });
+///
+/// A `None` sink is silently ignored, so callers can thread diagnostics through
+/// optional contexts without branching at every site.
+pub(crate) fn append_warning(
+    diagnostics: Option<&mut Vec<Diagnostic>>,
+    code: &str,
+    message: String,
+) {
+    if let Some(list) = diagnostics {
+        list.push(Diagnostic { code: code.to_string(), severity: Severity::Warning, message });
+    }
 }
 
 /// Load one explicitly authored font file, or report why it cannot be used.
@@ -597,7 +606,7 @@ fn build_objects(
     let images = register_images(presentation, &mut document, sources, &mut page_resources);
 
     for (index, page) in presentation.pages.iter().enumerate() {
-        let content = page_content(page, &font_objects, embedded, &opacities, &images);
+        let content = page_content(page, &font_objects, embedded, &opacities, &images, diagnostics);
         document.replace(content_numbers[index], content_object(&content));
         document.replace(
             page_numbers[index],
@@ -859,10 +868,10 @@ fn annotation_object(link: &LinkAnnotation) -> String {
         num(link.y2),
         // Same literal-string escaping as text, so a destination containing
         // parentheses or backslashes cannot break the dictionary syntax.
-        escape_text(&link.uri),
+        escape_text(&link.uri, None),
     );
     if let Some(title) = &link.title {
-        let _ = write!(object, " /Contents ({})", escape_text(title));
+        let _ = write!(object, " /Contents ({})", escape_text(title, None));
     }
     object.push_str(" >>");
     object
@@ -945,17 +954,24 @@ fn content_object(content: &str) -> PdfObject {
 }
 
 /// Content stream operators for one page; always ends with a newline.
-fn page_content(
+fn page_content<'d>(
     page: &DisplayPage,
     fonts: &[(&'static str, usize)],
     embedded: Option<EmbeddedText<'_>>,
     opacities: &OpacityResources,
     images: &ImageResources,
+    diagnostics: &'d mut Vec<Diagnostic>,
 ) -> String {
     let mut out = String::new();
-    let painter = crate::scene::ScenePaint { fonts, embedded, images, opacities };
+    let mut painter = crate::scene::ScenePaint {
+        fonts,
+        embedded,
+        images,
+        opacities,
+        diagnostics: Some(diagnostics),
+    };
     for item in &page.items {
-        write_item(&mut out, page.height, item, fonts, embedded, painter);
+        write_item(&mut out, page.height, item, fonts, embedded, &mut painter);
     }
     if out.is_empty() {
         out.push('\n');
@@ -963,16 +979,18 @@ fn page_content(
     out
 }
 
-fn write_item(
+fn write_item<'d>(
     out: &mut String,
     page_height: f64,
     item: &DisplayItem,
     fonts: &[(&'static str, usize)],
     embedded: Option<EmbeddedText<'_>>,
-    painter: crate::scene::ScenePaint<'_>,
+    painter: &mut crate::scene::ScenePaint<'_, 'd>,
 ) {
     match item {
-        DisplayItem::TextRun(run) => write_text(out, page_height, run, fonts, embedded),
+        DisplayItem::TextRun(run) => {
+            write_text(out, page_height, run, fonts, embedded, painter.diagnostics.as_deref_mut())
+        }
         DisplayItem::Rule(rule) => write_rule(out, page_height, rule),
         DisplayItem::Rect(rect) => write_rect(out, page_height, rect),
         DisplayItem::Image(image) => write_image(out, page_height, image, painter),
@@ -986,6 +1004,7 @@ fn write_text(
     run: &DisplayTextRun,
     fonts: &[(&'static str, usize)],
     embedded: Option<EmbeddedText<'_>>,
+    diagnostics: Option<&mut Vec<Diagnostic>>,
 ) {
     if !all_finite(&[run.x, run.y, run.size]) {
         return;
@@ -1001,7 +1020,17 @@ fn write_text(
     else {
         return;
     };
-    paint_text(out, run.x, page_height - run.y, run.size, resource_index, &run.text, embedded, false);
+    paint_text(
+        out,
+        run.x,
+        page_height - run.y,
+        run.size,
+        resource_index,
+        &run.text,
+        embedded,
+        false,
+        diagnostics,
+    );
 }
 
 /// Emit one text object at a page-space position.
@@ -1011,6 +1040,9 @@ fn write_text(
 /// `Tj` per subset, and the font is switched between the groups: the text
 /// position keeps advancing, so a run mixing Han characters with an emoji
 /// still reads as one uninterrupted line.
+///
+/// When `diagnostics` is `Some`, characters that the embedded chain cannot
+/// cover and would otherwise be silently dropped produce a render-level Warning.
 pub(crate) fn paint_text(
     out: &mut String,
     x: f64,
@@ -1020,6 +1052,7 @@ pub(crate) fn paint_text(
     text: &str,
     embedded: Option<EmbeddedText<'_>>,
     flip: bool,
+    mut diagnostics: Option<&mut Vec<Diagnostic>>,
 ) {
     let down = if flip { -1.0 } else { 1.0 };
     if let Some(embedded) = embedded
@@ -1028,9 +1061,11 @@ pub(crate) fn paint_text(
         let _ = write!(out, "BT\n1 0 0 {down} {} {} Tm\n", num(x), num(y));
         let mut current: Option<usize> = None;
         let mut glyphs = String::new();
+        let mut missing: Vec<char> = Vec::new();
         for ch in text.chars() {
             let Some((font, cid)) = embedded.glyph(ch)
             else {
+                missing.push(ch);
                 continue;
             };
             if current != Some(font) {
@@ -1046,6 +1081,16 @@ pub(crate) fn paint_text(
             let _ = write!(out, "/F{index} {} Tf\n<{glyphs}> Tj\n", num(size));
         }
         out.push_str("ET\n");
+        if !missing.is_empty() {
+            append_warning(
+                diagnostics.as_deref_mut(),
+                "vutex.render.pdf.glyph_missing",
+                format!(
+                    "embedded font chain has no glyph for {} while painting text; the characters were skipped",
+                    codepoints(&missing)
+                ),
+            );
+        }
         return;
     }
     let _ = write!(
@@ -1054,7 +1099,7 @@ pub(crate) fn paint_text(
         num(size),
         num(x),
         num(y),
-        escape_text(text),
+        escape_text(text, diagnostics.as_deref_mut()),
     );
 }
 
@@ -1100,7 +1145,12 @@ fn write_rect(out: &mut String, page_height: f64, rect: &DisplayRect) {
 /// fitted and centred inside the slot, and the painter's root matrix flips the
 /// scene's y-down coordinates into PDF's y-up page space, so the icon is right
 /// way up without any per-slot row reversal.
-fn write_image(out: &mut String, page_height: f64, image: &DisplayImage, painter: crate::scene::ScenePaint<'_>) {
+fn write_image<'d>(
+    out: &mut String,
+    page_height: f64,
+    image: &DisplayImage,
+    painter: &mut crate::scene::ScenePaint<'_, 'd>,
+) {
     if !all_finite(&[image.x, image.y, image.width, image.height]) {
         return;
     }
@@ -1142,7 +1192,12 @@ fn write_image_placeholder(out: &mut String, page_height: f64, image: &DisplayIm
     );
 }
 
-fn write_graphic(out: &mut String, page_height: f64, graphic: &DisplayGraphic, painter: crate::scene::ScenePaint<'_>) {
+fn write_graphic<'d>(
+    out: &mut String,
+    page_height: f64,
+    graphic: &DisplayGraphic,
+    painter: &mut crate::scene::ScenePaint<'_, 'd>,
+) {
     if !all_finite(&[graphic.x, graphic.y, graphic.width, graphic.height]) {
         return;
     }
@@ -1168,8 +1223,12 @@ fn all_finite(values: &[f64]) -> bool {
 /// WinAnsi reaches through its upper range (typographic punctuation, the
 /// bullet, the euro sign) are remapped to their WinAnsi byte, and everything
 /// else becomes `?` because the encoding cannot represent it.
-pub(crate) fn escape_text(text: &str) -> String {
+///
+/// When `diagnostics` is `Some`, characters that fall back to `?` emit a
+/// render-level Warning instead of being silently substituted.
+pub(crate) fn escape_text(text: &str, mut diagnostics: Option<&mut Vec<Diagnostic>>) -> String {
     let mut out = String::with_capacity(text.len());
+    let mut degraded: Vec<char> = Vec::new();
     for ch in text.chars() {
         match ch {
             '\\' => out.push_str("\\\\"),
@@ -1183,9 +1242,22 @@ pub(crate) fn escape_text(text: &str) -> String {
                 Some(byte) => {
                     let _ = write!(out, "\\{byte:03o}");
                 }
-                None => out.push('?'),
+                None => {
+                    degraded.push(ch);
+                    out.push('?');
+                }
             },
         }
+    }
+    if !degraded.is_empty() {
+        append_warning(
+            diagnostics.as_deref_mut(),
+            "vutex.render.pdf.font_unavailable",
+            format!(
+                "WinAnsi encoding cannot represent {} characters and they were substituted with '?'",
+                codepoints(&degraded)
+            ),
+        );
     }
     out
 }
