@@ -235,6 +235,11 @@ pub fn render_layout_node(backend: &mut dyn LayoutBackend, node: &LayoutNode, x:
     Ok(())
 }
 
+/// 1 mu = 1/18 em. TeX thick/medium/thin muskip in em units.
+const THICK_MUSIP_EM: f64 = 5.0 / 18.0;
+const MEDIUM_MUSIP_EM: f64 = 4.0 / 18.0;
+const THIN_MUSIP_EM: f64 = 3.0 / 18.0;
+
 /// Lowers [`SemanticNode`] trees into [`LayoutNode`] boxes.
 #[derive(Debug)]
 pub struct LayoutEngine {
@@ -254,15 +259,141 @@ impl LayoutEngine {
         self
     }
 
+    /// Best-effort role of a semantic node for spacing purposes.
+    ///
+    /// Nodes that aren't atoms (Fraction, Radical, Subsuperscript, Matrix, etc.)
+    /// behave like TeX Inner atoms — spacing flows around them.
+    fn role_of(node: &SemanticNode) -> SymbolRole {
+        match node {
+            SemanticNode::Symbol { role, .. } => *role,
+            SemanticNode::Subscript { .. }
+            | SemanticNode::Superscript { .. }
+            | SemanticNode::SubSuperscript { .. }
+            | SemanticNode::Fraction { .. }
+            | SemanticNode::Radical { .. }
+            | SemanticNode::Delimited { .. }
+            | SemanticNode::Matrix { .. }
+            | SemanticNode::Accent { .. }
+            | SemanticNode::HorizontalBox { .. }
+            | SemanticNode::VerticalBox { .. }
+            | SemanticNode::Paragraph { .. } => SymbolRole::Inner,
+            SemanticNode::Sequence(_) | SemanticNode::Text(_) => SymbolRole::Ordinary,
+        }
+    }
+
+    /// TeX math spacing between two adjacent atoms, simplified to the common cases.
+    ///
+    /// Returns the glue to insert between `left` and `right` at the current em
+    /// `size` (in pixels).  `None` means no glue — but binary atoms on the wrong
+    /// side are treated as [`SymbolRole::Ordinary`] (caller must rerun or skip).
+    fn spacing_between(left: SymbolRole, right: SymbolRole, size: Fixed) -> Option<Glue> {
+        use SymbolRole::*;
+        // Opening on the left, Closing on the right, or Punctuation on the right
+        // never take spacing.
+        if matches!(left, Opening) || matches!(right, Closing | Punctuation) {
+            return None;
+        }
+
+        match (left, right) {
+            // ——— Relation: thick on both sides ———
+            (_, Relation) | (Relation, _) => Some(Glue {
+                width: Fixed::from_f64(THICK_MUSIP_EM) * size,
+                stretch: Fixed::ZERO,
+                shrink: Fixed::ZERO,
+            }),
+
+            // ——— LargeOperator: medium on both sides, but NOT after Opening ———
+            (LargeOperator, _) => Some(Glue {
+                width: Fixed::from_f64(MEDIUM_MUSIP_EM) * size,
+                stretch: Fixed::ZERO,
+                shrink: Fixed::ZERO,
+            }),
+            (_, LargeOperator) => {
+                if matches!(left, Opening) {
+                    None
+                }
+                else {
+                    Some(Glue {
+                        width: Fixed::from_f64(MEDIUM_MUSIP_EM) * size,
+                        stretch: Fixed::ZERO,
+                        shrink: Fixed::ZERO,
+                    })
+                }
+            }
+
+            // ——— Operator (text math function like sin, cos): medium both sides ———
+            (_, Operator) | (Operator, _) => Some(Glue {
+                width: Fixed::from_f64(MEDIUM_MUSIP_EM) * size,
+                stretch: Fixed::ZERO,
+                shrink: Fixed::ZERO,
+            }),
+
+            // ——— Inner (fraction, radical, delimited group): thick both sides ———
+            (_, Inner) | (Inner, _) => Some(Glue {
+                width: Fixed::from_f64(THICK_MUSIP_EM) * size,
+                stretch: Fixed::ZERO,
+                shrink: Fixed::ZERO,
+            }),
+
+            // ——— Binary: thick glue when the neighbour can take one ———
+            // Skip glue on binary → binary / open / close / rel / punct transitions
+            // (TeX demotes the binary there; we keep it simple and just omit glue).
+            (Binary, _) => {
+                if matches!(right, Binary | Opening | Relation | Closing | Punctuation) {
+                    None
+                }
+                else {
+                    Some(Glue {
+                        width: Fixed::from_f64(THICK_MUSIP_EM) * size,
+                        stretch: Fixed::ZERO,
+                        shrink: Fixed::ZERO,
+                    })
+                }
+            }
+            (_, Binary) => {
+                if matches!(left, Binary | Opening | Relation | Closing | Punctuation) {
+                    None
+                }
+                else {
+                    Some(Glue {
+                        width: Fixed::from_f64(THICK_MUSIP_EM) * size,
+                        stretch: Fixed::ZERO,
+                        shrink: Fixed::ZERO,
+                    })
+                }
+            }
+
+            // ——— Punctuation: thin after, nothing before ———
+            (Punctuation, _) => Some(Glue {
+                width: Fixed::from_f64(THIN_MUSIP_EM) * size,
+                stretch: Fixed::ZERO,
+                shrink: Fixed::ZERO,
+            }),
+
+            // Ordinary / Text adjacency: no glue
+            _ => None,
+        }
+    }
+
     /// Lay out a semantic node in the given math style.
     pub fn layout_node<'a>(&'a self, node: &'a SemanticNode, style: MathStyle) -> MathResult<LayoutNode> {
         {
             match node {
                 SemanticNode::Symbol { glyph_key, .. } => self.layout_symbol(glyph_key, style),
                 SemanticNode::Sequence(nodes) => {
+                    let style_scale = self.get_style_scale(style);
+                    let size = self.base_size * style_scale;
                     let mut children = Vec::new();
+                    let mut prev_role: Option<SymbolRole> = None;
                     for node in nodes {
+                        if let Some(left_role) = prev_role {
+                            let right_role = Self::role_of(node);
+                            if let Some(glue) = Self::spacing_between(left_role, right_role, size) {
+                                children.push(LayoutNode::Glue(glue));
+                            }
+                        }
                         children.push(self.layout_node(node, style)?);
+                        prev_role = Some(Self::role_of(node));
                     }
                     Ok(self.pack_hbox(children, None))
                 }
@@ -625,15 +756,11 @@ impl LayoutEngine {
             self.font_system.get_math_constant(family, MathConstant::RadicalVerticalGap).unwrap_or(Fixed::from_f64(0.05)) * size
         };
 
-        // For now, we use a path for the radical symbol '√' to support complex rendering
-        // In a real implementation, this path would be fetched from font data or generated.
-        let radical_path_d = "M 0.1,0.5 L 0.3,0.9 L 0.6,0.1"; // Mock radical hook path
-        let radical_symbol = LayoutNode::Path(Path {
-            d: radical_path_d.to_string(),
-            width: Fixed::from_f64(0.6) * size,
-            height: Fixed::from_f64(1.0) * size,
-            depth: Fixed::from_f64(0.0) * size,
-        });
+        // Resolve the real radical glyph from the font system; fall back to a
+        // layout_scaled_symbol which produces a Glyph node (works for both SVG
+        // and PDF backends — the Glyph has path_data when available, else text).
+        let radical_key = GlyphKey::from_char('√', Some("default".to_string()), FontStyle::Normal);
+        let radical_symbol = self.layout_scaled_symbol(&radical_key, size)?;
 
         let mut children = Vec::new();
 

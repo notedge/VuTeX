@@ -887,6 +887,8 @@ impl<'a> PageBuilder<'a> {
                 }
                 // Opaque payloads with no layout meaning are dropped, not guessed.
                 Block::Opaque { .. } => {}
+                // Raw HTML is emitted as-is at render time; layout drops it.
+                Block::RawHtml { .. } => {}
             }
         }
     }
