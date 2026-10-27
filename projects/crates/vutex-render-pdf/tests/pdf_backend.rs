@@ -1994,3 +1994,107 @@ fn discover_policy_still_errors_when_no_font_covers_a_glyph() {
 
     assert_eq!(diagnostic.code, "vutex.render.pdf.glyph_missing");
 }
+
+// ---------------------------------------------------------------------------
+// /Length integrity: every stream object must advertise a `/Length` that
+// exactly matches the byte count between `stream\n` and `\nendstream`.
+
+/// Iterate over every stream object in a PDF byte slice, yielding `(object_number, /Length_from_dict, actual_body_bytes)`.
+///
+/// Relies on the xref table for object boundaries so `/Length` lookups never
+/// mix up with numbers from neighbouring objects.
+fn stream_length_counters(bytes: &[u8]) -> Vec<(usize, usize, usize)> {
+    let mut out = Vec::new();
+    let offsets = xref_entries(bytes);
+    for (idx, start) in offsets.iter().enumerate() {
+        let number = idx + 1;
+        let end = offsets.get(idx + 1).copied().unwrap_or(bytes.len());
+        let body = &bytes[*start..end];
+        let start_marker = format!("{number} 0 obj\n");
+        let Some(body_start) = find(body, start_marker.as_bytes()) else { continue };
+        let after_obj_header = body_start + start_marker.len();
+        let Some(stream_at) = find(&body[after_obj_header..], b"stream\n") else { continue };
+        let stream_at = after_obj_header + stream_at;
+        let Some(endstream_at) = find(&body[stream_at + b"stream\n".len()..], b"\nendstream") else { continue };
+        let body_len = endstream_at; // bytes between `stream\n` and `\nendstream`
+        let actual = body_len;
+
+        // /Length sits in the dictionary between end of `N 0 obj\n` and `stream\n`.
+        let dict_region = &body[after_obj_header..stream_at];
+        let len_value = find(dict_region, b"/Length ")
+            .map(|at| {
+                let digits_start = at + b"/Length ".len();
+                let mut digits_end = digits_start;
+                while digits_end < dict_region.len() && dict_region[digits_end].is_ascii_digit() {
+                    digits_end += 1;
+                }
+                as_str(&dict_region[digits_start..digits_end]).parse::<usize>().ok()
+            })
+            .flatten();
+
+        if let Some(advertised) = len_value {
+            out.push((number, advertised, actual));
+        }
+    }
+    out
+}
+
+#[test]
+fn every_stream_length_matches_its_byte_body() {
+    let bytes = render_pdf_with_font_policy(
+        &DisplayPresentation { pages: vec![full_page()] },
+        &PdfFontPolicy::Files(vec![test_font_path(), symbol_font_path()]),
+    )
+    .expect("pdf render");
+
+    let counters = stream_length_counters(&bytes);
+    assert!(!counters.is_empty(), "the document must contain at least one stream object");
+    for (obj, advertised, actual) in &counters {
+        assert_eq!(
+            advertised, actual,
+            "/Length advertised {advertised} bytes but stream object {obj} actually carries {actual} bytes"
+        );
+    }
+}
+
+#[test]
+fn length_is_recomputed_when_the_dict_pre_claims_a_stale_value() {
+    // This rendering pulls in every variety of stream (content, FontFile2,
+    // ToUnicode, image, and SMask).  Before the writer-side fix each call-site
+    // that pre-computed `/Length` against a still-mutating data buffer could
+    // leak a stale value, and Poppler would report
+    // *"Bad 'Length' attribute in stream"* on the resulting file.  The
+    // assertion below would fail on any lingering mismatch.
+    let href = format!("data:image/png;base64,{}", base64(&alpha_png()));
+    let bytes = render_pdf_with_font_policy(
+        &DisplayPresentation {
+            pages: vec![page(595.0, 842.0, vec![
+                text(72.0, 100.0, 12.0, "sans", "标题 😂"),
+                DisplayItem::Image(DisplayImage {
+                    x: 72.0,
+                    y: 260.0,
+                    width: 120.0,
+                    height: 60.0,
+                    alt: "figure".to_string(),
+                    source: Some(href),
+                }),
+            ])],
+        },
+        &PdfFontPolicy::Files(vec![test_font_path(), symbol_font_path()]),
+    )
+    .expect("pdf render");
+
+    let counters = stream_length_counters(&bytes);
+    assert!(!counters.is_empty(), "composite page must contain stream objects");
+    for (obj, advertised, actual) in &counters {
+        assert_eq!(
+            advertised, actual,
+            "/Length advertised {advertised} bytes but stream object {obj} actually carries {actual} bytes"
+        );
+    }
+
+    // Also make sure the writer preserved FontFile2 descriptors that carry
+    // both `/Length1` and the freshly-computed `/Length`.
+    let text = lossy(&bytes);
+    assert!(text.contains("/Length1"), "FontFile2 descriptor keeps its non-compressed length hint");
+}
