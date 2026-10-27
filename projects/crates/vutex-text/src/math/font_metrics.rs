@@ -31,8 +31,14 @@ impl FontMetricsSystem {
 
     pub fn get_metrics(&self, key: &GlyphKey) -> MathResult<GlyphMetrics> {
         let family = key.font_family.as_deref().unwrap_or("default");
+        // Normalize key: layout passes None family, but rekey_family stores
+        // Some("default"). A None key must match the Some("default") entry.
+        let normalized = GlyphKey {
+            font_family: Some(family.to_string()),
+            ..key.clone()
+        };
         if let Some(data) = self.metrics_cache.get(family) {
-            if let Some(metrics) = data.glyphs.get(key) {
+            if let Some(metrics) = data.glyphs.get(&normalized) {
                 return Ok(*metrics);
             }
         }
@@ -41,8 +47,12 @@ impl FontMetricsSystem {
 
     pub fn get_delimiter_construction(&self, key: &GlyphKey) -> MathResult<DelimiterConstruction> {
         let family = key.font_family.as_deref().unwrap_or("default");
+        let normalized = GlyphKey {
+            font_family: Some(family.to_string()),
+            ..key.clone()
+        };
         if let Some(data) = self.metrics_cache.get(family) {
-            if let Some(construction) = data.delimiters.get(key) {
+            if let Some(construction) = data.delimiters.get(&normalized) {
                 return Ok(construction.clone());
             }
         }
@@ -60,8 +70,12 @@ impl FontMetricsSystem {
 
     pub fn get_glyph_path(&self, key: &GlyphKey) -> MathResult<String> {
         let family = key.font_family.as_deref().unwrap_or("default");
+        let normalized = GlyphKey {
+            font_family: Some(family.to_string()),
+            ..key.clone()
+        };
         if let Some(data) = self.metrics_cache.get(family) {
-            if let Some(path) = data.glyph_paths.get(key) {
+            if let Some(path) = data.glyph_paths.get(&normalized) {
                 return Ok(path.clone());
             }
         }
