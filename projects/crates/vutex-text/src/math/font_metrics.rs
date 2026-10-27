@@ -211,7 +211,10 @@ fn default_glyph_metrics(ch: Option<char>) -> GlyphMetrics {
         height: Fixed::from_f64(0.7),
         depth: Fixed::from_f64(0.2),
         // Synthetic fixture: the embedded font has no entry for this glyph, so
-        // these MATH values are placeholders rather than measured ones.
+        // these MATH values are placeholders rather than measured ones. Every
+        // accent the math parser emits (`ˆ`, `¯`, `˜`, `˙`, `¨` and `→`) is
+        // measured from the font, so only genuinely absent characters — CJK
+        // text inside `\text{}`, for example — reach this fallback.
         italic_correction: Fixed::ZERO,
         top_accent_attachment: Fixed::ZERO,
     }
@@ -605,6 +608,22 @@ mod tests {
         assert_eq!(italic_f.italic_correction, math_f.italic_correction, "derived italic face must keep the real correction");
         assert_eq!(italic_f.top_accent_attachment, math_f.top_accent_attachment);
         assert!(italic_f.top_accent_attachment.to_f64() > 0.0, "top accent attachment must come from the MATH table");
+    }
+
+    #[test]
+    fn accent_glyphs_resolve_under_the_default_family() {
+        let sys = builtin_font_metrics();
+        for ch in ['ˆ', '¯', '˜', '˙', '¨'] {
+            let m = sys.get_metrics(&key(ch)).unwrap();
+            assert!(m.width.to_f64() > 0.2, "'{ch}' advance {} is a synthetic placeholder", m.width.to_f64());
+            assert!(m.height.to_f64() > 0.4, "'{ch}' height {} is a synthetic placeholder", m.height.to_f64());
+            let path = sys.get_glyph_path(&key(ch)).expect("accent outline must come from the font");
+            assert!(path.contains('M'), "'{ch}' outline should start with a move: {path}");
+        }
+        // The vector arrow is the widest accent: `\vec` scales nothing, so the
+        // arrow it stamps over a base comes straight from the font.
+        let arrow = sys.get_metrics(&key('→')).unwrap();
+        assert!(arrow.width.to_f64() > 0.9, "'→' advance {} is a synthetic placeholder", arrow.width.to_f64());
     }
 
     #[test]

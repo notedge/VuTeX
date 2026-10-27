@@ -162,6 +162,40 @@ fn flush_numbers(operator: char, numbers: &mut Vec<f64>, points: &mut Vec<(f64, 
     numbers.clear();
 }
 
+/// Every `<rect>` painted by the document as `(x, top, width, height)`, in
+/// canvas coordinates.
+///
+/// Rules reach the backend as rectangles from the node's baseline, so the group
+/// translations accumulate exactly like they do for [`painted_points`].
+fn painted_rects(svg: &str) -> Vec<(f64, f64, f64, f64)> {
+    let mut rects = Vec::new();
+    let mut saved: Vec<(f64, f64)> = Vec::new();
+    let mut offset = (0.0, 0.0);
+    let mut cursor = 0;
+    while let Some(open) = svg[cursor..].find('<').map(|i| i + cursor) {
+        let Some(length) = svg[open..].find('>')
+        else {
+            break;
+        };
+        let tag = &svg[open + 1..open + length];
+        cursor = open + length + 1;
+        if tag == "g" || tag.starts_with("g ") {
+            saved.push(offset);
+            if let Some((x, y)) = transform_pair(tag, "translate(") {
+                offset = (offset.0 + x, offset.1 + y);
+            }
+        }
+        else if tag == "/g" {
+            offset = saved.pop().unwrap_or((0.0, 0.0));
+        }
+        else if tag.starts_with("rect ") {
+            let number = |name| attribute(tag, name).expect("rect attribute").parse::<f64>().expect("rect number");
+            rects.push((offset.0 + number("x"), offset.1 + number("y"), number("width"), number("height")));
+        }
+    }
+    rects
+}
+
 /// Count closed, straight-sided subpaths.
 ///
 /// Bar delimiters are emitted as rectangles, while glyph outlines are cubic, so
@@ -302,6 +336,44 @@ fn emphasis_faces_keep_their_own_outlines() {
     assert_ne!(italic[0], upright[0], "`\\mathit` must not reuse the upright outline");
     assert_ne!(bold[0], italic[0], "bold and italic must not share one outline");
     assert!(bold[0].len() > upright[0].len(), "bold is built from several offset copies");
+}
+
+/// `\hat` paints the font's circumflex next to the nucleus, never a host-font
+/// run, so accent geometry stays deterministic.
+#[test]
+fn hat_accent_paints_the_font_circumflex() {
+    let (svg, _) = render(r"\hat{x}", false);
+    assert!(!svg.contains("<text"), "`\\hat` must not fall back to a host font:\n{svg}");
+    assert_eq!(outline_paths(&svg).len(), 2, "the nucleus and the circumflex carry one outline each:\n{svg}");
+}
+
+/// `\bar` covers the nucleus it sits on: the font's macron is a text mark that
+/// does not span a wide base, so TeX draws an overbar rule across the whole box.
+#[test]
+fn bar_accent_paints_a_rule_across_the_nucleus() {
+    let (svg, _) = render(r"\bar{x}", false);
+    assert!(!svg.contains("<text"), "`\\bar` must not fall back to a host font:\n{svg}");
+    assert_eq!(outline_paths(&svg).len(), 1, "only the nucleus carries an outline:\n{svg}");
+
+    let rects = painted_rects(&svg);
+    assert_eq!(rects.len(), 1, "`\\bar` must paint exactly one overbar rule:\n{svg}");
+    let (rule_x, rule_top, rule_width, rule_height) = rects[0];
+    assert!(rule_width > 0.0 && rule_height > 0.0, "the overbar needs a positive size: {rects:?}\n{svg}");
+
+    let points = painted_points(&svg);
+    let ink_left = points.iter().map(|p| p.0).fold(f64::INFINITY, f64::min);
+    let ink_right = points.iter().map(|p| p.0).fold(f64::NEG_INFINITY, f64::max);
+    let ink_top = points.iter().map(|p| p.1).fold(f64::INFINITY, f64::min);
+    assert!(
+        rule_x <= ink_left + 1e-3 && rule_x + rule_width >= ink_right - 1e-3,
+        "overbar {rule_x}..{} must cover the nucleus ink {ink_left}..{ink_right}:\n{svg}",
+        rule_x + rule_width
+    );
+    assert!(
+        rule_top + rule_height <= ink_top + 1e-3,
+        "overbar bottom {} must clear the nucleus ink top {ink_top}:\n{svg}",
+        rule_top + rule_height
+    );
 }
 
 #[test]
