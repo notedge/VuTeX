@@ -6,11 +6,11 @@
 //! Falls back gracefully to synthetic metrics if parsing fails or the font
 //! lacks a MATH table.
 
-use ttf_parser::{Face, GlyphId, OutlineBuilder, math};
+use acorn_ttf::{FontFace, OutlineBuilder, tables::math::PartRecord};
 
 use vutex_types::math::{
-    DelimiterComponent, DelimiterConstruction, DelimiterVariant, Fixed, FontMetricsData, FontStyle, GlyphKey, GlyphMetrics,
-    MathConstant,
+    DelimiterComponent, DelimiterConstruction, DelimiterVariant, Fixed, FontMetricsData, FontStyle, GlyphKey,
+    GlyphMetrics, MathConstant,
 };
 
 /// Embedded OpenType MATH font: Latin Modern Math Regular.
@@ -137,28 +137,25 @@ const DELIMITER_CHARS: &[char] = &['(', ')', '[', ']', '{', '}', '|', '‖', '�
 /// missing MATH table, missing constants). The caller should then use the
 /// synthetic fallback in [`super::font_metrics::builtin_font_metrics`].
 pub fn opentype_font_metrics() -> Option<FontMetricsData> {
-    let face = Face::parse(MATH_FONT_BYTES, 0).ok()?;
+    let mut face = FontFace::load(MATH_FONT_BYTES).ok()?;
     let units_per_em = face.units_per_em();
 
-    let tables = face.tables();
-    let math_table = tables.math.as_ref()?;
-    let constants = math_table.constants?;
-    let glyph_info = math_table.glyph_info;
+    // Clone MATH table data up front so we can drop the mutable borrow on
+    // `face` and pass it on to the next extraction function.
+    let math_table = face.math()?.clone();
 
     let mut data = FontMetricsData::new("latin-modern-math".to_string(), units_per_em);
 
     let one_em = units_per_em as f64;
 
     // ---- MATH constants (font units → em-relative Fixed) ----
-    extract_math_constants(&constants, &mut data, one_em);
+    extract_math_constants(&math_table.constants, &mut data, one_em);
 
-    // ---- Glyph advance widths, bounding boxes, outline paths, MATH glyph info ----
-    extract_glyph_metrics_and_outlines(&face, glyph_info, &mut data, one_em);
+    // ---- Glyph advance widths bounding boxes outline paths MATH glyph info ----
+    extract_glyph_metrics_and_outlines(&mut face, &math_table.glyph_info, &mut data, one_em);
 
     // ---- MATH Variants for delimiter stretching ----
-    if let Some(variants) = math_table.variants {
-        extract_delimiter_variants(&face, variants, &mut data, one_em);
-    }
+    extract_delimiter_variants(&mut face, &math_table.variants, &mut data, one_em);
 
     Some(data)
 }
@@ -167,82 +164,91 @@ pub fn opentype_font_metrics() -> Option<FontMetricsData> {
 // Constants
 // ---------------------------------------------------------------------------
 
-fn extract_math_constants(constants: &math::Constants<'_>, data: &mut FontMetricsData, one_em: f64) {
+fn extract_math_constants(constants: &acorn_ttf::tables::math::MathConstants, data: &mut FontMetricsData, one_em: f64) {
     // Percentage constants → store as fraction (e.g. 70 → 0.7)
-    data.constants
-        .insert(MathConstant::ScriptPercentScaleDown, Fixed::from_f64(constants.script_percent_scale_down() as f64 / 100.0));
+    data.constants.insert(
+        MathConstant::ScriptPercentScaleDown,
+        Fixed::from_f64(constants.script_percent_scale_down as f64 / 100.0),
+    );
     data.constants.insert(
         MathConstant::ScriptScriptPercentScaleDown,
-        Fixed::from_f64(constants.script_script_percent_scale_down() as f64 / 100.0),
+        Fixed::from_f64(constants.script_script_percent_scale_down as f64 / 100.0),
     );
     data.constants.insert(
         MathConstant::DelimitedSubFormulaMinHeight,
-        Fixed::from_f64(constants.delimited_sub_formula_min_height() as f64 / one_em),
+        Fixed::from_f64(constants.delimited_sub_formula_min_height as f64 / one_em),
     );
     data.constants.insert(
         MathConstant::DisplayOperatorMinHeight,
-        Fixed::from_f64(constants.display_operator_min_height() as f64 / one_em),
+        Fixed::from_f64(constants.display_operator_min_height as f64 / one_em),
     );
 
-    // All the MathValue-based constants.
-    let m = |mv: math::MathValue| Fixed::from_f64(mv.value as f64 / one_em);
+    // All the MathValue-based constants — acorn-ttf stores them as raw f32 font units.
+    let m = |v: f32| Fixed::from_f64(v as f64 / one_em);
 
-    data.constants.insert(MathConstant::MathLeading, m(constants.math_leading()));
-    data.constants.insert(MathConstant::AxisHeight, m(constants.axis_height()));
-    data.constants.insert(MathConstant::AccentBaseHeight, m(constants.accent_base_height()));
-    data.constants.insert(MathConstant::FlattenedAccentBaseHeight, m(constants.flattened_accent_base_height()));
-    data.constants.insert(MathConstant::SubscriptShiftDown, m(constants.subscript_shift_down()));
-    data.constants.insert(MathConstant::SubscriptTopMax, m(constants.subscript_top_max()));
-    data.constants.insert(MathConstant::SubscriptBaselineDropMin, m(constants.subscript_baseline_drop_min()));
-    data.constants.insert(MathConstant::SuperscriptShiftUp, m(constants.superscript_shift_up()));
-    data.constants.insert(MathConstant::SuperscriptShiftUpCramped, m(constants.superscript_shift_up_cramped()));
-    data.constants.insert(MathConstant::SuperscriptBottomMin, m(constants.superscript_bottom_min()));
-    data.constants.insert(MathConstant::SuperscriptBaselineDropMax, m(constants.superscript_baseline_drop_max()));
-    data.constants.insert(MathConstant::SubSuperscriptGapMin, m(constants.sub_superscript_gap_min()));
-    data.constants
-        .insert(MathConstant::SuperscriptBottomMaxWithSubscript, m(constants.superscript_bottom_max_with_subscript()));
-    data.constants.insert(MathConstant::SpaceAfterScript, m(constants.space_after_script()));
-    data.constants.insert(MathConstant::UpperLimitGapMin, m(constants.upper_limit_gap_min()));
-    data.constants.insert(MathConstant::UpperLimitBaselineRiseMin, m(constants.upper_limit_baseline_rise_min()));
-    data.constants.insert(MathConstant::LowerLimitGapMin, m(constants.lower_limit_gap_min()));
-    data.constants.insert(MathConstant::LowerLimitBaselineDropMin, m(constants.lower_limit_baseline_drop_min()));
-    data.constants.insert(MathConstant::StackTopShiftUp, m(constants.stack_top_shift_up()));
-    data.constants.insert(MathConstant::StackTopDisplayStyleShiftUp, m(constants.stack_top_display_style_shift_up()));
-    data.constants.insert(MathConstant::StackBottomShiftDown, m(constants.stack_bottom_shift_down()));
-    data.constants.insert(MathConstant::StackBottomDisplayStyleShiftDown, m(constants.stack_bottom_display_style_shift_down()));
-    data.constants.insert(MathConstant::StackGapMin, m(constants.stack_gap_min()));
-    data.constants.insert(MathConstant::StackDisplayStyleGapMin, m(constants.stack_display_style_gap_min()));
-    data.constants.insert(MathConstant::StretchStackTopShiftUp, m(constants.stretch_stack_top_shift_up()));
-    data.constants.insert(MathConstant::StretchStackBottomShiftDown, m(constants.stretch_stack_bottom_shift_down()));
-    data.constants.insert(MathConstant::StretchStackGapAboveMin, m(constants.stretch_stack_gap_above_min()));
-    data.constants.insert(MathConstant::StretchStackGapBelowMin, m(constants.stretch_stack_gap_below_min()));
-    data.constants.insert(MathConstant::FractionNumeratorShiftUp, m(constants.fraction_numerator_shift_up()));
-    data.constants
-        .insert(MathConstant::FractionNumeratorDisplayStyleShiftUp, m(constants.fraction_numerator_display_style_shift_up()));
-    data.constants.insert(MathConstant::FractionDenominatorShiftDown, m(constants.fraction_denominator_shift_down()));
+    data.constants.insert(MathConstant::MathLeading, m(constants.math_leading));
+    data.constants.insert(MathConstant::AxisHeight, m(constants.axis_height));
+    data.constants.insert(MathConstant::AccentBaseHeight, m(constants.accent_base_height));
+    data.constants.insert(MathConstant::FlattenedAccentBaseHeight, m(constants.flattened_accent_base_height));
+    data.constants.insert(MathConstant::SubscriptShiftDown, m(constants.subscript_shift_down));
+    data.constants.insert(MathConstant::SubscriptTopMax, m(constants.subscript_top_max));
+    data.constants.insert(MathConstant::SubscriptBaselineDropMin, m(constants.subscript_baseline_drop_min));
+    data.constants.insert(MathConstant::SuperscriptShiftUp, m(constants.superscript_shift_up));
+    data.constants.insert(MathConstant::SuperscriptShiftUpCramped, m(constants.superscript_shift_up_cramped));
+    data.constants.insert(MathConstant::SuperscriptBottomMin, m(constants.superscript_bottom_min));
+    data.constants.insert(MathConstant::SuperscriptBaselineDropMax, m(constants.superscript_baseline_drop_max));
+    data.constants.insert(MathConstant::SubSuperscriptGapMin, m(constants.sub_superscript_gap_min));
+    data.constants.insert(
+        MathConstant::SuperscriptBottomMaxWithSubscript,
+        m(constants.superscript_bottom_max_with_subscript),
+    );
+    data.constants.insert(MathConstant::SpaceAfterScript, m(constants.space_after_script));
+    data.constants.insert(MathConstant::UpperLimitGapMin, m(constants.upper_limit_gap_min));
+    data.constants.insert(MathConstant::UpperLimitBaselineRiseMin, m(constants.upper_limit_baseline_rise_min));
+    data.constants.insert(MathConstant::LowerLimitGapMin, m(constants.lower_limit_gap_min));
+    data.constants.insert(MathConstant::LowerLimitBaselineDropMin, m(constants.lower_limit_baseline_drop_min));
+    data.constants.insert(MathConstant::StackTopShiftUp, m(constants.stack_top_shift_up));
+    data.constants.insert(MathConstant::StackTopDisplayStyleShiftUp, m(constants.stack_top_display_style_shift_up));
+    data.constants.insert(MathConstant::StackBottomShiftDown, m(constants.stack_bottom_shift_down));
+    data.constants.insert(
+        MathConstant::StackBottomDisplayStyleShiftDown,
+        m(constants.stack_bottom_display_style_shift_down),
+    );
+    data.constants.insert(MathConstant::StackGapMin, m(constants.stack_gap_min));
+    data.constants.insert(MathConstant::StackDisplayStyleGapMin, m(constants.stack_display_style_gap_min));
+    data.constants.insert(MathConstant::StretchStackTopShiftUp, m(constants.stretch_stack_top_shift_up));
+    data.constants.insert(MathConstant::StretchStackBottomShiftDown, m(constants.stretch_stack_bottom_shift_down));
+    data.constants.insert(MathConstant::StretchStackGapAboveMin, m(constants.stretch_stack_gap_above_min));
+    data.constants.insert(MathConstant::StretchStackGapBelowMin, m(constants.stretch_stack_gap_below_min));
+    data.constants.insert(MathConstant::FractionNumeratorShiftUp, m(constants.fraction_numerator_shift_up));
+    data.constants.insert(
+        MathConstant::FractionNumeratorDisplayStyleShiftUp,
+        m(constants.fraction_numerator_display_style_shift_up),
+    );
+    data.constants.insert(MathConstant::FractionDenominatorShiftDown, m(constants.fraction_denominator_shift_down));
     data.constants.insert(
         MathConstant::FractionDenominatorDisplayStyleShiftDown,
-        m(constants.fraction_denominator_display_style_shift_down()),
+        m(constants.fraction_denominator_display_style_shift_down),
     );
-    data.constants.insert(MathConstant::FractionNumeratorGapMin, m(constants.fraction_numerator_gap_min()));
-    data.constants.insert(MathConstant::FractionNumDisplayStyleGapMin, m(constants.fraction_num_display_style_gap_min()));
-    data.constants.insert(MathConstant::FractionRuleThickness, m(constants.fraction_rule_thickness()));
-    data.constants.insert(MathConstant::FractionDenominatorGapMin, m(constants.fraction_denominator_gap_min()));
-    data.constants.insert(MathConstant::FractionDenomDisplayStyleGapMin, m(constants.fraction_denom_display_style_gap_min()));
-    data.constants.insert(MathConstant::SkewedFractionHorizontalGap, m(constants.skewed_fraction_horizontal_gap()));
-    data.constants.insert(MathConstant::SkewedFractionVerticalGap, m(constants.skewed_fraction_vertical_gap()));
-    data.constants.insert(MathConstant::OverbarVerticalGap, m(constants.overbar_vertical_gap()));
-    data.constants.insert(MathConstant::OverbarRuleThickness, m(constants.overbar_rule_thickness()));
-    data.constants.insert(MathConstant::OverbarExtraAscender, m(constants.overbar_extra_ascender()));
-    data.constants.insert(MathConstant::UnderbarVerticalGap, m(constants.underbar_vertical_gap()));
-    data.constants.insert(MathConstant::UnderbarRuleThickness, m(constants.underbar_rule_thickness()));
-    data.constants.insert(MathConstant::UnderbarExtraDescender, m(constants.underbar_extra_descender()));
-    data.constants.insert(MathConstant::RadicalVerticalGap, m(constants.radical_vertical_gap()));
-    data.constants.insert(MathConstant::RadicalDisplayStyleVerticalGap, m(constants.radical_display_style_vertical_gap()));
-    data.constants.insert(MathConstant::RadicalRuleThickness, m(constants.radical_rule_thickness()));
-    data.constants.insert(MathConstant::RadicalExtraAscender, m(constants.radical_extra_ascender()));
-    data.constants.insert(MathConstant::RadicalKernBeforeDegree, m(constants.radical_kern_before_degree()));
-    data.constants.insert(MathConstant::RadicalKernAfterDegree, m(constants.radical_kern_after_degree()));
+    data.constants.insert(MathConstant::FractionNumeratorGapMin, m(constants.fraction_numerator_gap_min));
+    data.constants.insert(MathConstant::FractionNumDisplayStyleGapMin, m(constants.fraction_num_display_style_gap_min));
+    data.constants.insert(MathConstant::FractionRuleThickness, m(constants.fraction_rule_thickness));
+    data.constants.insert(MathConstant::FractionDenominatorGapMin, m(constants.fraction_denominator_gap_min));
+    data.constants.insert(MathConstant::FractionDenomDisplayStyleGapMin, m(constants.fraction_denom_display_style_gap_min));
+    data.constants.insert(MathConstant::SkewedFractionHorizontalGap, m(constants.skewed_fraction_horizontal_gap));
+    data.constants.insert(MathConstant::SkewedFractionVerticalGap, m(constants.skewed_fraction_vertical_gap));
+    data.constants.insert(MathConstant::OverbarVerticalGap, m(constants.overbar_vertical_gap));
+    data.constants.insert(MathConstant::OverbarRuleThickness, m(constants.overbar_rule_thickness));
+    data.constants.insert(MathConstant::OverbarExtraAscender, m(constants.overbar_extra_ascender));
+    data.constants.insert(MathConstant::UnderbarVerticalGap, m(constants.underbar_vertical_gap));
+    data.constants.insert(MathConstant::UnderbarRuleThickness, m(constants.underbar_rule_thickness));
+    data.constants.insert(MathConstant::UnderbarExtraDescender, m(constants.underbar_extra_descender));
+    data.constants.insert(MathConstant::RadicalVerticalGap, m(constants.radical_vertical_gap));
+    data.constants.insert(MathConstant::RadicalDisplayStyleVerticalGap, m(constants.radical_display_style_vertical_gap));
+    data.constants.insert(MathConstant::RadicalRuleThickness, m(constants.radical_rule_thickness));
+    data.constants.insert(MathConstant::RadicalExtraAscender, m(constants.radical_extra_ascender));
+    data.constants.insert(MathConstant::RadicalKernBeforeDegree, m(constants.radical_kern_before_degree));
+    data.constants.insert(MathConstant::RadicalKernAfterDegree, m(constants.radical_kern_after_degree));
 }
 
 // ---------------------------------------------------------------------------
@@ -250,16 +256,15 @@ fn extract_math_constants(constants: &math::Constants<'_>, data: &mut FontMetric
 // ---------------------------------------------------------------------------
 
 fn extract_glyph_metrics_and_outlines(
-    face: &Face<'_>,
-    glyph_info: Option<math::GlyphInfo<'_>>,
+    face: &mut FontFace,
+    math_glyph_info: &acorn_ttf::tables::math::MathGlyphInfo,
     data: &mut FontMetricsData,
     one_em: f64,
 ) {
     let family = Some("latin-modern-math".to_string());
 
-    // Extract per-glyph MathGlyphInfo values once so we can look them up per char.
-    let italic_corrections = glyph_info.and_then(|gi| gi.italic_corrections);
-    let top_accent_attachments = glyph_info.and_then(|gi| gi.top_accent_attachments);
+    let italic_corrections = &math_glyph_info.italic_correction;
+    let top_accent_attachments = &math_glyph_info.top_accent_attachment;
 
     for &ch in TARGET_CHARS {
         let gid = match face.glyph_index(ch) {
@@ -271,9 +276,9 @@ fn extract_glyph_metrics_and_outlines(
         let bbox = face.glyph_bounding_box(gid);
 
         let (height_emu, depth_emu) = match bbox {
-            Some(rect) => {
-                let h = rect.y_max as f64 / one_em;
-                let d = (-rect.y_min) as f64 / one_em;
+            Some(b) => {
+                let h = b.y_max as f64 / one_em;
+                let d = (-b.y_min) as f64 / one_em;
                 (h.max(0.0), d.max(0.0))
             }
             None => (0.6, 0.2),
@@ -283,18 +288,14 @@ fn extract_glyph_metrics_and_outlines(
 
         // Real italic correction from MathGlyphInfo, in em units.
         let italic_correction = italic_corrections
-            .and_then(|table| table.get(gid))
-            .map(|mv| Fixed::from_f64(mv.value as f64 / one_em))
+            .get(&gid)
+            .map(|mv| Fixed::from_f64(*mv as f64 / one_em))
             .unwrap_or(Fixed::ZERO);
 
         // MathTopAccentAttachment TopRight Y value, in em units.
-        // ttf-parser 0.21 exposes only one value per glyph from this table
-        // (the OpenType spec defines two MVR columns: TopRight Y and TopRight X)
-        // so we store the Y here. Callers that need the X value must upgrade
-        // ttf-parser or parse the raw MATH table directly.
         let top_accent_attachment = top_accent_attachments
-            .and_then(|table| table.get(gid))
-            .map(|mv| Fixed::from_f64(mv.value as f64 / one_em))
+            .get(&gid)
+            .map(|mv| Fixed::from_f64(*mv as f64 / one_em))
             .unwrap_or(Fixed::ZERO);
 
         let metrics = GlyphMetrics {
@@ -316,7 +317,6 @@ fn extract_glyph_metrics_and_outlines(
         if had_outline {
             let path = builder.finish();
             if !path.is_empty() {
-                // Store under both Math and Normal styles so any consumer finds it.
                 let math_path_key = GlyphKey::from_char(ch, family.clone(), FontStyle::Math);
                 data.glyph_paths.insert(math_path_key, path.clone());
                 data.glyph_paths.insert(normal_key, path);
@@ -329,7 +329,12 @@ fn extract_glyph_metrics_and_outlines(
 // MATH Variants delimiter extraction
 // ---------------------------------------------------------------------------
 
-fn extract_delimiter_variants(face: &Face<'_>, variants: math::Variants<'_>, data: &mut FontMetricsData, one_em: f64) {
+fn extract_delimiter_variants(
+    face: &mut FontFace,
+    variants: &acorn_ttf::tables::math::MathVariants,
+    data: &mut FontMetricsData,
+    one_em: f64,
+) {
     let family = Some("latin-modern-math".to_string());
 
     for &ch in DELIMITER_CHARS {
@@ -340,34 +345,32 @@ fn extract_delimiter_variants(face: &Face<'_>, variants: math::Variants<'_>, dat
 
         // Try vertical constructions first (covers nearly all delimiters),
         // then horizontal as a fallback for a few horizontal stretchers.
-        let construction = variants.vertical_constructions.get(gid).or_else(|| variants.horizontal_constructions.get(gid));
+        let construction = variants.vert_constructions.get(&gid).or_else(|| variants.horiz_constructions.get(&gid));
 
         let base_key = GlyphKey::from_char(ch, family.clone(), FontStyle::Math);
         let mut construction_variants: Vec<DelimiterVariant> = Vec::new();
         let mut construction_components: Vec<DelimiterComponent> = Vec::new();
 
         if let Some(construction) = construction {
-            // --- Prepared variants ---
-            for (i, v) in construction.variants.into_iter().enumerate() {
+            for (i, v) in construction.variants.iter().enumerate() {
                 let variant_glyph_id = v.variant_glyph;
                 let advance_emu = v.advance_measurement as f64 / one_em;
 
-                // Build a GlyphKey that records both the char and the variant glyph id.
                 let variant_key = GlyphKey {
                     char: Some(ch),
-                    glyph_id: Some(variant_glyph_id.0),
+                    glyph_id: Some(variant_glyph_id),
                     font_family: family.clone(),
                     style: FontStyle::Math,
                 };
 
                 // Also synthesize metrics for this variant glyph so that callers
                 // can ask the system for height/depth of the stretched variant.
-                let var_advance = face.glyph_hor_advance(variant_glyph_id).unwrap_or(v.advance_measurement);
+                let var_advance = face.glyph_hor_advance(variant_glyph_id).unwrap_or(v.advance_measurement as u16);
                 let var_bbox = face.glyph_bounding_box(variant_glyph_id);
                 let (vh, vd) = match var_bbox {
-                    Some(rect) => {
-                        let h = rect.y_max as f64 / one_em;
-                        let d = (-rect.y_min) as f64 / one_em;
+                    Some(b) => {
+                        let h = b.y_max as f64 / one_em;
+                        let d = (-b.y_min) as f64 / one_em;
                         (h.max(0.0), d.max(0.0))
                     }
                     None => (0.6 + i as f64 * 0.2, 0.2 + i as f64 * 0.1),
@@ -383,17 +386,38 @@ fn extract_delimiter_variants(face: &Face<'_>, variants: math::Variants<'_>, dat
                         top_accent_attachment: Fixed::ZERO,
                     },
                 );
+                // The variant keeps its own outline so stretching never falls
+                // back to the base glyph shape.
+                if let Some(path) = glyph_outline(face, variant_glyph_id, one_em) {
+                    data.glyph_paths.insert(variant_key.clone(), path);
+                }
 
                 construction_variants.push(DelimiterVariant { glyph: variant_key });
             }
 
-            // --- Assembly components (for fallback piecewise stretching) ---
-            if let Some(assembly) = construction.assembly {
-                for part in assembly.parts.into_iter() {
-                    let part_key = GlyphKey::from_gid(part.glyph_id.0, family.clone(), FontStyle::Math);
+            // Piecewise assembly parts are the only way to build delimiters
+            // taller than the largest prepared variant.
+            if let Some(assembly) = &construction.assembly {
+                for part in &assembly.parts {
+                    let part_key = GlyphKey::from_gid(part.glyph_id, family.clone(), FontStyle::Math);
+                    if let Some(path) = glyph_outline(face, part.glyph_id, one_em) {
+                        data.glyph_paths.insert(part_key.clone(), path);
+                    }
+                    if let Some(bbox) = face.glyph_bounding_box(part.glyph_id) {
+                        data.glyphs.insert(
+                            part_key.clone(),
+                            GlyphMetrics {
+                                width: Fixed::from_f64(part.full_advance as f64 / one_em),
+                                height: Fixed::from_f64((bbox.y_max as f64 / one_em).max(0.0)),
+                                depth: Fixed::from_f64((-bbox.y_min as f64 / one_em).max(0.0)),
+                                italic_correction: Fixed::ZERO,
+                                top_accent_attachment: Fixed::ZERO,
+                            },
+                        );
+                    }
                     construction_components.push(DelimiterComponent {
                         glyph: part_key,
-                        is_extender: part.part_flags.extender(),
+                        is_extender: part.part_flags & PartRecord::EXTENDER != 0,
                         start_connector: Fixed::from_f64(part.start_connector_length as f64 / one_em),
                         end_connector: Fixed::from_f64(part.end_connector_length as f64 / one_em),
                         full_advance: Fixed::from_f64(part.full_advance as f64 / one_em),
@@ -402,9 +426,6 @@ fn extract_delimiter_variants(face: &Face<'_>, variants: math::Variants<'_>, dat
             }
         }
 
-        // If we found variants from the font, use them. Otherwise leave the
-        // default empty Vec — the caller in `font_metrics::builtin_font_metrics`
-        // will fill synthetic variants as fallback.
         if !construction_variants.is_empty() || !construction_components.is_empty() {
             data.delimiters.insert(
                 base_key,
@@ -412,6 +433,14 @@ fn extract_delimiter_variants(face: &Face<'_>, variants: math::Variants<'_>, dat
             );
         }
     }
+}
+
+/// Extract an em-normalized SVG outline path for one glyph.
+fn glyph_outline(face: &mut FontFace, gid: u16, one_em: f64) -> Option<String> {
+    let mut builder = SvgPathBuilder::new(one_em as f32);
+    face.outline_glyph(gid, &mut builder)?;
+    let path = builder.finish();
+    (!path.is_empty()).then_some(path)
 }
 
 // ---------------------------------------------------------------------------
@@ -451,12 +480,10 @@ mod tests {
     fn opentype_has_outline_paths_for_common_glyphs() {
         let data = opentype_font_metrics().expect("font should parse");
         let family = Some("latin-modern-math".to_string());
-        // Latin 'A' should definitely have an outline.
         let key_a = GlyphKey::from_char('A', family.clone(), FontStyle::Math);
         let path_a = data.glyph_paths.get(&key_a).expect("glyph 'A' should have an SVG path");
         assert!(path_a.contains('M'), "path should start with a move");
         assert!(path_a.contains('L') || path_a.contains('C') || path_a.contains('Q'), "path should have drawing segments");
-        // Radical sign too.
         let key_sqrt = GlyphKey::from_char('√', family, FontStyle::Math);
         let path_sqrt = data.glyph_paths.get(&key_sqrt).expect("glyph '√' should have an SVG path");
         assert!(!path_sqrt.is_empty(), "√ path should not be empty");
@@ -469,14 +496,12 @@ mod tests {
         let key_paren = GlyphKey::from_char('(', family, FontStyle::Math);
         let c = data.delimiters.get(&key_paren).expect("'(' should have a construction");
         assert!(!c.variants.is_empty(), "'(' should have variants");
-        // Latin Modern Math provides multiple size variants per delimiter.
         assert!(c.variants.len() >= 3, "'(' should have at least 3 variants, got {}", c.variants.len());
     }
 
     #[test]
     fn svg_path_builder_normalizes_coords() {
         let mut builder = SvgPathBuilder::new(1000.0);
-        // Emit a square of 500 font units → should become 0.5 em.
         builder.move_to(0.0, 0.0);
         builder.line_to(500.0, 0.0);
         builder.line_to(500.0, 500.0);
