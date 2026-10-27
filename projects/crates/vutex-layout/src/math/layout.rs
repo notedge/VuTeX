@@ -458,8 +458,8 @@ impl LayoutEngine {
                 SemanticNode::Subscript { base, sub } => self.layout_subsup(base, Some(sub), None, style),
                 SemanticNode::Superscript { base, sup } => self.layout_subsup(base, None, Some(sup), style),
                 SemanticNode::SubSuperscript { base, sub, sup } => self.layout_subsup(base, Some(sub), Some(sup), style),
-                SemanticNode::Matrix { rows, row_spacing, col_spacing, alignment } => {
-                    self.layout_matrix(rows, *row_spacing, *col_spacing, *alignment, style)
+                SemanticNode::Matrix { rows, row_spacing, col_spacing, column_alignment } => {
+                    self.layout_matrix(rows, *row_spacing, *col_spacing, column_alignment, style)
                 }
                 SemanticNode::Delimited { left, right, content } => {
                     self.layout_delimited(left.as_ref(), right.as_ref(), content, style)
@@ -1163,7 +1163,7 @@ impl LayoutEngine {
         rows: &[Vec<SemanticNode>],
         row_spacing: Fixed,
         col_spacing: Fixed,
-        alignment: Alignment,
+        column_alignment: &[Alignment],
         style: MathStyle,
     ) -> MathResult<LayoutNode> {
         if rows.is_empty() {
@@ -1202,6 +1202,7 @@ impl LayoutEngine {
             for c in 0..num_cols {
                 if let Some(cell) = cell_layouts[r][c].take() {
                     let diff = col_widths[c] - cell.width();
+                    let alignment = column_alignment.get(c).copied().unwrap_or(Alignment::Center);
                     let cell_node = match alignment {
                         Alignment::Left => self.pack_hbox(vec![cell, LayoutNode::Kern(diff)], Some(col_widths[c])),
                         Alignment::Center => {

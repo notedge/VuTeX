@@ -400,6 +400,7 @@ impl Parser {
             "vmatrix",
             "cases",
             "aligned",
+            "alignedat",
             "smallmatrix",
             "gathered",
             "split",
@@ -408,6 +409,13 @@ impl Parser {
         ];
         if !supported.contains(&name.as_str()) {
             return Err(self.error(format!("unsupported environment `{name}`")));
+        }
+
+        if name == "alignedat" {
+            // `\begin{alignedat}{n}` names the number of column pairs.  The
+            // alternating alignment applies to however many columns are typed,
+            // so the count is read and discarded.
+            let _pairs = self.read_text_group()?;
         }
 
         let matrix = self.parse_matrix(&name)?;
@@ -462,12 +470,21 @@ impl Parser {
             "smallmatrix" => Fixed::from_f64(0.2),
             _ => Fixed::from_f64(0.35),
         };
-        let alignment = match name {
-            "split" => Alignment::Left,
-            _ => Alignment::Center,
+        let columns = rows.iter().map(|row| row.len()).max().unwrap_or(0);
+        let column_alignment = match name {
+            // `cases` is a left-aligned expression/condition pair.
+            "cases" => vec![Alignment::Left; columns],
+            // `aligned`, `alignedat` and `split` alternate right/left at every
+            // `&`, so the relation column lines up across rows.
+            "aligned" | "alignedat" | "split" => {
+                (0..columns).map(|column| if column % 2 == 0 { Alignment::Right } else { Alignment::Left }).collect()
+            }
+            // Everything else is the generic centred matrix, `gathered`
+            // included: its rows are centred over each other.
+            _ => vec![Alignment::Center; columns],
         };
 
-        Ok(SemanticNode::Matrix { rows, row_spacing, col_spacing: Fixed::from_f64(0.8), alignment })
+        Ok(SemanticNode::Matrix { rows, row_spacing, col_spacing: Fixed::from_f64(0.8), column_alignment })
     }
 
     /// Read `{...}` verbatim, keeping nested braces and escaped characters.

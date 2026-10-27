@@ -41,12 +41,16 @@ fn glyphs(node: &LayoutNode) -> Vec<(f64, f64, Glyph)> {
     out
 }
 
+/// All glyphs carrying `char`, in tree order.
+fn glyphs_of(node: &LayoutNode, char: char) -> Vec<(f64, f64, Glyph)> {
+    glyphs(node).into_iter().filter(|(_, _, glyph)| glyph.char == Some(char)).collect()
+}
+
 /// Position of the only glyph carrying `char`.
 fn glyph_at(node: &LayoutNode, char: char) -> (f64, f64, Glyph) {
-    let mut matches = glyphs(node).into_iter().filter(|(_, _, glyph)| glyph.char == Some(char));
-    let found = matches.next().unwrap_or_else(|| panic!("no `{char}` glyph in {node:?}"));
-    assert!(matches.next().is_none(), "`{char}` must appear exactly once");
-    found
+    let mut matches = glyphs_of(node, char);
+    assert_eq!(matches.len(), 1, "`{char}` must appear exactly once in {node:?}");
+    matches.remove(0)
 }
 
 /// Offset and glyph of the first horizontal glyph inside `node`.
@@ -420,4 +424,108 @@ fn operator_default_limits_follow_tex() {
         int_default.depth,
         int_limits.depth
     );
+}
+
+/// `cases` is a left-aligned two-column layout: the expression and the condition
+/// each start at their column's left edge, so short cells are never centred.
+#[test]
+fn cases_left_aligns_its_columns() {
+    let (tree, _) =
+        layout_formula("\\begin{cases} q & a \\\\ xyz & b \\end{cases}", false).expect("cases should lay out");
+
+    let (expression_x, _, _) = glyph_at(&tree, 'q');
+    let (wide_expression_x, _, _) = glyph_at(&tree, 'x');
+    assert!(
+        (expression_x - wide_expression_x).abs() < 0.01,
+        "the expression column must start at one x: {expression_x} vs {wide_expression_x}"
+    );
+
+    let (condition_x, _, _) = glyph_at(&tree, 'a');
+    let (wide_condition_x, _, _) = glyph_at(&tree, 'b');
+    assert!(
+        (condition_x - wide_condition_x).abs() < 0.01,
+        "the condition column must start at one x: {condition_x} vs {wide_condition_x}"
+    );
+}
+
+/// `aligned` (and `alignedat`) alternate right/left at every `&`, so the column
+/// before the relation is right-aligned and every relation lands on one x.
+#[test]
+fn aligned_alternates_right_and_left_columns() {
+    for source in [
+        "\\begin{aligned} q &= a \\\\ xyz &= b \\end{aligned}",
+        "\\begin{alignedat}{2} q &= a \\\\ xyz &= b \\end{alignedat}",
+    ] {
+        let (tree, _) = layout_formula(source, false).expect(source);
+
+        let (short_x, _, _) = glyph_at(&tree, 'q');
+        let (wide_x, _, _) = glyph_at(&tree, 'x');
+        let expected_shift = layout("xyz").width - layout("q").width;
+        let shift = short_x - wide_x;
+        assert!(
+            (shift - expected_shift).abs() < 0.02,
+            "`{source}` must right-align the first column: shift {shift} vs {expected_shift}"
+        );
+
+        let relations = glyphs_of(&tree, '=');
+        assert_eq!(relations.len(), 2, "`{source}` has one relation per row");
+        let gap = (relations[0].0 - relations[1].0).abs();
+        assert!(gap < 0.01, "`{source}` must line its relations up: gap {gap}");
+    }
+}
+
+/// `gathered` puts every row on the same horizontal centre instead of aligning
+/// columns.
+#[test]
+fn gathered_centres_each_row() {
+    let (tree, _) = layout_formula("\\begin{gathered} q \\\\ xyz \\end{gathered}", false).expect("gathered");
+
+    let (narrow_x, _, _) = glyph_at(&tree, 'q');
+    let (wide_x, _, _) = glyph_at(&tree, 'x');
+    let expected_shift = (layout("xyz").width - layout("q").width) / 2.0;
+    let shift = narrow_x - wide_x;
+    assert!(
+        (shift - expected_shift).abs() < 0.02,
+        "the narrow row must be centred over the wide one: shift {shift} vs {expected_shift}"
+    );
+}
+
+/// `split` keeps both rows in one alignment block: the relation glyphs share one
+/// x even when the left-hand sides differ in width, so the equals signs stack.
+#[test]
+fn split_aligns_rows_at_the_relation() {
+    let (tree, _) = layout_formula("\\begin{split} q &= a \\\\ xyz &= b \\end{split}", false).expect("split");
+
+    let relations = glyphs_of(&tree, '=');
+    assert_eq!(relations.len(), 2, "each row carries a relation");
+    let gap = (relations[0].0 - relations[1].0).abs();
+    assert!(gap < 0.01, "the split rows must align at the relation: gap {gap}");
+
+    let (left_x, _, _) = glyph_at(&tree, 'q');
+    let (wide_x, _, _) = glyph_at(&tree, 'x');
+    let expected_shift = layout("xyz").width - layout("q").width;
+    let shift = left_x - wide_x;
+    assert!(
+        (shift - expected_shift).abs() < 0.02,
+        "the split left-hand column must be right-aligned: shift {shift} vs {expected_shift}"
+    );
+    assert!(
+        relations[0].0 > left_x + layout("q").width - 0.01,
+        "the relation column must follow the right-aligned left column: {} vs {}",
+        relations[0].0,
+        left_x + layout("q").width
+    );
+}
+
+/// Plain `matrix` keeps its centred cells: the environment semantics above must
+/// not leak into the generic matrix.
+#[test]
+fn plain_matrix_keeps_centred_cells() {
+    let (tree, _) = layout_formula("\\begin{matrix} q & a \\\\ xyz & b \\end{matrix}", false).expect("matrix");
+
+    let (short_x, _, _) = glyph_at(&tree, 'q');
+    let (wide_x, _, _) = glyph_at(&tree, 'x');
+    let expected_shift = (layout("xyz").width - layout("q").width) / 2.0;
+    let shift = short_x - wide_x;
+    assert!((shift - expected_shift).abs() < 0.02, "matrix cells stay centred: shift {shift} vs {expected_shift}");
 }
