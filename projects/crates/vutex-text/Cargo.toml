@@ -9,3 +9,4 @@ readme = "readme.md"
 
 [dependencies]
 vutex-types = { workspace = true, features = ["serde"] }
+ttf-parser = "0.21"

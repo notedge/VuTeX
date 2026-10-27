@@ -142,27 +142,95 @@ fn default_math_constant(constant: MathConstant) -> Fixed {
     Fixed::from_f64(v)
 }
 
+/// Complete list of math constants seeded on the synthetic fallback path.
+/// The opentype path ignores this (it seeds all constants from the MATH table).
+static ALL_SYNTHETIC_CONSTANTS: &[MathConstant] = &[
+    MathConstant::ScriptPercentScaleDown,
+    MathConstant::ScriptScriptPercentScaleDown,
+    MathConstant::DelimitedSubFormulaMinHeight,
+    MathConstant::DisplayOperatorMinHeight,
+    MathConstant::MathLeading,
+    MathConstant::AxisHeight,
+    MathConstant::AccentBaseHeight,
+    MathConstant::FlattenedAccentBaseHeight,
+    MathConstant::SubscriptShiftDown,
+    MathConstant::SubscriptTopMax,
+    MathConstant::SubscriptBaselineDropMin,
+    MathConstant::SuperscriptShiftUp,
+    MathConstant::SuperscriptShiftUpCramped,
+    MathConstant::SuperscriptBottomMin,
+    MathConstant::SuperscriptBaselineDropMax,
+    MathConstant::SubSuperscriptGapMin,
+    MathConstant::SuperscriptBottomMaxWithSubscript,
+    MathConstant::SpaceAfterScript,
+    MathConstant::UpperLimitGapMin,
+    MathConstant::UpperLimitBaselineRiseMin,
+    MathConstant::LowerLimitGapMin,
+    MathConstant::LowerLimitBaselineDropMin,
+    MathConstant::StackTopShiftUp,
+    MathConstant::StackTopDisplayStyleShiftUp,
+    MathConstant::StackBottomShiftDown,
+    MathConstant::StackBottomDisplayStyleShiftDown,
+    MathConstant::StackGapMin,
+    MathConstant::StackDisplayStyleGapMin,
+    MathConstant::StretchStackTopShiftUp,
+    MathConstant::StretchStackBottomShiftDown,
+    MathConstant::StretchStackGapAboveMin,
+    MathConstant::StretchStackGapBelowMin,
+    MathConstant::FractionNumeratorShiftUp,
+    MathConstant::FractionNumeratorDisplayStyleShiftUp,
+    MathConstant::FractionDenominatorShiftDown,
+    MathConstant::FractionDenominatorDisplayStyleShiftDown,
+    MathConstant::FractionNumeratorGapMin,
+    MathConstant::FractionNumDisplayStyleGapMin,
+    MathConstant::FractionRuleThickness,
+    MathConstant::FractionDenominatorGapMin,
+    MathConstant::FractionDenomDisplayStyleGapMin,
+    MathConstant::SkewedFractionHorizontalGap,
+    MathConstant::SkewedFractionVerticalGap,
+    MathConstant::OverbarVerticalGap,
+    MathConstant::OverbarRuleThickness,
+    MathConstant::OverbarExtraAscender,
+    MathConstant::UnderbarVerticalGap,
+    MathConstant::UnderbarRuleThickness,
+    MathConstant::UnderbarExtraDescender,
+    MathConstant::RadicalVerticalGap,
+    MathConstant::RadicalDisplayStyleVerticalGap,
+    MathConstant::RadicalRuleThickness,
+    MathConstant::RadicalExtraAscender,
+    MathConstant::RadicalKernBeforeDegree,
+    MathConstant::RadicalKernAfterDegree,
+    MathConstant::RadicalDegreeBottomRaisePercent,
+];
+
 /// Builtin metrics for WASM and tests without font files.
+///
+/// Prefers the embedded OpenType MATH font (Latin Modern Math) and falls back
+/// to synthetic metrics if the embedded font cannot be parsed. Either path
+/// always seeds synthetic delimiter variants and SVG path glyphs, since
+/// extracting those from the MATH Variants table is intentionally left as
+/// future work.
 pub fn builtin_font_metrics() -> FontMetricsSystem {
-    let mut data = FontMetricsData::new("default".to_string(), 1000);
-    let family = Some("default".to_string());
+    let family_str = "default".to_string();
+    let mut data = if let Some(opentype_data) = super::opentype::opentype_font_metrics() {
+        // Opentype data comes with its own family name; we re-key everything
+        // under "default" so downstream code that hardcodes that name keeps
+        // working. Font units per em remain from the OTF.
+        FontMetricsData {
+            family: family_str.clone(),
+            units_per_em: opentype_data.units_per_em,
+            constants: opentype_data.constants,
+            glyphs: opentype_data.glyphs,
+            glyph_paths: opentype_data.glyph_paths,
+            delimiters: HashMap::new(),
+        }
+    } else {
+        FontMetricsData::new(family_str.clone(), 1000)
+    };
+    let family = Some(family_str.clone());
 
-    for c in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+-=()[]{}.,;:!?".chars() {
-        let key = GlyphKey::from_char(c, family.clone(), FontStyle::Math);
-        data.glyphs.insert(
-            key,
-            GlyphMetrics {
-                width: Fixed::from_f64(0.5),
-                height: Fixed::from_f64(0.7),
-                depth: Fixed::from_f64(0.2),
-                italic_correction: Fixed::ZERO,
-            },
-        );
-    }
-
-    // Common delimiter characters: each gets 3 size variants (small ~0.7em, medium ~1.0em, large ~1.5em).
+    // ---- Synthetic delimiter variants (identical in both paths) ----
     let delimiter_chars: &[char] = &['(', ')', '[', ']', '{', '}', '|', '‖', '⟨', '⟩', '/'];
-    // variant sizes: (height, depth) in em units; total ~= height+depth is the natural size per variant.
     let variant_sizes: &[(f64, f64)] = &[
         (0.45, 0.25), // small: total ~0.7em
         (0.65, 0.35), // medium: total ~1.0em
@@ -175,7 +243,7 @@ pub fn builtin_font_metrics() -> FontMetricsSystem {
         for (i, &(h, d)) in variant_sizes.iter().enumerate() {
             let variant_key = GlyphKey {
                 char: Some(ch),
-                glyph_id: Some(1000 + i as u16), // synthetic gid so HashMap treats them distinct
+                glyph_id: Some(1000 + i as u16),
                 font_family: family.clone(),
                 style: FontStyle::Math,
             };
@@ -193,12 +261,8 @@ pub fn builtin_font_metrics() -> FontMetricsSystem {
         data.delimiters.insert(base_key, DelimiterConstruction { variants, components: vec![] });
     }
 
-    // Synthetic SVG path_data for glyphs that the layout engine needs to render as paths.
-    // This lets tests and outline-mode output deterministic <path> elements instead of
-    // host-font-dependent <text>. Paths use a 0–1 em coordinate box that the layout
-    // engine scales by the current em size.
+    // ---- Synthetic SVG path glyphs (identical in both paths) ----
     let path_chars: &[(char, &str, f64, f64)] = &[
-        // (char, svg_path_d, width_in_em, height_in_em)
         ('√', "M 0.05,0.45 L 0.25,0.85 L 0.55,0.15", 0.55, 0.95),
         ('±', "M 0.1,0.35 L 0.9,0.35 M 0.5,0.15 L 0.5,0.55 M 0.1,0.65 L 0.9,0.65", 1.0, 0.7),
         ('×', "M 0.15,0.15 L 0.85,0.85 M 0.85,0.15 L 0.15,0.85", 0.9, 0.9),
@@ -208,7 +272,6 @@ pub fn builtin_font_metrics() -> FontMetricsSystem {
     for &(ch, path, w, h) in path_chars {
         let key = GlyphKey::from_char(ch, family.clone(), FontStyle::Normal);
         data.glyph_paths.insert(key.clone(), path.to_string());
-        // Also upsert a metrics entry if not already there.
         data.glyphs.entry(key.clone()).or_insert_with(|| GlyphMetrics {
             width: Fixed::from_f64(w),
             height: Fixed::from_f64(h),
@@ -217,67 +280,12 @@ pub fn builtin_font_metrics() -> FontMetricsSystem {
         });
     }
 
-    // Seed constants with a useful subset (full fallback is in default_math_constant).
-    let all_constants = [
-        MathConstant::ScriptPercentScaleDown,
-        MathConstant::ScriptScriptPercentScaleDown,
-        MathConstant::DelimitedSubFormulaMinHeight,
-        MathConstant::DisplayOperatorMinHeight,
-        MathConstant::MathLeading,
-        MathConstant::AxisHeight,
-        MathConstant::AccentBaseHeight,
-        MathConstant::FlattenedAccentBaseHeight,
-        MathConstant::SubscriptShiftDown,
-        MathConstant::SubscriptTopMax,
-        MathConstant::SubscriptBaselineDropMin,
-        MathConstant::SuperscriptShiftUp,
-        MathConstant::SuperscriptShiftUpCramped,
-        MathConstant::SuperscriptBottomMin,
-        MathConstant::SuperscriptBaselineDropMax,
-        MathConstant::SubSuperscriptGapMin,
-        MathConstant::SuperscriptBottomMaxWithSubscript,
-        MathConstant::SpaceAfterScript,
-        MathConstant::UpperLimitGapMin,
-        MathConstant::UpperLimitBaselineRiseMin,
-        MathConstant::LowerLimitGapMin,
-        MathConstant::LowerLimitBaselineDropMin,
-        MathConstant::StackTopShiftUp,
-        MathConstant::StackTopDisplayStyleShiftUp,
-        MathConstant::StackBottomShiftDown,
-        MathConstant::StackBottomDisplayStyleShiftDown,
-        MathConstant::StackGapMin,
-        MathConstant::StackDisplayStyleGapMin,
-        MathConstant::StretchStackTopShiftUp,
-        MathConstant::StretchStackBottomShiftDown,
-        MathConstant::StretchStackGapAboveMin,
-        MathConstant::StretchStackGapBelowMin,
-        MathConstant::FractionNumeratorShiftUp,
-        MathConstant::FractionNumeratorDisplayStyleShiftUp,
-        MathConstant::FractionDenominatorShiftDown,
-        MathConstant::FractionDenominatorDisplayStyleShiftDown,
-        MathConstant::FractionNumeratorGapMin,
-        MathConstant::FractionNumDisplayStyleGapMin,
-        MathConstant::FractionRuleThickness,
-        MathConstant::FractionDenominatorGapMin,
-        MathConstant::FractionDenomDisplayStyleGapMin,
-        MathConstant::SkewedFractionHorizontalGap,
-        MathConstant::SkewedFractionVerticalGap,
-        MathConstant::OverbarVerticalGap,
-        MathConstant::OverbarRuleThickness,
-        MathConstant::OverbarExtraAscender,
-        MathConstant::UnderbarVerticalGap,
-        MathConstant::UnderbarRuleThickness,
-        MathConstant::UnderbarExtraDescender,
-        MathConstant::RadicalVerticalGap,
-        MathConstant::RadicalDisplayStyleVerticalGap,
-        MathConstant::RadicalRuleThickness,
-        MathConstant::RadicalExtraAscender,
-        MathConstant::RadicalKernBeforeDegree,
-        MathConstant::RadicalKernAfterDegree,
-        MathConstant::RadicalDegreeBottomRaisePercent,
-    ];
-    for constant in all_constants {
-        data.constants.insert(constant, default_math_constant(constant));
+    // If we're on the synthetic path, also seed all_constants. On the opentype
+    // path constants are already populated, so this is a no-op.
+    if family_str == "default" {
+        for &constant in ALL_SYNTHETIC_CONSTANTS {
+            data.constants.entry(constant).or_insert_with(|| default_math_constant(constant));
+        }
     }
 
     FontMetricsSystem::new_with_metrics(data)
@@ -335,6 +343,8 @@ mod tests {
     fn delimited_sub_formula_min_height_is_set() {
         let sys = builtin_font_metrics();
         let v = sys.get_math_constant("default", MathConstant::DelimitedSubFormulaMinHeight).unwrap();
-        assert!((v.to_f64() - 1.0).abs() < 1e-6);
+        // In the synthetic fallback this was hardcoded to 1.0, but the real
+        // OpenType MATH font may use a different (still positive) value.
+        assert!(v.to_f64() > 0.0, "DelimitedSubFormulaMinHeight should be positive");
     }
 }
