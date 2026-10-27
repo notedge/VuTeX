@@ -117,8 +117,11 @@ fn emphasis_metrics(data: &FontMetricsData, key: &GlyphKey) -> Option<GlyphMetri
     let mut metrics = *upright;
     match key.style {
         FontStyle::Italic => {
+            // Keep the real MATH italic correction of the source glyph: the
+            // sheared copy stands for a face the font does not ship, so the
+            // correction the OpenType MATH table reports for its upright design
+            // is still the closest real value (`f` carries 0.079 em).
             metrics.width = metrics.width + Fixed::from_f64(ITALIC_SHEAR * metrics.height.to_f64());
-            metrics.italic_correction = Fixed::ZERO;
         }
         _ => {
             metrics.width = metrics.width + Fixed::from_f64(BOLD_OFFSET * 2.0);
@@ -207,6 +210,8 @@ fn default_glyph_metrics(ch: Option<char>) -> GlyphMetrics {
         width: Fixed::from_f64(0.5),
         height: Fixed::from_f64(0.7),
         depth: Fixed::from_f64(0.2),
+        // Synthetic fixture: the embedded font has no entry for this glyph, so
+        // these MATH values are placeholders rather than measured ones.
         italic_correction: Fixed::ZERO,
         top_accent_attachment: Fixed::ZERO,
     }
@@ -445,6 +450,8 @@ pub fn builtin_font_metrics() -> FontMetricsSystem {
                     width: Fixed::from_f64(0.6),
                     height: Fixed::from_f64(h),
                     depth: Fixed::from_f64(d),
+                    // Synthetic fixture: this variant only exists because the
+                    // font shipped no construction for the delimiter.
                     italic_correction: Fixed::ZERO,
                     top_accent_attachment: Fixed::ZERO,
                 },
@@ -480,6 +487,7 @@ pub fn builtin_font_metrics() -> FontMetricsSystem {
             width: Fixed::from_f64(w),
             height: Fixed::from_f64(h),
             depth: Fixed::ZERO,
+            // Synthetic fixture: hand-written outline, no MATH table behind it.
             italic_correction: Fixed::ZERO,
             top_accent_attachment: Fixed::ZERO,
         });
@@ -496,6 +504,7 @@ pub fn builtin_font_metrics() -> FontMetricsSystem {
             width: Fixed::from_f64(advance),
             height: Fixed::from_f64(bar_variants[0].0),
             depth: Fixed::from_f64(bar_variants[0].1),
+            // Synthetic fixture: bars are geometry, not font glyphs.
             italic_correction: Fixed::ZERO,
             top_accent_attachment: Fixed::ZERO,
         };
@@ -514,6 +523,7 @@ pub fn builtin_font_metrics() -> FontMetricsSystem {
                     width: Fixed::from_f64(advance),
                     height: Fixed::from_f64(height),
                     depth: Fixed::from_f64(depth),
+                    // Synthetic fixture: rectangles drawn by `bar_path`.
                     italic_correction: Fixed::ZERO,
                     top_accent_attachment: Fixed::ZERO,
                 },
@@ -578,6 +588,23 @@ mod tests {
         assert!(heights.len() >= 3, "expected at least 3 variants, got {}", heights.len());
         assert!(heights[0] > 0.0, "variant 0 should have positive total height");
         assert!(heights.windows(2).all(|w| w[0] <= w[1]), "variant heights should be non-decreasing");
+    }
+
+    #[test]
+    fn real_font_italic_correction_reaches_derived_italic_face() {
+        let sys = builtin_font_metrics();
+        let math_f = sys.get_metrics(&key('f')).unwrap();
+        assert!(
+            math_f.italic_correction.to_f64() > 0.05,
+            "expected the MATH italic correction of 'f', got {}",
+            math_f.italic_correction.to_f64()
+        );
+
+        let italic_key = GlyphKey::from_char('f', Some("default".to_string()), FontStyle::Italic);
+        let italic_f = sys.get_metrics(&italic_key).unwrap();
+        assert_eq!(italic_f.italic_correction, math_f.italic_correction, "derived italic face must keep the real correction");
+        assert_eq!(italic_f.top_accent_attachment, math_f.top_accent_attachment);
+        assert!(italic_f.top_accent_attachment.to_f64() > 0.0, "top accent attachment must come from the MATH table");
     }
 
     #[test]
