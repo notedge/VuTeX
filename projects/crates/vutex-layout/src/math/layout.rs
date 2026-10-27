@@ -267,6 +267,12 @@ const MIN_RADICAL_STRETCH: f64 = 0.4;
 /// Upper bound on how far the radical sign may be stretched vertically.
 const MAX_RADICAL_STRETCH: f64 = 3.0;
 
+/// The accent character `\bar` / `\overline` is built from.
+///
+/// Unlike `\hat`, `\tilde`, `\dot`, `\ddot` and `\vec`, an overbar is a rule
+/// spanning the nucleus rather than a letterform, so it never paints a glyph.
+const OVERBAR_ACCENT: char = '¯';
+
 /// 1 mu = 1/18 em. TeX thick/medium/thin muskip in em units.
 const THICK_MUSIP_EM: f64 = 5.0 / 18.0;
 const MEDIUM_MUSIP_EM: f64 = 4.0 / 18.0;
@@ -1379,6 +1385,13 @@ impl LayoutEngine {
 
     fn layout_accent(&self, accent: &GlyphKey, base: &SemanticNode, style: MathStyle) -> MathResult<LayoutNode> {
         let base_layout = self.layout_node(base, style)?;
+        let style_scale = self.get_style_scale(style);
+        let size = self.base_size * style_scale;
+
+        if accent.char == Some(OVERBAR_ACCENT) {
+            return Ok(self.layout_overbar(base_layout, size));
+        }
+
         let accent_layout = self.layout_symbol(accent, style)?;
 
         let total_width = base_layout.width().max(accent_layout.width());
@@ -1400,9 +1413,52 @@ impl LayoutEngine {
 
         let base_hbox = self.pack_hbox(vec![LayoutNode::Kern(base_offset), base_layout], Some(total_width));
 
-        // Basic accent layout: vertical stack with no gap (or minimal gap)
-        // In real TeX, this is more complex (accent height, skew, etc.)
+        // The embedded font draws its modifier marks for text use, so their ink
+        // sits high above their own baseline (`ˆ` starts at 0.516 em). Stacking
+        // the mark's baseline on the base's ink top would therefore leave it
+        // floating most of an em above the letter. Replace the accent box's
+        // extents with the ink it really paints, plus `clearance` underneath,
+        // so the VBox below lands the ink bottom just above the base's height.
+        let clearance = self
+            .font_system
+            .get_math_constant("default", MathConstant::OverbarVerticalGap)
+            .unwrap_or(Fixed::from_f64(0.1))
+            * size;
+        let accent_layout = fit_accent_extents(accent_layout, clearance);
+
         Ok(self.pack_vbox(vec![accent_layout, base_hbox], Alignment::Center))
+    }
+
+    /// Lay out `\bar` / `\overline` as a rule over the base.
+    ///
+    /// The font's macron is a text modifier whose ink spans 0.36 em, so it can
+    /// neither cover a normal nucleus nor read as an overbar. TeX paints an
+    /// overbar as a rule spanning the nucleus, sized from the MATH table's
+    /// overbar constants, which is what TeX's own `\bar` produces.
+    fn layout_overbar(&self, base_layout: LayoutNode, size: Fixed) -> LayoutNode {
+        let thickness = self
+            .font_system
+            .get_math_constant("default", MathConstant::OverbarRuleThickness)
+            .unwrap_or(Fixed::from_f64(0.06))
+            * size;
+        let gap =
+            self.font_system.get_math_constant("default", MathConstant::OverbarVerticalGap).unwrap_or(Fixed::from_f64(0.1))
+                * size;
+        let width = base_layout.width();
+
+        // A `Rule`'s baseline is its bottom edge, so the bar paints from the
+        // accent baseline upwards. Declaring `gap` as the box depth reserves the
+        // space between the bar and the base's ink top.
+        let accent_layout = LayoutNode::HBox(Box::new(HBox {
+            width,
+            height: thickness,
+            depth: gap,
+            children: vec![LayoutNode::Rule { width, height: thickness, depth: Fixed::ZERO }],
+            shift: Fixed::ZERO,
+            glue_set: 0.0,
+        }));
+
+        self.pack_vbox(vec![accent_layout, base_layout], Alignment::Center)
     }
 
     /// Horizontal offset of a base's top accent attachment from its left edge.
@@ -1428,5 +1484,48 @@ impl LayoutEngine {
             }
             _ => None,
         }
+    }
+}
+
+/// Replace an accent box's declared extents with the ink its glyph paints.
+///
+/// The box that carries an accent is a plain HBox, so its extents come from the
+/// mark's advance metrics. Those metrics describe the whole em box, not where
+/// the ink actually sits, and the embedded font draws its marks high above the
+/// baseline. Rewriting the extents to `ink top` and `clearance` below the ink
+/// bottom makes the enclosing VBox land the mark's ink just above the base
+/// instead of floating a baseline's worth above it.
+///
+/// A glyph the font ships no outline for keeps its measured extents, so the
+/// synthetic mark still stacks predictably.
+fn fit_accent_extents(accent: LayoutNode, clearance: Fixed) -> LayoutNode {
+    let LayoutNode::HBox(mut hbox) = accent
+    else {
+        return accent;
+    };
+    let Some((ink_bottom, ink_top)) = hbox.children.iter().find_map(accent_ink_extents)
+    else {
+        return LayoutNode::HBox(hbox);
+    };
+    hbox.height = ink_top;
+    // The ink starts above the accent's own baseline, so this depth is usually
+    // negative. The VBox still sees a positive line height — the ink's height
+    // plus the clearance — and the base follows it.
+    hbox.depth = clearance - ink_bottom;
+    LayoutNode::HBox(hbox)
+}
+
+/// `(ink bottom, ink top)` of the first glyph inside `node`, in pixels above the
+/// baseline, or `None` when that glyph has no outline to measure.
+fn accent_ink_extents(node: &LayoutNode) -> Option<(Fixed, Fixed)> {
+    match node {
+        LayoutNode::Glyph(glyph) => {
+            let path = glyph.path_data.as_deref()?;
+            let (bottom, top) = super::collect::path_vertical_extent(path);
+            let size = glyph.size.to_f64();
+            Some((Fixed::from_f64(bottom * size), Fixed::from_f64(top * size)))
+        }
+        LayoutNode::HBox(hbox) => hbox.children.iter().find_map(accent_ink_extents),
+        _ => None,
     }
 }

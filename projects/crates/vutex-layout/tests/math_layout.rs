@@ -235,6 +235,130 @@ fn hat_accent_centres_on_base_top_accent_attachment() {
     );
 }
 
+/// Ink bounds `(min_x, max_x, min_y, max_y)` of an em-normalised outline.
+///
+/// Outlines come from the font with y growing upward from the baseline, and
+/// every operator in them starts on an x coordinate.
+fn ink_bounds(d: &str) -> (f64, f64, f64, f64) {
+    let mut bounds = (f64::INFINITY, f64::NEG_INFINITY, f64::INFINITY, f64::NEG_INFINITY);
+    let mut is_x = true;
+    let mut token = String::new();
+    for c in d.chars().chain([' ']) {
+        if c.is_ascii_alphabetic() {
+            token.clear();
+            is_x = true;
+        }
+        else if c == ' ' || c == ',' {
+            if let Ok(value) = token.parse::<f64>() {
+                if is_x {
+                    bounds.0 = bounds.0.min(value);
+                    bounds.1 = bounds.1.max(value);
+                }
+                else {
+                    bounds.2 = bounds.2.min(value);
+                    bounds.3 = bounds.3.max(value);
+                }
+                is_x = !is_x;
+            }
+            token.clear();
+        }
+        else {
+            token.push(c);
+        }
+    }
+    bounds
+}
+
+/// Every rule in the tree as an absolute `(x, top, width, height)` rectangle.
+///
+/// Mirrors the same walk as [`glyphs`] and the ``Rule`` rectangle
+/// `render_layout_node` paints from the node's baseline.
+fn rules(node: &LayoutNode) -> Vec<(f64, f64, f64, f64)> {
+    fn walk(node: &LayoutNode, x: f64, y: f64, out: &mut Vec<(f64, f64, f64, f64)>) {
+        match node {
+            LayoutNode::HBox(hbox) => {
+                let mut cursor = 0.0;
+                for child in &hbox.children {
+                    walk(child, x + cursor, y + hbox.shift.to_f64(), out);
+                    cursor += child.width().to_f64();
+                }
+            }
+            LayoutNode::VBox(vbox) => {
+                let mut cursor = -vbox.height.to_f64();
+                for child in &vbox.children {
+                    walk(child, x + vbox.shift.to_f64(), y + cursor + child.height().to_f64(), out);
+                    cursor += child.height().to_f64() + child.depth().to_f64();
+                }
+            }
+            LayoutNode::Rule { width, height, depth } => {
+                let thickness = height.to_f64();
+                out.push((x, y - thickness, width.to_f64(), thickness + depth.to_f64()));
+            }
+            _ => {}
+        }
+    }
+
+    let mut out = Vec::new();
+    walk(node, 0.0, 0.0, &mut out);
+    out
+}
+
+#[test]
+fn hat_accent_paints_font_ink_on_the_base_attachment() {
+    let (tree, _) = layout_formula("\\hat{x}", false).expect("\\hat{x} should lay out");
+    let LayoutNode::VBox(vbox) = &tree else { panic!("an accent stacks an accent box over a base box: {tree:?}") };
+    assert_eq!(vbox.children.len(), 2, "accent stack should hold exactly the accent and the base");
+
+    let (accent_x, accent_y, accent) = glyph_at(&tree, 'ˆ');
+    let path = accent.path_data.as_deref().expect("`\\hat` must paint the font's circumflex, not a host-font run");
+    let (min_x, max_x, min_y, _max_y) = ink_bounds(path);
+    let size = accent.size.to_f64();
+
+    let ink_width = (max_x - min_x) * size;
+    assert!(ink_width > 0.0, "the circumflex outline {path} paints no ink ({ink_width})");
+
+    let (base_x, base_y, base) = glyph_at(&tree, 'x');
+    let ink_centre = accent_x + (min_x + max_x) / 2.0 * size;
+    let attachment = base_x + base.metrics.top_accent_attachment.to_f64();
+    assert!(
+        (ink_centre - attachment).abs() < 0.01,
+        "circumflex ink centre {ink_centre} must sit on the base attachment {attachment}"
+    );
+
+    // Canvas coordinates grow downward, so "higher" means a smaller y.
+    let ink_bottom = accent_y - min_y * size;
+    let base_top = base_y - base.metrics.height.to_f64();
+    assert!(ink_bottom < base_top, "circumflex ink bottom {ink_bottom} must stay above the base top {base_top}");
+}
+
+#[test]
+fn bar_accent_is_a_rule_covering_the_base() {
+    let (tree, _) = layout_formula("\\bar{x}", false).expect("\\bar{x} should lay out");
+    let bars = rules(&tree);
+    assert_eq!(bars.len(), 1, "`\\bar` must paint exactly one overbar rule: {tree:?}");
+    let (bar_x, bar_top, bar_width, bar_height) = bars[0];
+    assert!(bar_width > 0.0 && bar_height > 0.0, "overbar needs a positive size: {bars:?}");
+
+    let (base_x, base_y, base) = glyph_at(&tree, 'x');
+    let size = base.size.to_f64();
+    let path = base.path_data.as_deref().expect("the nucleus must paint its own outline");
+    let (min_x, max_x, _, _) = ink_bounds(path);
+    let base_left = base_x + min_x * size;
+    let base_right = base_x + max_x * size;
+    assert!(
+        bar_x <= base_left + 1e-3 && bar_x + bar_width >= base_right - 1e-3,
+        "overbar {bar_x}..{} must cover the base ink {base_left}..{base_right}",
+        bar_x + bar_width
+    );
+
+    let base_top = base_y - base.metrics.height.to_f64();
+    assert!(
+        bar_top + bar_height <= base_top + 1e-3,
+        "overbar bottom {} must clear the base top {base_top}",
+        bar_top + bar_height
+    );
+}
+
 /// Every glyph size inside a tree, in pixels.
 fn glyph_sizes(node: &LayoutNode) -> Vec<f64> {
     glyphs(node).into_iter().map(|(_, _, glyph)| glyph.size.to_f64()).collect()

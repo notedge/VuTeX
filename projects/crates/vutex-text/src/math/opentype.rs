@@ -121,6 +121,18 @@ const TARGET_SYMBOLS: &[char] = &[
     'ℕ', 'ℤ', 'ℚ', 'ℂ', 'ℓ', 'ℏ', 'ℜ', 'ℑ', 'ℵ',
 ];
 
+/// Accent characters the math parser stacks over a base.
+///
+/// `\hat` uses `ˆ`, `\bar` uses `¯`, `\tilde` uses `˜`, `\dot` uses `˙` and
+/// `\ddot` uses `¨`, so those five must reach the outline and metric tables.
+/// `\vec` already resolves through `→` in [`TARGET_SYMBOLS`] and `\acute`,
+/// `\grave` through printable ASCII (ASCII `` ` ``), so only the modifier
+/// letters the parser can emit beyond ASCII are listed here. The extra marks
+/// (`˘` breve, `ˇ` caron, `˚` ring, U+20D7 combining vector arrow) cover the
+/// remaining TeX accent spellings, so an accent never silently degrades to a
+/// host-font `<text>` run when the font does ship the mark.
+const ACCENT_SYMBOLS: &[char] = &['ˆ', '¯', '˜', '˙', '¨', '˘', 'ˇ', '˚', '\u{20D7}'];
+
 /// Delimiter characters whose MATH Variants constructions we pull from the font.
 const DELIMITER_CHARS: &[char] = &['(', ')', '[', ']', '{', '}', '|', '‖', '⟨', '⟩', '/'];
 
@@ -264,7 +276,7 @@ fn extract_glyph_metrics_and_outlines(
     let italic_corrections = &math_glyph_info.italic_correction;
     let top_accent_attachments = &math_glyph_info.top_accent_attachment;
 
-    for ch in ('!'..='~').chain(TARGET_SYMBOLS.iter().copied()) {
+    for ch in ('!'..='~').chain(TARGET_SYMBOLS.iter().copied()).chain(ACCENT_SYMBOLS.iter().copied()) {
         let gid = match face.glyph_index(ch) {
             Some(g) => g,
             None => continue,
@@ -495,6 +507,21 @@ mod tests {
         let c = data.delimiters.get(&key_paren).expect("'(' should have a construction");
         assert!(!c.variants.is_empty(), "'(' should have variants");
         assert!(c.variants.len() >= 3, "'(' should have at least 3 variants, got {}", c.variants.len());
+    }
+
+    #[test]
+    fn opentype_covers_every_accent_the_parser_emits() {
+        let data = opentype_font_metrics().expect("font should parse");
+        let family = Some("latin-modern-math".to_string());
+        // `\hat`, `\bar`, `\vec`, `\tilde`, `\dot` and `\ddot`, in that order.
+        for ch in ['ˆ', '¯', '→', '˜', '˙', '¨'] {
+            let normal = GlyphKey::from_char(ch, family.clone(), FontStyle::Normal);
+            let metrics = data.glyphs.get(&normal).unwrap_or_else(|| panic!("'{ch}' should carry metrics"));
+            assert!(metrics.width.to_f64() > 0.2, "'{ch}' advance {} is too narrow", metrics.width.to_f64());
+            assert!(metrics.height.to_f64() > 0.4, "'{ch}' ink tops out at {} em", metrics.height.to_f64());
+            let path = data.glyph_paths.get(&normal).unwrap_or_else(|| panic!("'{ch}' should carry an outline"));
+            assert!(path.contains('M'), "'{ch}' outline should start with a move: {path}");
+        }
     }
 
     #[test]
