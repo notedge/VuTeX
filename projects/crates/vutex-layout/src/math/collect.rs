@@ -82,7 +82,7 @@ fn push_layout(node: &LayoutNode, x: f64, y: f64, items: &mut Vec<LayoutItem>) {
         }
         LayoutNode::Path(p) => {
             items.push(LayoutItem::Path(Path {
-                d: scale_svg_path_d(&p.d, 1.0),
+                d: scale_svg_path_d(&p.d, 1.0, -1.0),
                 x,
                 y,
                 width: p.width.to_f64(),
@@ -96,37 +96,34 @@ fn push_layout(node: &LayoutNode, x: f64, y: f64, items: &mut Vec<LayoutItem>) {
     }
 }
 
-/// Scale every coordinate in an SVG `d` string by `scale`, producing a new
-/// `Path` LayoutItem anchored at `(x, y)` with the given extents.
+/// Convert a glyph outline into a `Path` LayoutItem anchored at `(x, y)`.
 ///
-/// The raw SVG outline from `opentype.rs` is normalised to a 0..1 em box;
-/// multiplying by `size` converts it to page points. We emit an unscaled
-/// `d` when the path already lives in page coordinates (scale == 1).
+/// Outlines from `opentype.rs` are normalised to em units with y growing
+/// upward from the baseline. `DisplayPath` coordinates are page points whose
+/// origin sits on the baseline with y growing downward, so x is multiplied by
+/// the font size and y by its negation.
 fn scale_svg_path(raw_d: &str, size: f64, x: f64, y: f64, width: f64, height: f64, depth: f64) -> LayoutItem {
-    let d = if (size - 1.0).abs() < f64::EPSILON { raw_d.to_string() } else { scale_svg_path_d(raw_d, size) };
-    LayoutItem::Path(Path { d, x, y, width, height, depth })
+    LayoutItem::Path(Path { d: scale_svg_path_d(raw_d, size, -size), x, y, width, height, depth })
 }
 
-/// Multiply every numeric literal in an SVG `d` attribute by `scale`.
+/// Scale every coordinate in an SVG `d` attribute by `(scale_x, scale_y)`.
 ///
 /// Parses only the operators we actually emit from `SvgPathBuilder`
-/// (M, L, Q, C, Z); unknown operators and trailing whitespace are passed
-/// through verbatim. Coordinates are separated by commas or whitespace, so
-/// we tokenise on those boundaries and re-emit with the same separators.
-fn scale_svg_path_d(raw: &str, scale: f64) -> String {
-    if (scale - 1.0).abs() < f64::EPSILON {
-        return raw.to_string();
-    }
-
+/// (M, L, Q, C, Z), whose coordinates always come in x/y pairs. Unknown
+/// operators and whitespace are passed through verbatim. The returned path
+/// keeps the same origin as the input, so callers position it by translating.
+pub(crate) fn scale_svg_path_d(raw: &str, scale_x: f64, scale_y: f64) -> String {
     let mut out = String::with_capacity(raw.len());
     let chars: Vec<char> = raw.chars().collect();
+    let mut is_x = true;
     let mut i = 0;
     while i < chars.len() {
         let c = chars[i];
 
-        // Operator letter — emit as-is.
+        // Operator letter — emit as-is and restart the coordinate pair.
         if c.is_ascii_alphabetic() {
             out.push(c);
+            is_x = true;
             i += 1;
             continue;
         }
@@ -138,10 +135,10 @@ fn scale_svg_path_d(raw: &str, scale: f64) -> String {
             continue;
         }
 
-        // Number — parse, scale, re-emit.
-        if c.is_ascii_digit() || c == '-' || c == '.' {
+        // Number — parse, scale along its axis, re-emit.
+        if c.is_ascii_digit() || c == '-' || c == '+' || c == '.' {
             let start = i;
-            if c == '-' {
+            if c == '-' || c == '+' {
                 i += 1;
             }
             while i < chars.len() && (chars[i].is_ascii_digit() || chars[i] == '.') {
@@ -149,15 +146,20 @@ fn scale_svg_path_d(raw: &str, scale: f64) -> String {
             }
             let num_str: String = chars[start..i].iter().collect();
             if let Ok(v) = num_str.parse::<f64>() {
-                let scaled = v * scale;
+                let scaled = if is_x { v * scale_x } else { v * scale_y };
                 // Keep reasonable precision, similar to SvgPathBuilder.
-                let formatted = format!("{scaled:.4}");
-                out.push_str(&formatted);
+                if scaled == 0.0 {
+                    out.push_str("0.0000");
+                }
+                else {
+                    out.push_str(&format!("{scaled:.4}"));
+                }
             }
             else {
                 // Fallback: emit original verbatim.
                 out.push_str(&num_str);
             }
+            is_x = !is_x;
             continue;
         }
 
