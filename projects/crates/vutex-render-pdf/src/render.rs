@@ -1087,8 +1087,30 @@ pub(crate) fn paint_text(
     );
 }
 
+/// Paint one rule as a filled bar.
+///
+/// A rule is a filled box rather than a stroked segment: TeX shapes its rules
+/// as ink of a given thickness and the SVG math backend already paints one as a
+/// rectangle. The filled form keeps exactly the ink the previous stroke covered
+/// — the rectangle is centred on the rule line — while the content stream
+/// carries one path fill instead of a stroke, so a math page has the same number
+/// of path paints as the layout tree has paths and rules. A rule that is not
+/// horizontal has no rectangle to fill and keeps the plain stroke.
 fn write_rule(out: &mut String, page_height: f64, rule: &DisplayRule) {
     if !all_finite(&[rule.x1, rule.y1, rule.x2, rule.y2, rule.thickness]) {
+        return;
+    }
+    if rule.y1 == rule.y2 && rule.x2 > rule.x1 && rule.thickness > 0.0 {
+        let bottom = page_height - (rule.y1 + rule.thickness / 2.0);
+        // `q`/`Q` keep the fill colour from leaking into later text.
+        let _ = write!(
+            out,
+            "q\n0.067 g\n{} {} {} {} re\nf\nQ\n",
+            num(rule.x1),
+            num(bottom),
+            num(rule.x2 - rule.x1),
+            num(rule.thickness)
+        );
         return;
     }
     let _ = write!(

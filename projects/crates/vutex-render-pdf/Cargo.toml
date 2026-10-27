@@ -13,3 +13,6 @@ davinci-types = { workspace = true }
 vutex-types = { workspace = true, features = ["serde"] }
 vutex-presentation = { workspace = true }
 vutex-render = { workspace = true }
+
+[dev-dependencies]
+vutex-layout = { workspace = true }
