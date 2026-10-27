@@ -82,7 +82,7 @@ fn italic_runs_survive_inside_a_list_item() {
             items: vec![ListItem {
                 content: vec![text("note "), styled("italic", vec![text("slanted")])],
                 children: Vec::new(),
-                number: None,
+                number: None, is_task: false, is_checked: None
             }],
         },
     );
@@ -147,7 +147,7 @@ fn unstyled_block_content_stays_normal_serif() {
     graph.push_block(Block::Section { level: 2, title: vec![text("Plain heading")], children: Vec::new() });
     graph.push_block(Block::List {
         ordered: true,
-        items: vec![ListItem { content: vec![text("plain item")], children: Vec::new(), number: Some(1) }],
+        items: vec![ListItem { content: vec![text("plain item")], children: Vec::new(), number: Some(1), is_task: false, is_checked: None }],
     });
     graph.push_block(Block::Quote { content: vec![text("plain quote")] });
     graph.push_block(Block::Table {
@@ -174,7 +174,7 @@ fn list_marker_shares_the_first_content_baseline() {
             items: vec![ListItem {
                 content: vec![text("Alpha "), styled("bold", vec![text("bold")])],
                 children: Vec::new(),
-                number: None,
+                number: None, is_task: false, is_checked: None
             }],
         },
     );
@@ -197,7 +197,7 @@ fn wrapped_list_content_keeps_the_content_indent() {
         47,
         Block::List {
             ordered: false,
-            items: vec![ListItem { content: vec![text(body.trim())], children: Vec::new(), number: None }],
+            items: vec![ListItem { content: vec![text(body.trim())], children: Vec::new(), number: None, is_task: false, is_checked: None }],
         },
     );
     let plan = layout_with_hint(&graph, &hint);

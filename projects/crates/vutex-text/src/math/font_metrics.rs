@@ -193,6 +193,30 @@ pub fn builtin_font_metrics() -> FontMetricsSystem {
         data.delimiters.insert(base_key, DelimiterConstruction { variants, components: vec![] });
     }
 
+    // Synthetic SVG path_data for glyphs that the layout engine needs to render as paths.
+    // This lets tests and outline-mode output deterministic <path> elements instead of
+    // host-font-dependent <text>. Paths use a 0–1 em coordinate box that the layout
+    // engine scales by the current em size.
+    let path_chars: &[(char, &str, f64, f64)] = &[
+        // (char, svg_path_d, width_in_em, height_in_em)
+        ('√', "M 0.05,0.45 L 0.25,0.85 L 0.55,0.15", 0.55, 0.95),
+        ('±', "M 0.1,0.35 L 0.9,0.35 M 0.5,0.15 L 0.5,0.55 M 0.1,0.65 L 0.9,0.65", 1.0, 0.7),
+        ('×', "M 0.15,0.15 L 0.85,0.85 M 0.85,0.15 L 0.15,0.85", 0.9, 0.9),
+        ('÷', "M 0.1,0.35 L 0.9,0.35 M 0.5,0.15 L 0.5,0.5 M 0.5,0.6 L 0.5,0.85 M 0.1,0.72 L 0.9,0.72", 1.0, 0.85),
+        ('∞', "M 0.15,0.5 C 0.15,0.3 0.4,0.3 0.4,0.5 C 0.4,0.7 0.6,0.7 0.6,0.5 C 0.6,0.3 0.85,0.3 0.85,0.5 C 0.85,0.7 0.6,0.7 0.6,0.5", 0.95, 0.8),
+    ];
+    for &(ch, path, w, h) in path_chars {
+        let key = GlyphKey::from_char(ch, family.clone(), FontStyle::Normal);
+        data.glyph_paths.insert(key.clone(), path.to_string());
+        // Also upsert a metrics entry if not already there.
+        data.glyphs.entry(key.clone()).or_insert_with(|| GlyphMetrics {
+            width: Fixed::from_f64(w),
+            height: Fixed::from_f64(h),
+            depth: Fixed::ZERO,
+            italic_correction: Fixed::ZERO,
+        });
+    }
+
     // Seed constants with a useful subset (full fallback is in default_math_constant).
     let all_constants = [
         MathConstant::ScriptPercentScaleDown,
