@@ -49,7 +49,16 @@ impl LayoutNode {
         match self {
             LayoutNode::HBox(h) => h.width,
             LayoutNode::VBox(v) => v.width,
-            LayoutNode::Glyph(g) => g.metrics.width,
+            LayoutNode::Glyph(g) => {
+                let mut w = g.metrics.width;
+                // Italic / math-style glyphs carry an `italic_correction` from
+                // the font that TeX appends to the advance width so slanted
+                // characters don't collide with what follows on the right.
+                if matches!(g.font_style, FontStyle::Italic | FontStyle::Math) {
+                    w = w + g.metrics.italic_correction;
+                }
+                w
+            }
             LayoutNode::Glue(g) => g.width,
             LayoutNode::Kern(k) => *k,
             LayoutNode::Rule { width, .. } => *width,
@@ -142,6 +151,9 @@ pub struct Glyph {
     pub char: Option<char>,
     /// Font family name used for text output.
     pub font_family: String,
+    /// Font style of the source glyph key — used to decide whether to
+    /// consume `metrics.italic_correction` in the advance width.
+    pub font_style: FontStyle,
     /// Em size in pixels.
     pub size: Fixed,
     /// Scaled metrics.
@@ -495,6 +507,7 @@ impl LayoutEngine {
         Ok(LayoutNode::Glyph(Glyph {
             char: key.char,
             font_family: key.font_family.clone().unwrap_or_else(|| "default".to_string()),
+            font_style: key.style,
             size,
             metrics: GlyphMetrics {
                 width: metrics.width * size.to_f64(),
