@@ -81,6 +81,7 @@ fn default_glyph_metrics(ch: Option<char>) -> GlyphMetrics {
         height: Fixed::from_f64(0.7),
         depth: Fixed::from_f64(0.2),
         italic_correction: Fixed::ZERO,
+        top_accent_attachment: Fixed::ZERO,
     }
 }
 
@@ -274,6 +275,7 @@ pub fn builtin_font_metrics() -> FontMetricsSystem {
                     height: Fixed::from_f64(h),
                     depth: Fixed::from_f64(d),
                     italic_correction: Fixed::ZERO,
+                    top_accent_attachment: Fixed::ZERO,
                 },
             );
             variants.push(DelimiterVariant { glyph: variant_key });
@@ -308,6 +310,7 @@ pub fn builtin_font_metrics() -> FontMetricsSystem {
             height: Fixed::from_f64(h),
             depth: Fixed::ZERO,
             italic_correction: Fixed::ZERO,
+            top_accent_attachment: Fixed::ZERO,
         });
     }
 

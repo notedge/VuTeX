@@ -69,6 +69,8 @@ pub struct GlyphMetrics {
     pub height: Fixed,
     pub depth: Fixed,
     pub italic_correction: Fixed,
+    /// MathTopAccentAttachment TopRight Y value in em units
+    pub top_accent_attachment: Fixed,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
