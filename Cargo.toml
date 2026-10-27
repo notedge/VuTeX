@@ -29,7 +29,7 @@ default-members = [
 missing_docs = "allow"
 
 [workspace.package]
-version = "0.0.7"
+version = "0.0.8"
 edition = "2024"
 license = "MPL-2.0"
 authors = ["Aster <192607617@qq.com>"]
