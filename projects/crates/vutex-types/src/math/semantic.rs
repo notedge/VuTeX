@@ -71,6 +71,20 @@ pub enum SemanticNode {
         base: Box<SemanticNode>,
         accent: GlyphKey,
     },
+    /// Imperative: switch the enclosing layout scope to a different [`MathStyle`].
+    ///
+    /// Emitted by `\displaystyle`, `\textstyle`, `\scriptstyle`, `\scriptscriptstyle`.
+    /// Consumed by the layout engine as a side-effect on subsequent atoms; the
+    /// node itself produces no boxes.
+    SetMathStyle(MathStyle),
+    /// Imperative: toggle limits placement for the next LargeOperator.
+    ///
+    /// `true` = `\limits` (subscripts above/below the operator),
+    /// `false` = `\nolimits` (subscripts beside the operator).
+    ///
+    /// The layout engine pops this flag when it encounters the next
+    /// `LargeOperator` so it does not bleed past one operator.
+    LimitsSpec(bool),
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
