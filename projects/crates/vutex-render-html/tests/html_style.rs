@@ -127,9 +127,9 @@ fn reflow_list_items_emit_italic_inline() {
             ListItem {
                 content: vec![text("plain "), styled("italic", vec![text("slanted")])],
                 children: Vec::new(),
-                number: None,
+                number: None, is_task: false, is_checked: None
             },
-            ListItem { content: vec![text("second")], children: Vec::new(), number: None },
+            ListItem { content: vec![text("second")], children: Vec::new(), number: None, is_task: false, is_checked: None },
         ],
     });
     let html = render_html_reflow(&build_flow_presentation(&graph)).expect("reflow html");

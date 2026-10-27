@@ -39,8 +39,8 @@ fn sample_graph() -> DocumentGraph {
     graph.push_block(Block::List {
         ordered: true,
         items: vec![
-            ListItem { content: vec![text("First item")], children: Vec::new(), number: Some(1) },
-            ListItem { content: vec![text("Second item")], children: Vec::new(), number: Some(2) },
+            ListItem { content: vec![text("First item")], children: Vec::new(), number: Some(1), is_task: false, is_checked: None },
+            ListItem { content: vec![text("Second item")], children: Vec::new(), number: Some(2), is_task: false, is_checked: None },
         ],
     });
     graph
@@ -147,8 +147,8 @@ fn flow_list_item_runs_preserve_italic_per_item() {
     graph.push_block(Block::List {
         ordered: false,
         items: vec![
-            ListItem { content: vec![styled("italic", vec![text("slanted")])], children: Vec::new(), number: None },
-            ListItem { content: vec![text("plain")], children: Vec::new(), number: None },
+            ListItem { content: vec![styled("italic", vec![text("slanted")])], children: Vec::new(), number: None, is_task: false, is_checked: None },
+            ListItem { content: vec![text("plain")], children: Vec::new(), number: None, is_task: false, is_checked: None },
         ],
     });
 
@@ -171,11 +171,11 @@ fn flow_nested_list_stays_inside_parent_item() {
     let mut graph = DocumentGraph::new(DocumentId(11));
     let child = graph.push_block(Block::List {
         ordered: false,
-        items: vec![ListItem { content: vec![text("child")], children: Vec::new(), number: None }],
+        items: vec![ListItem { content: vec![text("child")], children: Vec::new(), number: None, is_task: false, is_checked: None }],
     });
     graph.push_block(Block::List {
         ordered: false,
-        items: vec![ListItem { content: vec![text("parent")], children: vec![child], number: None }],
+        items: vec![ListItem { content: vec![text("parent")], children: vec![child], number: None, is_task: false, is_checked: None }],
     });
 
     let presentation = build_flow_presentation(&graph);
@@ -349,13 +349,13 @@ fn flow_list_item_numbers_follow_authored_markers() {
     graph.push_block(Block::List {
         ordered: true,
         items: vec![
-            ListItem { content: vec![text("third")], children: Vec::new(), number: Some(3) },
-            ListItem { content: vec![text("ninth")], children: Vec::new(), number: Some(9) },
+            ListItem { content: vec![text("third")], children: Vec::new(), number: Some(3), is_task: false, is_checked: None },
+            ListItem { content: vec![text("ninth")], children: Vec::new(), number: Some(9), is_task: false, is_checked: None },
         ],
     });
     graph.push_block(Block::List {
         ordered: false,
-        items: vec![ListItem { content: vec![text("bullet")], children: Vec::new(), number: None }],
+        items: vec![ListItem { content: vec![text("bullet")], children: Vec::new(), number: None, is_task: false, is_checked: None }],
     });
 
     let presentation = build_flow_presentation(&graph);

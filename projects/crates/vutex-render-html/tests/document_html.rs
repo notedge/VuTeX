@@ -20,8 +20,8 @@ fn sample_graph() -> DocumentGraph {
     graph.push_block(Block::List {
         ordered: false,
         items: vec![
-            ListItem { content: vec![text("Alpha")], children: Vec::new(), number: None },
-            ListItem { content: vec![text("Beta")], children: Vec::new(), number: None },
+            ListItem { content: vec![text("Alpha")], children: Vec::new(), number: None, is_task: false, is_checked: None },
+            ListItem { content: vec![text("Beta")], children: Vec::new(), number: None, is_task: false, is_checked: None },
         ],
     });
     graph.push_block(Block::Code { language: Some("rust".to_string()), content: "fn main() {}".to_string() });
@@ -67,11 +67,11 @@ fn reflow_html_nests_child_list_inside_parent_item() {
     let mut graph = DocumentGraph::new(DocumentId(5));
     let child = graph.push_block(Block::List {
         ordered: false,
-        items: vec![ListItem { content: vec![text("child")], children: Vec::new(), number: None }],
+        items: vec![ListItem { content: vec![text("child")], children: Vec::new(), number: None, is_task: false, is_checked: None }],
     });
     graph.push_block(Block::List {
         ordered: false,
-        items: vec![ListItem { content: vec![text("parent")], children: vec![child], number: None }],
+        items: vec![ListItem { content: vec![text("parent")], children: vec![child], number: None, is_task: false, is_checked: None }],
     });
 
     let html = render_html_reflow(&build_flow_presentation(&graph)).expect("reflow html");
@@ -130,8 +130,8 @@ fn reflow_html_keeps_authored_ordered_numbers() {
     graph.push_block(Block::List {
         ordered: true,
         items: vec![
-            ListItem { content: vec![text("third")], children: Vec::new(), number: Some(3) },
-            ListItem { content: vec![text("ninth")], children: Vec::new(), number: Some(9) },
+            ListItem { content: vec![text("third")], children: Vec::new(), number: Some(3), is_task: false, is_checked: None },
+            ListItem { content: vec![text("ninth")], children: Vec::new(), number: Some(9), is_task: false, is_checked: None },
         ],
     });
 
@@ -152,8 +152,8 @@ fn reflow_html_plain_ordered_list_omits_start_and_value() {
     graph.push_block(Block::List {
         ordered: true,
         items: vec![
-            ListItem { content: vec![text("first")], children: Vec::new(), number: Some(1) },
-            ListItem { content: vec![text("second")], children: Vec::new(), number: Some(2) },
+            ListItem { content: vec![text("first")], children: Vec::new(), number: None, is_task: false, is_checked: None },
+            ListItem { content: vec![text("second")], children: Vec::new(), number: None, is_task: false, is_checked: None },
         ],
     });
 
