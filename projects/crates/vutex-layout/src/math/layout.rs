@@ -211,10 +211,30 @@ pub trait LayoutBackend {
     }
 }
 
+/// Whether painting this node puts any ink on the page.
+///
+/// Glue, kerns and penalties only advance, and a glyph the font could not
+/// outline carries no path, so a box built from those alone is blank.
+fn paints(node: &LayoutNode) -> bool {
+    match node {
+        LayoutNode::Glyph(glyph) => glyph.path_data.is_some() || glyph.char.is_some(),
+        LayoutNode::Rule { .. } | LayoutNode::Path(_) => true,
+        LayoutNode::HBox(hbox) => hbox.children.iter().any(paints),
+        LayoutNode::VBox(vbox) => vbox.children.iter().any(paints),
+        LayoutNode::Glue(_) | LayoutNode::Kern(_) | LayoutNode::Penalty { .. } => false,
+    }
+}
+
 /// Recursively render a layout tree into a backend at the given baseline position.
 pub fn render_layout_node(backend: &mut dyn LayoutBackend, node: &LayoutNode, x: f64, y: f64) -> MathResult<()> {
     match node {
         LayoutNode::HBox(hbox) => {
+            // A box whose subtree paints nothing (an unused alignment cell, a
+            // box of kerns and glue) must not open a group that the SVG backend
+            // would emit as a blank `<g>`.
+            if !hbox.children.iter().any(paints) {
+                return Ok(());
+            }
             backend.start_group(Some(&format!("translate({}, {})", x, y + hbox.shift.to_f64())))?;
             let mut current_x = 0.0;
             for child in &hbox.children {
@@ -224,6 +244,9 @@ pub fn render_layout_node(backend: &mut dyn LayoutBackend, node: &LayoutNode, x:
             backend.end_group()?;
         }
         LayoutNode::VBox(vbox) => {
+            if !vbox.children.iter().any(paints) {
+                return Ok(());
+            }
             backend.start_group(Some(&format!("translate({}, {})", x + vbox.shift.to_f64(), y)))?;
             let mut current_y = -vbox.height.to_f64();
             for child in &vbox.children {
