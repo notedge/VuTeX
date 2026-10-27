@@ -28,11 +28,30 @@ fn render_outline(source: &str, display: bool) -> (String, FormulaLayout) {
     (svg, layout)
 }
 
+/// Count closed, straight-sided subpaths.
+///
+/// Bar delimiters are emitted as rectangles while glyph outlines are cubic, so a
+/// `d` without curve operators is a bar and its `M` count is its stroke count.
+fn bar_strokes(svg: &str) -> usize {
+    let mut strokes = 0;
+    let mut cursor = 0;
+    while let Some(index) = svg[cursor..].find("<path d=\"").map(|i| i + cursor) {
+        let start = index + "<path d=\"".len();
+        let end = start + svg[start..].find('"').expect("path data terminator");
+        let d = &svg[start..end];
+        if !d.contains('C') && !d.contains('Q') {
+            strokes += d.matches('M').count();
+        }
+        cursor = end;
+    }
+    strokes
+}
+
 fn has_double_bar(svg: &str) {
-    // Vmatrix uses two parallel stroke paths (scale > 40) for its bars.
-    // We look for two M-moves close together (x 0.11 and 0.29 in em-space).
-    let count = svg.matches("M 0.1510").count();
-    assert!(count >= 2, "expected two Vmatrix bar paths, found {count} in:\n{svg}");
+    // One matrix has two delimiter sides, and `Vmatrix` paints two strokes per
+    // side, so the doubled delimiter produces four bar subpaths in total.
+    let strokes = bar_strokes(svg);
+    assert_eq!(strokes, 4, "expected two Vmatrix bar strokes per side, found {strokes} in:\n{svg}");
 }
 
 fn nonzero_size(svg: &str) {
@@ -64,6 +83,14 @@ fn all_five_formulas_render_as_paths() {
 
         (case.check)(&svg);
     }
+}
+
+#[test]
+fn lowercase_vmatrix_keeps_a_single_bar() {
+    let (svg, _) = render_outline(r"\begin{vmatrix}a&b\\c&d\end{vmatrix}", true);
+    // One stroke per delimiter side, so a plain `vmatrix` paints two subpaths.
+    let strokes = bar_strokes(&svg);
+    assert_eq!(strokes, 2, "expected a single vmatrix bar stroke per side, found {strokes} in:\n{svg}");
 }
 
 #[test]
