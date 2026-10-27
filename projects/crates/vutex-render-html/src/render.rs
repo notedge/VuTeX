@@ -292,7 +292,9 @@ fn style_declarations(style: FontStyle) -> &'static str {
 
 /// Render one vector glyph outline as an absolutely-positioned inline `<svg>`.
 ///
-/// The SVG viewBox is set to the path bounding box and the `<path>` `d`
+/// The path origin sits on the text baseline with y growing downward, so the
+/// inline viewport is placed `height` points above the baseline (a negative
+/// viewBox origin) and reaches `depth` points below it. The `<path>` `d`
 /// attribute is copied verbatim; browsers natively understand SVG path
 /// operators so no conversion is needed.
 fn write_path(out: &mut String, path: &DisplayPath) {
@@ -301,11 +303,12 @@ fn write_path(out: &mut String, path: &DisplayPath) {
     }
     let vh = path.height + path.depth;
     out.push_str(&format!(
-        "<svg class=\"vutex-path\" data-vutex-item=\"path\" style=\"position:absolute;left:{}pt;top:{}pt;width:{}pt;height:{}pt\" viewBox=\"0 0 {} {}\"><path d=\"{}\" fill=\"#111111\"/></svg>\n",
+        "<svg class=\"vutex-path\" data-vutex-item=\"path\" style=\"position:absolute;left:{}pt;top:{}pt;width:{}pt;height:{}pt\" viewBox=\"0 {} {} {}\"><path d=\"{}\" fill=\"#111111\"/></svg>\n",
         num(path.x),
         num(path.y - path.height),
         num(path.width.max(0.001)),
         num(vh.max(0.001)),
+        num(-path.height),
         num(path.width.max(0.001)),
         num(vh.max(0.001)),
         escape_attribute(&path.d),
