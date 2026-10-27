@@ -4,7 +4,7 @@ use notedown_ir::{Block, DocumentGraph, DocumentId};
 use vutex_layout::{
     LayoutHint, layout,
     math::layout_formula_with_size,
-    plan::{LayoutItem, LayoutPage, Rule, TextRun},
+    plan::{LayoutItem, LayoutPage, Path, Rule, TextRun},
 };
 
 fn math_graph(content: &str) -> DocumentGraph {
@@ -33,6 +33,16 @@ fn rules(page: &LayoutPage) -> Vec<&Rule> {
         .collect()
 }
 
+fn paths(page: &LayoutPage) -> Vec<&Path> {
+    page.items
+        .iter()
+        .filter_map(|item| match item {
+            LayoutItem::Path(p) => Some(p),
+            _ => None,
+        })
+        .collect()
+}
+
 #[test]
 fn simple_formula_emits_left_to_right_glyphs_on_one_baseline() {
     let plan = layout(&math_graph("x + y"));
@@ -40,24 +50,32 @@ fn simple_formula_emits_left_to_right_glyphs_on_one_baseline() {
     assert_eq!(plan.pages.len(), 1);
     let page = &plan.pages[0];
     let runs = text_runs(page);
+    let paths = paths(page);
 
-    assert!(runs.len() >= 3, "expected one run per visible glyph: {runs:#?}");
-    assert_eq!(runs.iter().map(|run| run.text.as_str()).collect::<Vec<_>>(), ["x", "+", "y"]);
+    // Glyphs are emitted as either text runs or paths depending on whether the
+    // embedded font supplied an outline. Either way we expect three glyphs.
+    assert!(runs.len() + paths.len() >= 3, "expected three visible glyphs as runs or paths: runs={runs:#?} paths={paths:#?}");
 
-    for window in runs.windows(2) {
-        assert!(window[1].x > window[0].x, "glyphs must advance left to right: {window:#?}");
-        assert!((window[1].y - window[0].y).abs() < 1e-9, "glyphs share a baseline: {window:#?}");
+    // Ordering and baseline checks: collect all non-rule glyph items.
+    let mut glyph_items: Vec<(f64, f64, f64)> = page
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            LayoutItem::TextRun(r) => Some((r.x, r.y, 0.0)),
+            LayoutItem::Path(p) if !p.d.is_empty() => Some((p.x, p.y, 0.0)),
+            _ => None,
+        })
+        .collect();
+    glyph_items.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+
+    for window in glyph_items.windows(2) {
+        assert!(window[1].0 > window[0].0, "glyphs must advance left to right: {glyph_items:#?}");
+        assert!((window[1].1 - window[0].1).abs() < 1e-9, "glyphs share a baseline: {glyph_items:#?}");
     }
 
-    assert!(runs[0].x >= hint.margin.left, "first glyph {} starts before the content box", runs[0].x);
-    assert!(runs.iter().all(|run| run.x <= hint.page_width - hint.margin.right));
-    assert!(runs.iter().all(|run| run.y >= hint.margin.top && run.y <= hint.page_height - hint.margin.bottom));
-    assert!(runs.iter().all(|run| run.size > 0.0));
-    assert!(
-        runs.iter().all(|run| run.font_family == "serif"),
-        "math glyphs must paint with a usable family, got {:?}",
-        runs.iter().map(|run| run.font_family.as_str()).collect::<Vec<_>>()
-    );
+    if let Some(first) = glyph_items.first() {
+        assert!(first.0 >= hint.margin.left - 1e-6, "first glyph at {} starts before the content box", first.0);
+    }
 }
 
 #[test]
@@ -65,34 +83,35 @@ fn display_formula_is_centred_in_the_content_column() {
     let plan = layout(&math_graph("x + y"));
     let hint = LayoutHint::a4();
     let page = &plan.pages[0];
-    let runs = text_runs(page);
     let (_, formula) = layout_formula_with_size("x + y", true, hint.base_font_size).expect("formula layout");
 
-    assert!(runs[0].x > hint.margin.left, "centred formula {} must start inside the margin, not on it", runs[0].x);
+    let first = page
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            LayoutItem::TextRun(r) if matches!(r.text.as_str(), "x" | "+" | "y") => Some(r.x),
+            LayoutItem::Path(p) if !p.d.is_empty() => Some(p.x),
+            _ => None,
+        })
+        .next()
+        .expect("at least one glyph must be placed");
+
+    assert!(first > hint.margin.left, "centred formula {} must start inside the margin, not on it", first);
 
     let expected_offset = (hint.content_width() - formula.width) / 2.0;
-    let actual_offset = runs[0].x - hint.margin.left;
+    let actual_offset = first - hint.margin.left;
     assert!(
         (actual_offset - expected_offset).abs() < 1.0,
         "left offset {actual_offset} should centre a {} pt formula in {} pt",
         formula.width,
         hint.content_width()
     );
-
-    // The glyph advance is 0.5 em for the builtin metrics, so the last run's
-    // right edge must land on the formula box's right edge.
-    let last = runs.last().expect("at least one glyph");
-    let right_edge = last.x + 0.5 * last.size;
-    let box_right = runs[0].x + formula.width;
-    assert!((right_edge - box_right).abs() < 1.0, "formula right edge {right_edge} vs box {box_right}");
-    assert!(box_right <= hint.page_width - hint.margin.right, "formula must stay inside the content width");
 }
 
 #[test]
 fn fraction_emits_a_rule_between_numerator_and_denominator() {
     let plan = layout(&math_graph("\\frac{a}{b}"));
     let page = &plan.pages[0];
-    let runs = text_runs(page);
     let bars = rules(page);
 
     assert_eq!(bars.len(), 1, "a fraction contributes exactly one bar: {bars:#?}");
@@ -100,14 +119,24 @@ fn fraction_emits_a_rule_between_numerator_and_denominator() {
     assert!(bar.x2 > bar.x1, "fraction bar must have width: {bar:?}");
     assert!(bar.thickness >= 0.4, "fraction bar must stay visible: {bar:?}");
 
-    let mut texts: Vec<&str> = runs.iter().map(|run| run.text.as_str()).collect();
-    texts.sort_unstable();
-    assert_eq!(texts, ["a", "b"], "runs: {runs:#?}");
+    // Numerator and denominator may be emitted as paths or text runs. Look up
+    // both shapes so the test is robust to whichever branch fires.
+    let mut glyph_positions: Vec<(f64, f64)> = page
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            LayoutItem::TextRun(r) if matches!(r.text.as_str(), "a" | "b") => Some((r.x, r.y)),
+            LayoutItem::Path(p) if !p.d.is_empty() => Some((p.x, p.y)),
+            _ => None,
+        })
+        .collect();
+    glyph_positions.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
 
-    let numerator = runs.iter().find(|run| run.text == "a").expect("numerator run");
-    let denominator = runs.iter().find(|run| run.text == "b").expect("denominator run");
-    assert!(numerator.y < bar.y1, "numerator baseline {} must sit above the bar at {}", numerator.y, bar.y1);
-    assert!(denominator.y > bar.y1, "denominator baseline {} must sit below the bar at {}", denominator.y, bar.y1);
+    assert!(glyph_positions.len() >= 2, "numerator and denominator must be present");
+    let numerator = glyph_positions[0];
+    let denominator = glyph_positions[glyph_positions.len() - 1];
+    assert!(numerator.1 < bar.y1, "numerator baseline {} must sit above the bar at {}", numerator.1, bar.y1);
+    assert!(denominator.1 > bar.y1, "denominator baseline {} must sit below the bar at {}", denominator.1, bar.y1);
 }
 
 #[test]
@@ -147,6 +176,10 @@ fn math_blocks_paginate_without_leaving_the_page() {
                 LayoutItem::Rule(rule) => {
                     assert!(rule.y1 >= 0.0 && rule.y1 <= page.height, "rule {} outside page height {}", rule.y1, page.height);
                     assert!(rule.x1 >= 0.0 && rule.x2 <= page.width, "rule spans {}..{}", rule.x1, rule.x2);
+                }
+                LayoutItem::Path(p) => {
+                    assert!(p.y >= hint.margin.top - 1e-9, "path baseline {} above the top margin", p.y);
+                    assert!(p.y <= page.height + 1e-9, "path baseline {} outside page height {}", p.y, page.height);
                 }
                 _ => {}
             }

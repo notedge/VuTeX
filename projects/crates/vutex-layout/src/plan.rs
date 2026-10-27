@@ -92,6 +92,28 @@ pub struct ImagePlaceholder {
     pub source: Option<String>,
 }
 
+/// A vector path in page coordinates.
+///
+/// The `d` string is an SVG `d` attribute already scaled to page points by the
+/// layout pass, so renderers can translate it directly to their own path
+/// representation. Coordinates inside `d` are relative to the path origin at
+/// `(x, y)` — a typical path `M 0,0 L 10,0 ...` sits at `x`, `y` on the page.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Path {
+    /// SVG path data string (M/L/C/Q/Z/H/V/S/T/A operators, already page-scaled).
+    pub d: String,
+    /// Path origin x in points (left edge of the path's local coordinate space).
+    pub x: f64,
+    /// Path origin y in points (baseline of the path's local coordinate space).
+    pub y: f64,
+    /// Advance width in points.
+    pub width: f64,
+    /// Bounding-box height in points (above baseline).
+    pub height: f64,
+    /// Bounding-box depth in points (below baseline).
+    pub depth: f64,
+}
+
 /// A diagram scene placed into a fixed box on the page.
 ///
 /// The scene keeps its own canvas coordinate system; `width` and `height` are
@@ -128,6 +150,10 @@ pub enum LayoutItem {
     ImagePlaceholder(ImagePlaceholder),
     /// A diagram scene placed at a fixed size.
     Graphic(Graphic),
+    /// A vector path, typically a glyph outline emitted directly from the
+    /// embedded font so renderers can paint the exact curves instead of
+    /// relying on a system font or synthetic metrics.
+    Path(Path),
 }
 
 /// One laid-out page before presentation lowering.
