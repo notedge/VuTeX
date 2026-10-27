@@ -8,6 +8,47 @@ fn layout(source: &str) -> FormulaLayout {
     metrics
 }
 
+/// Walk the layout tree and report every glyph with its absolute position
+/// relative to the tree origin.
+///
+/// Mirrors `render_layout_node`: an HBox advances its children horizontally and
+/// applies its `shift` on the vertical axis, a VBox advances vertically and
+/// applies its `shift` on the horizontal axis.
+fn glyphs(node: &LayoutNode) -> Vec<(f64, f64, Glyph)> {
+    fn walk(node: &LayoutNode, x: f64, y: f64, out: &mut Vec<(f64, f64, Glyph)>) {
+        match node {
+            LayoutNode::HBox(hbox) => {
+                let mut cursor = 0.0;
+                for child in &hbox.children {
+                    walk(child, x + cursor, y + hbox.shift.to_f64(), out);
+                    cursor += child.width().to_f64();
+                }
+            }
+            LayoutNode::VBox(vbox) => {
+                let mut cursor = -vbox.height.to_f64();
+                for child in &vbox.children {
+                    walk(child, x + vbox.shift.to_f64(), y + cursor + child.height().to_f64(), out);
+                    cursor += child.height().to_f64() + child.depth().to_f64();
+                }
+            }
+            LayoutNode::Glyph(glyph) => out.push((x, y, glyph.clone())),
+            LayoutNode::Rule { .. } | LayoutNode::Glue(_) | LayoutNode::Kern(_) | LayoutNode::Path(_) | LayoutNode::Penalty { .. } => {}
+        }
+    }
+
+    let mut out = Vec::new();
+    walk(node, 0.0, 0.0, &mut out);
+    out
+}
+
+/// Position of the only glyph carrying `char`.
+fn glyph_at(node: &LayoutNode, char: char) -> (f64, f64, Glyph) {
+    let mut matches = glyphs(node).into_iter().filter(|(_, _, glyph)| glyph.char == Some(char));
+    let found = matches.next().unwrap_or_else(|| panic!("no `{char}` glyph in {node:?}"));
+    assert!(matches.next().is_none(), "`{char}` must appear exactly once");
+    found
+}
+
 /// Offset and glyph of the first horizontal glyph inside `node`.
 fn first_glyph(node: &LayoutNode) -> (Fixed, &Glyph) {
     match node {
@@ -188,4 +229,87 @@ fn hat_accent_centres_on_base_top_accent_attachment() {
         delta < 0.01,
         "accent ink centre {accent_centre:?} must sit on the base attachment {attachment_point:?} (delta {delta})"
     );
+}
+
+/// Every glyph size inside a tree, in pixels.
+fn glyph_sizes(node: &LayoutNode) -> Vec<f64> {
+    glyphs(node).into_iter().map(|(_, _, glyph)| glyph.size.to_f64()).collect()
+}
+
+/// `\displaystyle` must really switch the enclosing style.  In TeX a display
+/// fraction sets its arguments in text style instead of script style and uses
+/// the display shift-up constants, so the same em size yields a little under
+/// twice the vertical extent of the text-style fraction.
+#[test]
+fn display_selection_command_expands_fraction_geometry() {
+    let text = layout("\\frac{a}{b}");
+    let display = layout("\\displaystyle \\frac{a}{b}");
+
+    let text_total = text.height + text.depth;
+    let display_total = display.height + display.depth;
+    assert!(
+        display_total >= text_total * 1.5,
+        "`\\displaystyle` fraction must be at least 1.5x as tall: {display_total} vs {text_total}"
+    );
+    assert!(
+        display.height > text.height,
+        "`\\displaystyle` raises the fraction above the baseline: {} vs {}",
+        display.height,
+        text.height
+    );
+    assert!(display.width > text.width, "display arguments are set a size larger: {} vs {}", display.width, text.width);
+}
+
+/// The display/text difference also holds when the whole formula is laid out
+/// by the display pipeline (larger em), which is the document-facing path.
+#[test]
+fn display_mode_fraction_is_taller_than_text_mode() {
+    let (_, text) = layout_formula("\\frac{a}{b}", false).expect("inline layout");
+    let (_, display) = layout_formula("\\frac{a}{b}", true).expect("display layout");
+
+    let text_total = text.height + text.depth;
+    let display_total = display.height + display.depth;
+    assert!(
+        display_total >= text_total * 1.5,
+        "display-mode fraction must be at least 1.5x as tall: {display_total} vs {text_total}"
+    );
+}
+
+/// `\scriptstyle` / `\scriptscriptstyle` scale the following atoms instead of
+/// being accepted and ignored.
+#[test]
+fn style_commands_scale_following_glyphs() {
+    let base = layout("x").width;
+    let script = layout("\\scriptstyle x").width;
+    let scriptscript = layout("\\scriptscriptstyle x").width;
+
+    let script_ratio = script / base;
+    let scriptscript_ratio = scriptscript / base;
+    assert!((script_ratio - 0.7).abs() < 0.02, "`\\scriptstyle` must be 0.7 em: ratio {script_ratio}");
+    assert!((scriptscript_ratio - 0.5).abs() < 0.02, "`\\scriptscriptstyle` must be 0.5 em: ratio {scriptscript_ratio}");
+}
+
+/// Fraction arguments demote one style further: display -> text, text -> script,
+/// script/scriptscript -> scriptscript.  So the argument glyphs of a script-style
+/// fraction are set at scriptscript size, never larger than their parent.
+#[test]
+fn fraction_arguments_demote_one_style_further() {
+    // 14 px is the inline base em used by `layout_formula`.
+    for (source, expected) in [
+        ("\\frac{a}{b}", 14.0 * 0.7),
+        ("\\textstyle \\frac{a}{b}", 14.0 * 0.7),
+        ("\\displaystyle \\frac{a}{b}", 14.0),
+        ("\\scriptstyle \\frac{a}{b}", 14.0 * 0.5),
+        ("\\scriptscriptstyle \\frac{a}{b}", 14.0 * 0.5),
+    ] {
+        let (tree, _) = layout_formula(source, false).expect(source);
+        let sizes = glyph_sizes(&tree);
+        assert!(!sizes.is_empty(), "`{source}` must lay out glyphs");
+        for size in sizes {
+            assert!(
+                (size - expected).abs() < 0.01,
+                "`{source}` arguments must be set at {expected} px, found {size}"
+            );
+        }
+    }
 }
