@@ -8,12 +8,15 @@ use std::collections::HashSet;
 
 use notedown_ir::{Block, DocumentGraph, Inline, ListItem, NodeId, RelationEndpoint, TableRow};
 use vutex_text::math::{FontMetricsSystem, builtin_font_metrics};
-use vutex_types::math::{FontStyle, GlyphKey};
+use vutex_types::{
+    Diagnostic,
+    math::{FontStyle, GlyphKey},
+};
 
 use crate::{
     diagram::Diagrams,
     hint::LayoutHint,
-    math::{LayoutNode, collect_layout, layout_formula_with_size},
+    math::{LayoutNode, collect_layout_with_diagnostics, layout_formula_with_size},
     plan::{Graphic, ImagePlaceholder, LayoutItem, LayoutPage, LayoutPlan, Rect, Rule, TextRun},
 };
 
@@ -121,9 +124,23 @@ pub fn layout_with_hint(graph: &DocumentGraph, hint: &LayoutHint) -> LayoutPlan 
 /// A diagram block without a registered scene falls back to its authored source
 /// text, because layout never invents diagram geometry on its own.
 pub fn layout_with_diagrams(graph: &DocumentGraph, hint: &LayoutHint, diagrams: &Diagrams) -> LayoutPlan {
+    layout_with_diagnostics(graph, hint, diagrams).0
+}
+
+/// Like [`layout_with_diagrams`] but also reports the degradation the pass had
+/// to apply.
+///
+/// Today the only source is a math glyph the embedded font supplies no outline
+/// for: it is skipped instead of being painted with a host serif face, so the
+/// caller can surface the gap rather than silently losing the glyph.
+pub fn layout_with_diagnostics(
+    graph: &DocumentGraph,
+    hint: &LayoutHint,
+    diagrams: &Diagrams,
+) -> (LayoutPlan, Vec<Diagnostic>) {
     let mut builder = PageBuilder::new(*hint, diagrams);
     builder.render_blocks(graph, &root_ids(graph), 0.0);
-    LayoutPlan { pages: builder.pages }
+    (LayoutPlan { pages: builder.pages }, builder.diagnostics)
 }
 
 /// Block ids that no section or list item claims as a child, in graph order.
@@ -282,11 +299,20 @@ struct PageBuilder<'a> {
     diagrams: &'a Diagrams,
     /// Top edge of the next line box, in page coordinates.
     cursor: f64,
+    /// Degradations the pass applied, such as a math glyph without an outline.
+    diagnostics: Vec<Diagnostic>,
 }
 
 impl<'a> PageBuilder<'a> {
     fn new(hint: LayoutHint, diagrams: &'a Diagrams) -> Self {
-        Self { hint, metrics: builtin_font_metrics(), pages: vec![blank_page(&hint)], diagrams, cursor: hint.margin.top }
+        Self {
+            hint,
+            metrics: builtin_font_metrics(),
+            pages: vec![blank_page(&hint)],
+            diagrams,
+            cursor: hint.margin.top,
+            diagnostics: Vec::new(),
+        }
     }
 
     fn push(&mut self, item: LayoutItem) {
@@ -599,7 +625,8 @@ impl<'a> PageBuilder<'a> {
     /// Paint a formula at the inline baseline, clamped to the content width.
     fn emit_inline_math(&mut self, math: &MathAtom, x: f64, baseline: f64, max_width: f64) {
         let scale = if math.width > max_width && math.width > 0.0 { (max_width / math.width).max(0.0) } else { 1.0 };
-        for item in collect_layout(&math.node, x, baseline) {
+        let items = collect_layout_with_diagnostics(&math.node, x, baseline, &mut self.diagnostics);
+        for item in items {
             self.push(clamp_inline_item(item, x, baseline, scale));
         }
     }
@@ -813,7 +840,8 @@ impl<'a> PageBuilder<'a> {
                 let left = self.left(indent);
                 let offset = ((self.content_width(indent) - formula.width) / 2.0).max(0.0);
                 let baseline = self.cursor + padding + formula.height;
-                for item in collect_layout(&node, left + offset, baseline) {
+                let items = collect_layout_with_diagnostics(&node, left + offset, baseline, &mut self.diagnostics);
+                for item in items {
                     self.push(item);
                 }
                 self.cursor = baseline + formula.depth + padding;
