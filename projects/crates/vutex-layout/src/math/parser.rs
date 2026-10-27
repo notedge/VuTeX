@@ -222,7 +222,7 @@ impl Parser {
                 '{' => Ok(char_node('{')),
                 '}' => Ok(char_node('}')),
                 '|' => Ok(char_node('‖')),
-                ',' | ':' | ';' | ' ' => Ok(SemanticNode::Text(" ".to_string())),
+                ',' | ':' | ';' | ' ' => Ok(SemanticNode::Text { text: " ".to_string(), font_style: FontStyle::Normal }),
                 '!' => Ok(SemanticNode::Sequence(Vec::new())),
                 '\\' => Err(self.error("`\\\\` is only allowed inside a matrix")),
                 _ => Err(self.error(format!("unknown control symbol `\\{c}`"))),
@@ -250,11 +250,19 @@ impl Parser {
             "begin" => self.parse_environment(),
             "operatorname" => {
                 let text = self.read_text_group()?;
-                Ok(SemanticNode::Text(text))
+                Ok(SemanticNode::Text { text, font_style: FontStyle::Normal })
             }
-            "text" | "textrm" | "mathrm" | "mathit" | "mathbf" => {
+            "text" | "textrm" | "mathrm" => {
                 let text = self.read_text_group()?;
-                Ok(SemanticNode::Text(text))
+                Ok(SemanticNode::Text { text, font_style: FontStyle::Normal })
+            }
+            "mathit" => {
+                let text = self.read_text_group()?;
+                Ok(SemanticNode::Text { text, font_style: FontStyle::Italic })
+            }
+            "mathbf" => {
+                let text = self.read_text_group()?;
+                Ok(SemanticNode::Text { text, font_style: FontStyle::Bold })
             }
             "big" | "Big" | "bigg" | "Bigg" | "bigm" | "Bigm" | "biggm" | "Biggm" => self.parse_big_delimiter(),
             "hat" | "widehat" => self.parse_accent('ˆ'),
@@ -263,8 +271,8 @@ impl Parser {
             "tilde" | "widetilde" => self.parse_accent('˜'),
             "dot" => self.parse_accent('˙'),
             "ddot" => self.parse_accent('¨'),
-            "quad" => Ok(SemanticNode::Text("  ".to_string())),
-            "qquad" => Ok(SemanticNode::Text("    ".to_string())),
+            "quad" => Ok(SemanticNode::Text { text: "  ".to_string(), font_style: FontStyle::Normal }),
+            "qquad" => Ok(SemanticNode::Text { text: "    ".to_string(), font_style: FontStyle::Normal }),
             "displaystyle" | "textstyle" | "scriptstyle" | "scriptscriptstyle" | "limits" | "nolimits" => {
                 Ok(SemanticNode::Sequence(Vec::new()))
             }
@@ -273,7 +281,7 @@ impl Parser {
                     return Ok(SemanticNode::Symbol { glyph_key: GlyphKey::from_char(ch, None, FontStyle::Math), role });
                 }
                 if let Some(text) = named_function(&name) {
-                    return Ok(SemanticNode::Text(text.to_string()));
+                    return Ok(SemanticNode::Text { text: text.to_string(), font_style: FontStyle::Normal });
                 }
                 Err(self.error(format!("unknown command `\\{name}`")))
             }
