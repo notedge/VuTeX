@@ -251,6 +251,29 @@ fn stretched_delimiters_paint_their_own_outlines() {
 }
 
 #[test]
+fn delimiters_cover_the_body_they_wrap() {
+    // A stretched delimiter is sized from the taller side of the math axis, so
+    // the parentheses must paint on both sides and enclose the fraction instead
+    // of sticking to the one-em minimum.
+    let bare = r"\frac{a}{b}";
+    let (bare_svg, bare_layout) = render(bare, false);
+    let (wrapped_svg, wrapped_layout) = render(r"\left(\frac{a}{b}\right)", false);
+    assert_eq!(
+        outline_paths(&wrapped_svg).len(),
+        outline_paths(&bare_svg).len() + 2,
+        "both parentheses must paint their own outline:\n{wrapped_svg}"
+    );
+    assert!(
+        wrapped_layout.height >= bare_layout.height && wrapped_layout.depth >= bare_layout.depth,
+        "delimiter {} x {} does not cover the fraction {} x {}:\n{wrapped_svg}",
+        wrapped_layout.height,
+        wrapped_layout.depth,
+        bare_layout.height,
+        bare_layout.depth
+    );
+}
+
+#[test]
 fn tall_brace_is_assembled_from_stacked_parts() {
     // A brace around two nested fractions needs the piecewise assembly: no
     // single prepared variant covers that height.
