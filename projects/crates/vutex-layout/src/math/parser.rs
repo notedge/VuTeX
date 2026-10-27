@@ -126,6 +126,18 @@ impl Parser {
             }
 
             let atom = self.parse_atom()?;
+            // `\limits` / `\nolimits` describes the operator in front of it, not
+            // an atom of its own.  Emit the flag before the operator's scripts so
+            // the layout pass applies it to that operator, and rebind any scripts
+            // that follow the flag to the operator instead of to the flag.
+            if let SemanticNode::LimitsSpec(flag) = atom {
+                let base =
+                    items.pop().ok_or_else(|| self.error("`\\limits` must follow an operator"))?;
+                let scripted = self.parse_scripts(base)?;
+                items.push(SemanticNode::LimitsSpec(flag));
+                items.push(scripted);
+                continue;
+            }
             items.push(self.parse_scripts(atom)?);
         }
         Ok(items)
