@@ -314,11 +314,16 @@ fn discover_fonts_with_warnings(charset: &BTreeSet<char>, diagnostics: &mut Vec<
                 fonts.push(font);
             }
             None => {
-                append_warning(
-                    Some(diagnostics),
-                    "vutex.render.pdf.font_unavailable",
-                    format!("system font candidate {} could not be loaded as a glyf TrueType font", path),
-                );
+                // A path that does not exist on this platform (e.g. Windows
+                // paths on macOS) is normal and produces no warning. Only a
+                // file that *does* exist but fails to parse is a real problem.
+                if std::path::Path::new(path).exists() {
+                    append_warning(
+                        Some(diagnostics),
+                        "vutex.render.pdf.font_unavailable",
+                        format!("system font candidate {} could not be loaded as a glyf TrueType font", path),
+                    );
+                }
             }
         }
     }
