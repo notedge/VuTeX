@@ -67,11 +67,23 @@ fn reflow_html_nests_child_list_inside_parent_item() {
     let mut graph = DocumentGraph::new(DocumentId(5));
     let child = graph.push_block(Block::List {
         ordered: false,
-        items: vec![ListItem { content: vec![text("child")], children: Vec::new(), number: None, is_task: false, is_checked: None }],
+        items: vec![ListItem {
+            content: vec![text("child")],
+            children: Vec::new(),
+            number: None,
+            is_task: false,
+            is_checked: None,
+        }],
     });
     graph.push_block(Block::List {
         ordered: false,
-        items: vec![ListItem { content: vec![text("parent")], children: vec![child], number: None, is_task: false, is_checked: None }],
+        items: vec![ListItem {
+            content: vec![text("parent")],
+            children: vec![child],
+            number: None,
+            is_task: false,
+            is_checked: None,
+        }],
     });
 
     let html = render_html_reflow(&build_flow_presentation(&graph)).expect("reflow html");

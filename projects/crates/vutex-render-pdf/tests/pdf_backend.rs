@@ -1961,10 +1961,7 @@ fn base14_only_emits_a_warning_when_characters_would_degrade_to_question_marks()
     .expect("pdf render with warnings");
 
     assert!(!outcome.pdf.is_empty(), "pdf is still produced");
-    let degraded = outcome
-        .diagnostics
-        .iter()
-        .find(|d| d.code == "vutex.render.pdf.font_unavailable");
+    let degraded = outcome.diagnostics.iter().find(|d| d.code == "vutex.render.pdf.font_unavailable");
     assert!(degraded.is_some(), "Base14Only degradation must surface as a Warning: {:?}", outcome.diagnostics);
     let degraded = degraded.unwrap();
     assert_eq!(degraded.severity, vutex_types::Severity::Warning);
@@ -1973,11 +1970,8 @@ fn base14_only_emits_a_warning_when_characters_would_degrade_to_question_marks()
 
 #[test]
 fn discover_policy_emits_no_warnings_for_fully_covered_text() {
-    let outcome = render_pdf_with_font_policy_and_diagnostics(
-        &cjk_presentation("αβγ"),
-        &PdfFontPolicy::Discover,
-    )
-    .expect("pdf render");
+    let outcome =
+        render_pdf_with_font_policy_and_diagnostics(&cjk_presentation("αβγ"), &PdfFontPolicy::Discover).expect("pdf render");
 
     // "αβγ" fits in WinAnsi; discover succeeds cleanly with no warnings.
     let unexpected = outcome.diagnostics.iter().filter(|d| d.severity == vutex_types::Severity::Warning).count();
@@ -1986,11 +1980,9 @@ fn discover_policy_emits_no_warnings_for_fully_covered_text() {
 
 #[test]
 fn discover_policy_still_errors_when_no_font_covers_a_glyph() {
-    let diagnostic = render_pdf_with_font_policy_and_diagnostics(
-        &cjk_presentation("😂"),
-        &PdfFontPolicy::File(test_font_path()),
-    )
-    .expect_err("a missing glyph must still short-circuit with Error");
+    let diagnostic =
+        render_pdf_with_font_policy_and_diagnostics(&cjk_presentation("😂"), &PdfFontPolicy::File(test_font_path()))
+            .expect_err("a missing glyph must still short-circuit with Error");
 
     assert_eq!(diagnostic.code, "vutex.render.pdf.glyph_missing");
 }
@@ -2011,11 +2003,20 @@ fn stream_length_counters(bytes: &[u8]) -> Vec<(usize, usize, usize)> {
         let end = offsets.get(idx + 1).copied().unwrap_or(bytes.len());
         let body = &bytes[*start..end];
         let start_marker = format!("{number} 0 obj\n");
-        let Some(body_start) = find(body, start_marker.as_bytes()) else { continue };
+        let Some(body_start) = find(body, start_marker.as_bytes())
+        else {
+            continue;
+        };
         let after_obj_header = body_start + start_marker.len();
-        let Some(stream_at) = find(&body[after_obj_header..], b"stream\n") else { continue };
+        let Some(stream_at) = find(&body[after_obj_header..], b"stream\n")
+        else {
+            continue;
+        };
         let stream_at = after_obj_header + stream_at;
-        let Some(endstream_at) = find(&body[stream_at + b"stream\n".len()..], b"\nendstream") else { continue };
+        let Some(endstream_at) = find(&body[stream_at + b"stream\n".len()..], b"\nendstream")
+        else {
+            continue;
+        };
         let body_len = endstream_at; // bytes between `stream\n` and `\nendstream`
         let actual = body_len;
 
@@ -2068,17 +2069,21 @@ fn length_is_recomputed_when_the_dict_pre_claims_a_stale_value() {
     let href = format!("data:image/png;base64,{}", base64(&alpha_png()));
     let bytes = render_pdf_with_font_policy(
         &DisplayPresentation {
-            pages: vec![page(595.0, 842.0, vec![
-                text(72.0, 100.0, 12.0, "sans", "标题 😂"),
-                DisplayItem::Image(DisplayImage {
-                    x: 72.0,
-                    y: 260.0,
-                    width: 120.0,
-                    height: 60.0,
-                    alt: "figure".to_string(),
-                    source: Some(href),
-                }),
-            ])],
+            pages: vec![page(
+                595.0,
+                842.0,
+                vec![
+                    text(72.0, 100.0, 12.0, "sans", "标题 😂"),
+                    DisplayItem::Image(DisplayImage {
+                        x: 72.0,
+                        y: 260.0,
+                        width: 120.0,
+                        height: 60.0,
+                        alt: "figure".to_string(),
+                        source: Some(href),
+                    }),
+                ],
+            )],
         },
         &PdfFontPolicy::Files(vec![test_font_path(), symbol_font_path()]),
     )

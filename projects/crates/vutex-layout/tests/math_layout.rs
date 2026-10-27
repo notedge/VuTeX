@@ -92,7 +92,12 @@ fn spacing_adds_width_around_binary() {
 
     // And it must also be wider than the two operands concatenated
     let two_atoms = layout("ab");
-    assert!(spaced.width > two_atoms.width, "binary spacing must exceed plain two-atom width: {} vs {}", spaced.width, two_atoms.width);
+    assert!(
+        spaced.width > two_atoms.width,
+        "binary spacing must exceed plain two-atom width: {} vs {}",
+        spaced.width,
+        two_atoms.width
+    );
 }
 
 #[test]

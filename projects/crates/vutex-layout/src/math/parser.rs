@@ -242,11 +242,7 @@ impl Parser {
                 Ok(SemanticNode::Delimited {
                     left: Some(delimiter('(')),
                     right: Some(delimiter(')')),
-                    content: Box::new(SemanticNode::Fraction {
-                        num: Box::new(num),
-                        den: Box::new(den),
-                        line: LineStyle::None,
-                    }),
+                    content: Box::new(SemanticNode::Fraction { num: Box::new(num), den: Box::new(den), line: LineStyle::None }),
                 })
             }
             "sqrt" => self.parse_sqrt(),
@@ -317,11 +313,7 @@ impl Parser {
     /// Lowers to `Delimited { left: Some(delimiter), right: None, content: Sequence([]) }`.
     fn parse_big_delimiter(&mut self) -> MathResult<SemanticNode> {
         let glyph = self.parse_delimiter()?;
-        Ok(SemanticNode::Delimited {
-            left: glyph,
-            right: None,
-            content: Box::new(SemanticNode::Sequence(Vec::new())),
-        })
+        Ok(SemanticNode::Delimited { left: glyph, right: None, content: Box::new(SemanticNode::Sequence(Vec::new())) })
     }
 
     /// Read a delimiter after `\left` / `\right`; `.` means “no delimiter”.
@@ -378,8 +370,17 @@ impl Parser {
         let name = name.trim().to_string();
 
         let supported = [
-            "matrix", "pmatrix", "bmatrix", "vmatrix", "cases", "aligned",
-            "smallmatrix", "gathered", "split", "Bmatrix", "Vmatrix",
+            "matrix",
+            "pmatrix",
+            "bmatrix",
+            "vmatrix",
+            "cases",
+            "aligned",
+            "smallmatrix",
+            "gathered",
+            "split",
+            "Bmatrix",
+            "Vmatrix",
         ];
         if !supported.contains(&name.as_str()) {
             return Err(self.error(format!("unsupported environment `{name}`")));
@@ -441,12 +442,7 @@ impl Parser {
             _ => Alignment::Center,
         };
 
-        Ok(SemanticNode::Matrix {
-            rows,
-            row_spacing,
-            col_spacing: Fixed::from_f64(0.8),
-            alignment,
-        })
+        Ok(SemanticNode::Matrix { rows, row_spacing, col_spacing: Fixed::from_f64(0.8), alignment })
     }
 
     /// Read `{...}` verbatim, keeping nested braces and escaped characters.

@@ -21,8 +21,8 @@ use vutex_layout::{LayoutHint, document::layout_with_diagrams};
 use vutex_presentation::builder::{build_display_presentation, build_flow_presentation};
 use vutex_render_html::{render_html_reflow, render_html_snapshot};
 use vutex_render_pdf::{PdfFontPolicy, PdfResources, render_pdf_with_resources_and_diagnostics};
-use vutex_types::{Diagnostic as RenderDiagnostic, Severity};
 use vutex_render_svg::render_svg;
+use vutex_types::{Diagnostic as RenderDiagnostic, Severity};
 
 use crate::{diagram::lower_mermaid_diagrams, tikz::lower_tikz_diagrams};
 

@@ -56,12 +56,7 @@ pub(crate) struct ScenePaint<'a, 'd> {
 }
 
 /// Paint one placed scene into the page content stream.
-pub(crate) fn write_scene<'d>(
-    out: &mut String,
-    page_height: f64,
-    graphic: &DisplayGraphic,
-    paint: &mut ScenePaint<'_, 'd>,
-) {
+pub(crate) fn write_scene<'d>(out: &mut String, page_height: f64, graphic: &DisplayGraphic, paint: &mut ScenePaint<'_, 'd>) {
     write_scene_box(out, page_height, &graphic.scene, graphic.x, graphic.y, graphic.width, graphic.height, paint);
 }
 
@@ -460,13 +455,7 @@ fn write_color(out: &mut String, color: Color, fill: bool) {
     );
 }
 
-fn write_text<'d>(
-    out: &mut String,
-    position: Point,
-    text: &str,
-    style: &TextStyle,
-    painter: &mut ScenePaint<'_, 'd>,
-) {
+fn write_text<'d>(out: &mut String, position: Point, text: &str, style: &TextStyle, painter: &mut ScenePaint<'_, 'd>) {
     if text.is_empty() || !(style.font_size > 0.0) {
         return;
     }
@@ -492,17 +481,7 @@ fn write_text<'d>(
         TextAnchor::Middle => position.x - width * 0.5,
         TextAnchor::End => position.x - width,
     };
-    paint_text(
-        out,
-        x,
-        position.y,
-        style.font_size,
-        resource_index,
-        text,
-        embedded,
-        true,
-        painter.diagnostics.as_deref_mut(),
-    );
+    paint_text(out, x, position.y, style.font_size, resource_index, text, embedded, true, painter.diagnostics.as_deref_mut());
 }
 
 /// Paint one resolved image, or its reserved dashed slot when it did not resolve.
@@ -516,12 +495,7 @@ fn write_text<'d>(
 /// the first row lands on the scene's top edge. The scene root already flips y
 /// once, so the composed page matrix keeps a positive y scale and the picture
 /// stays upright.
-fn write_image<'d>(
-    out: &mut String,
-    rect: Rect,
-    resource: &ResourceRef,
-    painter: &mut ScenePaint<'_, 'd>,
-) {
+fn write_image<'d>(out: &mut String, rect: Rect, resource: &ResourceRef, painter: &mut ScenePaint<'_, 'd>) {
     if !all_finite(&[rect.x, rect.y, rect.width, rect.height]) {
         return;
     }
@@ -553,12 +527,7 @@ fn write_image<'d>(
 /// Both the nested scene and the enclosing scene count y downward, so this
 /// transformation only scales and translates: no flip is needed here because
 /// the root scene matrix already flipped the whole scene once.
-fn write_nested_scene<'d>(
-    out: &mut String,
-    scene: &DisplayScene,
-    rect: Rect,
-    painter: &mut ScenePaint<'_, 'd>,
-) -> bool {
+fn write_nested_scene<'d>(out: &mut String, scene: &DisplayScene, rect: Rect, painter: &mut ScenePaint<'_, 'd>) -> bool {
     let Some((x, y, width, _)) = fit_scene(scene, rect.x, rect.y, rect.width, rect.height)
     else {
         return false;

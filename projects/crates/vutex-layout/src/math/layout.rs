@@ -296,44 +296,32 @@ impl LayoutEngine {
 
         match (left, right) {
             // ——— Relation: thick on both sides ———
-            (_, Relation) | (Relation, _) => Some(Glue {
-                width: Fixed::from_f64(THICK_MUSIP_EM) * size,
-                stretch: Fixed::ZERO,
-                shrink: Fixed::ZERO,
-            }),
+            (_, Relation) | (Relation, _) => {
+                Some(Glue { width: Fixed::from_f64(THICK_MUSIP_EM) * size, stretch: Fixed::ZERO, shrink: Fixed::ZERO })
+            }
 
             // ——— LargeOperator: medium on both sides, but NOT after Opening ———
-            (LargeOperator, _) => Some(Glue {
-                width: Fixed::from_f64(MEDIUM_MUSIP_EM) * size,
-                stretch: Fixed::ZERO,
-                shrink: Fixed::ZERO,
-            }),
+            (LargeOperator, _) => {
+                Some(Glue { width: Fixed::from_f64(MEDIUM_MUSIP_EM) * size, stretch: Fixed::ZERO, shrink: Fixed::ZERO })
+            }
             (_, LargeOperator) => {
                 if matches!(left, Opening) {
                     None
                 }
                 else {
-                    Some(Glue {
-                        width: Fixed::from_f64(MEDIUM_MUSIP_EM) * size,
-                        stretch: Fixed::ZERO,
-                        shrink: Fixed::ZERO,
-                    })
+                    Some(Glue { width: Fixed::from_f64(MEDIUM_MUSIP_EM) * size, stretch: Fixed::ZERO, shrink: Fixed::ZERO })
                 }
             }
 
             // ——— Operator (text math function like sin, cos): medium both sides ———
-            (_, Operator) | (Operator, _) => Some(Glue {
-                width: Fixed::from_f64(MEDIUM_MUSIP_EM) * size,
-                stretch: Fixed::ZERO,
-                shrink: Fixed::ZERO,
-            }),
+            (_, Operator) | (Operator, _) => {
+                Some(Glue { width: Fixed::from_f64(MEDIUM_MUSIP_EM) * size, stretch: Fixed::ZERO, shrink: Fixed::ZERO })
+            }
 
             // ——— Inner (fraction, radical, delimited group): thick both sides ———
-            (_, Inner) | (Inner, _) => Some(Glue {
-                width: Fixed::from_f64(THICK_MUSIP_EM) * size,
-                stretch: Fixed::ZERO,
-                shrink: Fixed::ZERO,
-            }),
+            (_, Inner) | (Inner, _) => {
+                Some(Glue { width: Fixed::from_f64(THICK_MUSIP_EM) * size, stretch: Fixed::ZERO, shrink: Fixed::ZERO })
+            }
 
             // ——— Binary: thick glue when the neighbour can take one ———
             // Skip glue on binary → binary / open / close / rel / punct transitions
@@ -343,11 +331,7 @@ impl LayoutEngine {
                     None
                 }
                 else {
-                    Some(Glue {
-                        width: Fixed::from_f64(THICK_MUSIP_EM) * size,
-                        stretch: Fixed::ZERO,
-                        shrink: Fixed::ZERO,
-                    })
+                    Some(Glue { width: Fixed::from_f64(THICK_MUSIP_EM) * size, stretch: Fixed::ZERO, shrink: Fixed::ZERO })
                 }
             }
             (_, Binary) => {
@@ -355,20 +339,14 @@ impl LayoutEngine {
                     None
                 }
                 else {
-                    Some(Glue {
-                        width: Fixed::from_f64(THICK_MUSIP_EM) * size,
-                        stretch: Fixed::ZERO,
-                        shrink: Fixed::ZERO,
-                    })
+                    Some(Glue { width: Fixed::from_f64(THICK_MUSIP_EM) * size, stretch: Fixed::ZERO, shrink: Fixed::ZERO })
                 }
             }
 
             // ——— Punctuation: thin after, nothing before ———
-            (Punctuation, _) => Some(Glue {
-                width: Fixed::from_f64(THIN_MUSIP_EM) * size,
-                stretch: Fixed::ZERO,
-                shrink: Fixed::ZERO,
-            }),
+            (Punctuation, _) => {
+                Some(Glue { width: Fixed::from_f64(THIN_MUSIP_EM) * size, stretch: Fixed::ZERO, shrink: Fixed::ZERO })
+            }
 
             // Ordinary / Text adjacency: no glue
             _ => None,
