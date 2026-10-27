@@ -292,7 +292,7 @@ impl LayoutEngine {
             | SemanticNode::HorizontalBox { .. }
             | SemanticNode::VerticalBox { .. }
             | SemanticNode::Paragraph { .. } => SymbolRole::Inner,
-            SemanticNode::Sequence(_) | SemanticNode::Text(_) => SymbolRole::Ordinary,
+            SemanticNode::Sequence(_) | SemanticNode::Text { .. } => SymbolRole::Ordinary,
         }
     }
 
@@ -428,10 +428,10 @@ impl LayoutEngine {
                     }
                     Ok(self.pack_vbox(children, *alignment))
                 }
-                SemanticNode::Text(text) => {
+                SemanticNode::Text { text, font_style } => {
                     let mut children = Vec::new();
                     for c in text.chars() {
-                        let key = GlyphKey::from_char(c, None, FontStyle::Normal);
+                        let key = GlyphKey::from_char(c, None, *font_style);
                         children.push(self.layout_symbol(&key, style)?);
                     }
                     Ok(self.pack_hbox(children, None))

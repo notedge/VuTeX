@@ -9,19 +9,68 @@ pub struct MathSemanticTree {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum SemanticNode {
     Sequence(Vec<SemanticNode>),
-    HorizontalBox { content: Vec<SemanticNode>, spacing: SpacingRule },
-    Paragraph { content: Vec<SemanticNode>, width: Fixed },
-    VerticalBox { content: Vec<SemanticNode>, alignment: Alignment },
-    Fraction { num: Box<SemanticNode>, den: Box<SemanticNode>, line: LineStyle },
-    Radical { degree: Option<Box<SemanticNode>>, radicand: Box<SemanticNode> },
-    Symbol { glyph_key: GlyphKey, role: SymbolRole },
-    Text(String),
-    Subscript { base: Box<SemanticNode>, sub: Box<SemanticNode> },
-    Superscript { base: Box<SemanticNode>, sup: Box<SemanticNode> },
-    SubSuperscript { base: Box<SemanticNode>, sub: Box<SemanticNode>, sup: Box<SemanticNode> },
-    Matrix { rows: Vec<Vec<SemanticNode>>, row_spacing: Fixed, col_spacing: Fixed, alignment: Alignment },
-    Delimited { left: Option<GlyphKey>, right: Option<GlyphKey>, content: Box<SemanticNode> },
-    Accent { base: Box<SemanticNode>, accent: GlyphKey },
+    HorizontalBox {
+        content: Vec<SemanticNode>,
+        spacing: SpacingRule,
+    },
+    Paragraph {
+        content: Vec<SemanticNode>,
+        width: Fixed,
+    },
+    VerticalBox {
+        content: Vec<SemanticNode>,
+        alignment: Alignment,
+    },
+    Fraction {
+        num: Box<SemanticNode>,
+        den: Box<SemanticNode>,
+        line: LineStyle,
+    },
+    Radical {
+        degree: Option<Box<SemanticNode>>,
+        radicand: Box<SemanticNode>,
+    },
+    Symbol {
+        glyph_key: GlyphKey,
+        role: SymbolRole,
+    },
+    /// Plain text atoms with an explicit font face.
+    ///
+    /// `\text` / `\textrm` emit `FontStyle::Normal`; `\mathbf` / `\mathit` /
+    /// `\mathrm` emit their respective faces so the layout engine can render
+    /// them differently from math-italic symbols.
+    Text {
+        text: String,
+        font_style: FontStyle,
+    },
+    Subscript {
+        base: Box<SemanticNode>,
+        sub: Box<SemanticNode>,
+    },
+    Superscript {
+        base: Box<SemanticNode>,
+        sup: Box<SemanticNode>,
+    },
+    SubSuperscript {
+        base: Box<SemanticNode>,
+        sub: Box<SemanticNode>,
+        sup: Box<SemanticNode>,
+    },
+    Matrix {
+        rows: Vec<Vec<SemanticNode>>,
+        row_spacing: Fixed,
+        col_spacing: Fixed,
+        alignment: Alignment,
+    },
+    Delimited {
+        left: Option<GlyphKey>,
+        right: Option<GlyphKey>,
+        content: Box<SemanticNode>,
+    },
+    Accent {
+        base: Box<SemanticNode>,
+        accent: GlyphKey,
+    },
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
