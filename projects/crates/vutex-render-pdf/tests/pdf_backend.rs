@@ -180,7 +180,7 @@ fn renders_all_primitives_on_one_page() {
     assert_eq!(text.matches("/Type /Catalog").count(), 1, "one catalog object");
     assert!(text.contains("/Type /Pages"));
     assert!(text.contains("(Hello PDF) Tj"), "text run with escaped literal string");
-    assert!(text.contains("\nS\n"), "rule stroke operator");
+    assert!(text.contains("q\n0.067 g\n72 721.75 451 0.5 re\nf\nQ\n"), "rule fills its bar");
     assert!(text.contains("\nf\n"), "filled rect operator");
     assert!(text.contains("[3 2] 0 d"), "image placeholder dash array");
     assert!(text.contains("stream\n") && text.contains("endstream"));
