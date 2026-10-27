@@ -5,9 +5,7 @@
 //! laid-out formula produces sane box metrics (positive width, non-negative
 //! height and depth).
 
-use vutex_layout::math::{
-    FormulaLayout, LayoutNode, layout_formula, render_layout_node,
-};
+use vutex_layout::math::{FormulaLayout, LayoutNode, layout_formula, render_layout_node};
 use vutex_render_svg::math::{MathmlBackend, SvgBackend};
 use vutex_types::math::Fixed;
 
@@ -49,21 +47,9 @@ fn all_formulas_layout_with_sane_box_metrics() {
         let (node, layout) = layout(formula);
 
         // FormulaLayout (f64, pipeline-computed)
-        assert!(
-            layout.width > 0.0,
-            "{formula}: FormulaLayout.width must be positive, got {}",
-            layout.width
-        );
-        assert!(
-            layout.height >= 0.0,
-            "{formula}: FormulaLayout.height must be non-negative, got {}",
-            layout.height
-        );
-        assert!(
-            layout.depth >= 0.0,
-            "{formula}: FormulaLayout.depth must be non-negative, got {}",
-            layout.depth
-        );
+        assert!(layout.width > 0.0, "{formula}: FormulaLayout.width must be positive, got {}", layout.width);
+        assert!(layout.height >= 0.0, "{formula}: FormulaLayout.height must be non-negative, got {}", layout.height);
+        assert!(layout.depth >= 0.0, "{formula}: FormulaLayout.depth must be non-negative, got {}", layout.depth);
         let total_expected = node.height().to_f64() + node.depth().to_f64();
         let total_layout = layout.height + layout.depth;
         assert!(
@@ -73,21 +59,9 @@ fn all_formulas_layout_with_sane_box_metrics() {
         );
 
         // LayoutNode accessors (Fixed-based)
-        assert!(
-            node.width() > Fixed::ZERO,
-            "{formula}: LayoutNode::width must be positive, got {:?}",
-            node.width()
-        );
-        assert!(
-            node.height() >= Fixed::ZERO,
-            "{formula}: LayoutNode::height must be non-negative, got {:?}",
-            node.height()
-        );
-        assert!(
-            node.depth() >= Fixed::ZERO,
-            "{formula}: LayoutNode::depth must be non-negative, got {:?}",
-            node.depth()
-        );
+        assert!(node.width() > Fixed::ZERO, "{formula}: LayoutNode::width must be positive, got {:?}", node.width());
+        assert!(node.height() >= Fixed::ZERO, "{formula}: LayoutNode::height must be non-negative, got {:?}", node.height());
+        assert!(node.depth() >= Fixed::ZERO, "{formula}: LayoutNode::depth must be non-negative, got {:?}", node.depth());
     }
 }
 
@@ -104,21 +78,9 @@ fn every_formula_lays_out_in_both_inline_and_display_style() {
         let (_, display) = layout_display(formula);
 
         for (label, m) in [("inline", inline), ("display", display)] {
-            assert!(
-                m.width > 0.0,
-                "{formula} ({label}): width must be positive, got {}",
-                m.width
-            );
-            assert!(
-                m.height >= 0.0,
-                "{formula} ({label}): height must be non-negative, got {}",
-                m.height
-            );
-            assert!(
-                m.depth >= 0.0,
-                "{formula} ({label}): depth must be non-negative, got {}",
-                m.depth
-            );
+            assert!(m.width > 0.0, "{formula} ({label}): width must be positive, got {}", m.width);
+            assert!(m.height >= 0.0, "{formula} ({label}): height must be non-negative, got {}", m.height);
+            assert!(m.depth >= 0.0, "{formula} ({label}): depth must be non-negative, got {}", m.depth);
         }
     }
 }
@@ -138,14 +100,8 @@ fn all_formulas_render_through_svg_backend() {
         // Check warnings BEFORE finish() takes ownership.
         let warnings: Vec<String> = backend.warnings().to_vec();
         let svg = backend.finish();
-        assert!(
-            svg.starts_with("<svg"),
-            "{formula}: svg output must start with <svg, got {svg:?}"
-        );
-        assert!(
-            svg.ends_with("</svg>"),
-            "{formula}: svg output must end with </svg>, got {svg:?}"
-        );
+        assert!(svg.starts_with("<svg"), "{formula}: svg output must start with <svg, got {svg:?}");
+        assert!(svg.ends_with("</svg>"), "{formula}: svg output must end with </svg>, got {svg:?}");
 
         assert!(
             warnings.is_empty() || warnings.iter().all(|w| !w.contains("deterministic")),
@@ -169,14 +125,8 @@ fn all_formulas_render_through_mathml_backend() {
             .unwrap_or_else(|e| panic!("mathml render failed for {formula}: {e}"));
 
         let mathml = backend.finish();
-        assert!(
-            mathml.starts_with("<math"),
-            "{formula}: mathml output must start with <math, got {mathml:?}"
-        );
-        assert!(
-            mathml.ends_with("</math>"),
-            "{formula}: mathml output must end with </math>, got {mathml:?}"
-        );
+        assert!(mathml.starts_with("<math"), "{formula}: mathml output must start with <math, got {mathml:?}");
+        assert!(mathml.ends_with("</math>"), "{formula}: mathml output must end with </math>, got {mathml:?}");
     }
 }
 

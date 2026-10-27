@@ -12,8 +12,7 @@
 //! external parser (pymupdf, poppler, ...) can validate the file structure.
 
 use std::{
-    env,
-    fs,
+    env, fs,
     path::{Path, PathBuf},
 };
 
@@ -34,8 +33,9 @@ fn export_pdf_to_path() {
     assert!(input_path.exists(), "input file does not exist: {input}");
 
     let mut opts = match options.as_deref() {
-        Some(json) if !json.trim().is_empty() => serde_json::from_str::<serde_json::Value>(json)
-            .expect("VUTEX_OPTIONS must be valid JSON"),
+        Some(json) if !json.trim().is_empty() => {
+            serde_json::from_str::<serde_json::Value>(json).expect("VUTEX_OPTIONS must be valid JSON")
+        }
         _ => serde_json::Value::default(),
     };
     if opts.get("output").is_none() {

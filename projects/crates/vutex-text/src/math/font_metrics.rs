@@ -33,10 +33,7 @@ impl FontMetricsSystem {
         let family = key.font_family.as_deref().unwrap_or("default");
         // Normalize key: layout passes None family, but rekey_family stores
         // Some("default"). A None key must match the Some("default") entry.
-        let normalized = GlyphKey {
-            font_family: Some(family.to_string()),
-            ..key.clone()
-        };
+        let normalized = GlyphKey { font_family: Some(family.to_string()), ..key.clone() };
         if let Some(data) = self.metrics_cache.get(family) {
             if let Some(metrics) = data.glyphs.get(&normalized) {
                 return Ok(*metrics);
@@ -47,10 +44,7 @@ impl FontMetricsSystem {
 
     pub fn get_delimiter_construction(&self, key: &GlyphKey) -> MathResult<DelimiterConstruction> {
         let family = key.font_family.as_deref().unwrap_or("default");
-        let normalized = GlyphKey {
-            font_family: Some(family.to_string()),
-            ..key.clone()
-        };
+        let normalized = GlyphKey { font_family: Some(family.to_string()), ..key.clone() };
         if let Some(data) = self.metrics_cache.get(family) {
             if let Some(construction) = data.delimiters.get(&normalized) {
                 return Ok(construction.clone());
@@ -70,10 +64,7 @@ impl FontMetricsSystem {
 
     pub fn get_glyph_path(&self, key: &GlyphKey) -> MathResult<String> {
         let family = key.font_family.as_deref().unwrap_or("default");
-        let normalized = GlyphKey {
-            font_family: Some(family.to_string()),
-            ..key.clone()
-        };
+        let normalized = GlyphKey { font_family: Some(family.to_string()), ..key.clone() };
         if let Some(data) = self.metrics_cache.get(family) {
             if let Some(path) = data.glyph_paths.get(&normalized) {
                 return Ok(path.clone());
@@ -307,8 +298,7 @@ pub fn builtin_font_metrics() -> FontMetricsSystem {
         // Only insert if the OTF didn't already provide a path for this char.
         let normal_key = GlyphKey::from_char(ch, family.clone(), FontStyle::Normal);
         let math_key = GlyphKey::from_char(ch, family.clone(), FontStyle::Math);
-        let has_path =
-            data.glyph_paths.contains_key(&normal_key) || data.glyph_paths.contains_key(&math_key);
+        let has_path = data.glyph_paths.contains_key(&normal_key) || data.glyph_paths.contains_key(&math_key);
         if !has_path {
             data.glyph_paths.insert(normal_key.clone(), path.to_string());
             data.glyph_paths.insert(math_key, path.to_string());
