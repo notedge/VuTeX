@@ -229,6 +229,43 @@ fn thin_space_paints_nothing_in_deterministic_mode() {
     assert!(layout.width > render("ab", false).1.width, "`\\,` still advances the formula");
 }
 
+/// Painted ink extent `(min_y, max_y)` in canvas coordinates.
+fn ink_y_extent(svg: &str) -> (f64, f64) {
+    let points = painted_points(svg);
+    assert!(!points.is_empty(), "nothing was painted:\n{svg}");
+    let min_y = points.iter().map(|p| p.1).fold(f64::INFINITY, f64::min);
+    let max_y = points.iter().map(|p| p.1).fold(f64::NEG_INFINITY, f64::max);
+    (min_y, max_y)
+}
+
+#[test]
+fn stretched_delimiters_paint_their_own_outlines() {
+    // Inline math lays out at a 14px em. Parentheses wrapped around a fraction
+    // paint two extra outlines, which only happens when the variant glyph keys
+    // resolve to the font's own extents and paths.
+    let (svg, layout) = render(r"\left(\frac{a}{b}\right)", false);
+    let paths = outline_paths(&svg);
+    assert_eq!(paths.len(), 4, "two letters and two delimiter outlines:\n{svg}");
+    let (_, _, view_width, view_height) = view_box(&svg);
+    assert!(view_width >= layout.width - 1e-9 && view_height >= layout.height + layout.depth - 1e-9, "{svg}");
+}
+
+#[test]
+fn tall_brace_is_assembled_from_stacked_parts() {
+    // A brace around two nested fractions needs the piecewise assembly: no
+    // single prepared variant covers that height.
+    let bare = r"\frac{\frac{a}{b}}{\frac{c}{d}}";
+    let (bare_svg, _) = render(bare, false);
+    let (wrapped_svg, _) = render(r"\left\{\frac{\frac{a}{b}}{\frac{c}{d}}\right\}", false);
+    assert!(
+        outline_paths(&wrapped_svg).len() >= outline_paths(&bare_svg).len() + 2,
+        "the brace must add assembled parts:\n{wrapped_svg}"
+    );
+    let (bare_min, bare_max) = ink_y_extent(&bare_svg);
+    let (min, max) = ink_y_extent(&wrapped_svg);
+    assert!(max - min >= bare_max - bare_min - 1.0, "the brace is shorter than the content it wraps:\n{wrapped_svg}");
+}
+
 #[test]
 fn emphasis_faces_keep_their_own_outlines() {
     let bold_svg = render(r"\mathbf{a}", false).0;

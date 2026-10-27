@@ -366,6 +366,30 @@ fn rekey_family<V>(map: HashMap<GlyphKey, V>, new_family: &str) -> HashMap<Glyph
         .collect()
 }
 
+/// Re-key a delimiter map, including the glyph keys nested in every construction.
+///
+/// Layout reads the variant and assembly glyph keys straight out of the
+/// construction it looks up, so a construction whose inner keys still name the
+/// source font resolves to synthetic extents and paints nothing.
+fn rekey_delimiters(
+    map: HashMap<GlyphKey, DelimiterConstruction>,
+    new_family: &str,
+) -> HashMap<GlyphKey, DelimiterConstruction> {
+    let family = Some(new_family.to_string());
+    map.into_iter()
+        .map(|(mut key, mut construction)| {
+            key.font_family = family.clone();
+            for variant in &mut construction.variants {
+                variant.glyph.font_family = family.clone();
+            }
+            for component in &mut construction.components {
+                component.glyph.font_family = family.clone();
+            }
+            (key, construction)
+        })
+        .collect()
+}
+
 /// Builtin metrics for WASM and tests without font files.
 ///
 /// Prefers the embedded OpenType MATH font (Latin Modern Math) and falls back
@@ -386,7 +410,7 @@ pub fn builtin_font_metrics() -> FontMetricsSystem {
             constants: opentype_data.constants,
             glyphs: rekey_family(opentype_data.glyphs, &family_str),
             glyph_paths: rekey_family(opentype_data.glyph_paths, &family_str),
-            delimiters: rekey_family(opentype_data.delimiters, &family_str),
+            delimiters: rekey_delimiters(opentype_data.delimiters, &family_str),
         }
     }
     else {
