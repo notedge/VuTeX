@@ -5,8 +5,7 @@
 //! The corpus mirrors KaTeX's own formula test set, so passing these tests
 //! proves VuTeX parses and lays out the same formulas KaTeX does.
 
-use std::fs;
-use std::path::Path;
+use std::{fs, path::Path};
 
 use serde::Deserialize;
 use vutex_layout::math::{FormulaLayout, layout_formula};
@@ -23,10 +22,7 @@ struct CorpusEntry {
 
 /// Load the formula corpus JSON shipped alongside this test.
 fn load_corpus() -> Vec<CorpusEntry> {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests")
-        .join("fixtures")
-        .join("formula_corpus.json");
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests").join("fixtures").join("formula_corpus.json");
     let text = fs::read_to_string(&path).unwrap_or_else(|e| {
         panic!("failed to read formula corpus at {}: {e}", path.display());
     });
@@ -35,21 +31,9 @@ fn load_corpus() -> Vec<CorpusEntry> {
 
 /// Assert that a FormulaLayout has all-positive metrics.
 fn assert_positive_metrics(src: &str, m: &FormulaLayout, style: &str) {
-    assert!(
-        m.width > 0.0,
-        "[{style}] `{src}`: width must be positive, got {}",
-        m.width
-    );
-    assert!(
-        m.height > 0.0,
-        "[{style}] `{src}`: height must be positive, got {}",
-        m.height
-    );
-    assert!(
-        m.baseline >= 0.0,
-        "[{style}] `{src}`: baseline must be non-negative, got {}",
-        m.baseline
-    );
+    assert!(m.width > 0.0, "[{style}] `{src}`: width must be positive, got {}", m.width);
+    assert!(m.height > 0.0, "[{style}] `{src}`: height must be positive, got {}", m.height);
+    assert!(m.baseline >= 0.0, "[{style}] `{src}`: baseline must be non-negative, got {}", m.baseline);
 }
 
 /// Every formula in the corpus must parse and lay out in both inline and
@@ -61,13 +45,13 @@ fn corpus_all_formulas_layout_successfully() {
 
     for entry in &corpus {
         // Inline / text style
-        let (_, inline) = layout_formula(&entry.src, false)
-            .unwrap_or_else(|e| panic!("inline layout failed for `{}`: {e}", entry.src));
+        let (_, inline) =
+            layout_formula(&entry.src, false).unwrap_or_else(|e| panic!("inline layout failed for `{}`: {e}", entry.src));
         assert_positive_metrics(&entry.src, &inline, "inline");
 
         // Display style
-        let (_, display) = layout_formula(&entry.src, true)
-            .unwrap_or_else(|e| panic!("display layout failed for `{}`: {e}", entry.src));
+        let (_, display) =
+            layout_formula(&entry.src, true).unwrap_or_else(|e| panic!("display layout failed for `{}`: {e}", entry.src));
         assert_positive_metrics(&entry.src, &display, "display");
     }
 }
@@ -144,8 +128,7 @@ fn corpus_display_total_extent_ge_inline() {
         if display_total + 0.05 < inline_total {
             violations.push(format!(
                 "`{}`: display_total={:.3} (h={:.3},d={:.3}) < inline_total={:.3} (h={:.3},d={:.3})",
-                entry.src, display_total, display.height, display.depth,
-                inline_total, inline.height, inline.depth,
+                entry.src, display_total, display.height, display.depth, inline_total, inline.height, inline.depth,
             ));
         }
     }
@@ -179,12 +162,7 @@ fn corpus_each_formula_is_wider_than_single_atom() {
             ));
         }
     }
-    assert!(
-        violations.is_empty(),
-        "{} formula(s) are suspiciously narrow:\n{}",
-        violations.len(),
-        violations.join("\n"),
-    );
+    assert!(violations.is_empty(), "{} formula(s) are suspiciously narrow:\n{}", violations.len(), violations.join("\n"),);
 }
 
 /// Print a summary table of corpus metrics so a developer can eyeball it.
@@ -193,17 +171,11 @@ fn corpus_each_formula_is_wider_than_single_atom() {
 #[ignore = "manual eyeball summary, run with --ignored --nocapture"]
 fn corpus_metrics_summary() {
     let corpus = load_corpus();
-    println!(
-        "{:<40} {:>10} {:>10} {:>10} {:>10}",
-        "src", "inline_w", "display_w", "ratio", "group"
-    );
+    println!("{:<40} {:>10} {:>10} {:>10} {:>10}", "src", "inline_w", "display_w", "ratio", "group");
     for entry in &corpus {
         let (_, inline) = layout_formula(&entry.src, false).unwrap();
         let (_, display) = layout_formula(&entry.src, true).unwrap();
         let ratio = display.width / inline.width.max(f64::EPSILON);
-        println!(
-            "{:<40} {:>10.2} {:>10.2} {:>10.2} {:>10}",
-            entry.src, inline.width, display.width, ratio, entry.group
-        );
+        println!("{:<40} {:>10.2} {:>10.2} {:>10.2} {:>10}", entry.src, inline.width, display.width, ratio, entry.group);
     }
 }

@@ -224,7 +224,8 @@ pub fn builtin_font_metrics() -> FontMetricsSystem {
             glyph_paths: opentype_data.glyph_paths,
             delimiters: HashMap::new(),
         }
-    } else {
+    }
+    else {
         FontMetricsData::new(family_str.clone(), 1000)
     };
     let family = Some(family_str.clone());
@@ -267,7 +268,12 @@ pub fn builtin_font_metrics() -> FontMetricsSystem {
         ('±', "M 0.1,0.35 L 0.9,0.35 M 0.5,0.15 L 0.5,0.55 M 0.1,0.65 L 0.9,0.65", 1.0, 0.7),
         ('×', "M 0.15,0.15 L 0.85,0.85 M 0.85,0.15 L 0.15,0.85", 0.9, 0.9),
         ('÷', "M 0.1,0.35 L 0.9,0.35 M 0.5,0.15 L 0.5,0.5 M 0.5,0.6 L 0.5,0.85 M 0.1,0.72 L 0.9,0.72", 1.0, 0.85),
-        ('∞', "M 0.15,0.5 C 0.15,0.3 0.4,0.3 0.4,0.5 C 0.4,0.7 0.6,0.7 0.6,0.5 C 0.6,0.3 0.85,0.3 0.85,0.5 C 0.85,0.7 0.6,0.7 0.6,0.5", 0.95, 0.8),
+        (
+            '∞',
+            "M 0.15,0.5 C 0.15,0.3 0.4,0.3 0.4,0.5 C 0.4,0.7 0.6,0.7 0.6,0.5 C 0.6,0.3 0.85,0.3 0.85,0.5 C 0.85,0.7 0.6,0.7 0.6,0.5",
+            0.95,
+            0.8,
+        ),
     ];
     for &(ch, path, w, h) in path_chars {
         let key = GlyphKey::from_char(ch, family.clone(), FontStyle::Normal);

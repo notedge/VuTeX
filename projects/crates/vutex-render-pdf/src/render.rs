@@ -306,8 +306,7 @@ fn discover_fonts_with_warnings(charset: &BTreeSet<char>, diagnostics: &mut Vec<
         }
         match SystemFont::load(std::path::Path::new(path)) {
             Some(font) => {
-                let covered: BTreeSet<char> =
-                    remaining.iter().copied().filter(|ch| font.glyph_id(*ch).is_some()).collect();
+                let covered: BTreeSet<char> = remaining.iter().copied().filter(|ch| font.glyph_id(*ch).is_some()).collect();
                 if covered.is_empty() {
                     continue;
                 }
@@ -330,11 +329,7 @@ fn discover_fonts_with_warnings(charset: &BTreeSet<char>, diagnostics: &mut Vec<
 ///
 /// A `None` sink is silently ignored, so callers can thread diagnostics through
 /// optional contexts without branching at every site.
-pub(crate) fn append_warning(
-    diagnostics: Option<&mut Vec<Diagnostic>>,
-    code: &str,
-    message: String,
-) {
+pub(crate) fn append_warning(diagnostics: Option<&mut Vec<Diagnostic>>, code: &str, message: String) {
     if let Some(list) = diagnostics {
         list.push(Diagnostic { code: code.to_string(), severity: Severity::Warning, message });
     }
@@ -963,13 +958,7 @@ fn page_content<'d>(
     diagnostics: &'d mut Vec<Diagnostic>,
 ) -> String {
     let mut out = String::new();
-    let mut painter = crate::scene::ScenePaint {
-        fonts,
-        embedded,
-        images,
-        opacities,
-        diagnostics: Some(diagnostics),
-    };
+    let mut painter = crate::scene::ScenePaint { fonts, embedded, images, opacities, diagnostics: Some(diagnostics) };
     for item in &page.items {
         write_item(&mut out, page.height, item, fonts, embedded, &mut painter);
     }
@@ -988,9 +977,7 @@ fn write_item<'d>(
     painter: &mut crate::scene::ScenePaint<'_, 'd>,
 ) {
     match item {
-        DisplayItem::TextRun(run) => {
-            write_text(out, page_height, run, fonts, embedded, painter.diagnostics.as_deref_mut())
-        }
+        DisplayItem::TextRun(run) => write_text(out, page_height, run, fonts, embedded, painter.diagnostics.as_deref_mut()),
         DisplayItem::Rule(rule) => write_rule(out, page_height, rule),
         DisplayItem::Rect(rect) => write_rect(out, page_height, rect),
         DisplayItem::Image(image) => write_image(out, page_height, image, painter),
@@ -1020,17 +1007,7 @@ fn write_text(
     else {
         return;
     };
-    paint_text(
-        out,
-        run.x,
-        page_height - run.y,
-        run.size,
-        resource_index,
-        &run.text,
-        embedded,
-        false,
-        diagnostics,
-    );
+    paint_text(out, run.x, page_height - run.y, run.size, resource_index, &run.text, embedded, false, diagnostics);
 }
 
 /// Emit one text object at a page-space position.
@@ -1145,12 +1122,7 @@ fn write_rect(out: &mut String, page_height: f64, rect: &DisplayRect) {
 /// fitted and centred inside the slot, and the painter's root matrix flips the
 /// scene's y-down coordinates into PDF's y-up page space, so the icon is right
 /// way up without any per-slot row reversal.
-fn write_image<'d>(
-    out: &mut String,
-    page_height: f64,
-    image: &DisplayImage,
-    painter: &mut crate::scene::ScenePaint<'_, 'd>,
-) {
+fn write_image<'d>(out: &mut String, page_height: f64, image: &DisplayImage, painter: &mut crate::scene::ScenePaint<'_, 'd>) {
     if !all_finite(&[image.x, image.y, image.width, image.height]) {
         return;
     }
@@ -1362,15 +1334,12 @@ fn rebuild_stream_dict(dict: &str, data_len: usize) -> String {
     let trimmed = cleaned.trim();
     let inner = if let Some(stripped) = trimmed.strip_prefix("<<").and_then(|s| s.strip_suffix(">>")) {
         stripped.trim().to_string()
-    } else {
+    }
+    else {
         trimmed.to_string()
     };
 
-    if inner.is_empty() {
-        format!("<< /Length {data_len} >>")
-    } else {
-        format!("<< {inner} /Length {data_len} >>")
-    }
+    if inner.is_empty() { format!("<< /Length {data_len} >>") } else { format!("<< {inner} /Length {data_len} >>") }
 }
 
 /// Serialize objects into a complete PDF file with a byte-exact xref table.
@@ -1422,10 +1391,8 @@ mod tests {
 
     #[test]
     fn rebuild_preserves_other_entries() {
-        let got = rebuild_stream_dict(
-            "<< /Type /XObject /Subtype /Image /Width 2 /Height 2 /BitsPerComponent 8 /Length 99 >>",
-            12,
-        );
+        let got =
+            rebuild_stream_dict("<< /Type /XObject /Subtype /Image /Width 2 /Height 2 /BitsPerComponent 8 /Length 99 >>", 12);
         assert!(got.contains("/Type /XObject"));
         assert!(got.contains("/Subtype /Image"));
         assert!(got.contains("/Length 12"));
