@@ -60,7 +60,12 @@ pub enum SemanticNode {
         rows: Vec<Vec<SemanticNode>>,
         row_spacing: Fixed,
         col_spacing: Fixed,
-        alignment: Alignment,
+        /// Alignment of each column, left to right.
+        ///
+        /// `matrix` centre-aligns every column, `cases` left-aligns both of its
+        /// columns, and `aligned` / `alignedat` / `split` alternate right and
+        /// left at each `&`.  Missing entries (ragged rows) centre by default.
+        column_alignment: Vec<Alignment>,
     },
     Delimited {
         left: Option<GlyphKey>,
