@@ -51,6 +51,22 @@ fn render_formula_returns_both_payloads() {
 }
 
 #[test]
+fn strict_outline_covers_ascii_relations() {
+    let value = parse(&render_svg_wasm(
+        "\\begin{cases} a & x>0 \\\\ b & x\\le 0 \\end{cases}",
+        Some("{\"displayMode\":\"block\",\"outline\":true}".to_string()),
+    ));
+    let svg = value["svg"].as_str().unwrap_or_default();
+    assert!(svg.contains("<path"), "strict outline emitted no paths: {value}");
+    assert!(!svg.contains("<text"), "strict outline fell back to a host font: {svg}");
+    assert_eq!(
+        value["diagnostics"].as_array().map(Vec::len),
+        Some(0),
+        "strict outline reported diagnostics: {value}"
+    );
+}
+
+#[test]
 fn empty_source_reports_a_diagnostic() {
     let value = parse(&render_svg_wasm("   ", None));
     let diagnostics = value["diagnostics"].as_array().expect("diagnostics");
