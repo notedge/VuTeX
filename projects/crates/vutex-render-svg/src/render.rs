@@ -1,6 +1,6 @@
 //! SVG output: one stacked page group per display page.
 
-use vutex_presentation::display::{DisplayGraphic, DisplayItem, DisplayPresentation, DisplayTextRun};
+use vutex_presentation::display::{DisplayGraphic, DisplayItem, DisplayPath, DisplayPresentation, DisplayTextRun};
 use vutex_render::{RenderBackend, is_safe_href};
 use vutex_types::{Diagnostic, Severity, math::FontStyle};
 
@@ -105,6 +105,7 @@ fn write_item(out: &mut String, item: &DisplayItem) -> Result<(), Diagnostic> {
             }
         }
         DisplayItem::Graphic(graphic) => write_graphic(out, graphic)?,
+        DisplayItem::Path(path) => write_path(out, path),
     }
     out.push('\n');
     Ok(())
@@ -171,6 +172,23 @@ fn write_text_run(out: &mut String, run: &DisplayTextRun) {
     if anchor.is_some() {
         out.push_str("</a>");
     }
+}
+
+/// Write one vector glyph outline as a filled `<path>` element.
+///
+/// The path `d` string is already in page coordinates relative to `(x, y)`;
+/// we place it in a translated `<g>` so the path coordinates stay intact.
+/// The default fill matches the text run color (#111111).
+fn write_path(out: &mut String, path: &DisplayPath) {
+    if path.d.is_empty() {
+        return;
+    }
+    out.push_str(&format!(
+        r##"<g transform="translate({}, {})"><path d="{}" fill="#111111"/></g>"##,
+        num(path.x),
+        num(path.y),
+        escape_attribute(&path.d),
+    ));
 }
 
 fn num(value: f64) -> String {

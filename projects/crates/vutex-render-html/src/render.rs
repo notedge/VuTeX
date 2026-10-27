@@ -1,7 +1,7 @@
 //! HTML output for fixed-geometry snapshots and semantic reflow.
 
 use vutex_presentation::{
-    display::{DisplayItem, DisplayPresentation, DisplayTextRun},
+    display::{DisplayItem, DisplayPath, DisplayPresentation, DisplayTextRun},
     flow::{FlowBlock, FlowPresentation, FlowRun, FlowTableRow},
 };
 use vutex_render::is_safe_href;
@@ -128,6 +128,7 @@ fn write_item(out: &mut String, item: &DisplayItem) {
                 escape_text(&graphic.alt),
             ));
         }
+        DisplayItem::Path(path) => write_path(out, path),
     }
 }
 
@@ -287,6 +288,28 @@ fn style_declarations(style: FontStyle) -> &'static str {
         FontStyle::Italic => ";font-style:italic",
         _ => "",
     }
+}
+
+/// Render one vector glyph outline as an absolutely-positioned inline `<svg>`.
+///
+/// The SVG viewBox is set to the path bounding box and the `<path>` `d`
+/// attribute is copied verbatim; browsers natively understand SVG path
+/// operators so no conversion is needed.
+fn write_path(out: &mut String, path: &DisplayPath) {
+    if path.d.is_empty() {
+        return;
+    }
+    let vh = path.height + path.depth;
+    out.push_str(&format!(
+        "<svg class=\"vutex-path\" data-vutex-item=\"path\" style=\"position:absolute;left:{}pt;top:{}pt;width:{}pt;height:{}pt\" viewBox=\"0 0 {} {}\"><path d=\"{}\" fill=\"#111111\"/></svg>\n",
+        num(path.x),
+        num(path.y - path.height),
+        num(path.width.max(0.001)),
+        num(vh.max(0.001)),
+        num(path.width.max(0.001)),
+        num(vh.max(0.001)),
+        escape_attribute(&path.d),
+    ));
 }
 
 fn write_table_rows<'a>(out: &mut String, section: &str, rows: impl Iterator<Item = &'a FlowTableRow>) {

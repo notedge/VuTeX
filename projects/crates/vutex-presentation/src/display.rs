@@ -109,6 +109,27 @@ pub struct DisplayGraphic {
     pub alt: String,
 }
 
+/// One vector path in page coordinates.
+///
+/// The `d` string is an SVG `d` attribute already in page coordinates. The path
+/// origin sits at `(x, y)` on the page, with `y` on the math baseline so the
+/// PDF backend's standard y-flip applies uniformly to every path operator.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DisplayPath {
+    /// SVG path data (M/L/C/Q/Z/H/V/S/T/A operators, page-scaled).
+    pub d: String,
+    /// Path origin x in points.
+    pub x: f64,
+    /// Path origin y (baseline) in points.
+    pub y: f64,
+    /// Advance width in points.
+    pub width: f64,
+    /// Bounding-box height (above baseline) in points.
+    pub height: f64,
+    /// Bounding-box depth (below baseline) in points.
+    pub depth: f64,
+}
+
 /// A fixed-geometry primitive painted by SVG, PDF, and raster backends.
 #[derive(Debug, Clone, PartialEq)]
 pub enum DisplayItem {
@@ -122,6 +143,8 @@ pub enum DisplayItem {
     Image(DisplayImage),
     /// A diagram scene placed at a fixed size.
     Graphic(DisplayGraphic),
+    /// A vector path, typically a glyph outline extracted from the embedded MATH font.
+    Path(DisplayPath),
 }
 
 /// One page in a fixed-geometry display presentation.
