@@ -1,0 +1,36 @@
+# Committable example of the local cross-repository overlay.
+#
+# Copy it to `.cargo/config.toml` for local integration work. The real
+# `config.toml` is intentionally untracked and holds machine-specific
+# checkout paths. This example only uses `virtual://` logical addresses so it
+# never records a drive letter, a user directory, or a sibling checkout.
+#
+# `virtual://` is a documentation and diagnostic address, not a build input.
+# Cargo requires a real path, so `.cargo/config.toml` must resolve each entry
+# to a verified local checkout.
+#
+# The reproducible dependency boundary is the Git `rev` recorded in the
+# workspace manifest. When a local checkout is ahead of that revision, the
+# correct report is "the upstream commit has not been published yet", not a
+# disabled patch, an older artifact, or a forced lockfile state.
+
+[patch."https://github.com/notedge/notedown.git"]
+notedown-ir = { path = "virtual://workspace/notedown/projects/crates/notedown-ir" }
+notedown-formats = { path = "virtual://workspace/notedown/projects/crates/notedown-formats" }
+davinci-types = { path = "virtual://workspace/notedown/projects/crates/davinci-types" }
+davinci-scene = { path = "virtual://workspace/notedown/projects/crates/davinci-scene" }
+davinci-diagram = { path = "virtual://workspace/notedown/projects/crates/davinci-diagram" }
+
+[patch."https://github.com/oovm/rust-boost"]
+boost-diagnostic = { path = "virtual://workspace/rust-boost/projects/boost-diagnostic" }
+
+[patch."https://github.com/yggdrasil-language/oak.rs.git"]
+oak-core = { path = "virtual://workspace/oaks/projects/oak-core" }
+oak-markdown = { path = "virtual://workspace/oaks/examples/oak-markdown" }
+oak-notedown = { path = "virtual://workspace/oaks/examples/oak-notedown" }
+oak-html = { path = "virtual://workspace/oaks/examples/oak-html" }
+
+[patch."https://github.com/yggdrasil-language/acorn.rs.git"]
+acorn-codec = { path = "virtual://workspace/acorn.rs/projects/acorn-codec" }
+acorn-core = { path = "virtual://workspace/acorn.rs/projects/acorn-core" }
+acorn-ttf = { path = "virtual://workspace/acorn.rs/projects/acorn-ttf" }
