@@ -236,13 +236,31 @@ impl Parser {
                 let den = self.parse_argument()?;
                 Ok(SemanticNode::Fraction { num: Box::new(num), den: Box::new(den), line: LineStyle::Solid })
             }
+            "binom" => {
+                let num = self.parse_argument()?;
+                let den = self.parse_argument()?;
+                Ok(SemanticNode::Delimited {
+                    left: Some(delimiter('(')),
+                    right: Some(delimiter(')')),
+                    content: Box::new(SemanticNode::Fraction {
+                        num: Box::new(num),
+                        den: Box::new(den),
+                        line: LineStyle::None,
+                    }),
+                })
+            }
             "sqrt" => self.parse_sqrt(),
             "left" => self.parse_left(),
             "begin" => self.parse_environment(),
+            "operatorname" => {
+                let text = self.read_text_group()?;
+                Ok(SemanticNode::Text(text))
+            }
             "text" | "textrm" | "mathrm" | "mathit" | "mathbf" => {
                 let text = self.read_text_group()?;
                 Ok(SemanticNode::Text(text))
             }
+            "big" | "Big" | "bigg" | "Bigg" | "bigm" | "Bigm" | "biggm" | "Biggm" => self.parse_big_delimiter(),
             "hat" | "widehat" => self.parse_accent('ˆ'),
             "bar" | "overline" => self.parse_accent('¯'),
             "vec" => self.parse_accent('→'),
@@ -295,6 +313,17 @@ impl Parser {
         Ok(SemanticNode::Delimited { left, right, content: Box::new(sequence(items)) })
     }
 
+    /// Parse a `\big` / `\Big` / `\bigg` / `\Bigg` (and `-m` variants) followed by a delimiter.
+    /// Lowers to `Delimited { left: Some(delimiter), right: None, content: Sequence([]) }`.
+    fn parse_big_delimiter(&mut self) -> MathResult<SemanticNode> {
+        let glyph = self.parse_delimiter()?;
+        Ok(SemanticNode::Delimited {
+            left: glyph,
+            right: None,
+            content: Box::new(SemanticNode::Sequence(Vec::new())),
+        })
+    }
+
     /// Read a delimiter after `\left` / `\right`; `.` means “no delimiter”.
     fn parse_delimiter(&mut self) -> MathResult<Option<GlyphKey>> {
         self.skip_whitespace();
@@ -329,7 +358,7 @@ impl Parser {
                 "langle" => '⟨',
                 "rangle" => '⟩',
                 "vert" => '|',
-                "Vert" => '‖',
+                "Vert" | "lVert" | "rVert" => '‖',
                 other => return Err(self.error(format!("unsupported delimiter `\\{other}`"))),
             };
             return Ok(Some(GlyphKey::from_char(ch, None, FontStyle::Normal)));
@@ -348,7 +377,10 @@ impl Parser {
         let name = self.read_text_group()?;
         let name = name.trim().to_string();
 
-        let supported = ["matrix", "pmatrix", "bmatrix", "vmatrix", "cases", "aligned"];
+        let supported = [
+            "matrix", "pmatrix", "bmatrix", "vmatrix", "cases", "aligned",
+            "smallmatrix", "gathered", "split", "Bmatrix", "Vmatrix",
+        ];
         if !supported.contains(&name.as_str()) {
             return Err(self.error(format!("unsupported environment `{name}`")));
         }
@@ -357,7 +389,8 @@ impl Parser {
         let (left, right) = match name.as_str() {
             "pmatrix" => (Some(delimiter('(')), Some(delimiter(')'))),
             "bmatrix" => (Some(delimiter('[')), Some(delimiter(']'))),
-            "vmatrix" => (Some(delimiter('|')), Some(delimiter('|'))),
+            "Bmatrix" => (Some(delimiter('{')), Some(delimiter('}'))),
+            "vmatrix" | "Vmatrix" => (Some(delimiter('|')), Some(delimiter('|'))),
             "cases" => (Some(delimiter('{')), None),
             _ => (None, None),
         };
@@ -399,11 +432,20 @@ impl Parser {
             return Err(self.error(format!("expected `\\end{{{name}}}` but found `\\end{{{}}}`", closing.trim())));
         }
 
+        let row_spacing = match name {
+            "smallmatrix" => Fixed::from_f64(0.2),
+            _ => Fixed::from_f64(0.35),
+        };
+        let alignment = match name {
+            "split" => Alignment::Left,
+            _ => Alignment::Center,
+        };
+
         Ok(SemanticNode::Matrix {
             rows,
-            row_spacing: Fixed::from_f64(0.35),
+            row_spacing,
             col_spacing: Fixed::from_f64(0.8),
-            alignment: Alignment::Center,
+            alignment,
         })
     }
 
