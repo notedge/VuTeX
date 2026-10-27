@@ -355,7 +355,21 @@ fn extract_delimiter_variants(
 
         // Try vertical constructions first (covers nearly all delimiters),
         // then horizontal as a fallback for a few horizontal stretchers.
-        let construction = variants.vert_constructions.get(&gid).or_else(|| variants.horiz_constructions.get(&gid));
+        //
+        // The construction's `advance_measurement` is measured along the
+        // stretching direction. For a vertical construction it is a height, so
+        // it must never be mixed into the horizontal pen advance: doing that
+        // gives `(` a width as tall as its tall variant and `\left(` then
+        // leaves exactly that much blank space before the body. Horizontal
+        // constructions advance horizontally, where the measurement *is* the
+        // advance.
+        let is_vertical_construction = variants.vert_constructions.contains_key(&gid);
+        let construction = if is_vertical_construction {
+            variants.vert_constructions.get(&gid)
+        }
+        else {
+            variants.horiz_constructions.get(&gid)
+        };
 
         let base_key = GlyphKey::from_char(ch, family.clone(), FontStyle::Math);
         let mut construction_variants: Vec<DelimiterVariant> = Vec::new();
@@ -364,7 +378,6 @@ fn extract_delimiter_variants(
         if let Some(construction) = construction {
             for (i, v) in construction.variants.iter().enumerate() {
                 let variant_glyph_id = v.variant_glyph;
-                let advance_emu = v.advance_measurement as f64 / one_em;
 
                 let variant_key = GlyphKey {
                     char: Some(ch),
@@ -375,7 +388,12 @@ fn extract_delimiter_variants(
 
                 // Also synthesize metrics for this variant glyph so that callers
                 // can ask the system for height/depth of the stretched variant.
-                let var_advance = face.glyph_hor_advance(variant_glyph_id).unwrap_or(v.advance_measurement as u16);
+                let var_advance = if is_vertical_construction {
+                    face.glyph_hor_advance(variant_glyph_id).unwrap_or(0) as f64
+                }
+                else {
+                    v.advance_measurement as f64
+                };
                 let var_bbox = face.glyph_bounding_box(variant_glyph_id);
                 let (vh, vd) = match var_bbox {
                     Some(b) => {
@@ -389,7 +407,7 @@ fn extract_delimiter_variants(
                 data.glyphs.insert(
                     variant_key.clone(),
                     GlyphMetrics {
-                        width: Fixed::from_f64(var_width.max(advance_emu).max(0.01)),
+                        width: Fixed::from_f64(var_width.max(0.01)),
                         height: Fixed::from_f64(vh),
                         depth: Fixed::from_f64(vd),
                         italic_correction: Fixed::ZERO,
@@ -414,10 +432,19 @@ fn extract_delimiter_variants(
                         data.glyph_paths.insert(part_key.clone(), path);
                     }
                     if let Some(bbox) = face.glyph_bounding_box(part.glyph_id) {
+                        // Same rule as variants: `full_advance` measures the
+                        // stacking direction (kept in the component table),
+                        // while a vertical part's horizontal advance is `hmtx`.
+                        let part_advance = if is_vertical_construction {
+                            face.glyph_hor_advance(part.glyph_id).unwrap_or(0) as f64
+                        }
+                        else {
+                            part.full_advance as f64
+                        } / one_em;
                         data.glyphs.insert(
                             part_key.clone(),
                             GlyphMetrics {
-                                width: Fixed::from_f64(part.full_advance as f64 / one_em),
+                                width: Fixed::from_f64(part_advance.max(0.01)),
                                 height: Fixed::from_f64((bbox.y_max as f64 / one_em).max(0.0)),
                                 depth: Fixed::from_f64((-bbox.y_min as f64 / one_em).max(0.0)),
                                 italic_correction: Fixed::ZERO,
@@ -522,6 +549,66 @@ mod tests {
             let path = data.glyph_paths.get(&normal).unwrap_or_else(|| panic!("'{ch}' should carry an outline"));
             assert!(path.contains('M'), "'{ch}' outline should start with a move: {path}");
         }
+    }
+
+    /// Vertical delimiter variants advance by their `hmtx` width, not by the
+    /// height they span in the stacking direction.
+    ///
+    /// Oracle: the font is re-parsed here and every reported width is compared
+    /// against `glyph_hor_advance`. The MATH `advance_measurement` of at least
+    /// one variant is also required to exceed that advance, so this test keeps
+    /// failing if a vertical measurement is ever mixed back into the width.
+    #[test]
+    fn vertical_delimiter_variants_advance_by_their_hmtx_width() {
+        let data = opentype_font_metrics().expect("font should parse");
+        let mut face = FontFace::load(MATH_FONT_BYTES).expect("font should load");
+        let one_em = face.units_per_em() as f64;
+        let math = face.math().cloned().expect("MATH table");
+        let family = Some("latin-modern-math".to_string());
+
+        let mut widest_measurement_gap = 0.0f64;
+        for ch in ['(', ')', '[', ']', '{', '}', '|'] {
+            let gid = face.glyph_index(ch).expect("delimiter should exist in the font");
+            let construction = math.variants.vert_constructions.get(&gid).expect("vertical construction");
+            let key = GlyphKey::from_char(ch, family.clone(), FontStyle::Math);
+            let reported = data.delimiters.get(&key).expect("extracted construction");
+            assert_eq!(
+                reported.variants.len(),
+                construction.variants.len(),
+                "`{ch}`: every prepared variant must be extracted"
+            );
+
+            for (source, extracted) in construction.variants.iter().zip(&reported.variants) {
+                let hmtx = face.glyph_hor_advance(source.variant_glyph).expect("variant hmtx") as f64 / one_em;
+                let metrics = data.glyphs.get(&extracted.glyph).expect("variant metrics");
+                let width = metrics.width.to_f64();
+                assert!(
+                    (width - hmtx).abs() < 1e-4,
+                    "`{ch}` variant {:?}: width {width} must equal the hmtx advance {hmtx}",
+                    source.variant_glyph
+                );
+                widest_measurement_gap = widest_measurement_gap.max(source.advance_measurement as f64 / one_em - hmtx);
+            }
+
+            if let Some(assembly) = &construction.assembly {
+                for (source, component) in assembly.parts.iter().zip(&reported.components) {
+                    let hmtx = face.glyph_hor_advance(source.glyph_id).expect("part hmtx") as f64 / one_em;
+                    let metrics = data.glyphs.get(&component.glyph).expect("part metrics");
+                    let width = metrics.width.to_f64();
+                    assert!(
+                        (width - hmtx).abs() < 1e-4,
+                        "`{ch}` assembly part {:?}: width {width} must equal the hmtx advance {hmtx}",
+                        source.glyph_id
+                    );
+                    widest_measurement_gap = widest_measurement_gap.max(source.full_advance as f64 / one_em - hmtx);
+                }
+            }
+        }
+
+        assert!(
+            widest_measurement_gap > 1.0,
+            "no variant's stacking advance exceeds its hmtx width by an em, so this test proves nothing"
+        );
     }
 
     #[test]

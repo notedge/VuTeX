@@ -1,7 +1,8 @@
 //! Integration tests for the math parse/layout pipeline.
 
 use vutex_layout::math::{FormulaLayout, Glyph, LayoutNode, layout_formula};
-use vutex_types::math::Fixed;
+use vutex_text::math::builtin_font_metrics;
+use vutex_types::math::{Fixed, FontStyle, GlyphKey};
 
 fn layout(source: &str) -> FormulaLayout {
     let (_, metrics) = layout_formula(source, false).expect("formula should lay out");
@@ -136,6 +137,73 @@ fn delimited_radical_and_superscript_lay_out() {
     let metrics = layout("\\left(\\sqrt[3]{x^2}\\right)");
     assert!(metrics.width > 0.0);
     assert!(metrics.height > 0.0);
+}
+
+/// A delimiter stretched to cover its body must still advance horizontally by
+/// the advance of the glyph it paints, and nothing else.
+///
+/// TeX gives `\left(` no space beyond the glyph: the box is the body plus the
+/// two delimiter advances. The variant the layout painted is identified by the
+/// height it covers, and its expected advance is read back from the same MATH
+/// construction in em, so a variant that reports the height it spans as its
+/// width (`advance_measurement`) fails both this identity and the em bound.
+#[test]
+fn delimited_box_is_body_plus_the_delimiter_advances() {
+    let system = builtin_font_metrics();
+    for display in [false, true] {
+        let (tree, delimited) = layout_formula("\\left(\\frac{a}{b}\\right)", display).expect("delimited layout");
+        let (_, body) = layout_formula("\\frac{a}{b}", display).expect("body layout");
+
+        let (left_x, _, left) = glyph_at(&tree, '(');
+        let (right_x, _, right) = glyph_at(&tree, ')');
+        let left_adv = left.metrics.width.to_f64();
+        let right_adv = right.metrics.width.to_f64();
+        let size = left.size.to_f64();
+
+        assert_eq!(left_x, 0.0, "the opening delimiter starts the box");
+        assert!(left_adv <= size, "a delimiter variant may not advance a whole em horizontally: {} at size {size}", left_adv);
+        assert!(
+            left_adv <= (left.metrics.height + left.metrics.depth).to_f64() / 2.0,
+            "a vertical variant must stay narrower than half the height it spans: {} vs {}",
+            left_adv,
+            (left.metrics.height + left.metrics.depth).to_f64()
+        );
+
+        // The painted delimiter is whichever prepared variant covers the
+        // headroom the layout asked for; its own advance is the expected one.
+        let key = GlyphKey::from_char('(', Some("default".to_string()), FontStyle::Math);
+        let construction = system.get_delimiter_construction(&key).expect("`(` construction");
+        let painted = construction
+            .variants
+            .iter()
+            .map(|variant| system.get_metrics(&variant.glyph).expect("variant metrics"))
+            .find(|metrics| (metrics.height.to_f64() * size - left.metrics.height.to_f64()).abs() < 1e-3)
+            .expect("the painted delimiter must be one of the font's prepared variants");
+        assert!(
+            (left_adv - painted.width.to_f64() * size).abs() < 1e-3,
+            "the delimiter must advance by the variant's width {} em, not {left_adv}",
+            painted.width.to_f64()
+        );
+        assert!((right_adv - left_adv).abs() < 1e-3, "`(` and `)` must advance by the same width: {left_adv} vs {right_adv}");
+
+        let expected = left_adv + body.width + right_adv;
+        assert!(
+            (delimited.width - expected).abs() < 1e-3,
+            "the box must be the body plus the delimiter advances: {} vs {expected}",
+            delimited.width
+        );
+        assert!(
+            (right_x + right_adv - expected).abs() < 1e-3,
+            "the closing delimiter must end the box with no trailing space: {} vs {expected}",
+            right_x + right_adv
+        );
+        assert!(
+            (right_x - (left_adv + body.width)).abs() < 1e-3,
+            "the body must start right after the opening delimiter: {} vs {}",
+            right_x,
+            left_adv + body.width
+        );
+    }
 }
 
 #[test]
