@@ -264,6 +264,8 @@ fn collect_flow(graph: &DocumentGraph, ids: &[NodeId], blocks: &mut Vec<FlowBloc
             Block::Opaque { kind, .. } if kind == "thematic_break" => blocks.push(FlowBlock::Rule),
             // Opaque payloads with no flow meaning are dropped, not guessed.
             Block::Opaque { .. } => {}
+            // Raw HTML is not interpreted or reflowed in the presentation layer.
+            Block::RawHtml { .. } => {}
         }
     }
 }

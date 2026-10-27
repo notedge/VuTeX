@@ -18,8 +18,8 @@ fn sample_graph() -> DocumentGraph {
     graph.push_block(Block::List {
         ordered: false,
         items: vec![
-            ListItem { content: vec![text("Alpha")], children: Vec::new(), number: None },
-            ListItem { content: vec![text("Beta")], children: Vec::new(), number: None },
+            ListItem { content: vec![text("Alpha")], children: Vec::new(), number: None, is_task: false, is_checked: None },
+            ListItem { content: vec![text("Beta")], children: Vec::new(), number: None, is_task: false, is_checked: None },
         ],
     });
     graph
