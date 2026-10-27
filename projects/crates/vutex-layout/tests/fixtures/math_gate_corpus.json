@@ -1,0 +1,283 @@
+{
+  "corpus": "vutex-math-gate",
+  "version": 1,
+  "source": "TeXbook chapter 17 math examples and the KaTeX supported-functions list, curated from VuTeX's acceptance formulas",
+  "notes": "Every layout case must clear the semantic and geometry gate in `vutex-render-svg/tests/corpus_invariants.rs`. `style` is the style the case is meant to exercise: `display` lays out with the display pipeline, `text` and `script` use the inline pipeline (`script` carries an explicit style command in `src`). `body` names the content a stretched delimiter wraps so the delimiter extent can be compared against it. `expected` is `layout` or `error`, and `diagnostics` records whether a diagnostic is expected to reach the user (a parse error does).",
+  "cases": [
+    {
+      "src": "a + b",
+      "group": "arithmetic",
+      "style": "text",
+      "expected": "layout",
+      "diagnostics": false,
+      "invariants": ["glyph_count", "ink_in_viewbox", "no_text", "positive_metrics"]
+    },
+    {
+      "src": "a - b",
+      "group": "arithmetic",
+      "style": "text",
+      "expected": "layout",
+      "diagnostics": false,
+      "invariants": ["glyph_count", "ink_in_viewbox", "no_text", "positive_metrics"]
+    },
+    {
+      "src": "a \\times b",
+      "group": "arithmetic",
+      "style": "text",
+      "expected": "layout",
+      "diagnostics": false,
+      "invariants": ["glyph_count", "ink_in_viewbox", "no_text", "positive_metrics"]
+    },
+    {
+      "src": "a \\div b",
+      "group": "arithmetic",
+      "style": "text",
+      "expected": "layout",
+      "diagnostics": false,
+      "invariants": ["glyph_count", "ink_in_viewbox", "no_text", "positive_metrics"]
+    },
+    {
+      "src": "a = b",
+      "group": "relation",
+      "style": "text",
+      "expected": "layout",
+      "diagnostics": false,
+      "invariants": ["glyph_count", "ink_in_viewbox", "no_text", "positive_metrics"]
+    },
+    {
+      "src": "a \\le b",
+      "group": "relation",
+      "style": "text",
+      "expected": "layout",
+      "diagnostics": false,
+      "invariants": ["glyph_count", "ink_in_viewbox", "no_text", "positive_metrics"]
+    },
+    {
+      "src": "a \\neq b",
+      "group": "relation",
+      "style": "text",
+      "expected": "layout",
+      "diagnostics": false,
+      "invariants": ["glyph_count", "ink_in_viewbox", "no_text", "positive_metrics"]
+    },
+    {
+      "src": "\\frac{a}{b}",
+      "group": "fraction",
+      "style": "text",
+      "expected": "layout",
+      "diagnostics": false,
+      "invariants": ["glyph_count", "ink_in_viewbox", "no_text", "positive_metrics"]
+    },
+    {
+      "src": "\\frac{a}{b}",
+      "group": "fraction",
+      "style": "display",
+      "expected": "layout",
+      "diagnostics": false,
+      "invariants": ["glyph_count", "ink_in_viewbox", "no_text", "positive_metrics", "display_fraction_height"]
+    },
+    {
+      "src": "\\scriptstyle \\frac{a}{b}",
+      "group": "fraction",
+      "style": "script",
+      "expected": "layout",
+      "diagnostics": false,
+      "invariants": ["glyph_count", "ink_in_viewbox", "no_text", "positive_metrics", "script_fraction_shrinks"]
+    },
+    {
+      "src": "\\sqrt{x}",
+      "group": "radical",
+      "style": "text",
+      "expected": "layout",
+      "diagnostics": false,
+      "invariants": ["glyph_count", "ink_in_viewbox", "no_text", "positive_metrics"]
+    },
+    {
+      "src": "\\sqrt[3]{x}",
+      "group": "radical",
+      "style": "text",
+      "expected": "layout",
+      "diagnostics": false,
+      "invariants": ["glyph_count", "ink_in_viewbox", "no_text", "positive_metrics"]
+    },
+    {
+      "src": "\\sqrt[n]{x^2 + y^2}",
+      "group": "radical",
+      "style": "display",
+      "expected": "layout",
+      "diagnostics": false,
+      "invariants": ["glyph_count", "ink_in_viewbox", "no_text", "positive_metrics"]
+    },
+    {
+      "src": "x^2",
+      "group": "scripts",
+      "style": "text",
+      "expected": "layout",
+      "diagnostics": false,
+      "invariants": ["glyph_count", "ink_in_viewbox", "no_text", "positive_metrics"]
+    },
+    {
+      "src": "x_n",
+      "group": "scripts",
+      "style": "text",
+      "expected": "layout",
+      "diagnostics": false,
+      "invariants": ["glyph_count", "ink_in_viewbox", "no_text", "positive_metrics"]
+    },
+    {
+      "src": "x_n^2",
+      "group": "scripts",
+      "style": "text",
+      "expected": "layout",
+      "diagnostics": false,
+      "invariants": ["glyph_count", "ink_in_viewbox", "no_text", "positive_metrics"]
+    },
+    {
+      "src": "\\sum_{i=1}^{n}",
+      "group": "limits",
+      "style": "display",
+      "expected": "layout",
+      "diagnostics": false,
+      "invariants": ["glyph_count", "ink_in_viewbox", "no_text", "positive_metrics"]
+    },
+    {
+      "src": "\\int_0^\\infty",
+      "group": "limits",
+      "style": "display",
+      "expected": "layout",
+      "diagnostics": false,
+      "invariants": ["glyph_count", "ink_in_viewbox", "no_text", "positive_metrics"]
+    },
+    {
+      "src": "\\hat{x}",
+      "group": "accent",
+      "style": "text",
+      "expected": "layout",
+      "diagnostics": false,
+      "invariants": ["glyph_count", "ink_in_viewbox", "no_text", "positive_metrics"]
+    },
+    {
+      "src": "\\bar{x}",
+      "group": "accent",
+      "style": "text",
+      "expected": "layout",
+      "diagnostics": false,
+      "invariants": ["glyph_count", "ink_in_viewbox", "no_text", "positive_metrics", "rule_for_bar"]
+    },
+    {
+      "src": "\\vec{v}",
+      "group": "accent",
+      "style": "text",
+      "expected": "layout",
+      "diagnostics": false,
+      "invariants": ["glyph_count", "ink_in_viewbox", "no_text", "positive_metrics"]
+    },
+    {
+      "src": "\\left(\\frac{a}{b}\\right)",
+      "group": "delimiter",
+      "style": "text",
+      "expected": "layout",
+      "diagnostics": false,
+      "invariants": ["glyph_count", "ink_in_viewbox", "no_text", "positive_metrics", "delimiter_covers_body"],
+      "body": "\\frac{a}{b}"
+    },
+    {
+      "src": "\\left\\{\\frac{\\frac{a}{b}}{\\frac{c}{d}}\\right\\}",
+      "group": "delimiter",
+      "style": "display",
+      "expected": "layout",
+      "diagnostics": false,
+      "invariants": ["glyph_count", "ink_in_viewbox", "no_text", "positive_metrics", "delimiter_covers_body"],
+      "body": "\\frac{\\frac{a}{b}}{\\frac{c}{d}}"
+    },
+    {
+      "src": "\\left|x - y\\right|",
+      "group": "delimiter",
+      "style": "text",
+      "expected": "layout",
+      "diagnostics": false,
+      "invariants": ["glyph_count", "ink_in_viewbox", "no_text", "positive_metrics", "delimiter_covers_body"],
+      "body": "x - y"
+    },
+    {
+      "src": "\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}",
+      "group": "matrix",
+      "style": "display",
+      "expected": "layout",
+      "diagnostics": false,
+      "invariants": ["glyph_count", "ink_in_viewbox", "no_text", "positive_metrics"]
+    },
+    {
+      "src": "\\begin{bmatrix} 1 & 0 \\\\ 0 & 1 \\end{bmatrix}",
+      "group": "matrix",
+      "style": "display",
+      "expected": "layout",
+      "diagnostics": false,
+      "invariants": ["glyph_count", "ink_in_viewbox", "no_text", "positive_metrics"]
+    },
+    {
+      "src": "\\begin{Vmatrix} a & b \\\\ c & d \\end{Vmatrix}",
+      "group": "matrix",
+      "style": "display",
+      "expected": "layout",
+      "diagnostics": false,
+      "invariants": ["glyph_count", "ink_in_viewbox", "no_text", "positive_metrics"]
+    },
+    {
+      "src": "\\begin{cases} x & x > 0 \\\\ 0 & \\text{otherwise} \\end{cases}",
+      "group": "cases",
+      "style": "display",
+      "expected": "layout",
+      "diagnostics": false,
+      "invariants": ["glyph_count", "ink_in_viewbox", "no_text", "positive_metrics"]
+    },
+    {
+      "src": "\\begin{aligned} a &= b + c \\\\ d &= e \\end{aligned}",
+      "group": "aligned",
+      "style": "display",
+      "expected": "layout",
+      "diagnostics": false,
+      "invariants": ["glyph_count", "ink_in_viewbox", "no_text", "positive_metrics"]
+    },
+    {
+      "src": "\\begin{split} a &= b \\\\ &= c \\end{split}",
+      "group": "split",
+      "style": "display",
+      "expected": "layout",
+      "diagnostics": false,
+      "invariants": ["glyph_count", "ink_in_viewbox", "no_text", "positive_metrics"]
+    },
+    {
+      "src": "E = mc^2",
+      "group": "inline",
+      "style": "text",
+      "expected": "layout",
+      "diagnostics": false,
+      "invariants": ["glyph_count", "ink_in_viewbox", "no_text", "positive_metrics"]
+    },
+    {
+      "src": "\\sum_{k=0}^{\\infty} \\frac{1}{k!}",
+      "group": "display",
+      "style": "display",
+      "expected": "layout",
+      "diagnostics": false,
+      "invariants": ["glyph_count", "ink_in_viewbox", "no_text", "positive_metrics"]
+    },
+    {
+      "src": "\\frac{a}",
+      "group": "error",
+      "style": "text",
+      "expected": "error",
+      "diagnostics": true,
+      "invariants": ["parse_error"]
+    },
+    {
+      "src": "\\begin{unknownenv} x \\end{unknownenv}",
+      "group": "error",
+      "style": "text",
+      "expected": "error",
+      "diagnostics": true,
+      "invariants": ["parse_error"]
+    }
+  ]
+}
