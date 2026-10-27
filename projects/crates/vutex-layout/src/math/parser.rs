@@ -399,7 +399,8 @@ impl Parser {
             "pmatrix" => (Some(delimiter('(')), Some(delimiter(')'))),
             "bmatrix" => (Some(delimiter('[')), Some(delimiter(']'))),
             "Bmatrix" => (Some(delimiter('{')), Some(delimiter('}'))),
-            "vmatrix" | "Vmatrix" => (Some(delimiter('|')), Some(delimiter('|'))),
+            "vmatrix" => (Some(delimiter('|')), Some(delimiter('|'))),
+            "Vmatrix" => (Some(delimiter('‖')), Some(delimiter('‖'))),
             "cases" => (Some(delimiter('{')), None),
             _ => (None, None),
         };
