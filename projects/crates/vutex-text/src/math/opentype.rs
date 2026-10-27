@@ -6,11 +6,11 @@
 //! Falls back gracefully to synthetic metrics if parsing fails or the font
 //! lacks a MATH table.
 
-use ttf_parser::{math, Face, GlyphId, OutlineBuilder};
+use ttf_parser::{Face, GlyphId, OutlineBuilder, math};
 
 use vutex_types::math::{
-    DelimiterComponent, DelimiterConstruction, DelimiterVariant, Fixed, FontMetricsData, FontStyle,
-    GlyphKey, GlyphMetrics, MathConstant,
+    DelimiterComponent, DelimiterConstruction, DelimiterVariant, Fixed, FontMetricsData, FontStyle, GlyphKey, GlyphMetrics,
+    MathConstant,
 };
 
 /// Embedded OpenType MATH font: Latin Modern Math Regular.
@@ -62,13 +62,7 @@ impl SvgPathBuilder {
         let ny1 = y1 / self.scale;
         let nx = x / self.scale;
         let ny = y / self.scale;
-        self.path.push_str(&format!(
-            "Q {x1:.4},{y1:.4} {x:.4},{y:.4} ",
-            x1 = nx1,
-            y1 = ny1,
-            x = nx,
-            y = ny
-        ));
+        self.path.push_str(&format!("Q {x1:.4},{y1:.4} {x:.4},{y:.4} ", x1 = nx1, y1 = ny1, x = nx, y = ny));
     }
 
     #[inline]
@@ -117,20 +111,15 @@ impl OutlineBuilder for SvgPathBuilder {
 /// Characters whose glyph outlines and MATH variants we extract from the font.
 const TARGET_CHARS: &[char] = &[
     // Latin lower
-    'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x',
-    'y', 'z',
-    // Latin upper
+    'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y',
+    'z', // Latin upper
     'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X',
-    'Y', 'Z',
-    // Digits
-    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
-    // Punctuation & operators
-    '+', '-', '=', '(', ')', '[', ']', '{', '}', '.', ',', ';', ':', '!', '?',
-    // Greek lower (α–ω, skipping none)
+    'Y', 'Z', // Digits
+    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', // Punctuation & operators
+    '+', '-', '=', '(', ')', '[', ']', '{', '}', '.', ',', ';', ':', '!', '?', // Greek lower (α–ω, skipping none)
     'α', 'β', 'γ', 'δ', 'ε', 'ζ', 'η', 'θ', 'ι', 'κ', 'λ', 'μ', 'ν', 'ξ', 'ο', 'π', 'ρ', 'σ', 'τ', 'υ', 'φ', 'χ', 'ψ', 'ω',
     // Greek upper (Γ–Ω)
-    'Γ', 'Δ', 'Θ', 'Λ', 'Ξ', 'Π', 'Σ', 'Φ', 'Ψ', 'Ω',
-    // Math operators & delimiters
+    'Γ', 'Δ', 'Θ', 'Λ', 'Ξ', 'Π', 'Σ', 'Φ', 'Ψ', 'Ω', // Math operators & delimiters
     '±', '×', '÷', '≤', '≥', '≠', '≈', '→', '∞', '√', '∑', '∏', '∫', '|', '‖', '⟨', '⟩', '/',
 ];
 
@@ -179,10 +168,8 @@ pub fn opentype_font_metrics() -> Option<FontMetricsData> {
 
 fn extract_math_constants(constants: &math::Constants<'_>, data: &mut FontMetricsData, one_em: f64) {
     // Percentage constants → store as fraction (e.g. 70 → 0.7)
-    data.constants.insert(
-        MathConstant::ScriptPercentScaleDown,
-        Fixed::from_f64(constants.script_percent_scale_down() as f64 / 100.0),
-    );
+    data.constants
+        .insert(MathConstant::ScriptPercentScaleDown, Fixed::from_f64(constants.script_percent_scale_down() as f64 / 100.0));
     data.constants.insert(
         MathConstant::ScriptScriptPercentScaleDown,
         Fixed::from_f64(constants.script_script_percent_scale_down() as f64 / 100.0),
@@ -229,10 +216,8 @@ fn extract_math_constants(constants: &math::Constants<'_>, data: &mut FontMetric
     data.constants.insert(MathConstant::StretchStackGapAboveMin, m(constants.stretch_stack_gap_above_min()));
     data.constants.insert(MathConstant::StretchStackGapBelowMin, m(constants.stretch_stack_gap_below_min()));
     data.constants.insert(MathConstant::FractionNumeratorShiftUp, m(constants.fraction_numerator_shift_up()));
-    data.constants.insert(
-        MathConstant::FractionNumeratorDisplayStyleShiftUp,
-        m(constants.fraction_numerator_display_style_shift_up()),
-    );
+    data.constants
+        .insert(MathConstant::FractionNumeratorDisplayStyleShiftUp, m(constants.fraction_numerator_display_style_shift_up()));
     data.constants.insert(MathConstant::FractionDenominatorShiftDown, m(constants.fraction_denominator_shift_down()));
     data.constants.insert(
         MathConstant::FractionDenominatorDisplayStyleShiftDown,
@@ -317,12 +302,7 @@ fn extract_glyph_metrics_and_outlines(face: &Face<'_>, data: &mut FontMetricsDat
 // MATH Variants delimiter extraction
 // ---------------------------------------------------------------------------
 
-fn extract_delimiter_variants(
-    face: &Face<'_>,
-    variants: math::Variants<'_>,
-    data: &mut FontMetricsData,
-    one_em: f64,
-) {
+fn extract_delimiter_variants(face: &Face<'_>, variants: math::Variants<'_>, data: &mut FontMetricsData, one_em: f64) {
     let family = Some("latin-modern-math".to_string());
 
     for &ch in DELIMITER_CHARS {
@@ -333,10 +313,7 @@ fn extract_delimiter_variants(
 
         // Try vertical constructions first (covers nearly all delimiters),
         // then horizontal as a fallback for a few horizontal stretchers.
-        let construction = variants
-            .vertical_constructions
-            .get(gid)
-            .or_else(|| variants.horizontal_constructions.get(gid));
+        let construction = variants.vertical_constructions.get(gid).or_else(|| variants.horizontal_constructions.get(gid));
 
         let base_key = GlyphKey::from_char(ch, family.clone(), FontStyle::Math);
         let mut construction_variants: Vec<DelimiterVariant> = Vec::new();
@@ -403,10 +380,7 @@ fn extract_delimiter_variants(
         if !construction_variants.is_empty() || !construction_components.is_empty() {
             data.delimiters.insert(
                 base_key,
-                DelimiterConstruction {
-                    variants: construction_variants,
-                    components: construction_components,
-                },
+                DelimiterConstruction { variants: construction_variants, components: construction_components },
             );
         }
     }
@@ -451,18 +425,12 @@ mod tests {
         let family = Some("latin-modern-math".to_string());
         // Latin 'A' should definitely have an outline.
         let key_a = GlyphKey::from_char('A', family.clone(), FontStyle::Math);
-        let path_a = data
-            .glyph_paths
-            .get(&key_a)
-            .expect("glyph 'A' should have an SVG path");
+        let path_a = data.glyph_paths.get(&key_a).expect("glyph 'A' should have an SVG path");
         assert!(path_a.contains('M'), "path should start with a move");
         assert!(path_a.contains('L') || path_a.contains('C') || path_a.contains('Q'), "path should have drawing segments");
         // Radical sign too.
         let key_sqrt = GlyphKey::from_char('√', family, FontStyle::Math);
-        let path_sqrt = data
-            .glyph_paths
-            .get(&key_sqrt)
-            .expect("glyph '√' should have an SVG path");
+        let path_sqrt = data.glyph_paths.get(&key_sqrt).expect("glyph '√' should have an SVG path");
         assert!(!path_sqrt.is_empty(), "√ path should not be empty");
     }
 
@@ -471,10 +439,7 @@ mod tests {
         let data = opentype_font_metrics().expect("font should parse");
         let family = Some("latin-modern-math".to_string());
         let key_paren = GlyphKey::from_char('(', family, FontStyle::Math);
-        let c = data
-            .delimiters
-            .get(&key_paren)
-            .expect("'(' should have a construction");
+        let c = data.delimiters.get(&key_paren).expect("'(' should have a construction");
         assert!(!c.variants.is_empty(), "'(' should have variants");
         // Latin Modern Math provides multiple size variants per delimiter.
         assert!(c.variants.len() >= 3, "'(' should have at least 3 variants, got {}", c.variants.len());

@@ -42,7 +42,9 @@ impl MathmlBackend {
 }
 
 impl LayoutBackend for MathmlBackend {
-    fn prefers_text_over_path(&self) -> bool { true }
+    fn prefers_text_over_path(&self) -> bool {
+        true
+    }
 
     fn render_text(&mut self, text: &str, x: f64, y: f64, font_size: f64, font_family: Option<&str>) -> MathResult<()> {
         use std::fmt::Write;
