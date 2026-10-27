@@ -1,10 +1,10 @@
 //! Lower a laid-out math tree into absolutely positioned layout primitives.
 
 use super::LayoutNode;
-use crate::plan::{LayoutItem, Path, Rule, TextRun};
-use vutex_types::math::FontStyle;
+use crate::plan::{LayoutItem, Path, Rule};
+use vutex_types::{Diagnostic, Severity};
 
-/// Smallest stroke width emitted for a math rule, in points.
+/// Smallest thickness emitted for a math rule, in points.
 const MIN_RULE_THICKNESS: f64 = 0.4;
 
 /// Collect the primitives of a math layout tree placed at `(x, y)`.
@@ -12,27 +12,49 @@ const MIN_RULE_THICKNESS: f64 = 0.4;
 /// `x` is the left edge of the formula and `y` its baseline. The traversal
 /// mirrors `render_layout_node`: an HBox advances its children along x while
 /// its `shift` offsets y, a VBox stacks its children from `-height` while its
-/// `shift` offsets x, glyphs paint at their baseline, and a rule paints from
-/// `y - height` to `y + depth`.
+/// `shift` offsets x, glyphs paint at their baseline, and a rule fills the
+/// rectangle from `y - height` to `y + depth`.
 ///
-/// When a glyph carries an outline path (extracted from the embedded MATH font
-/// in `opentype.rs`) we emit a `LayoutItem::Path` instead of a text run so the
-/// PDF/SVG/HTML backends can paint exact glyph curves. Glyphs without outlines
-/// still fall back to `TextRun`. Standalone `LayoutNode::Path` nodes (used by
-/// e.g. the radical symbol) are lowered directly to `LayoutItem::Path`.
+/// Every visible primitive is a vector primitive whose coordinates are already
+/// page-scaled in the y-down page space: a glyph contributes the outline
+/// extracted from the embedded MATH font, a rule contributes a filled bar (a
+/// [`LayoutItem::Rule`] when it does not descend below the baseline, else a
+/// closed rectangle path), and a standalone `LayoutNode::Path` (for example a
+/// stretched radical sign) contributes its own path. No text run is emitted, so
+/// every backend paints the same outlines instead of asking a host font to
+/// draw a glyph whose metrics came from the math font.
+///
+/// A glyph the font system has no outline for is skipped and reported through
+/// [`collect_layout_with_diagnostics`]; its measured advance stays in the
+/// surrounding box, so the formula keeps its geometry without a fake glyph.
 pub fn collect_layout(node: &LayoutNode, x: f64, y: f64) -> Vec<LayoutItem> {
+    collect_layout_with_diagnostics(node, x, y, &mut Vec::new())
+}
+
+/// Collect the primitives of a math layout tree and report outline gaps.
+///
+/// Layout cannot paint a glyph it has no outline for without borrowing a host
+/// font, which would break the identity between the face that supplied the
+/// metrics and the face that paints the ink. Such glyphs are therefore skipped
+/// and named in `diagnostics` instead of degrading to a host serif run.
+pub fn collect_layout_with_diagnostics(
+    node: &LayoutNode,
+    x: f64,
+    y: f64,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Vec<LayoutItem> {
     let mut items = Vec::new();
-    push_layout(node, x, y, &mut items);
+    push_layout(node, x, y, &mut items, diagnostics);
     items
 }
 
-fn push_layout(node: &LayoutNode, x: f64, y: f64, items: &mut Vec<LayoutItem>) {
+fn push_layout(node: &LayoutNode, x: f64, y: f64, items: &mut Vec<LayoutItem>, diagnostics: &mut Vec<Diagnostic>) {
     match node {
         LayoutNode::HBox(hbox) => {
             let child_y = y + hbox.shift.to_f64();
             let mut current_x = 0.0;
             for child in &hbox.children {
-                push_layout(child, x + current_x, child_y, items);
+                push_layout(child, x + current_x, child_y, items, diagnostics);
                 current_x += child.width().to_f64();
             }
         }
@@ -40,7 +62,7 @@ fn push_layout(node: &LayoutNode, x: f64, y: f64, items: &mut Vec<LayoutItem>) {
             let child_x = x + vbox.shift.to_f64();
             let mut current_y = -vbox.height.to_f64();
             for child in &vbox.children {
-                push_layout(child, child_x, y + current_y + child.height().to_f64(), items);
+                push_layout(child, child_x, y + current_y + child.height().to_f64(), items, diagnostics);
                 current_y += child.height().to_f64() + child.depth().to_f64();
             }
         }
@@ -56,29 +78,43 @@ fn push_layout(node: &LayoutNode, x: f64, y: f64, items: &mut Vec<LayoutItem>) {
                     glyph.metrics.depth.to_f64(),
                 ));
             }
-            else if let Some(ch) = glyph.char {
-                items.push(LayoutItem::TextRun(TextRun {
-                    x,
-                    y,
-                    size: glyph.size.to_f64(),
-                    width: glyph.metrics.width.to_f64(),
-                    font_family: output_family(&glyph.font_family),
-                    style: FontStyle::Normal,
-                    text: ch.to_string(),
-                    href: None,
-                    title: None,
-                }));
+            else {
+                diagnostics.push(outline_missing(glyph));
             }
         }
-        LayoutNode::Rule { width, height, depth: _ } => {
-            let top = y - height.to_f64();
-            items.push(LayoutItem::Rule(Rule {
-                x1: x,
-                y1: top,
-                x2: x + width.to_f64(),
-                y2: top,
-                thickness: height.to_f64().max(MIN_RULE_THICKNESS),
-            }));
+        LayoutNode::Rule { width, height, depth } => {
+            let bar_width = width.to_f64();
+            let thickness = height.to_f64().max(MIN_RULE_THICKNESS);
+            let drop = depth.to_f64();
+            if bar_width <= 0.0 || !(bar_width.is_finite() && thickness.is_finite() && drop.is_finite()) {
+                return;
+            }
+            if drop == 0.0 {
+                // The box spans `y - height .. y`, so its centre line sits half a
+                // thickness above the box bottom.
+                let centre = y - thickness / 2.0;
+                items.push(LayoutItem::Rule(Rule { x1: x, y1: centre, x2: x + bar_width, y2: centre, thickness }));
+            }
+            else {
+                // A rule that descends below the baseline needs its full box, which
+                // `LayoutItem::Rule` cannot express.
+                items.push(LayoutItem::Path(Path {
+                    d: format!(
+                        "M 0,{} L {},{} L {},{} L 0,{} Z",
+                        decimal(-thickness),
+                        decimal(bar_width),
+                        decimal(-thickness),
+                        decimal(bar_width),
+                        decimal(drop),
+                        decimal(drop)
+                    ),
+                    x,
+                    y,
+                    width: bar_width,
+                    height: thickness,
+                    depth: drop,
+                }));
+            }
         }
         LayoutNode::Path(p) => {
             items.push(LayoutItem::Path(Path {
@@ -94,6 +130,27 @@ fn push_layout(node: &LayoutNode, x: f64, y: f64, items: &mut Vec<LayoutItem>) {
         // advanced past their extents.
         LayoutNode::Kern(_) | LayoutNode::Glue(_) | LayoutNode::Penalty { .. } => {}
     }
+}
+
+/// Structure diagnostic for a glyph the math font ships no outline for.
+fn outline_missing(glyph: &super::Glyph) -> Diagnostic {
+    let name = match glyph.char {
+        Some(ch) => format!("'{ch}' (U+{:04X})", ch as u32),
+        None => "without a character".to_string(),
+    };
+    Diagnostic {
+        code: "vutex.layout.math.outline_missing".into(),
+        severity: Severity::Warning,
+        message: format!(
+            "math glyph {name} in family `{}` has no embedded outline and was not painted; the box keeps its measured advance rather than falling back to a host font",
+            glyph.font_family
+        ),
+    }
+}
+
+/// Four-decimal number, matching the precision outlines are scaled with.
+fn decimal(value: f64) -> String {
+    format!("{value:.4}")
 }
 
 /// Convert a glyph outline into a `Path` LayoutItem anchored at `(x, y)`.
@@ -220,12 +277,4 @@ pub(crate) fn path_vertical_extent(raw: &str) -> (f64, f64) {
     }
 
     if min_y.is_finite() { (min_y, max_y) } else { (0.0, 0.0) }
-}
-
-/// Font family written into text primitives.
-///
-/// The metrics system labels glyphs from the default math font as `default`,
-/// which is not a usable CSS family, so those runs are painted with `serif`.
-fn output_family(family: &str) -> String {
-    if family == "default" { "serif".to_string() } else { family.to_string() }
 }
