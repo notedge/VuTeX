@@ -260,12 +260,15 @@ const THIN_MUSIP_EM: f64 = 3.0 / 18.0;
 pub struct LayoutEngine {
     font_system: FontMetricsSystem,
     base_size: Fixed,
+    /// Sticky override from the most recent `\limits` / `\nolimits` that has
+    /// not yet been consumed by a `LargeOperator`.
+    limits_override: std::cell::Cell<Option<bool>>,
 }
 
 impl LayoutEngine {
     /// Create an engine with a base em size of `1.0`.
     pub fn new(font_system: FontMetricsSystem) -> Self {
-        Self { font_system, base_size: Fixed::ONE }
+        Self { font_system, base_size: Fixed::ONE, limits_override: std::cell::Cell::new(None) }
     }
 
     /// Set the base em size in pixels.
@@ -292,7 +295,10 @@ impl LayoutEngine {
             | SemanticNode::HorizontalBox { .. }
             | SemanticNode::VerticalBox { .. }
             | SemanticNode::Paragraph { .. } => SymbolRole::Inner,
-            SemanticNode::Sequence(_) | SemanticNode::Text { .. } => SymbolRole::Ordinary,
+            SemanticNode::Sequence(_)
+            | SemanticNode::Text { .. }
+            | SemanticNode::SetMathStyle(_)
+            | SemanticNode::LimitsSpec(_) => SymbolRole::Ordinary,
         }
     }
 
@@ -373,23 +379,7 @@ impl LayoutEngine {
         {
             match node {
                 SemanticNode::Symbol { glyph_key, .. } => self.layout_symbol(glyph_key, style),
-                SemanticNode::Sequence(nodes) => {
-                    let style_scale = self.get_style_scale(style);
-                    let size = self.base_size * style_scale;
-                    let mut children = Vec::new();
-                    let mut prev_role: Option<SymbolRole> = None;
-                    for node in nodes {
-                        if let Some(left_role) = prev_role {
-                            let right_role = Self::role_of(node);
-                            if let Some(glue) = Self::spacing_between(left_role, right_role, size) {
-                                children.push(LayoutNode::Glue(glue));
-                            }
-                        }
-                        children.push(self.layout_node(node, style)?);
-                        prev_role = Some(Self::role_of(node));
-                    }
-                    Ok(self.pack_hbox(children, None))
-                }
+                SemanticNode::Sequence(nodes) => self.layout_sequence(nodes, style),
                 SemanticNode::HorizontalBox { content, spacing } => {
                     let mut children = Vec::new();
                     let n = content.len();
@@ -446,8 +436,50 @@ impl LayoutEngine {
                     self.layout_delimited(left.as_ref(), right.as_ref(), content, style)
                 }
                 SemanticNode::Accent { accent, base } => self.layout_accent(accent, base, style),
+                // Imperative nodes: no boxes; side-effects are handled by
+                // `layout_sequence` and `layout_subsup` when they iterate.
+                SemanticNode::SetMathStyle(_) | SemanticNode::LimitsSpec(_) => Ok(LayoutNode::Kern(Fixed::ZERO)),
             }
         }
+    }
+
+    /// Lay out a Sequence with imperative style tracking.
+    ///
+    /// `SetMathStyle` updates the active style for subsequent atoms,
+    /// `LimitsSpec` sets a pending flag that `layout_subsup` pops when the
+    /// next `LargeOperator` base is seen. Neither produces boxes itself.
+    fn layout_sequence(&self, nodes: &[SemanticNode], mut style: MathStyle) -> MathResult<LayoutNode> {
+        let mut children = Vec::new();
+        let mut prev_role: Option<SymbolRole> = None;
+
+        for node in nodes {
+            // --- imperative nodes: update state, produce no boxes ---
+            match node {
+                SemanticNode::SetMathStyle(new_style) => {
+                    style = *new_style;
+                    continue;
+                }
+                SemanticNode::LimitsSpec(flag) => {
+                    self.limits_override.set(Some(*flag));
+                    continue;
+                }
+                _ => {}
+            }
+
+            // --- spacing glue between the previous visible node and this one ---
+            let style_scale = self.get_style_scale(style);
+            let size = self.base_size * style_scale;
+            if let Some(left_role) = prev_role {
+                let right_role = Self::role_of(node);
+                if let Some(glue) = Self::spacing_between(left_role, right_role, size) {
+                    children.push(LayoutNode::Glue(glue));
+                }
+            }
+
+            children.push(self.layout_node(node, style)?);
+            prev_role = Some(Self::role_of(node));
+        }
+        Ok(self.pack_hbox(children, None))
     }
 
     fn layout_symbol(&self, key: &GlyphKey, style: MathStyle) -> MathResult<LayoutNode> {
@@ -894,7 +926,21 @@ impl LayoutEngine {
         style: MathStyle,
     ) -> MathResult<LayoutNode> {
         let is_large_op = matches!(base, SemanticNode::Symbol { role: SymbolRole::LargeOperator, .. });
-        if is_large_op && style == MathStyle::Display {
+
+        // Consume any pending limits override from `\limits` / `\nolimits`.
+        // It applies to this LargeOperator only; for non-operator bases we
+        // leave the override in place so it still hits a later operator.
+        let use_limits = if is_large_op {
+            match self.limits_override.take() {
+                Some(flag) => flag,
+                None => style == MathStyle::Display,
+            }
+        }
+        else {
+            style == MathStyle::Display
+        };
+
+        if is_large_op && use_limits {
             return self.layout_limits(base, sub, sup, style);
         }
 

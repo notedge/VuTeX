@@ -5,7 +5,8 @@
 //! and does not own any document IR — the surrounding document stays `notedown-ir`.
 
 use vutex_types::math::{
-    Alignment, Fixed, FontStyle, GlyphKey, LineStyle, MathError, MathResult, MathSemanticTree, SemanticNode, SymbolRole,
+    Alignment, Fixed, FontStyle, GlyphKey, LineStyle, MathError, MathResult, MathSemanticTree, MathStyle, SemanticNode,
+    SymbolRole,
 };
 
 /// Parse TeX math source into the semantic tree consumed by the layout engine.
@@ -273,9 +274,12 @@ impl Parser {
             "ddot" => self.parse_accent('¨'),
             "quad" => Ok(SemanticNode::Text { text: "  ".to_string(), font_style: FontStyle::Normal }),
             "qquad" => Ok(SemanticNode::Text { text: "    ".to_string(), font_style: FontStyle::Normal }),
-            "displaystyle" | "textstyle" | "scriptstyle" | "scriptscriptstyle" | "limits" | "nolimits" => {
-                Ok(SemanticNode::Sequence(Vec::new()))
-            }
+            "displaystyle" => Ok(SemanticNode::SetMathStyle(MathStyle::Display)),
+            "textstyle" => Ok(SemanticNode::SetMathStyle(MathStyle::Text)),
+            "scriptstyle" => Ok(SemanticNode::SetMathStyle(MathStyle::Script)),
+            "scriptscriptstyle" => Ok(SemanticNode::SetMathStyle(MathStyle::ScriptScript)),
+            "limits" => Ok(SemanticNode::LimitsSpec(true)),
+            "nolimits" => Ok(SemanticNode::LimitsSpec(false)),
             _ => {
                 if let Some((ch, role)) = named_symbol(&name) {
                     return Ok(SemanticNode::Symbol { glyph_key: GlyphKey::from_char(ch, None, FontStyle::Math), role });
