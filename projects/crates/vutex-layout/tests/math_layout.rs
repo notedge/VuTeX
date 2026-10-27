@@ -313,3 +313,111 @@ fn fraction_arguments_demote_one_style_further() {
         }
     }
 }
+
+/// `\limits` must stack the scripts above and below the operator, `\nolimits`
+/// must keep them beside it.  Stacking trades width for height, so the two
+/// layouts must differ in both dimensions.
+#[test]
+fn limits_override_stacks_scripts_over_the_operator() {
+    let (beside_tree, beside) = layout_formula("\\sum\\nolimits_{i=1}^{n}", false).expect("scripts beside");
+    let (stacked_tree, stacked) = layout_formula("\\sum\\limits_{i=1}^{n}", false).expect("stacked limits");
+
+    assert!(
+        stacked.width + 1.0 < beside.width,
+        "stacked limits must be narrower than scripts beside the operator: {} vs {}",
+        stacked.width,
+        beside.width
+    );
+    let stacked_extent = stacked.height + stacked.depth;
+    let beside_extent = beside.height + beside.depth;
+    assert!(
+        stacked_extent > beside_extent * 1.1,
+        "stacked limits must reach further than scripts beside the operator: {stacked_extent} vs {beside_extent}"
+    );
+    assert!(
+        stacked.depth > beside.depth * 2.0,
+        "stacked limits push the subscript well below the baseline: {} vs {}",
+        stacked.depth,
+        beside.depth
+    );
+
+    // The stacked superscript sits over the operator, horizontally centred
+    // inside its span.
+    let (op_x, _, op) = glyph_at(&stacked_tree, '∑');
+    let op_right = op_x + op.metrics.width.to_f64();
+    let (sup_x, _, sup) = glyph_at(&stacked_tree, 'n');
+    let sup_centre = sup_x + sup.metrics.width.to_f64() / 2.0;
+    assert!(
+        sup_centre > op_x && sup_centre < op_right,
+        "stacked superscript centre {sup_centre} must fall inside the operator span {op_x}..{op_right}"
+    );
+
+    // Beside the operator, the subscript starts at or after its right edge.
+    let (beside_op_x, _, beside_op) = glyph_at(&beside_tree, '∑');
+    let beside_op_right = beside_op_x + beside_op.metrics.width.to_f64();
+    let (beside_sub_x, _, _) = glyph_at(&beside_tree, 'i');
+    assert!(
+        beside_sub_x >= beside_op_right - 0.01,
+        "scripts beside the operator must start after it: {beside_sub_x} vs {beside_op_right}"
+    );
+}
+
+/// `\int\limits` stacks, `\int\nolimits` does not — the same override works for
+/// every large operator, not only `\sum`.
+#[test]
+fn integral_limits_follow_the_override() {
+    let beside = layout("\\int\\nolimits_{0}^{1}");
+    let stacked = layout("\\int\\limits_{0}^{1}");
+
+    assert!(
+        stacked.width + 0.5 < beside.width,
+        "stacked integral limits must be narrower: {} vs {}",
+        stacked.width,
+        beside.width
+    );
+    assert!(
+        stacked.depth > beside.depth * 2.0,
+        "stacked integral limits push the subscript below the baseline: {} vs {}",
+        stacked.depth,
+        beside.depth
+    );
+    assert!(
+        stacked.height + stacked.depth > (beside.height + beside.depth) * 1.1,
+        "stacked integral limits must reach further: {} vs {}",
+        stacked.height + stacked.depth,
+        beside.height + beside.depth
+    );
+}
+
+/// TeX defaults: `\sum` stacks its limits in display style, `\int` never stacks
+/// unless told to.  Each default must match the explicit command.
+#[test]
+fn operator_default_limits_follow_tex() {
+    let (_, sum_default) = layout_formula("\\sum_{i=1}^{n}", true).expect("display sum");
+    let (_, sum_limits) = layout_formula("\\sum\\limits_{i=1}^{n}", true).expect("display sum with limits");
+    let (_, sum_beside) = layout_formula("\\sum\\nolimits_{i=1}^{n}", true).expect("display sum without limits");
+    assert!(
+        (sum_default.height - sum_limits.height).abs() < 0.01 && (sum_default.width - sum_limits.width).abs() < 0.01,
+        "`\\sum` must default to limits in display: {sum_default:?} vs {sum_limits:?}"
+    );
+    assert!(
+        sum_default.width + 1.0 < sum_beside.width,
+        "`\\sum` must not default to scripts beside the operator: {} vs {}",
+        sum_default.width,
+        sum_beside.width
+    );
+
+    let (_, int_default) = layout_formula("\\int_{0}^{1}", true).expect("display integral");
+    let (_, int_nolimits) = layout_formula("\\int\\nolimits_{0}^{1}", true).expect("display integral without limits");
+    let (_, int_limits) = layout_formula("\\int\\limits_{0}^{1}", true).expect("display integral with limits");
+    assert!(
+        (int_default.height - int_nolimits.height).abs() < 0.01 && (int_default.width - int_nolimits.width).abs() < 0.01,
+        "`\\int` must default to nolimits: {int_default:?} vs {int_nolimits:?}"
+    );
+    assert!(
+        int_default.depth * 2.0 < int_limits.depth,
+        "`\\int` must not default to stacked limits: depth {} vs {}",
+        int_default.depth,
+        int_limits.depth
+    );
+}

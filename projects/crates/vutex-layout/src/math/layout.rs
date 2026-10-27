@@ -391,6 +391,18 @@ impl LayoutEngine {
         }
     }
 
+    /// Whether a large operator stacks its scripts by default in display style.
+    ///
+    /// TeX's `op` class (`\sum`, `\prod`, `\coprod`) puts limits above/below,
+    /// while the `intop` class (`\int`, `\iint`, `\oint`) never does unless
+    /// `\limits` asks for it.
+    fn default_limits(base: &SemanticNode) -> bool {
+        match base {
+            SemanticNode::Symbol { glyph_key, .. } => !matches!(glyph_key.char, Some('∫' | '∬' | '∮')),
+            _ => true,
+        }
+    }
+
     /// Lay out a semantic node in the given math style.
     pub fn layout_node<'a>(&'a self, node: &'a SemanticNode, style: MathStyle) -> MathResult<LayoutNode> {
         {
@@ -479,6 +491,11 @@ impl LayoutEngine {
                 SemanticNode::LimitsSpec(flag) => {
                     self.limits_override.set(Some(*flag));
                     continue;
+                }
+                // A bare operator carries no scripts to stack, so drop the flag
+                // instead of letting it bleed onto a later operator.
+                SemanticNode::Symbol { role: SymbolRole::LargeOperator, .. } => {
+                    self.limits_override.set(None);
                 }
                 _ => {}
             }
@@ -994,7 +1011,7 @@ impl LayoutEngine {
         let use_limits = if is_large_op {
             match self.limits_override.take() {
                 Some(flag) => flag,
-                None => style == MathStyle::Display,
+                None => style == MathStyle::Display && Self::default_limits(base),
             }
         }
         else {
