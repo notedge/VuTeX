@@ -203,26 +203,37 @@ static ALL_SYNTHETIC_CONSTANTS: &[MathConstant] = &[
     MathConstant::RadicalDegreeBottomRaisePercent,
 ];
 
+/// Rewrite every [`GlyphKey`]'s `font_family` inside a map to `new_family`.
+fn rekey_family<V>(map: HashMap<GlyphKey, V>, new_family: &str) -> HashMap<GlyphKey, V> {
+    map.into_iter()
+        .map(|(mut k, v)| {
+            k.font_family = Some(new_family.to_string());
+            (k, v)
+        })
+        .collect()
+}
+
 /// Builtin metrics for WASM and tests without font files.
 ///
 /// Prefers the embedded OpenType MATH font (Latin Modern Math) and falls back
-/// to synthetic metrics if the embedded font cannot be parsed. Either path
-/// always seeds synthetic delimiter variants and SVG path glyphs, since
-/// extracting those from the MATH Variants table is intentionally left as
-/// future work.
+/// to synthetic metrics if the embedded font cannot be parsed. On the OTF
+/// path we also extract real glyph outline paths and MATH Variants delimiter
+/// constructions, re-keyed under "default". Synthetic variants and paths are
+/// still seeded for delimiter/path characters that the font did not provide.
 pub fn builtin_font_metrics() -> FontMetricsSystem {
     let family_str = "default".to_string();
     let mut data = if let Some(opentype_data) = super::opentype::opentype_font_metrics() {
-        // Opentype data comes with its own family name; we re-key everything
-        // under "default" so downstream code that hardcodes that name keeps
-        // working. Font units per em remain from the OTF.
+        // Opentype data comes with its own family name ("latin-modern-math");
+        // we re-key everything under "default" so downstream code that
+        // hardcodes that name keeps working. Font units per em remains from
+        // the OTF.
         FontMetricsData {
             family: family_str.clone(),
             units_per_em: opentype_data.units_per_em,
             constants: opentype_data.constants,
-            glyphs: opentype_data.glyphs,
-            glyph_paths: opentype_data.glyph_paths,
-            delimiters: HashMap::new(),
+            glyphs: rekey_family(opentype_data.glyphs, &family_str),
+            glyph_paths: rekey_family(opentype_data.glyph_paths, &family_str),
+            delimiters: rekey_family(opentype_data.delimiters, &family_str),
         }
     }
     else {
@@ -230,7 +241,7 @@ pub fn builtin_font_metrics() -> FontMetricsSystem {
     };
     let family = Some(family_str.clone());
 
-    // ---- Synthetic delimiter variants (identical in both paths) ----
+    // ---- Synthetic delimiter variants (fallback for any char the OTF missed) ----
     let delimiter_chars: &[char] = &['(', ')', '[', ']', '{', '}', '|', '‖', '⟨', '⟩', '/'];
     let variant_sizes: &[(f64, f64)] = &[
         (0.45, 0.25), // small: total ~0.7em
@@ -240,6 +251,9 @@ pub fn builtin_font_metrics() -> FontMetricsSystem {
 
     for &ch in delimiter_chars {
         let base_key = GlyphKey::from_char(ch, family.clone(), FontStyle::Math);
+        if data.delimiters.contains_key(&base_key) {
+            continue; // OTF already gave us real variants — skip synthetic fallback
+        }
         let mut variants = Vec::new();
         for (i, &(h, d)) in variant_sizes.iter().enumerate() {
             let variant_key = GlyphKey {
@@ -262,7 +276,7 @@ pub fn builtin_font_metrics() -> FontMetricsSystem {
         data.delimiters.insert(base_key, DelimiterConstruction { variants, components: vec![] });
     }
 
-    // ---- Synthetic SVG path glyphs (identical in both paths) ----
+    // ---- Synthetic SVG path glyphs (fallback for chars the OTF missed) ----
     let path_chars: &[(char, &str, f64, f64)] = &[
         ('√', "M 0.05,0.45 L 0.25,0.85 L 0.55,0.15", 0.55, 0.95),
         ('±', "M 0.1,0.35 L 0.9,0.35 M 0.5,0.15 L 0.5,0.55 M 0.1,0.65 L 0.9,0.65", 1.0, 0.7),
@@ -276,9 +290,16 @@ pub fn builtin_font_metrics() -> FontMetricsSystem {
         ),
     ];
     for &(ch, path, w, h) in path_chars {
-        let key = GlyphKey::from_char(ch, family.clone(), FontStyle::Normal);
-        data.glyph_paths.insert(key.clone(), path.to_string());
-        data.glyphs.entry(key.clone()).or_insert_with(|| GlyphMetrics {
+        // Only insert if the OTF didn't already provide a path for this char.
+        let normal_key = GlyphKey::from_char(ch, family.clone(), FontStyle::Normal);
+        let math_key = GlyphKey::from_char(ch, family.clone(), FontStyle::Math);
+        let has_path =
+            data.glyph_paths.contains_key(&normal_key) || data.glyph_paths.contains_key(&math_key);
+        if !has_path {
+            data.glyph_paths.insert(normal_key.clone(), path.to_string());
+            data.glyph_paths.insert(math_key, path.to_string());
+        }
+        data.glyphs.entry(normal_key.clone()).or_insert_with(|| GlyphMetrics {
             width: Fixed::from_f64(w),
             height: Fixed::from_f64(h),
             depth: Fixed::ZERO,
@@ -332,9 +353,9 @@ mod tests {
                 (m.height + m.depth).to_f64()
             })
             .collect();
-        assert_eq!(heights.len(), 3);
-        assert!(heights[0] < heights[1], "variant 0 should be smaller than variant 1");
-        assert!(heights[1] < heights[2], "variant 1 should be smaller than variant 2");
+        assert!(heights.len() >= 3, "expected at least 3 variants, got {}", heights.len());
+        assert!(heights[0] > 0.0, "variant 0 should have positive total height");
+        assert!(heights.windows(2).all(|w| w[0] <= w[1]), "variant heights should be non-decreasing");
     }
 
     #[test]
