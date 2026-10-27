@@ -190,6 +190,11 @@ pub trait LayoutBackend {
 
     /// Close the innermost group.
     fn end_group(&mut self) -> MathResult<()>;
+
+    /// When true, Glyph nodes should emit text (for semantic backends like
+    /// MathML that need role-aware tags), not outline paths.
+    #[allow(unused_variables)]
+    fn prefers_text_over_path(&self) -> bool { false }
 }
 
 /// Recursively render a layout tree into a backend at the given baseline position.
@@ -214,10 +219,16 @@ pub fn render_layout_node(backend: &mut dyn LayoutBackend, node: &LayoutNode, x:
             backend.end_group()?;
         }
         LayoutNode::Glyph(glyph) => {
-            if let Some(ref path) = glyph.path_data {
-                backend.render_path(path, x, y, glyph.size.to_f64())?;
-            }
-            else if let Some(c) = glyph.char {
+            // Path-first for render targets (SVG), text-first for semantic
+            // targets (MathML that needs role-aware tags like <mo>/<mi>).
+            if !backend.prefers_text_over_path() {
+                if let Some(ref path) = glyph.path_data {
+                    backend.render_path(path, x, y, glyph.size.to_f64())?;
+                } else if let Some(c) = glyph.char {
+                    let text = c.to_string();
+                    backend.render_text(&text, x, y, glyph.size.to_f64(), Some(&glyph.font_family))?;
+                }
+            } else if let Some(c) = glyph.char {
                 let text = c.to_string();
                 backend.render_text(&text, x, y, glyph.size.to_f64(), Some(&glyph.font_family))?;
             }

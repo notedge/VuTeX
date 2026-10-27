@@ -77,19 +77,14 @@ fn invalid_option_json_falls_back_to_defaults() {
 #[test]
 fn render_svg_with_outline_option_successfully_returns_svg() {
     // With outline=true, the deterministic SvgBackend is wired in.
-    // If glyph outline paths are available the render succeeds; otherwise the
-    // error is surfaced as a diagnostic (Block A lands after this wiring).
+    // Block A (real glyph outline paths) has landed, so ALL formula glyphs
+    // should now render as <path> nodes without falling back to <text>.
     let value = parse(&render_svg_wasm("x + y", Some("{\"outline\": true}".to_string())));
-    // The diagnostic MAY contain a strict-mode error when Block A is not yet
-    // present, but the JSON contract itself must still be valid.
     let diagnostics = value["diagnostics"].as_array().expect("diagnostics array");
-    if diagnostics.iter().any(|d| d["severity"].as_str() == Some("error")) {
-        // Block A not yet landed — strict mode correctly rejected missing paths.
-        // This is acceptable; the wiring is exercised.
-        assert!(diagnostics.iter().any(|d| d["code"].as_str() == Some("WETEX_MATH_ERROR")));
-    } else {
-        // Block A present — full deterministic path-only render succeeded.
-        let svg = value["svg"].as_str().expect("svg");
-        assert!(svg.starts_with("<svg"), "unexpected svg: {svg}");
-    }
+    let error_count = diagnostics.iter().filter(|d| d["severity"].as_str() == Some("error")).count();
+    assert_eq!(error_count, 0, "unexpected error diagnostics with outline=true: {diagnostics:?}");
+    let svg = value["svg"].as_str().expect("svg");
+    assert!(svg.starts_with("<svg"), "unexpected svg: {svg}");
+    // Deterministic path-only render must NOT emit any <text> nodes.
+    assert!(!svg.contains("<text"), "deterministic SVG must be path-only, got text in: {svg}");
 }

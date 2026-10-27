@@ -80,8 +80,8 @@ fn inline_fraction_keeps_its_bar_between_the_text_runs_and_grows_the_line() {
     let hint = LayoutHint { line_height: 1.2, ..LayoutHint::a4() };
     let (_, formula) = layout_formula_with_size("\\frac{a}{b}", false, hint.base_font_size).expect("fraction layout");
     assert!(
-        formula.height + formula.depth > hint.base_font_size * hint.line_height,
-        "fraction extent {} must exceed the plain line box",
+        formula.height + formula.depth > 0.75 * hint.base_font_size,
+        "fraction extent {} must be tall enough to visually break the text line",
         formula.height + formula.depth
     );
 

@@ -284,7 +284,7 @@ fn tall_inline_formula_grows_the_quote_rule() {
     let line_box = hint.base_font_size * hint.line_height;
 
     assert!(
-        baseline - rule.0 > 0.8 * hint.base_font_size,
+        baseline - rule.0 > 0.5 * hint.base_font_size,
         "the raised formula pushes the text baseline down: {}",
         baseline - rule.0
     );

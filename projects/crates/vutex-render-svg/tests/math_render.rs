@@ -16,7 +16,9 @@ fn svg_backend_emits_svg_tags_for_a_fraction() {
     let svg = backend.finish();
     assert!(svg.starts_with("<svg"), "unexpected output: {svg}");
     assert!(svg.ends_with("</svg>"), "unexpected output: {svg}");
-    assert!(svg.contains("<text"), "glyphs should be emitted as text: {svg}");
+    // Glyphs now have real outline paths from Latin Modern Math, so they
+    // render as <path> nodes instead of host-font <text> fallbacks.
+    assert!(svg.contains("<path"), "glyphs should be emitted as paths: {svg}");
     assert!(svg.contains("<rect"), "fraction rule should be a rect: {svg}");
     assert!(svg.contains("<g transform="), "boxes should be grouped: {svg}");
 }
