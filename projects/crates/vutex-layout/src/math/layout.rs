@@ -1361,19 +1361,50 @@ impl LayoutEngine {
 
         let total_width = base_layout.width().max(accent_layout.width());
 
-        // Center accent over base
-        let accent_hbox = self.pack_hbox(
-            vec![LayoutNode::Kern((total_width - accent_layout.width()) / Fixed::from_f64(2.0)), accent_layout],
-            Some(total_width),
-        );
+        // TeX aligns the accent's ink centre with the base's top accent
+        // attachment point published by the font's MATH table, so the accent
+        // left edge sits at `attachment - accent_width / 2` measured from the
+        // base's own left edge. Glyphs without a MATH entry fall back to plain
+        // centring.
+        let centered_accent = (total_width - accent_layout.width()) / Fixed::from_f64(2.0);
+        let base_offset = (total_width - base_layout.width()) / Fixed::from_f64(2.0);
+        let accent_layout = match Self::top_accent_offset(&base_layout) {
+            Some(attachment) => {
+                let left = base_offset + attachment - accent_layout.width() / Fixed::from_f64(2.0);
+                self.pack_hbox(vec![LayoutNode::Kern(left), accent_layout], Some(total_width))
+            }
+            None => self.pack_hbox(vec![LayoutNode::Kern(centered_accent), accent_layout], Some(total_width)),
+        };
 
-        let base_hbox = self.pack_hbox(
-            vec![LayoutNode::Kern((total_width - base_layout.width()) / Fixed::from_f64(2.0)), base_layout],
-            Some(total_width),
-        );
+        let base_hbox = self.pack_hbox(vec![LayoutNode::Kern(base_offset), base_layout], Some(total_width));
 
         // Basic accent layout: vertical stack with no gap (or minimal gap)
         // In real TeX, this is more complex (accent height, skew, etc.)
-        Ok(self.pack_vbox(vec![accent_hbox, base_hbox], Alignment::Center))
+        Ok(self.pack_vbox(vec![accent_layout, base_hbox], Alignment::Center))
+    }
+
+    /// Horizontal offset of a base's top accent attachment from its left edge.
+    ///
+    /// Walks left to right through horizontal material so a base made of
+    /// several glyphs still reports the attachment of its leading glyph;
+    /// vertical boxes and rules carry no attachment.
+    fn top_accent_offset(node: &LayoutNode) -> Option<Fixed> {
+        match node {
+            LayoutNode::Glyph(glyph) => {
+                let attachment = glyph.metrics.top_accent_attachment;
+                (attachment > Fixed::ZERO).then_some(attachment)
+            }
+            LayoutNode::HBox(hbox) => {
+                let mut offset = Fixed::ZERO;
+                for child in &hbox.children {
+                    if let Some(attachment) = Self::top_accent_offset(child) {
+                        return Some(offset + attachment);
+                    }
+                    offset = offset + child.width();
+                }
+                None
+            }
+            _ => None,
+        }
     }
 }

@@ -1,10 +1,30 @@
 //! Integration tests for the math parse/layout pipeline.
 
-use vutex_layout::math::{FormulaLayout, layout_formula};
+use vutex_layout::math::{FormulaLayout, Glyph, LayoutNode, layout_formula};
+use vutex_types::math::Fixed;
 
 fn layout(source: &str) -> FormulaLayout {
     let (_, metrics) = layout_formula(source, false).expect("formula should lay out");
     metrics
+}
+
+/// Offset and glyph of the first horizontal glyph inside `node`.
+fn first_glyph(node: &LayoutNode) -> (Fixed, &Glyph) {
+    match node {
+        LayoutNode::Glyph(glyph) => (Fixed::ZERO, glyph),
+        LayoutNode::HBox(hbox) => {
+            let mut offset = Fixed::ZERO;
+            for child in &hbox.children {
+                if matches!(child, LayoutNode::Glyph(_)) {
+                    let (inner, glyph) = first_glyph(child);
+                    return (offset + inner, glyph);
+                }
+                offset = offset + child.width();
+            }
+            panic!("no glyph inside {node:?}");
+        }
+        other => panic!("expected glyph material, got {other:?}"),
+    }
 }
 
 #[test]
@@ -147,4 +167,25 @@ fn bmatrix_supported() {
     let metrics = layout("\\begin{Bmatrix}a&b\\\\c&d\\end{Bmatrix}");
     assert!(metrics.width > 0.0, "Bmatrix should have positive width");
     assert!(metrics.height > 0.0, "Bmatrix should have positive height");
+}
+
+#[test]
+fn hat_accent_centres_on_base_top_accent_attachment() {
+    let (tree, _) = layout_formula("\\hat{f}", false).expect("\\hat{f} should lay out");
+    let LayoutNode::VBox(vbox) = &tree else { panic!("an accent stacks an accent box over a base box: {tree:?}") };
+    assert_eq!(vbox.children.len(), 2, "accent stack should hold exactly the accent and the base");
+
+    let (accent_offset, accent) = first_glyph(&vbox.children[0]);
+    let (base_offset, base_glyph) = first_glyph(&vbox.children[1]);
+
+    let attachment = base_glyph.metrics.top_accent_attachment;
+    assert!(attachment > Fixed::ZERO, "the embedded font publishes a top accent attachment for 'f'");
+
+    let accent_centre = accent_offset + accent.metrics.width / Fixed::from_f64(2.0);
+    let attachment_point = base_offset + attachment;
+    let delta = (accent_centre - attachment_point).to_f64().abs();
+    assert!(
+        delta < 0.01,
+        "accent ink centre {accent_centre:?} must sit on the base attachment {attachment_point:?} (delta {delta})"
+    );
 }
