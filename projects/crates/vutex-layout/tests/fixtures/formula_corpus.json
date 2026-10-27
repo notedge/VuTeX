@@ -1,0 +1,41 @@
+[
+  { "src": "x + y", "group": "spacing", "notes": "basic binary operator spacing" },
+  { "src": "a = b", "group": "spacing", "notes": "relation spacing" },
+  { "src": "f(x)", "group": "spacing", "notes": "function application" },
+  { "src": "\\sin x", "group": "spacing", "notes": "mathop spacing" },
+  { "src": "xy", "group": "spacing", "notes": "plain atom concatenation, no spacing" },
+
+  { "src": "\\frac{a}{b}", "group": "fraction", "notes": "simple fraction" },
+  { "src": "\\frac{\\frac{a}{b}}{c}", "group": "fraction", "notes": "nested fraction" },
+  { "src": "\\frac{a+b}{c+d}", "group": "fraction", "notes": "compound numerator/denominator" },
+  { "src": "\\dfrac{x^2}{y}", "group": "fraction", "notes": "display-style fraction command" },
+
+  { "src": "\\sqrt{x}", "group": "radical", "notes": "simple radical" },
+  { "src": "\\sqrt[3]{x}", "group": "radical", "notes": "root radical" },
+  { "src": "\\sqrt{x^2 + y^2}", "group": "radical", "notes": "compound radical" },
+
+  { "src": "x^2", "group": "script", "notes": "superscript" },
+  { "src": "x_n", "group": "script", "notes": "subscript" },
+  { "src": "x_n^2", "group": "script", "notes": "subscript + superscript" },
+  { "src": "a_{ij}^{kl}", "group": "script", "notes": "multi-char scripts" },
+  { "src": "x^{y^{z}}", "group": "script", "notes": "nested superscript" },
+
+  { "src": "\\sum_{i=1}^{n}", "group": "operators", "notes": "summation with limits" },
+  { "src": "\\int_0^\\infty", "group": "operators", "notes": "integral with limits" },
+  { "src": "\\prod_{k=1}^n", "group": "operators", "notes": "product with limits" },
+  { "src": "\\lim_{x\\to 0}", "group": "operators", "notes": "operator with subscript limit" },
+
+  { "src": "\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}", "group": "matrix", "notes": "2x2 matrix" },
+  { "src": "\\begin{cases} x & \\text{if } x > 0 \\\\ 0 & \\text{otherwise} \\end{cases}", "group": "matrix", "notes": "cases environment" },
+
+  { "src": "\\left( \\frac{a}{b} \\right)", "group": "delimiter", "notes": "auto-sized parens around fraction" },
+  { "src": "\\left\\{ x \\right\\}", "group": "delimiter", "notes": "auto-sized braces" },
+  { "src": "\\left| \\sqrt{x} \\right|", "group": "delimiter", "notes": "auto-sized bars around radical" },
+
+  { "src": "\\hat{x}", "group": "accent", "notes": "hat accent" },
+  { "src": "\\vec{v}", "group": "accent", "notes": "vector accent" },
+  { "src": "\\overline{AB}", "group": "accent", "notes": "overline accent" },
+
+  { "src": "\\alpha + \\beta = \\gamma", "group": "greek", "notes": "lowercase greek" },
+  { "src": "\\Delta x \\approx 0", "group": "greek", "notes": "uppercase greek" }
+]

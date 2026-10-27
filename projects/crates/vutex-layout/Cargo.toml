@@ -14,3 +14,6 @@ davinci-scene = { workspace = true }
 vutex-types = { workspace = true, features = ["serde"] }
 vutex-style = { workspace = true }
 vutex-text = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
