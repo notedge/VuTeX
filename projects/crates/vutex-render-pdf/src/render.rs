@@ -27,7 +27,8 @@ use std::{
 
 use davinci_scene::DisplayScene;
 use vutex_presentation::display::{
-    DisplayGraphic, DisplayImage, DisplayItem, DisplayPage, DisplayPresentation, DisplayRect, DisplayRule, DisplayTextRun,
+    DisplayGraphic, DisplayImage, DisplayItem, DisplayPage, DisplayPath, DisplayPresentation, DisplayRect, DisplayRule,
+    DisplayTextRun,
 };
 use vutex_render::{RenderBackend, is_safe_href};
 use vutex_types::{Diagnostic, Severity, math::FontStyle};
@@ -987,6 +988,7 @@ fn write_item<'d>(
         DisplayItem::Rect(rect) => write_rect(out, page_height, rect),
         DisplayItem::Image(image) => write_image(out, page_height, image, painter),
         DisplayItem::Graphic(graphic) => write_graphic(out, page_height, graphic, painter),
+        DisplayItem::Path(path) => write_path(out, page_height, path),
     }
 }
 
@@ -1179,6 +1181,201 @@ fn write_graphic<'d>(
         return;
     }
     crate::scene::write_scene(out, page_height, graphic, painter);
+}
+
+/// Paint one vector glyph outline extracted from the embedded MATH font.
+///
+/// SVG path coordinates use y-down math space; we mirror each y through
+/// `page_height` as every other PDF primitive does, and emit the result as a
+/// filled PDF path. The surrounding `q`/`Q` bracket isolates the fill colour
+/// so later text keeps its default black fill.
+fn write_path(out: &mut String, page_height: f64, path: &DisplayPath) {
+    if !all_finite(&[path.x, path.y]) || path.d.is_empty() {
+        return;
+    }
+    let origin_y = page_height - path.y;
+    let pdf_ops = svg_path_to_pdf_operators(&path.d, path.x, origin_y);
+    if pdf_ops.is_empty() {
+        return;
+    }
+    let _ = write!(out, "q\n0.0 f\n{pdf_ops}f\nQ\n");
+}
+
+/// Convert an SVG `d` attribute into PDF path operators.
+///
+/// The path is translated by `(origin_x, origin_y)` before y-flipping; the
+/// resulting PDF path operators use PDF's y-up coordinate space directly so
+/// the page transform chain stays consistent with every other primitive.
+///
+/// We only emit the operators our own `SvgPathBuilder` actually produces
+/// (M, L, Q, C, Z) and also handle T for compatibility with real-world glyph
+/// outlines. Relative variants (lowercase m/l/q/c/z) and unknown operators
+/// are silently dropped rather than mis-emitted.
+fn svg_path_to_pdf_operators(raw: &str, origin_x: f64, origin_y: f64) -> String {
+    let tokens = tokenize_svg_path(raw);
+    let mut out = String::new();
+    let mut last_pt = (0.0, 0.0); // current pen position
+    let mut start_pt = (0.0, 0.0); // current subpath start
+
+    let mut i = 0;
+    while i < tokens.len() {
+        let op = tokens[i].as_str();
+        i += 1;
+        match op {
+            "M" => {
+                if let (Some(x), Some(y)) =
+                    (tokens.get(i).and_then(|t| t.parse::<f64>().ok()), tokens.get(i + 1).and_then(|t| t.parse::<f64>().ok()))
+                {
+                    i += 2;
+                    let px = x + origin_x;
+                    let py = origin_y - y;
+                    last_pt = (px, py);
+                    start_pt = (px, py);
+                    let _ = write!(out, "{} {} m\n", num(px), num(py));
+                    // Additional coordinate pairs after M are implicit L (per SVG spec)
+                    while i + 1 < tokens.len() && tokens[i].parse::<f64>().is_ok() && tokens[i + 1].parse::<f64>().is_ok() {
+                        let ax = tokens[i].parse::<f64>().unwrap();
+                        let ay = tokens[i + 1].parse::<f64>().unwrap();
+                        i += 2;
+                        let ppx = ax + origin_x;
+                        let ppy = origin_y - ay;
+                        last_pt = (ppx, ppy);
+                        let _ = write!(out, "{} {} l\n", num(ppx), num(ppy));
+                    }
+                }
+            }
+            "L" => {
+                if let (Some(x), Some(y)) =
+                    (tokens.get(i).and_then(|t| t.parse::<f64>().ok()), tokens.get(i + 1).and_then(|t| t.parse::<f64>().ok()))
+                {
+                    i += 2;
+                    let px = x + origin_x;
+                    let py = origin_y - y;
+                    last_pt = (px, py);
+                    let _ = write!(out, "{} {} l\n", num(px), num(py));
+                }
+            }
+            "Q" => {
+                if let (Some(x1), Some(y1), Some(x), Some(y)) = (
+                    tokens.get(i).and_then(|t| t.parse::<f64>().ok()),
+                    tokens.get(i + 1).and_then(|t| t.parse::<f64>().ok()),
+                    tokens.get(i + 2).and_then(|t| t.parse::<f64>().ok()),
+                    tokens.get(i + 3).and_then(|t| t.parse::<f64>().ok()),
+                ) {
+                    i += 4;
+                    let px1 = x1 + origin_x;
+                    let py1 = origin_y - y1;
+                    let px = x + origin_x;
+                    let py = origin_y - y;
+                    last_pt = (px, py);
+                    // PDF has no native quadratic curve operator; convert to cubic:
+                    let cx1 = last_pt.0 + (px1 - last_pt.0) * (2.0 / 3.0);
+                    let cy1 = last_pt.1 + (py1 - last_pt.1) * (2.0 / 3.0);
+                    let cx2 = px + (py1 - py) * (1.0 / 3.0) - (last_pt.0 - cx1);
+                    let cy2 = py + (py1 - py) * (1.0 / 3.0);
+                    let _ = write!(out, "{} {} {} {} {} {} c\n", num(cx1), num(cy1), num(cx2), num(cy2), num(px), num(py));
+                }
+            }
+            "C" => {
+                if let (Some(x1), Some(y1), Some(x2), Some(y2), Some(x), Some(y)) = (
+                    tokens.get(i).and_then(|t| t.parse::<f64>().ok()),
+                    tokens.get(i + 1).and_then(|t| t.parse::<f64>().ok()),
+                    tokens.get(i + 2).and_then(|t| t.parse::<f64>().ok()),
+                    tokens.get(i + 3).and_then(|t| t.parse::<f64>().ok()),
+                    tokens.get(i + 4).and_then(|t| t.parse::<f64>().ok()),
+                    tokens.get(i + 5).and_then(|t| t.parse::<f64>().ok()),
+                ) {
+                    i += 6;
+                    let px1 = x1 + origin_x;
+                    let py1 = origin_y - y1;
+                    let px2 = x2 + origin_x;
+                    let py2 = origin_y - y2;
+                    let px = x + origin_x;
+                    let py = origin_y - y;
+                    last_pt = (px, py);
+                    let _ = write!(out, "{} {} {} {} {} {} c\n", num(px1), num(py1), num(px2), num(py2), num(px), num(py));
+                }
+            }
+            "Z" | "z" => {
+                last_pt = start_pt;
+                out.push_str("h\n");
+            }
+            "H" => {
+                if let Some(x) = tokens.get(i).and_then(|t| t.parse::<f64>().ok()) {
+                    i += 1;
+                    let px = x + origin_x;
+                    let py = last_pt.1;
+                    last_pt = (px, py);
+                    let _ = write!(out, "{} {} l\n", num(px), num(py));
+                }
+            }
+            "V" => {
+                if let Some(y) = tokens.get(i).and_then(|t| t.parse::<f64>().ok()) {
+                    i += 1;
+                    let px = last_pt.0;
+                    let py = origin_y - y;
+                    last_pt = (px, py);
+                    let _ = write!(out, "{} {} l\n", num(px), num(py));
+                }
+            }
+            _ => {
+                // Unknown or relative operator — skip its numeric args.
+                while i < tokens.len() && tokens[i].parse::<f64>().is_ok() {
+                    i += 1;
+                }
+            }
+        }
+    }
+
+    out
+}
+
+/// Tokenise an SVG `d` attribute into alternating operator letters and
+/// numeric literals (including negative and floating-point forms).
+///
+/// The token list is flat: every char is a single-token string; numeric
+/// literals are one token each; operators are single-letter tokens.
+fn tokenize_svg_path(raw: &str) -> Vec<String> {
+    let mut tokens: Vec<String> = Vec::new();
+    let chars: Vec<char> = raw.chars().collect();
+    let mut i = 0;
+
+    while i < chars.len() {
+        let c = chars[i];
+        if c.is_ascii_whitespace() || c == ',' {
+            i += 1;
+            continue;
+        }
+        if c.is_ascii_alphabetic() {
+            tokens.push(c.to_string());
+            i += 1;
+            continue;
+        }
+        if c == '-' || c == '.' || c.is_ascii_digit() {
+            let start = i;
+            if c == '-' {
+                i += 1;
+            }
+            while i < chars.len() && (chars[i].is_ascii_digit() || chars[i] == '.' || chars[i] == 'e' || chars[i] == 'E') {
+                // Handle optional + / - after exponent
+                if (chars[i] == 'e' || chars[i] == 'E') && i + 1 < chars.len() && (chars[i + 1] == '+' || chars[i + 1] == '-') {
+                    i += 1; // skip exponent letter
+                    i += 1; // skip sign
+                    while i < chars.len() && chars[i].is_ascii_digit() {
+                        i += 1;
+                    }
+                    continue;
+                }
+                i += 1;
+            }
+            tokens.push(chars[start..i].iter().collect());
+            continue;
+        }
+        // Unknown char — skip.
+        i += 1;
+    }
+
+    tokens
 }
 
 /// Graphics state selecting one alpha for both fill and stroke.
