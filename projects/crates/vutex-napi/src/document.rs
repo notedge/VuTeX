@@ -17,7 +17,7 @@ use notedown_formats::{
 };
 use notedown_ir::{Block, DocumentGraph};
 use serde::{Deserialize, Serialize};
-use vutex_layout::{LayoutHint, document::layout_with_diagrams};
+use vutex_layout::{LayoutHint, document::layout_with_diagnostics};
 use vutex_presentation::builder::{build_display_presentation, build_flow_presentation};
 use vutex_render_html::{render_html_reflow, render_html_snapshot};
 use vutex_render_pdf::{PdfFontPolicy, PdfResources, render_pdf_with_resources_and_diagnostics};
@@ -257,7 +257,10 @@ pub fn render_document(input_path: &str, options_json: Option<&str>) -> RenderOu
 
     let mut diagrams = lower_mermaid_diagrams(&graph, input_path);
     lower_tikz_diagrams(&graph, input_path, &mut diagrams);
-    let plan = layout_with_diagrams(&graph, &LayoutHint::a4(), &diagrams.diagrams);
+    let (plan, layout_diagnostics) = layout_with_diagnostics(&graph, &LayoutHint::a4(), &diagrams.diagrams);
+    for diagnostic in &layout_diagnostics {
+        diagrams.diagnostics.push(layout_diagnostic_to_record(diagnostic, input_path));
+    }
     let display = build_display_presentation(&plan);
     let pages = display.pages.len();
     let items = display.pages.iter().map(|page| page.items.len()).sum::<usize>();
@@ -479,6 +482,17 @@ fn render_diagnostic_to_record(d: &RenderDiagnostic, path: &str) -> DiagnosticRe
         severity: severity_label(d.severity),
         message: d.message.clone(),
         stage: "render".to_string(),
+        path: Some(path.to_string()),
+    }
+}
+
+/// Convert a layout-layer diagnostic into the pipeline report record.
+fn layout_diagnostic_to_record(d: &RenderDiagnostic, path: &str) -> DiagnosticRecord {
+    DiagnosticRecord {
+        code: d.code.clone(),
+        severity: severity_label(d.severity),
+        message: d.message.clone(),
+        stage: "layout".to_string(),
         path: Some(path.to_string()),
     }
 }
