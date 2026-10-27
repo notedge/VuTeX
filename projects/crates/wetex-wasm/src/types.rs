@@ -16,11 +16,15 @@ pub enum DisplayMode {
 pub struct RenderOptions {
     /// Inline or block layout mode.
     pub display_mode: DisplayMode,
+    /// When `true`, the SVG backend runs in deterministic (path-only) strict mode,
+    /// rejecting any glyph that lacks pre-computed outline paths.
+    #[serde(default)]
+    pub outline: Option<bool>,
 }
 
 impl Default for RenderOptions {
     fn default() -> Self {
-        Self { display_mode: DisplayMode::Inline }
+        Self { display_mode: DisplayMode::Inline, outline: None }
     }
 }
 

@@ -31,7 +31,11 @@ pub fn render_svg(source: &str, options: &RenderOptions) -> FormulaRender {
         return FormulaRender { metrics: FormulaMetrics::default(), svg: String::new(), mathml: None, diagnostics };
     }
 
-    match render_formula_svg_inner(source, options.display_mode == DisplayMode::Block) {
+    match render_formula_svg_inner(
+        source,
+        options.display_mode == DisplayMode::Block,
+        options.outline.unwrap_or(false),
+    ) {
         Ok((svg, layout)) => FormulaRender { metrics: layout_to_metrics(&layout), svg, mathml: None, diagnostics },
         Err(err) => FormulaRender {
             metrics: FormulaMetrics::default(),
@@ -73,11 +77,15 @@ pub fn render(source: &str, options: &RenderOptions) -> FormulaRender {
     result
 }
 
-fn render_formula_svg_inner(source: &str, display: bool) -> Result<(String, FormulaLayout), MathError> {
+fn render_formula_svg_inner(source: &str, display: bool, outline: bool) -> Result<(String, FormulaLayout), MathError> {
     use vutex_layout::math::render_layout_node;
     let (root, layout) = layout_formula(source, display)?;
     let svg_height = layout.height + layout.depth;
-    let mut backend = SvgBackend::new(layout.width, svg_height);
+    let mut backend = if outline {
+        SvgBackend::new_deterministic(layout.width, svg_height)
+    } else {
+        SvgBackend::new(layout.width, svg_height)
+    };
     render_layout_node(&mut backend, &root, 0.0, layout.height)?;
     Ok((backend.finish(), layout))
 }
