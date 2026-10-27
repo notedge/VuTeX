@@ -25,6 +25,10 @@ pub fn measure(source: &str, options: &RenderOptions) -> FormulaRender {
 }
 
 /// Render a formula to SVG.
+///
+/// A glyph the math font ships no outline for is painted as a host-font `<text>`
+/// run in the non-strict mode and reported as a `vutex.layout.math.outline_missing`
+/// warning, so a host-font dependency is never silent.
 pub fn render_svg(source: &str, options: &RenderOptions) -> FormulaRender {
     let diagnostics = collect_diagnostics(source);
     if has_error(&diagnostics) {
@@ -32,7 +36,12 @@ pub fn render_svg(source: &str, options: &RenderOptions) -> FormulaRender {
     }
 
     match render_formula_svg_inner(source, options.display_mode == DisplayMode::Block, options.outline.unwrap_or(false)) {
-        Ok((svg, layout)) => FormulaRender { metrics: layout_to_metrics(&layout), svg, mathml: None, diagnostics },
+        Ok((svg, layout, layout_diagnostics)) => FormulaRender {
+            metrics: layout_to_metrics(&layout),
+            svg,
+            mathml: None,
+            diagnostics: diagnostics.into_iter().chain(layout_diagnostics.into_iter().map(FormulaDiagnostic::from)).collect(),
+        },
         Err(err) => FormulaRender {
             metrics: FormulaMetrics::default(),
             svg: String::new(),
@@ -73,8 +82,12 @@ pub fn render(source: &str, options: &RenderOptions) -> FormulaRender {
     result
 }
 
-fn render_formula_svg_inner(source: &str, display: bool, outline: bool) -> Result<(String, FormulaLayout), MathError> {
-    use vutex_layout::math::render_layout_node;
+fn render_formula_svg_inner(
+    source: &str,
+    display: bool,
+    outline: bool,
+) -> Result<(String, FormulaLayout, Vec<Diagnostic>), MathError> {
+    use vutex_layout::math::{collect_layout_with_diagnostics, render_layout_node};
     let (root, layout) = layout_formula(source, display)?;
     let svg_height = layout.height + layout.depth;
     let mut backend = if outline {
@@ -84,7 +97,11 @@ fn render_formula_svg_inner(source: &str, display: bool, outline: bool) -> Resul
         SvgBackend::new(layout.width, svg_height)
     };
     render_layout_node(&mut backend, &root, 0.0, layout.height)?;
-    Ok((backend.finish(), layout))
+    // A glyph without an embedded outline is exactly what sends the non-strict
+    // backend to a host font, so this walk doubles as the fallback report.
+    let mut layout_diagnostics = Vec::new();
+    collect_layout_with_diagnostics(&root, 0.0, layout.height, &mut layout_diagnostics);
+    Ok((backend.finish(), layout, layout_diagnostics))
 }
 
 fn render_formula_mathml_inner(source: &str, display: bool) -> Result<(String, FormulaLayout), MathError> {
