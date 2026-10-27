@@ -108,19 +108,17 @@ impl OutlineBuilder for SvgPathBuilder {
 // Character scope used for glyph outlines & delimiter variants.
 // ---------------------------------------------------------------------------
 
-/// Characters whose glyph outlines and MATH variants we extract from the font.
-const TARGET_CHARS: &[char] = &[
-    // Latin lower
-    'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y',
-    'z', // Latin upper
-    'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X',
-    'Y', 'Z', // Digits
-    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', // Punctuation & operators
-    '+', '-', '=', '(', ')', '[', ']', '{', '}', '.', ',', ';', ':', '!', '?', // Greek lower (α–ω, skipping none)
+/// Non-ASCII symbols whose glyph outlines and MATH variant coverage we extract.
+///
+/// Printable ASCII (`!` through `~`) is always extracted, so relations such as
+/// `<` and `>` never fall back to a host font. This list adds the symbols the
+/// math parser can emit beyond ASCII.
+const TARGET_SYMBOLS: &[char] = &[
     'α', 'β', 'γ', 'δ', 'ε', 'ζ', 'η', 'θ', 'ι', 'κ', 'λ', 'μ', 'ν', 'ξ', 'ο', 'π', 'ρ', 'σ', 'τ', 'υ', 'φ', 'χ', 'ψ', 'ω',
-    // Greek upper (Γ–Ω)
-    'Γ', 'Δ', 'Θ', 'Λ', 'Ξ', 'Π', 'Σ', 'Φ', 'Ψ', 'Ω', // Math operators & delimiters
-    '±', '×', '÷', '≤', '≥', '≠', '≈', '→', '∞', '√', '∑', '∏', '∫', '|', '‖', '⟨', '⟩', '/',
+    'Γ', 'Δ', 'Θ', 'Λ', 'Ξ', 'Π', 'Σ', 'Φ', 'Ψ', 'Ω', '±', '×', '÷', '≤', '≥', '≠', '≈', '≡', '≅', '∼', '≃', '≪', '≫', '∓',
+    '→', '←', '↑', '↓', '↔', '⇒', '⇐', '⇔', '↦', '∞', '√', '∑', '∏', '∫', '∮', '∂', '∇', '∅', '∈', '∉', '∋', '⊂', '⊃', '⊆',
+    '⊇', '∪', '∩', '∧', '∨', '¬', '∀', '∃', '⋅', '∘', '∗', '†', '‡', '…', '⋯', '′', '″', '⊥', '∥', '|', '‖', '⟨', '⟩', 'ℝ',
+    'ℕ', 'ℤ', 'ℚ', 'ℂ', 'ℓ', 'ℏ', 'ℜ', 'ℑ', 'ℵ',
 ];
 
 /// Delimiter characters whose MATH Variants constructions we pull from the font.
@@ -266,7 +264,7 @@ fn extract_glyph_metrics_and_outlines(
     let italic_corrections = &math_glyph_info.italic_correction;
     let top_accent_attachments = &math_glyph_info.top_accent_attachment;
 
-    for &ch in TARGET_CHARS {
+    for ch in ('!'..='~').chain(TARGET_SYMBOLS.iter().copied()) {
         let gid = match face.glyph_index(ch) {
             Some(g) => g,
             None => continue,
