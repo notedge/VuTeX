@@ -15,4 +15,6 @@ vutex-presentation = { workspace = true }
 vutex-render = { workspace = true }
 
 [dev-dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
 vutex-layout = { workspace = true }
