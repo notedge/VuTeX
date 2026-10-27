@@ -1309,6 +1309,70 @@ pub(crate) fn num(value: f64) -> String {
     if trimmed.is_empty() || trimmed == "-0" { "0".to_string() } else { trimmed.to_string() }
 }
 
+/// Strip any pre-existing `/Length <value>` entry from a PDF stream dictionary
+/// string, preserving every other entry unchanged, then append a fresh
+/// `/Length N` where `N` is the actual byte length of the stream body.
+///
+/// This makes the writer robust against callers who captured a stale
+/// `/Length` before the stream body was finalised — a mistake that Poppler
+/// reports as *"Bad 'Length' attribute in stream"* or *"Missing 'endstream' or
+/// incorrect stream length"*.  `/Length1` (used on FontFile descriptors) is
+/// left untouched because it names a different semantic.
+fn rebuild_stream_dict(dict: &str, data_len: usize) -> String {
+    let bytes = dict.as_bytes();
+    let mut cleaned = String::with_capacity(dict.len());
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if i + 7 <= bytes.len()
+            && &dict[i..i + 7] == "/Length"
+            && !matches!(bytes.get(i + 7), Some(c) if *c == b'1' || *c == b'2' || *c == b'3')
+        {
+            // Make sure `/Length` is followed by a boundary (whitespace or end).
+            let is_boundary = match bytes.get(i + 7) {
+                Some(c) => c.is_ascii_whitespace(),
+                None => true,
+            };
+            if is_boundary {
+                i += 7;
+                // Skip whitespace after the key.
+                while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+                    i += 1;
+                }
+                // Skip the value — number, name, or indirect ref — until we hit
+                // whitespace or the next key or closing `>>`.
+                while i < bytes.len() {
+                    let c = bytes[i];
+                    if c.is_ascii_whitespace() || c == b'/' || c == b'>' {
+                        break;
+                    }
+                    i += 1;
+                }
+                // Skip trailing whitespace so we don't leave double gaps.
+                while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+                    i += 1;
+                }
+                continue;
+            }
+        }
+        cleaned.push(bytes[i] as char);
+        i += 1;
+    }
+
+    // Peel the outer `<< >>` if present to rebuild cleanly.
+    let trimmed = cleaned.trim();
+    let inner = if let Some(stripped) = trimmed.strip_prefix("<<").and_then(|s| s.strip_suffix(">>")) {
+        stripped.trim().to_string()
+    } else {
+        trimmed.to_string()
+    };
+
+    if inner.is_empty() {
+        format!("<< /Length {data_len} >>")
+    } else {
+        format!("<< {inner} /Length {data_len} >>")
+    }
+}
+
 /// Serialize objects into a complete PDF file with a byte-exact xref table.
 fn assemble(objects: &[PdfObject]) -> Vec<u8> {
     let mut out = Vec::new();
@@ -1320,7 +1384,7 @@ fn assemble(objects: &[PdfObject]) -> Vec<u8> {
         match object {
             PdfObject::Text(body) => out.extend_from_slice(body.as_bytes()),
             PdfObject::Stream { dict, data } => {
-                let dict = if dict.is_empty() { format!("<< /Length {} >>", data.len()) } else { dict.clone() };
+                let dict = rebuild_stream_dict(dict, data.len());
                 out.extend_from_slice(dict.as_bytes());
                 out.extend_from_slice(b"\nstream\n");
                 out.extend_from_slice(data);
@@ -1338,4 +1402,47 @@ fn assemble(objects: &[PdfObject]) -> Vec<u8> {
     }
     out.extend_from_slice(format!("trailer\n<< /Size {size} /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n").as_bytes());
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::rebuild_stream_dict;
+
+    #[test]
+    fn rebuild_from_empty_dict() {
+        let got = rebuild_stream_dict("", 42);
+        assert_eq!(got, "<< /Length 42 >>");
+    }
+
+    #[test]
+    fn rebuild_replaces_a_stale_length() {
+        let got = rebuild_stream_dict("<< /Length 99999 >>", 42);
+        assert_eq!(got, "<< /Length 42 >>");
+    }
+
+    #[test]
+    fn rebuild_preserves_other_entries() {
+        let got = rebuild_stream_dict(
+            "<< /Type /XObject /Subtype /Image /Width 2 /Height 2 /BitsPerComponent 8 /Length 99 >>",
+            12,
+        );
+        assert!(got.contains("/Type /XObject"));
+        assert!(got.contains("/Subtype /Image"));
+        assert!(got.contains("/Length 12"));
+        assert!(!got.contains("/Length 99"), "stale value must be gone");
+    }
+
+    #[test]
+    fn rebuild_does_not_touch_length1_used_by_fontfile_descriptors() {
+        let got = rebuild_stream_dict("<< /Length1 1234 /Length 99 >>", 2048);
+        assert!(got.contains("/Length1 1234"), "FontFile descriptor keeps its non-compressed length hint");
+        assert!(got.contains("/Length 2048"), "stream Length is the actual byte count");
+        assert!(!got.contains("/Length 99"), "stale Length must be gone");
+    }
+
+    #[test]
+    fn rebuild_handles_dict_without_explicit_length() {
+        let got = rebuild_stream_dict("<< /Filter /FlateDecode >>", 32);
+        assert_eq!(got, "<< /Filter /FlateDecode /Length 32 >>");
+    }
 }
