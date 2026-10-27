@@ -1253,7 +1253,13 @@ impl LayoutEngine {
         let axis_height =
             self.font_system.get_math_constant(family, MathConstant::AxisHeight).unwrap_or(Fixed::from_f64(0.25)) * size;
 
-        let target_height = (content_layout.height() + content_layout.depth()).max(size * Fixed::from_f64(1.0)); // Min height
+        // TeX sizes a delimiter from how far the content reaches away from the
+        // math axis: the glyph must cover the taller of the two sides, mirrored
+        // around the axis. Summing `height + depth` instead under-sizes every
+        // asymmetric body such as a fraction, whose extents sit mostly below the
+        // axis once the denominator is packed.
+        let delta = (content_layout.height() - axis_height).max(content_layout.depth() + axis_height);
+        let target_height = (delta * Fixed::from_f64(2.0)).max(size);
 
         let mut children = Vec::new();
 
