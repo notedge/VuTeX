@@ -1229,10 +1229,11 @@ impl LayoutEngine {
 
         let mut wrapper = self.pack_hbox(vec![matrix_vbox], None);
         if let LayoutNode::HBox(ref mut h) = wrapper {
+            // `LayoutNode::height` / `depth` already fold `shift` back into the
+            // extents, exactly like `center_delimiter` relies on.  Writing the
+            // shifted values into `height` / `depth` as well would apply the
+            // shift twice and invert the box, so only the shift is stored.
             h.shift = shift;
-            // Update HBox metrics to reflect the shift
-            h.height = vbox_height - shift;
-            h.depth = vbox_depth + shift;
         }
         Ok(wrapper)
     }

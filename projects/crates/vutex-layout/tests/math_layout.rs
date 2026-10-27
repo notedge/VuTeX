@@ -77,7 +77,7 @@ fn delimited_radical_and_superscript_lay_out() {
 fn matrix_lays_out_with_two_rows() {
     let metrics = layout("\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}");
     assert!(metrics.width > 0.0);
-    assert!(metrics.height >= metrics.depth);
+    assert!(metrics.height >= metrics.depth, "matrix must stay centred on the math axis: {metrics:?}");
 }
 
 #[test]
