@@ -662,9 +662,13 @@ impl LayoutEngine {
         line_style: LineStyle,
         style: MathStyle,
     ) -> MathResult<LayoutNode> {
+        // TeX demotes fraction arguments exactly one style: display -> text,
+        // text -> script, and both script styles -> scriptscript.  Keeping
+        // script arguments in script style would let them outgrow the parent.
         let next_style = match style {
             MathStyle::Display => MathStyle::Text,
-            _ => MathStyle::Script,
+            MathStyle::Text => MathStyle::Script,
+            MathStyle::Script | MathStyle::ScriptScript => MathStyle::ScriptScript,
         };
 
         let num_layout = self.layout_node(numerator, next_style)?;
