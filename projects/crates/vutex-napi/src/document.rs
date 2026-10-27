@@ -531,6 +531,7 @@ fn summarize_document(graph: &DocumentGraph) -> serde_json::Value {
             Block::Math { .. } => math += 1,
             Block::Diagram { .. } => diagrams += 1,
             Block::Opaque { .. } => {}
+            Block::RawHtml { .. } => {}
         }
     }
     serde_json::json!({
