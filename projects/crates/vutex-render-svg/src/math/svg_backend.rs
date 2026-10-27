@@ -147,6 +147,12 @@ impl SvgBackend {
 
 impl LayoutBackend for SvgBackend {
     fn render_text(&mut self, text: &str, x: f64, y: f64, font_size: f64, font_family: Option<&str>) -> MathResult<()> {
+        // Whitespace advances but paints nothing. Emitting a `<text>` run for it
+        // would pull in a host font, which deterministic mode forbids, and the
+        // advance is already accounted for by the parent box.
+        if text.chars().all(char::is_whitespace) {
+            return Ok(());
+        }
         if self.strict {
             let msg = format!(
                 "deterministic SVG requires pre-computed glyph paths; \

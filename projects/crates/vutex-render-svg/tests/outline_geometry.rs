@@ -222,6 +222,14 @@ fn simple_sum_extents_stay_in_one_em_range() {
 }
 
 #[test]
+fn thin_space_paints_nothing_in_deterministic_mode() {
+    let (svg, layout) = render(r"a\,b", false);
+    assert!(!svg.contains("<text"), "deterministic mode must not fall back to a host font:\n{svg}");
+    assert_eq!(outline_paths(&svg).len(), 2, "only the two letters carry ink:\n{svg}");
+    assert!(layout.width > render("ab", false).1.width, "`\\,` still advances the formula");
+}
+
+#[test]
 fn emphasis_faces_keep_their_own_outlines() {
     let bold_svg = render(r"\mathbf{a}", false).0;
     let italic_svg = render(r"\mathit{a}", false).0;
