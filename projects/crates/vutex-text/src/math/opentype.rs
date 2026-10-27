@@ -143,6 +143,7 @@ pub fn opentype_font_metrics() -> Option<FontMetricsData> {
     let tables = face.tables();
     let math_table = tables.math.as_ref()?;
     let constants = math_table.constants?;
+    let glyph_info = math_table.glyph_info;
 
     let mut data = FontMetricsData::new("latin-modern-math".to_string(), units_per_em);
 
@@ -151,8 +152,8 @@ pub fn opentype_font_metrics() -> Option<FontMetricsData> {
     // ---- MATH constants (font units → em-relative Fixed) ----
     extract_math_constants(&constants, &mut data, one_em);
 
-    // ---- Glyph advance widths, bounding boxes, AND outline paths ----
-    extract_glyph_metrics_and_outlines(&face, &mut data, one_em);
+    // ---- Glyph advance widths, bounding boxes, outline paths, MATH glyph info ----
+    extract_glyph_metrics_and_outlines(&face, glyph_info, &mut data, one_em);
 
     // ---- MATH Variants for delimiter stretching ----
     if let Some(variants) = math_table.variants {
@@ -248,8 +249,17 @@ fn extract_math_constants(constants: &math::Constants<'_>, data: &mut FontMetric
 // Glyph metrics + outline paths
 // ---------------------------------------------------------------------------
 
-fn extract_glyph_metrics_and_outlines(face: &Face<'_>, data: &mut FontMetricsData, one_em: f64) {
+fn extract_glyph_metrics_and_outlines(
+    face: &Face<'_>,
+    glyph_info: Option<math::GlyphInfo<'_>>,
+    data: &mut FontMetricsData,
+    one_em: f64,
+) {
     let family = Some("latin-modern-math".to_string());
+
+    // Extract per-glyph MathGlyphInfo values once so we can look them up per char.
+    let italic_corrections = glyph_info.and_then(|gi| gi.italic_corrections);
+    let top_accent_attachments = glyph_info.and_then(|gi| gi.top_accent_attachments);
 
     for &ch in TARGET_CHARS {
         let gid = match face.glyph_index(ch) {
@@ -271,11 +281,28 @@ fn extract_glyph_metrics_and_outlines(face: &Face<'_>, data: &mut FontMetricsDat
 
         let width_emu = advance as f64 / one_em;
 
+        // Real italic correction from MathGlyphInfo, in em units.
+        let italic_correction = italic_corrections
+            .and_then(|table| table.get(gid))
+            .map(|mv| Fixed::from_f64(mv.value as f64 / one_em))
+            .unwrap_or(Fixed::ZERO);
+
+        // MathTopAccentAttachment TopRight Y value, in em units.
+        // ttf-parser 0.21 exposes only one value per glyph from this table
+        // (the OpenType spec defines two MVR columns: TopRight Y and TopRight X)
+        // so we store the Y here. Callers that need the X value must upgrade
+        // ttf-parser or parse the raw MATH table directly.
+        let top_accent_attachment = top_accent_attachments
+            .and_then(|table| table.get(gid))
+            .map(|mv| Fixed::from_f64(mv.value as f64 / one_em))
+            .unwrap_or(Fixed::ZERO);
+
         let metrics = GlyphMetrics {
             width: Fixed::from_f64(width_emu.max(0.01)),
             height: Fixed::from_f64(height_emu),
             depth: Fixed::from_f64(depth_emu),
-            italic_correction: Fixed::ZERO,
+            italic_correction,
+            top_accent_attachment,
         };
 
         let math_key = GlyphKey::from_char(ch, family.clone(), FontStyle::Math);
@@ -353,6 +380,7 @@ fn extract_delimiter_variants(face: &Face<'_>, variants: math::Variants<'_>, dat
                         height: Fixed::from_f64(vh),
                         depth: Fixed::from_f64(vd),
                         italic_correction: Fixed::ZERO,
+                        top_accent_attachment: Fixed::ZERO,
                     },
                 );
 

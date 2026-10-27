@@ -501,6 +501,7 @@ impl LayoutEngine {
                 height: metrics.height * size.to_f64(),
                 depth: metrics.depth * size.to_f64(),
                 italic_correction: metrics.italic_correction * size.to_f64(),
+                top_accent_attachment: metrics.top_accent_attachment * size.to_f64(),
             },
             path_data,
         }))
