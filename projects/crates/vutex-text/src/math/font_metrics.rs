@@ -38,16 +38,27 @@ impl FontMetricsSystem {
             if let Some(metrics) = data.glyphs.get(&normalized) {
                 return Ok(*metrics);
             }
+            if let Some(metrics) = emphasis_metrics(data, &normalized) {
+                return Ok(metrics);
+            }
         }
         Ok(default_glyph_metrics(key.char))
     }
 
     pub fn get_delimiter_construction(&self, key: &GlyphKey) -> MathResult<DelimiterConstruction> {
         let family = key.font_family.as_deref().unwrap_or("default");
-        let normalized = GlyphKey { font_family: Some(family.to_string()), ..key.clone() };
         if let Some(data) = self.metrics_cache.get(family) {
-            if let Some(construction) = data.delimiters.get(&normalized) {
-                return Ok(construction.clone());
+            // Delimiter constructions are style-independent, but callers build
+            // keys with the surrounding math style while the font records them
+            // under the math face. Try the requested style first, then the
+            // faces the font actually uses.
+            for style in [key.style, FontStyle::Math, FontStyle::Normal] {
+                let candidate = GlyphKey { font_family: Some(family.to_string()), style, ..key.clone() };
+                if let Some(construction) = data.delimiters.get(&candidate) {
+                    if !construction.variants.is_empty() || !construction.components.is_empty() {
+                        return Ok(construction.clone());
+                    }
+                }
             }
         }
         Ok(DelimiterConstruction { variants: vec![], components: vec![] })
@@ -69,9 +80,125 @@ impl FontMetricsSystem {
             if let Some(path) = data.glyph_paths.get(&normalized) {
                 return Ok(path.clone());
             }
+            if let Some(path) = emphasis_outline(data, &normalized) {
+                return Ok(path);
+            }
         }
         Err(MathError::font_error(family, "glyph path not in cache"))
     }
+}
+
+/// Slant applied to an upright outline when no italic face is available.
+const ITALIC_SHEAR: f64 = 0.21;
+/// Horizontal offset between the copies that thicken a bold outline.
+const BOLD_OFFSET: f64 = 0.014;
+
+/// Look up the upright key a derived emphasis face is built from.
+fn upright_key(key: &GlyphKey, style: FontStyle) -> GlyphKey {
+    GlyphKey {
+        char: key.char,
+        glyph_id: None,
+        font_family: key.font_family.clone().or_else(|| Some("default".to_string())),
+        style,
+    }
+}
+
+/// Metrics for a derived bold or italic face.
+///
+/// The embedded math font carries a single upright design per character, so
+/// emphasis faces reuse its extents: bold widens the advance by the stroke
+/// thickness it adds, italic widens it by the slant at the glyph's own height.
+fn emphasis_metrics(data: &FontMetricsData, key: &GlyphKey) -> Option<GlyphMetrics> {
+    if !matches!(key.style, FontStyle::Bold | FontStyle::Italic) {
+        return None;
+    }
+    let normal = upright_key(key, FontStyle::Normal);
+    let upright = data.glyphs.get(&normal).or_else(|| data.glyphs.get(&upright_key(key, FontStyle::Math)))?;
+    let mut metrics = *upright;
+    match key.style {
+        FontStyle::Italic => {
+            metrics.width = metrics.width + Fixed::from_f64(ITALIC_SHEAR * metrics.height.to_f64());
+            metrics.italic_correction = Fixed::ZERO;
+        }
+        _ => {
+            metrics.width = metrics.width + Fixed::from_f64(BOLD_OFFSET * 2.0);
+        }
+    }
+    Some(metrics)
+}
+
+/// Outline for a derived bold or italic face.
+///
+/// Bold repeats the upright outline at increasing x offsets, so the union of
+/// the copies reads as a heavier stroke. Italic shears the upright outline
+/// around its origin. A font that ships a real face keeps it: this is only
+/// reached when the exact key is absent.
+fn emphasis_outline(data: &FontMetricsData, key: &GlyphKey) -> Option<String> {
+    if !matches!(key.style, FontStyle::Bold | FontStyle::Italic) {
+        return None;
+    }
+    let normal = upright_key(key, FontStyle::Normal);
+    let path = data.glyph_paths.get(&normal).or_else(|| data.glyph_paths.get(&upright_key(key, FontStyle::Math)))?;
+    Some(match key.style {
+        FontStyle::Italic => map_path_d(path, |x, y| (x + ITALIC_SHEAR * y, y)),
+        _ => {
+            let mut bold = String::with_capacity(path.len() * 3);
+            for copy in 0..3 {
+                let offset = BOLD_OFFSET * copy as f64;
+                bold.push_str(&map_path_d(path, |x, y| (x + offset, y)));
+            }
+            bold
+        }
+    })
+}
+
+/// Rewrite every coordinate pair of an em-normalised outline.
+///
+/// `point` receives `(x, y)` in em units and returns the replacement pair.
+/// Operator letters and pair structure are preserved; coordinates are
+/// re-emitted as `x,y` pairs separated by spaces.
+fn map_path_d(raw: &str, mut point: impl FnMut(f64, f64) -> (f64, f64)) -> String {
+    let mut out = String::with_capacity(raw.len() + 16);
+    let mut chars = raw.chars().peekable();
+    let mut pending_x: Option<f64> = None;
+    while let Some(c) = chars.peek().copied() {
+        if c.is_ascii_alphabetic() {
+            out.push(c);
+            out.push(' ');
+            pending_x = None;
+            chars.next();
+            continue;
+        }
+        if c.is_ascii_digit() || c == '-' || c == '+' || c == '.' {
+            let mut token = String::new();
+            if c == '-' || c == '+' {
+                token.push(c);
+                chars.next();
+            }
+            while let Some(&next) = chars.peek() {
+                let exponent_sign = matches!(next, '-' | '+') && matches!(token.chars().last(), Some('e' | 'E'));
+                if next.is_ascii_digit() || next == '.' || next == 'e' || next == 'E' || exponent_sign {
+                    token.push(next);
+                    chars.next();
+                }
+                else {
+                    break;
+                }
+            }
+            if let Ok(value) = token.parse::<f64>() {
+                match pending_x.take() {
+                    None => pending_x = Some(value),
+                    Some(x) => {
+                        let (nx, ny) = point(x, value);
+                        out.push_str(&format!("{nx:.4},{ny:.4} "));
+                    }
+                }
+            }
+            continue;
+        }
+        chars.next();
+    }
+    out
 }
 
 fn default_glyph_metrics(ch: Option<char>) -> GlyphMetrics {
@@ -209,6 +336,26 @@ static ALL_SYNTHETIC_CONSTANTS: &[MathConstant] = &[
     MathConstant::RadicalDegreeBottomRaisePercent,
 ];
 
+/// Stroke thickness of a bar delimiter, in em units.
+const BAR_STROKE: f64 = 0.06;
+
+/// Rectangle outlines for a bar delimiter in em units, y growing upward.
+///
+/// Each entry in `offsets` is the left edge of one vertical stroke; the
+/// outline spans `-depth..height` so a centred delimiter lines up with the math
+/// axis exactly like a font outline would.
+fn bar_path(offsets: &[f64], height: f64, depth: f64) -> String {
+    let bottom = -depth;
+    let mut path = String::new();
+    for &x in offsets {
+        let right = x + BAR_STROKE;
+        path.push_str(&format!(
+            "M {x:.4},{bottom:.4} L {right:.4},{bottom:.4} L {right:.4},{height:.4} L {x:.4},{height:.4} Z "
+        ));
+    }
+    path
+}
+
 /// Rewrite every [`GlyphKey`]'s `font_family` inside a map to `new_family`.
 fn rekey_family<V>(map: HashMap<GlyphKey, V>, new_family: &str) -> HashMap<GlyphKey, V> {
     map.into_iter()
@@ -312,6 +459,50 @@ pub fn builtin_font_metrics() -> FontMetricsSystem {
             italic_correction: Fixed::ZERO,
             top_accent_attachment: Fixed::ZERO,
         });
+    }
+
+    // ---- Vertical bar delimiters (single vs double) ----
+    // Bars are geometry, not letterforms: emit exact rectangles so `vmatrix`
+    // (one stroke) and `Vmatrix` (two strokes) stay distinct at every size and
+    // a stretched bar keeps its thickness instead of scaling sideways.
+    let bar_variants: &[(f64, f64)] = &[(0.70, 0.30), (1.10, 0.40), (1.60, 0.50), (2.20, 0.60), (3.00, 0.80)];
+    let bar_specs: &[(char, f64, &[f64])] = &[('|', 0.28, &[0.11]), ('‖', 0.40, &[0.10, 0.24])];
+    for &(ch, advance, offsets) in bar_specs {
+        let base_metrics = GlyphMetrics {
+            width: Fixed::from_f64(advance),
+            height: Fixed::from_f64(bar_variants[0].0),
+            depth: Fixed::from_f64(bar_variants[0].1),
+            italic_correction: Fixed::ZERO,
+            top_accent_attachment: Fixed::ZERO,
+        };
+        let base_path = bar_path(offsets, bar_variants[0].0, bar_variants[0].1);
+        let mut variants = Vec::new();
+        for (index, &(height, depth)) in bar_variants.iter().enumerate() {
+            let variant_key = GlyphKey {
+                char: Some(ch),
+                glyph_id: Some(2000 + index as u16),
+                font_family: family.clone(),
+                style: FontStyle::Math,
+            };
+            data.glyphs.insert(
+                variant_key.clone(),
+                GlyphMetrics {
+                    width: Fixed::from_f64(advance),
+                    height: Fixed::from_f64(height),
+                    depth: Fixed::from_f64(depth),
+                    italic_correction: Fixed::ZERO,
+                    top_accent_attachment: Fixed::ZERO,
+                },
+            );
+            data.glyph_paths.insert(variant_key.clone(), bar_path(offsets, height, depth));
+            variants.push(DelimiterVariant { glyph: variant_key });
+        }
+        for style in [FontStyle::Normal, FontStyle::Math] {
+            let base_key = GlyphKey::from_char(ch, family.clone(), style);
+            data.glyphs.insert(base_key.clone(), base_metrics);
+            data.glyph_paths.insert(base_key.clone(), base_path.clone());
+            data.delimiters.insert(base_key, DelimiterConstruction { variants: variants.clone(), components: vec![] });
+        }
     }
 
     // If we're on the synthetic path, also seed all_constants. On the opentype

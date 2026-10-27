@@ -262,6 +262,11 @@ pub fn render_layout_node(backend: &mut dyn LayoutBackend, node: &LayoutNode, x:
     Ok(())
 }
 
+/// Lower bound on how far the radical sign may be compressed vertically.
+const MIN_RADICAL_STRETCH: f64 = 0.4;
+/// Upper bound on how far the radical sign may be stretched vertically.
+const MAX_RADICAL_STRETCH: f64 = 3.0;
+
 /// 1 mu = 1/18 em. TeX thick/medium/thin muskip in em units.
 const THICK_MUSIP_EM: f64 = 5.0 / 18.0;
 const MEDIUM_MUSIP_EM: f64 = 4.0 / 18.0;
@@ -795,11 +800,49 @@ impl LayoutEngine {
             self.font_system.get_math_constant(family, MathConstant::RadicalVerticalGap).unwrap_or(Fixed::from_f64(0.05)) * size
         };
 
+        // Height of the radical bar above the radicand baseline. The sign is
+        // raised so its own top bar lands exactly on this line and the two
+        // strokes read as one continuous rule.
+        let bar_top = radicand_layout.height() + vertical_gap + rule_thickness;
+        // The sign reaches this far below the baseline so it hugs the radicand.
+        let sign_bottom = radicand_layout.depth() + vertical_gap;
+
         // Resolve the real radical glyph from the font system; fall back to a
         // layout_scaled_symbol which produces a Glyph node (works for both SVG
         // and PDF backends — the Glyph has path_data when available, else text).
         let radical_key = GlyphKey::from_char('√', Some("default".to_string()), FontStyle::Normal);
-        let radical_symbol = self.layout_scaled_symbol(&radical_key, size)?;
+        let mut radical_symbol = self.layout_scaled_symbol(&radical_key, size)?;
+
+        // The embedded radical is designed for one em of radicand. Stretch it
+        // along y only so it spans the requested bar height and bottom extent
+        // without thickening its strokes sideways. The reported metrics then
+        // follow the stretched outline, so its descender stays inside the box.
+        if let LayoutNode::Glyph(glyph) = &mut radical_symbol {
+            if let Some(path) = glyph.path_data.clone() {
+                let height = glyph.metrics.height.to_f64();
+                let natural = height + glyph.metrics.depth.to_f64();
+                let mut stretched = path;
+                if natural > f64::EPSILON {
+                    let stretch = ((bar_top + sign_bottom).to_f64() / natural).clamp(MIN_RADICAL_STRETCH, MAX_RADICAL_STRETCH);
+                    if (stretch - 1.0).abs() > 0.01 {
+                        stretched = super::collect::scale_svg_path_d(&stretched, 1.0, stretch);
+                    }
+                }
+                let (outline_bottom, outline_top) = super::collect::path_vertical_extent(&stretched);
+                glyph.metrics.height = Fixed::from_f64(outline_top * size.to_f64());
+                glyph.metrics.depth = Fixed::from_f64(-outline_bottom.min(0.0) * size.to_f64());
+                glyph.path_data = Some(stretched);
+            }
+        }
+
+        // Raise the sign so its own top bar lands on the bar line. The shift is
+        // an extra render offset that `LayoutNode::height` subtracts again, so
+        // the wrapper reports the raised ascent without counting it twice.
+        let mut radical_box = self.pack_hbox(vec![radical_symbol], None);
+        if let LayoutNode::HBox(h) = &mut radical_box {
+            let rise = bar_top - h.height;
+            h.shift = Fixed::ZERO - rise;
+        }
 
         let mut children = Vec::new();
 
@@ -813,7 +856,7 @@ impl LayoutEngine {
             children.push(LayoutNode::Kern(Fixed::from_f64(-0.2) * size)); // Negative kern to pull radical symbol under degree
         }
 
-        children.push(radical_symbol);
+        children.push(radical_box);
 
         let mut radicand_vbox = Vec::new();
         radicand_vbox.push(LayoutNode::Rule { width: radicand_layout.width(), height: rule_thickness, depth: Fixed::ZERO });

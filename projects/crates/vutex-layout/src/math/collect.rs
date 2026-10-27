@@ -171,6 +171,57 @@ pub(crate) fn scale_svg_path_d(raw: &str, scale_x: f64, scale_y: f64) -> String 
     out
 }
 
+/// Vertical extent `(min_y, max_y)` of an em-unit outline whose y axis grows
+/// upward from the baseline.
+///
+/// Used to keep a stretched outline's metrics in step with the geometry it
+/// actually paints, so the layout box never hides ink below the baseline.
+pub(crate) fn path_vertical_extent(raw: &str) -> (f64, f64) {
+    let chars: Vec<char> = raw.chars().collect();
+    let mut min_y = f64::INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
+    let mut is_x = true;
+    let mut i = 0;
+    while i < chars.len() {
+        let c = chars[i];
+
+        // Operator letter — restart the coordinate pair.
+        if c.is_ascii_alphabetic() {
+            is_x = true;
+            i += 1;
+            continue;
+        }
+
+        if c == ' ' || c == ',' {
+            i += 1;
+            continue;
+        }
+
+        if c.is_ascii_digit() || c == '-' || c == '+' || c == '.' {
+            let start = i;
+            if c == '-' || c == '+' {
+                i += 1;
+            }
+            while i < chars.len() && (chars[i].is_ascii_digit() || chars[i] == '.') {
+                i += 1;
+            }
+            let num_str: String = chars[start..i].iter().collect();
+            if let Ok(v) = num_str.parse::<f64>() {
+                if !is_x {
+                    min_y = min_y.min(v);
+                    max_y = max_y.max(v);
+                }
+            }
+            is_x = !is_x;
+            continue;
+        }
+
+        i += 1;
+    }
+
+    if min_y.is_finite() { (min_y, max_y) } else { (0.0, 0.0) }
+}
+
 /// Font family written into text primitives.
 ///
 /// The metrics system labels glyphs from the default math font as `default`,
