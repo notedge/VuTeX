@@ -263,7 +263,14 @@ impl Parser {
                 '{' => Ok(char_node('{')),
                 '}' => Ok(char_node('}')),
                 '|' => Ok(char_node('‖')),
-                ',' | ':' | ';' | ' ' => Ok(SemanticNode::Text { text: " ".to_string(), font_style: FontStyle::Normal }),
+                // Math spaces are multiples of `mu`, `em / 18`: `\,` is thin
+                // (3mu), `\:` medium (4mu), `\;` thick (5mu), and `\ ` the
+                // interword space of 6mu.  They are kerns of the current em,
+                // not a blank glyph of some font-dependent width.
+                ',' => Ok(math_space(3.0)),
+                ':' => Ok(math_space(4.0)),
+                ';' => Ok(math_space(5.0)),
+                ' ' => Ok(math_space(6.0)),
                 '!' => Ok(SemanticNode::Sequence(Vec::new())),
                 '\\' => Err(self.error("`\\\\` is only allowed inside a matrix")),
                 _ => Err(self.error(format!("unknown control symbol `\\{c}`"))),
@@ -312,8 +319,10 @@ impl Parser {
             "tilde" | "widetilde" => self.parse_accent('˜'),
             "dot" => self.parse_accent('˙'),
             "ddot" => self.parse_accent('¨'),
-            "quad" => Ok(SemanticNode::Text { text: "  ".to_string(), font_style: FontStyle::Normal }),
-            "qquad" => Ok(SemanticNode::Text { text: "    ".to_string(), font_style: FontStyle::Normal }),
+            // `\quad` is 1em and `\qquad` 2em, which TeX expresses as 18mu and
+            // 36mu: the same table the thin, medium and thick spaces use.
+            "quad" => Ok(math_space(18.0)),
+            "qquad" => Ok(math_space(36.0)),
             "displaystyle" => Ok(SemanticNode::SetMathStyle(MathStyle::Display)),
             "textstyle" => Ok(SemanticNode::SetMathStyle(MathStyle::Text)),
             "scriptstyle" => Ok(SemanticNode::SetMathStyle(MathStyle::Script)),
@@ -655,6 +664,11 @@ fn sequence(mut items: Vec<SemanticNode>) -> SemanticNode {
 /// Build a delimiter glyph key for a literal character.
 fn delimiter(c: char) -> GlyphKey {
     GlyphKey::from_char(c, None, FontStyle::Normal)
+}
+
+/// Build a math-space node of `mu` units, where `1mu` is `em / 18`.
+fn math_space(mu: f64) -> SemanticNode {
+    SemanticNode::Space { width: Fixed::from_f64(mu / 18.0) }
 }
 
 /// Build an ordinary symbol node for a literal character.
