@@ -89,10 +89,26 @@ impl FontMetricsSystem {
 
     /// Return the four-corner MathKern for `glyph_key`.
     ///
-    /// First returns `ZERO` while the MATH-kern extraction pipeline is wired
-    /// up (font-side storage + acorn-ttf parsing). When a real kern is
-    /// missing, callers fall through to the Appendix G glue unchanged.
-    pub fn get_math_kern(&self, _key: &GlyphKey) -> MathKern {
+    /// Looks up the kern table built from the embedded OpenType MATH font's
+    /// `MathKernInfo` subtable (extracted by acorn-ttf). Falls back to
+    /// `MathKern::ZERO` when the glyph has no kern data — callers already
+    /// handle the zero case by skipping the kern supplement.
+    pub fn get_math_kern(&self, key: &GlyphKey) -> MathKern {
+        let family = key.font_family.as_deref().unwrap_or("default");
+        let normalized = GlyphKey { font_family: Some(family.to_string()), ..key.clone() };
+        if let Some(data) = self.metrics_cache.get(family) {
+            if let Some(kern) = data.kern_map.get(&normalized) {
+                return *kern;
+            }
+            // Also try the fallback faces the font actually records (Math and
+            // Normal styles), since the caller's key may carry a derived face.
+            for style in [FontStyle::Math, FontStyle::Normal] {
+                let candidate = GlyphKey { font_family: Some(family.to_string()), style, ..key.clone() };
+                if let Some(kern) = data.kern_map.get(&candidate) {
+                    return *kern;
+                }
+            }
+        }
         MathKern::ZERO
     }
 }
@@ -428,6 +444,7 @@ pub fn builtin_font_metrics() -> FontMetricsSystem {
             glyphs: rekey_family(opentype_data.glyphs, &family_str),
             glyph_paths: rekey_family(opentype_data.glyph_paths, &family_str),
             delimiters: rekey_delimiters(opentype_data.delimiters, &family_str),
+            kern_map: rekey_family(opentype_data.kern_map, &family_str),
         }
     }
     else {

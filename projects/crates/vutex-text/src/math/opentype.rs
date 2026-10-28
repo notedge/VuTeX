@@ -11,7 +11,7 @@ use acorn_ttf::{FontFace, OutlineBuilder, tables::math::PartRecord};
 
 use vutex_types::math::{
     DelimiterComponent, DelimiterConstruction, DelimiterVariant, Fixed, FontMetricsData, FontStyle, GlyphKey, GlyphMetrics,
-    MathConstant,
+    MathConstant, MathKern,
 };
 
 /// Embedded OpenType MATH font: Latin Modern Math Regular.
@@ -176,6 +176,9 @@ pub fn opentype_font_metrics() -> Option<FontMetricsData> {
 
     // ---- MATH Variants for delimiter stretching and operator display sizes ----
     extract_glyph_variants(&mut face, &math_table.variants, &mut data, one_em);
+
+    // ---- MATH kern four-corner data (MathGlyphInfo.MathKernInfo) ----
+    extract_math_kerns(&mut face, &math_table.glyph_info, &mut data, one_em);
 
     Some(data)
 }
@@ -480,6 +483,88 @@ fn glyph_outline(face: &mut FontFace, gid: u16, one_em: f64) -> Option<String> {
     face.outline_glyph(gid, &mut builder)?;
     let path = builder.finish();
     (!path.is_empty()).then_some(path)
+}
+
+// ---------------------------------------------------------------------------
+// MATH kern extraction
+// ---------------------------------------------------------------------------
+
+/// Pull four-corner MATH kern values out of `MathGlyphInfo.MathKernInfo` and
+/// store them per glyph in `data.kern_map`.
+///
+/// Acorn-ttf stores the four corners as glyph-indexed `MathKernTable` maps
+/// (`math_kern_top_right`, `math_kern_top_left`, `math_kern_bottom_right`,
+/// `math_kern_bottom_left`). Each `MathKernTable` is a piecewise function:
+/// `kern_values.len() == correction_heights.len() + 1`. VuTeX's `MathKern` is
+/// a flat four-corner struct with no height parameter, so we collapse each
+/// corner to its lowest-height segment (kern_values[0], corresponding to
+/// height ≤ correction_heights[0]) — the baseline kern the layout engine
+/// already uses via `get_math_kern`.
+fn extract_math_kerns(face: &mut FontFace, math_glyph_info: &acorn_ttf::tables::math::MathGlyphInfo, data: &mut FontMetricsData, one_em: f64) {
+    let family = Some("latin-modern-math".to_string());
+    let one_em_f64 = one_em;
+
+    // Walk the same character set we already pull metrics for. The kern
+    // tables are glyph_id-indexed, so each look-up first converts char → gid.
+    // This guarantees our kern_map uses the same char-based GlyphKey as the
+    // glyphs/glyph_paths/delimiters maps.
+    let all_chars = ('!'..='~')
+        .chain(TARGET_SYMBOLS.iter().copied())
+        .chain(ACCENT_SYMBOLS.iter().copied())
+        .chain(DELIMITER_CHARS.iter().copied())
+        .chain(LARGE_OPERATOR_CHARS.iter().copied());
+
+    for ch in all_chars {
+        let gid = match face.glyph_index(ch) {
+            Some(g) => g,
+            None => continue,
+        };
+
+        // Collapse each corner to its lowest-height kern value (font units → em).
+        let bottom_right = kern_to_em(
+            math_glyph_info.math_kern_bottom_right.get(&gid),
+            one_em_f64,
+        );
+        let top_right = kern_to_em(
+            math_glyph_info.math_kern_top_right.get(&gid),
+            one_em_f64,
+        );
+        let bottom_left = kern_to_em(
+            math_glyph_info.math_kern_bottom_left.get(&gid),
+            one_em_f64,
+        );
+        let top_left = kern_to_em(
+            math_glyph_info.math_kern_top_left.get(&gid),
+            one_em_f64,
+        );
+
+        if bottom_right == Fixed::ZERO && top_right == Fixed::ZERO && bottom_left == Fixed::ZERO && top_left == Fixed::ZERO {
+            continue; // no kern data worth storing
+        }
+
+        let math_key = GlyphKey::from_char(ch, family.clone(), FontStyle::Math);
+        let normal_key = GlyphKey::from_char(ch, family.clone(), FontStyle::Normal);
+
+        let kern = MathKern { bottom_right, top_right, bottom_left, top_left };
+        data.kern_map.insert(math_key, kern);
+        data.kern_map.insert(normal_key, kern);
+    }
+}
+
+/// Collapse one corner's `MathKernTable` to a single `Fixed` kern value.
+///
+/// Acorn-ttf's `MathKernTable` is a piecewise function over correction
+/// heights; VuTeX stores a flat `MathKern` without height parameter, so we
+/// return `kern_values[0]` (the lowest-height segment, i.e. baseline kern)
+/// normalized to em units. Returns `Fixed::ZERO` when the font has no kern
+/// data for that corner.
+fn kern_to_em(table: Option<&acorn_ttf::tables::math::MathKernTable>, one_em: f64) -> Fixed {
+    match table {
+        Some(t) if !t.kern_values.is_empty() => {
+            Fixed::from_f64(t.kern_values[0] as f64 / one_em)
+        }
+        _ => Fixed::ZERO,
+    }
 }
 
 // ---------------------------------------------------------------------------
