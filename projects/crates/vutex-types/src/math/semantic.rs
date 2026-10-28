@@ -60,11 +60,18 @@ pub enum SemanticNode {
         rows: Vec<Vec<SemanticNode>>,
         row_spacing: Fixed,
         col_spacing: Fixed,
+        /// Whether the grid is always set at display style.
+        ///
+        /// `align` and `align*` are display-level environments, so an enclosing
+        /// `\scriptstyle` must not demote their cells. Every other matrix
+        /// environment follows the style around it.
+        display_style: bool,
         /// Alignment of each column, left to right.
         ///
         /// `matrix` centre-aligns every column, `cases` left-aligns both of its
-        /// columns, and `aligned` / `alignedat` / `split` alternate right and
-        /// left at each `&`.  Missing entries (ragged rows) centre by default.
+        /// columns, and `aligned` / `alignedat` / `split` / `align` alternate
+        /// right and left at each `&`.  Missing entries (ragged rows) centre by
+        /// default.
         column_alignment: Vec<Alignment>,
     },
     Delimited {

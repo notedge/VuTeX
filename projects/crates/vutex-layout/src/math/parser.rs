@@ -419,6 +419,8 @@ impl Parser {
             "aligned",
             "alignedat",
             "alignedat*",
+            "align",
+            "align*",
             "smallmatrix",
             "gathered",
             "split",
@@ -516,9 +518,9 @@ impl Parser {
         let column_alignment = match name {
             // `cases` is a left-aligned expression/condition pair.
             "cases" => vec![Alignment::Left; columns],
-            // `aligned`, `alignedat` and `split` alternate right/left at every
-            // `&`, so the relation column lines up across rows.
-            "aligned" | "alignedat" | "alignedat*" | "split" => {
+            // `aligned`, `alignedat`, `split` and `align` alternate right/left
+            // at every `&`, so the relation column lines up across rows.
+            "aligned" | "alignedat" | "alignedat*" | "split" | "align" | "align*" => {
                 (0..columns).map(|column| if column % 2 == 0 { Alignment::Right } else { Alignment::Left }).collect()
             }
             // Everything else is the generic centred matrix, `gathered`
@@ -526,7 +528,12 @@ impl Parser {
             _ => vec![Alignment::Center; columns],
         };
 
-        Ok(SemanticNode::Matrix { rows, row_spacing, col_spacing: Fixed::from_f64(0.8), column_alignment })
+        // `align` and `align*` are display-level environments: their cells stay
+        // at display style even when the formula around them is demoted. The
+        // starred and unstarred forms share this geometry, their numbering is a
+        // document-level concern.
+        let display_style = matches!(name, "align" | "align*");
+        Ok(SemanticNode::Matrix { rows, row_spacing, col_spacing: Fixed::from_f64(0.8), display_style, column_alignment })
     }
 
     /// Read the `{n}` column-pair argument of `alignedat`.
