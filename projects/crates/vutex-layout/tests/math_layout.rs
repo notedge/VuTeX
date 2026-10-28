@@ -2,7 +2,7 @@
 
 use vutex_layout::math::{FormulaLayout, Glyph, LayoutNode, layout_formula};
 use vutex_text::math::builtin_font_metrics;
-use vutex_types::math::{Fixed, FontStyle, GlyphKey};
+use vutex_types::math::{Fixed, FontStyle, GlyphKey, MathConstant};
 
 fn layout(source: &str) -> FormulaLayout {
     let (_, metrics) = layout_formula(source, false).expect("formula should lay out");
@@ -203,6 +203,65 @@ fn delimited_box_is_body_plus_the_delimiter_advances() {
             right_x,
             left_adv + body.width
         );
+    }
+}
+
+/// The radical index is set at scriptscript size and placed with the MATH
+/// table's radical constants instead of fixed fractions of an em.
+///
+/// Every expected offset is derived from the embedded font: the index size
+/// from `ScriptScriptPercentScaleDown`, the horizontal position from
+/// `RadicalKernBeforeDegree` / `RadicalKernAfterDegree`, and the bottom raise
+/// from `RadicalDegreeBottomRaisePercent` applied to the surd's ascent over the
+/// radicand. That ascent comes back from `RadicalVerticalGap` plus
+/// `RadicalRuleThickness` over the radicand's own height.
+#[test]
+fn radical_index_uses_scriptscript_size_and_the_math_constants() {
+    let system = builtin_font_metrics();
+    let constant = |name: MathConstant| system.get_math_constant("default", name).expect("font constant").to_f64();
+
+    let scriptscript = constant(MathConstant::ScriptScriptPercentScaleDown);
+    let kern_before = constant(MathConstant::RadicalKernBeforeDegree);
+    let kern_after = constant(MathConstant::RadicalKernAfterDegree);
+    let raise_percent = constant(MathConstant::RadicalDegreeBottomRaisePercent);
+    let vertical_gap = constant(MathConstant::RadicalVerticalGap);
+    let display_gap = constant(MathConstant::RadicalDisplayStyleVerticalGap);
+    let rule_thickness = constant(MathConstant::RadicalRuleThickness);
+
+    for display in [false, true] {
+        let gap = if display { display_gap } else { vertical_gap };
+        let (tree, _) = layout_formula("\\sqrt[3]{x}", display).expect("radical should lay out");
+        let (index_x, index_y, index) = glyph_at(&tree, '3');
+        let (surd_x, _, surd) = glyph_at(&tree, '√');
+        let (_, base_y, base) = glyph_at(&tree, 'x');
+        let em = surd.size.to_f64();
+
+        let expected_index_size = scriptscript * em;
+        assert!(
+            (index.size.to_f64() - expected_index_size).abs() < 1e-3,
+            "the index must be set at scriptscript size {expected_index_size}, not {}",
+            index.size.to_f64()
+        );
+
+        let before = kern_before * em;
+        let after = kern_after * em;
+        assert!((index_x - before).abs() < 1e-3, "the index must start after the before-kern {before}: {index_x}");
+        let expected_surd_x = before + index.metrics.width.to_f64() + after;
+        assert!(
+            (surd_x - expected_surd_x).abs() < 1e-3,
+            "the surd must start after the negative after-kern, at {expected_surd_x}: {surd_x}"
+        );
+        assert!(surd_x >= -0.05 * em, "the after-kern must not push the surd off the box origin: {surd_x}");
+
+        let radicand_top = base.metrics.height.to_f64() + (gap + rule_thickness) * em;
+        let raise = raise_percent * (radicand_top - base.metrics.depth.to_f64());
+        let index_bottom = index_y + index.metrics.depth.to_f64();
+        assert!(
+            (index_bottom + raise).abs() < 1e-3,
+            "the index bottom must sit {raise} above the baseline, not {}",
+            -index_bottom
+        );
+        assert!(base_y.abs() < 1e-6, "the radicand keeps its own baseline as the formula baseline");
     }
 }
 
