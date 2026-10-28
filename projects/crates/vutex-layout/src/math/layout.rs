@@ -4,9 +4,9 @@
 use serde::{Deserialize, Serialize};
 use vutex_text::math::FontMetricsSystem;
 use vutex_types::math::{
-    Alignment, BBox, DelimiterComponent, Fixed, FontMetricsSnapshot, FontStyle, FormulaLayoutResult, FormulaMetrics,
-    GlyphKey, GlyphMetrics, LineStyle, MathConstant, MathKern, MathList, MathResult, MathStyle, NoadKind, PaintNode,
-    SemanticNode, SpacingRule, SymbolRole, normalize_math_list, project_semantic,
+    Alignment, BBox, DelimiterComponent, Fixed, FontMetricsSnapshot, FontStyle, FormulaLayoutResult, FormulaMetrics, GlyphKey,
+    GlyphMetrics, LimitsPolicy, LineStyle, MathConstant, MathKern, MathList, MathResult, MathStyle, NoadKind, OperatorClass,
+    PaintNode, SemanticNode, SpacingRule, SymbolRole, normalize_math_list, project_semantic,
 };
 
 /// A node in the math layout tree.
@@ -347,8 +347,8 @@ pub struct LayoutEngine {
     font_system: FontMetricsSystem,
     base_size: Fixed,
     /// Sticky override from the most recent `\limits` / `\nolimits` that has
-    /// not yet been consumed by a `LargeOperator`.
-    limits_override: std::cell::Cell<Option<bool>>,
+    /// not yet been consumed by a large operator.
+    limits_override: std::cell::Cell<Option<LimitsPolicy>>,
 }
 
 impl LayoutEngine {
@@ -562,26 +562,6 @@ impl LayoutEngine {
         skip.to_glue(size)
     }
 
-    /// Whether a large operator stacks its scripts by default in the given
-    /// math style.
-    ///
-    /// TeX's `op` class (`\sum`, `\prod`, `\coprod`) puts limits above/below in
-    /// display style, while the `intop` class (`\int`, `\iint`, `\oint`) never
-    /// does unless `\limits` asks for it. Our rule is broader: every
-    /// `LargeOperator` role — including integrals — must stack in `Display`
-    /// because the operator is drawn at a larger size specifically for that
-    /// layout. Text and script styles keep TeX's `op` / `intop` split.
-    fn default_limits(base: &SemanticNode, style: MathStyle) -> bool {
-        let is_large_op = matches!(base, SemanticNode::Symbol { role: SymbolRole::LargeOperator, .. });
-        if is_large_op && style == MathStyle::Display {
-            return true;
-        }
-        match base {
-            SemanticNode::Symbol { glyph_key, .. } => !matches!(glyph_key.char, Some('∫' | '∬' | '∮')),
-            _ => true,
-        }
-    }
-
     /// Lay out a semantic node in the given math style.
     pub fn layout_node<'a>(&'a self, node: &'a SemanticNode, style: MathStyle) -> MathResult<LayoutNode> {
         {
@@ -763,11 +743,11 @@ impl LayoutEngine {
             // lay out nucleus + optional scripts.
             let node = match (&noad.nucleus, &noad.scripts) {
                 (Some(nucleus), Some(scripts)) => {
-                    // Restore per-noad limits override before layout_subsup
+                    // Restore the per-noad limits policy before layout_subsup
                     // consumes it.
                     if noad.kind == NoadKind::Op {
-                        if let Some(flag) = noad.limits {
-                            self.limits_override.set(Some(flag));
+                        if let Some(policy) = noad.limits {
+                            self.limits_override.set(Some(policy));
                         }
                     }
                     let sub_ref = scripts.sub.as_deref();
@@ -1386,22 +1366,19 @@ impl LayoutEngine {
         sup: Option<&SemanticNode>,
         style: MathStyle,
     ) -> MathResult<LayoutNode> {
-        let is_large_op = matches!(base, SemanticNode::Symbol { role: SymbolRole::LargeOperator, .. });
+        let class = OperatorClass::of_node(base);
 
-        // Consume any pending limits override from `\limits` / `\nolimits`.
-        // It applies to this LargeOperator only; for non-operator bases we
-        // leave the override in place so it still hits a later operator.
-        let use_limits = if is_large_op {
-            match self.limits_override.take() {
-                Some(flag) => flag,
-                None => Self::default_limits(base, style),
-            }
+        // Consume any pending `\limits` / `\nolimits` policy.  It applies to
+        // this operator only; for non-operator bases we leave the override in
+        // place so it still reaches a later operator.
+        let policy = if class.is_large_operator() {
+            self.limits_override.take().unwrap_or(LimitsPolicy::Auto)
         }
         else {
-            style == MathStyle::Display
+            LimitsPolicy::Auto
         };
 
-        if is_large_op && use_limits {
+        if class.places_limits(policy, style) {
             return self.layout_limits(base, sub, sup, style);
         }
 
@@ -1552,7 +1529,7 @@ impl LayoutEngine {
         // slanted tail, so folding it in would push the scripts far right. The
         // gap is the font's own script spacing instead. Limits above and below
         // the operator are built by `layout_limits` and never reach this kern.
-        if is_large_op {
+        if class.is_large_operator() {
             let script_space =
                 self.font_system.get_math_constant(family, MathConstant::SpaceAfterScript).unwrap_or(Fixed::from_f64(0.05))
                     * size;

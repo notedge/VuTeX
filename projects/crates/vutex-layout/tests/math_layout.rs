@@ -1191,8 +1191,10 @@ fn integral_limits_follow_the_override() {
     );
 }
 
-/// TeX defaults: `\sum` stacks its limits in display style, `\int` never stacks
-/// unless told to.  Each default must match the explicit command.
+/// TeX defaults: the `op` class (`\sum`) stacks its limits in display style,
+/// while the `intop` class (`\int`) keeps them beside the operator and only
+/// stacks with an explicit `\limits`.  Each default must agree with the
+/// matching explicit policy.
 #[test]
 fn operator_default_limits_follow_tex() {
     let (_, sum_default) = layout_formula("\\sum_{i=1}^{n}", true).expect("display sum");
@@ -1213,20 +1215,40 @@ fn operator_default_limits_follow_tex() {
     let (_, int_nolimits) = layout_formula("\\int\\nolimits_{0}^{1}", true).expect("display integral without limits");
     let (_, int_limits) = layout_formula("\\int\\limits_{0}^{1}", true).expect("display integral with limits");
     assert!(
-        (int_default.height - int_limits.height).abs() < 0.01 && (int_default.width - int_limits.width).abs() < 0.01,
-        "`\\int` must default to limits in display style alongside other LargeOperators: {int_default:?} vs {int_limits:?}"
+        (int_default.width - int_nolimits.width).abs() < 0.01 && (int_default.height - int_nolimits.height).abs() < 0.01,
+        "`\\int` must default to scripts beside the operator: {int_default:?} vs {int_nolimits:?}"
     );
     assert!(
-        int_default.width + 1.0 < int_nolimits.width,
-        "`\\int` must not default to scripts beside the operator even though TeX's `intop` class does: {} vs {}",
-        int_default.width,
-        int_nolimits.width
+        int_limits.width + 1.0 < int_default.width,
+        "`\\int` must not stack its scripts unless `\\limits` asks: stacked {} vs default {}",
+        int_limits.width,
+        int_default.width
     );
     assert!(
         int_limits.depth > int_nolimits.depth,
         "`\\int\\limits` must still stack its limits below the operator: depth {} vs {}",
         int_limits.depth,
         int_nolimits.depth
+    );
+}
+
+/// The `op` class stacks in display style only: in text style `\sum` keeps its
+/// scripts beside the operator exactly like `\sum\nolimits`.
+#[test]
+fn sum_limits_default_only_in_display_style() {
+    let (_, text_default) = layout_formula("\\sum_{i=1}^{n}", false).expect("text sum");
+    let (_, text_nolimits) = layout_formula("\\sum\\nolimits_{i=1}^{n}", false).expect("text sum without limits");
+    assert!(
+        (text_default.width - text_nolimits.width).abs() < 0.01 && (text_default.height - text_nolimits.height).abs() < 0.01,
+        "`\\sum` must keep its scripts beside the operator in text style: {text_default:?} vs {text_nolimits:?}"
+    );
+
+    let (_, display_default) = layout_formula("\\sum_{i=1}^{n}", true).expect("display sum");
+    assert!(
+        display_default.width + 1.0 < text_default.width,
+        "display `\\sum` must stack while text `\\sum` keeps its scripts beside the operator: {} vs {}",
+        display_default.width,
+        text_default.width
     );
 }
 

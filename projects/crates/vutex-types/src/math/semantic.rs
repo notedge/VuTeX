@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use super::operator::LimitsPolicy;
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct MathSemanticTree {
     pub root: SemanticNode,
@@ -99,14 +101,13 @@ pub enum SemanticNode {
     /// Consumed by the layout engine as a side-effect on subsequent atoms; the
     /// node itself produces no boxes.
     SetMathStyle(MathStyle),
-    /// Imperative: toggle limits placement for the next LargeOperator.
+    /// Imperative: override the limits placement of the next large operator.
     ///
-    /// `true` = `\limits` (subscripts above/below the operator),
-    /// `false` = `\nolimits` (subscripts beside the operator).
-    ///
-    /// The layout engine pops this flag when it encounters the next
-    /// `LargeOperator` so it does not bleed past one operator.
-    LimitsSpec(bool),
+    /// [`LimitsPolicy::Limits`] is `\limits` (scripts above/below the
+    /// operator) and [`LimitsPolicy::NoLimits`] is `\nolimits` (scripts beside
+    /// it).  The layout engine pops the policy when it reaches the next large
+    /// operator so it does not bleed past one operator.
+    LimitsSpec(LimitsPolicy),
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]

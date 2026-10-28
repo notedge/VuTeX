@@ -7,8 +7,8 @@
 use vutex_types::{
     Diagnostic, Severity,
     math::{
-        Alignment, Fixed, FontStyle, GlyphKey, LineStyle, MathError, MathResult, MathSemanticTree, MathStyle, SemanticNode,
-        SymbolRole,
+        Alignment, Fixed, FontStyle, GlyphKey, LimitsPolicy, LineStyle, MathError, MathResult, MathSemanticTree, MathStyle,
+        SemanticNode, SymbolRole,
     },
 };
 
@@ -147,13 +147,13 @@ impl Parser {
             // an atom of its own.  Emit the flag before the operator's scripts so
             // the layout pass applies it to that operator, and rebind any scripts
             // that follow the flag to the operator instead of to the flag.
-            if let SemanticNode::LimitsSpec(flag) = atom {
+            if let SemanticNode::LimitsSpec(policy) = atom {
                 let base = items.pop().ok_or_else(|| self.error("`\\limits` must follow an operator"))?;
                 // `\limits` only takes effect on a large operator.  Any other
                 // atom keeps its scripts beside the base, so report the misuse
                 // instead of accepting it silently.
                 if !matches!(base, SemanticNode::Symbol { role: SymbolRole::LargeOperator, .. }) {
-                    let command = if flag { "\\limits" } else { "\\nolimits" };
+                    let command = if policy == LimitsPolicy::Limits { "\\limits" } else { "\\nolimits" };
                     self.warn(
                         "vutex.layout.math.limits_misuse",
                         format!(
@@ -162,7 +162,7 @@ impl Parser {
                     );
                 }
                 let scripted = self.parse_scripts(base)?;
-                items.push(SemanticNode::LimitsSpec(flag));
+                items.push(SemanticNode::LimitsSpec(policy));
                 items.push(scripted);
                 continue;
             }
@@ -327,8 +327,8 @@ impl Parser {
             "textstyle" => Ok(SemanticNode::SetMathStyle(MathStyle::Text)),
             "scriptstyle" => Ok(SemanticNode::SetMathStyle(MathStyle::Script)),
             "scriptscriptstyle" => Ok(SemanticNode::SetMathStyle(MathStyle::ScriptScript)),
-            "limits" => Ok(SemanticNode::LimitsSpec(true)),
-            "nolimits" => Ok(SemanticNode::LimitsSpec(false)),
+            "limits" => Ok(SemanticNode::LimitsSpec(LimitsPolicy::Limits)),
+            "nolimits" => Ok(SemanticNode::LimitsSpec(LimitsPolicy::NoLimits)),
             _ => {
                 if let Some((ch, role)) = named_symbol(&name) {
                     return Ok(SemanticNode::Symbol { glyph_key: GlyphKey::from_char(ch, None, FontStyle::Math), role });
