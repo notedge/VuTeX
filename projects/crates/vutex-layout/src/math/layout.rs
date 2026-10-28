@@ -730,12 +730,28 @@ impl LayoutEngine {
                 let size = self.base_size * style_scale;
                 let skip = Self::tex_skip_between_noad(left_kind, right_kind);
 
-                // Appendix G glue only for now — MathKern four-corner supplement
-                // is intentionally disabled to match legacy layout_sequence
-                // output exactly.  Re-enable once parity is 100% and the kern
-                // contribution is folded back in behind a feature flag.
+                // Appendix G glue.
                 if let Some(glue) = skip.to_glue(size) {
                     children.push(LayoutNode::Glue(glue));
+                }
+
+                // MathKern four-corner supplement on top of Appendix G glue.
+                // TeX sums the preceding glyph's bottom-right kern and the
+                // following glyph's top-left kern in mu, then scales by the
+                // current em.  Glyphs without kern data contribute zero.
+                let left_nucleus = noads[i - 1].nucleus.as_deref();
+                let right_nucleus = noad.nucleus.as_deref();
+                if let (Some(left_node), Some(right_node)) = (left_nucleus, right_nucleus) {
+                    if let (Some(left_key), Some(right_key)) =
+                        (Self::first_glyph_key(left_node), Self::first_glyph_key(right_node))
+                    {
+                        let left_kern = self.font_system.get_math_kern(&left_key);
+                        let right_kern = self.font_system.get_math_kern(&right_key);
+                        let kern = MathKern::combined(&left_kern, &right_kern);
+                        if kern != Fixed::ZERO {
+                            children.push(LayoutNode::Kern(kern * size));
+                        }
+                    }
                 }
             }
 
