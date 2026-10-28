@@ -111,6 +111,28 @@ impl FontMetricsSystem {
         }
         MathKern::ZERO
     }
+
+    /// Return the four-corner MathKern scaled from mu to em units.
+    ///
+    /// TeX stores MathKern values in **mu** (1 mu = 1/18 em, the unit Appendix G
+    /// spacing is expressed in). Layout-side glue and pen advances are in **em**
+    /// units, so callers that add kern on top of `MathKern::combined` results
+    /// must first convert to em. This method applies the fixed 1/18 scaling.
+    ///
+    /// The `em_size` parameter is accepted for API symmetry with other
+    /// font-metric lookups and for future font-size-dependent scaling; the
+    /// current mu→em ratio is purely geometric so it is not used here.
+    #[allow(unused_variables)]
+    pub fn get_math_kern_em(&self, key: &GlyphKey, em_size: Fixed) -> MathKern {
+        let raw = self.get_math_kern(key);
+        let scale = Fixed::from_f64(1.0 / 18.0);
+        MathKern {
+            bottom_right: raw.bottom_right * scale,
+            top_right: raw.top_right * scale,
+            bottom_left: raw.bottom_left * scale,
+            top_left: raw.top_left * scale,
+        }
+    }
 }
 
 /// Slant applied to an upright outline when no italic face is available.
