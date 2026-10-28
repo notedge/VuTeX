@@ -812,6 +812,82 @@ fn fraction_stays_on_the_surrounding_baseline() {
     }
 }
 
+/// `\left(...\right)` and the matrix environments centre their bodies on the
+/// math axis rather than on the side that happens to be taller.  TeX sizes each
+/// delimiter symmetrically about `AxisHeight` and wraps the matrix rows in a
+/// `\vcenter`, so both the box centre `(height - depth) / 2` and the centre of
+/// every delimiter glyph must land on the axis.
+#[test]
+fn delimited_and_matrix_bodies_are_centred_on_the_math_axis() {
+    let constants = builtin_font_metrics();
+    let axis_em = constants.get_math_constant("default", MathConstant::AxisHeight).expect("`AxisHeight`").to_f64();
+
+    let centre_of = |y: f64, glyph: &Glyph| -(y - glyph.metrics.height.to_f64() / 2.0 + glyph.metrics.depth.to_f64() / 2.0);
+
+    for display in [false, true] {
+        let em = default_base_size(display);
+        let axis = axis_em * em;
+        let tolerance = 8.0 * em / Fixed::SCALE as f64;
+
+        let (tree, metrics) =
+            layout_formula("\\left(\\frac{a}{b}\\right)", display).expect("`\\left(\\frac{a}{b}\\right)` should lay out");
+        let box_centre = (metrics.height - metrics.depth) / 2.0;
+        assert!(
+            (box_centre - axis).abs() < tolerance,
+            "`\\left(\\frac{{a}}{{b}}\\right)` box centre {box_centre} must sit on the axis {axis} (display={display})"
+        );
+
+        // The fraction keeps its own baseline inside the delimiters, so its bar
+        // is the same axis landmark the bare fraction uses.
+        let bars = rules(&tree);
+        assert_eq!(bars.len(), 1, "`\\left(\\frac{{a}}{{b}}\\right)` must paint one bar: {bars:?}");
+        let (_, rule_top, _, rule_total) = bars[0];
+        let rule_centre = -(rule_top + rule_total / 2.0);
+        assert!(
+            (rule_centre - axis).abs() < tolerance,
+            "the bar inside the delimiters must stay on the axis: {rule_centre} vs {axis} (display={display})"
+        );
+
+        for paren in ['(', ')'] {
+            let (_, y, glyph) = glyph_at(&tree, paren);
+            let delimiter_centre = centre_of(y, &glyph);
+            assert!(
+                (delimiter_centre - axis).abs() < tolerance,
+                "`{paren}` must be centred on the axis: {delimiter_centre} vs {axis} (display={display})"
+            );
+        }
+    }
+
+    // `\vcenter` centres the row box, not the row baselines, so the assertion
+    // is on the box centre plus the centre of every delimiter glyph.
+    for (source, delimiters) in [
+        ("\\begin{pmatrix}a&b\\\\c&d\\end{pmatrix}", &[('(', 1), (')', 1)][..]),
+        ("\\begin{bmatrix}a&b\\\\c&d\\end{bmatrix}", &[('[', 1), (']', 1)][..]),
+        ("\\begin{Vmatrix}a&b\\\\c&d\\end{Vmatrix}", &[('‖', 2)][..]),
+        ("\\begin{cases}q&a\\\\xyz&b\\end{cases}", &[('{', 1)][..]),
+    ] {
+        let em = default_base_size(false);
+        let axis = axis_em * em;
+        let tolerance = 8.0 * em / Fixed::SCALE as f64;
+
+        let (tree, metrics) = layout_formula(source, false).expect(source);
+        let box_centre = (metrics.height - metrics.depth) / 2.0;
+        assert!((box_centre - axis).abs() < tolerance, "`{source}` box centre {box_centre} must sit on the axis {axis}");
+
+        for &(glyph_char, count) in delimiters {
+            let found = glyphs_of(&tree, glyph_char);
+            assert_eq!(found.len(), count, "`{source}` must use {count} `{glyph_char}` delimiter(s)");
+            for (_, y, glyph) in found {
+                let delimiter_centre = centre_of(y, &glyph);
+                assert!(
+                    (delimiter_centre - axis).abs() < tolerance,
+                    "`{glyph_char}` in `{source}` must be centred on the axis: {delimiter_centre} vs {axis}"
+                );
+            }
+        }
+    }
+}
+
 /// `\displaystyle` must really switch the enclosing style.  In TeX a display
 /// fraction sets its arguments in text style instead of script style and uses
 /// the display shift-up constants, so the same em size yields a little under
