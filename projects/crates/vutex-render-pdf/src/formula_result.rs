@@ -102,6 +102,36 @@ fn render_paint_pdf(out: &mut String, node: &PaintNode, origin_x: f64, origin_y:
             // Placeholder: glyph outline paths are not yet plumbed into the
             // paint tree.  A future change will look up glyph outlines from
             // the font snapshot and emit real PDF path ops here.
+            //
+            // ## Outline-path query chain — current gap
+            //
+            // Layout produces `LayoutNode::Glyph` which carries BOTH
+            // `path_data: Option<String>` (real SVG outline, populated from
+            // `FontMetricsData.glyph_paths`) AND `glyph_id: Option<u16>`.
+            // `lower_layout_to_paint` currently routes glyphs that have a
+            // `glyph_id` into `PaintNode::GlyphRun`, discarding the sibling
+            // `path_data`.  Only glyphs WITHOUT a `glyph_id` fall through to
+            // `PaintNode::VectorPath`, where the outline IS preserved.
+            //
+            // `PaintNode::GlyphRun` itself has no `path_data` field, and
+            // `FormulaLayoutResult.fonts` (`FontMetricsSnapshot`) only stores
+            // face metadata (font_id, family, upm, axes) — the real
+            // `glyph_paths: HashMap<GlyphKey, String>` lives inside
+            // `FontMetricsData` which never leaves the layout engine.
+            //
+            // To render real outlines here, one of the following must happen:
+            //   (a) Extend `PaintNode::GlyphRun` with per-glyph `path_data`,
+            //       or a single merged outline;
+            //   (b) Snapshot `glyph_paths` into `FontMetricsSnapshot` keyed by
+            //       (font_id, glyph_id) so renderers can look them up;
+            //   (c) Change `lower_layout_to_paint` to emit
+            //       `PaintNode::VectorPath` for glyphs that have BOTH
+            //       glyph_id AND path_data.
+            //
+            // Once a path string is available, the existing
+            // `svg_path_to_pdf_ops` helper already handles SVG→PDF path
+            // conversion — each glyph's outline simply needs to be emitted
+            // as a `q ... f Q` block translated by its per-glyph position.
         }
     }
 }

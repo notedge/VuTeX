@@ -123,6 +123,34 @@ fn render_paint_node(out: &mut String, node: &PaintNode, origin_x: f64, origin_y
             // Glyph outlines are intentionally not embedded in the paint tree
             // yet — they live in the font snapshot and will be plumbed in a
             // follow-up change.  Emit a marker group so the structure survives.
+            //
+            // ## Outline-path query chain — current gap
+            //
+            // Layout produces `LayoutNode::Glyph` which carries BOTH
+            // `path_data: Option<String>` (real SVG outline, populated from
+            // `FontMetricsData.glyph_paths`) AND `glyph_id: Option<u16>`.
+            // `lower_layout_to_paint` currently routes glyphs that have a
+            // `glyph_id` into `PaintNode::GlyphRun`, discarding the sibling
+            // `path_data`.  Only glyphs WITHOUT a `glyph_id` fall through to
+            // `PaintNode::VectorPath`, where the outline IS preserved.
+            //
+            // `PaintNode::GlyphRun` itself has no `path_data` field, and
+            // `FormulaLayoutResult.fonts` (`FontMetricsSnapshot`) only stores
+            // face metadata (font_id, family, upm, axes) — the real
+            // `glyph_paths: HashMap<GlyphKey, String>` lives inside
+            // `FontMetricsData` which never leaves the layout engine.
+            //
+            // To render real outlines here, one of the following must happen:
+            //   (a) Extend `PaintNode::GlyphRun` with per-glyph `path_data`,
+            //       or a single merged outline;
+            //   (b) Snapshot `glyph_paths` into `FontMetricsSnapshot` keyed by
+            //       (font_id, glyph_id) so renderers can look them up;
+            //   (c) Change `lower_layout_to_paint` to emit
+            //       `PaintNode::VectorPath` for glyphs that have BOTH
+            //       glyph_id AND path_data.
+            //
+            // Until then we keep the placeholder marker so the paint-tree
+            // round-trip stays structurally intact and the node is not lost.
             write!(
                 out,
                 r#"<g data-glyph-run="{}" data-font="{}" data-size="{:.4}" data-count="{}"/>"#,
