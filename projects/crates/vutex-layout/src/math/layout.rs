@@ -702,7 +702,12 @@ impl LayoutEngine {
         let layout_node = self.layout_math_list(nodes, style)?;
         let paint = lower_layout_to_paint(&layout_node, self.base_size);
         let metrics = extract_metrics(&layout_node, &self.font_system);
-        let fonts = FontMetricsSnapshot::default();
+        let mut glyph_paths = Vec::new();
+        collect_glyph_paths(&layout_node, &mut glyph_paths);
+        let fonts = FontMetricsSnapshot {
+            faces: Vec::new(),
+            glyph_paths,
+        };
         Ok(FormulaLayoutResult { metrics, paint, diagnostics: Vec::new(), fonts })
     }
 
@@ -1941,6 +1946,32 @@ fn accent_ink_extents(node: &LayoutNode) -> Option<(Fixed, Fixed)> {
     }
 }
 
+/// 递归遍历 [`LayoutNode`] 树，收集每个有 `font_id` + `glyph_id` + `path_data`
+/// 的 Glyph，产出 `(font_id, glyph_id, path_data)` 三元组，填充
+/// [`FontMetricsSnapshot::glyph_paths`]。
+fn collect_glyph_paths(node: &LayoutNode, out: &mut Vec<(String, u16, String)>) {
+    match node {
+        LayoutNode::HBox(hbox) => {
+            for child in &hbox.children {
+                collect_glyph_paths(child, out);
+            }
+        }
+        LayoutNode::VBox(vbox) => {
+            for child in &vbox.children {
+                collect_glyph_paths(child, out);
+            }
+        }
+        LayoutNode::Glyph(g) => {
+            if let (Some(font_id), Some(glyph_id), Some(path_data)) =
+                (&g.font_id, g.glyph_id, &g.path_data)
+            {
+                out.push((font_id.clone(), glyph_id, path_data.clone()));
+            }
+        }
+        _ => {}
+    }
+}
+
 /// 递归把 [`LayoutNode`] 树降成 [`PaintNode`] 树。
 ///
 /// * HBox / VBox → [`PaintNode::Group`]，递归子节点。
@@ -1968,6 +1999,7 @@ fn lower_layout_to_paint(node: &LayoutNode, base_size: Fixed) -> PaintNode {
                     glyph_ids: vec![glyph.glyph_id.unwrap_or(0)],
                     positions: vec![(Fixed::ZERO, Fixed::ZERO)],
                     size: glyph.size,
+                    path_data: vec![glyph.path_data.clone()],
                 };
             }
             // 没 glyph_id 但有 outline path：走 VectorPath。

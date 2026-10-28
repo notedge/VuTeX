@@ -119,7 +119,7 @@ fn render_paint_node(out: &mut String, node: &PaintNode, origin_x: f64, origin_y
             )
             .map_err(|e| e.to_string())?;
         }
-        PaintNode::GlyphRun { font_id, glyph_ids, positions: _, size } => {
+        PaintNode::GlyphRun { font_id, glyph_ids, positions: _, size, path_data: _ } => {
             // Glyph outlines are intentionally not embedded in the paint tree
             // yet — they live in the font snapshot and will be plumbed in a
             // follow-up change.  Emit a marker group so the structure survives.
@@ -238,6 +238,7 @@ mod tests {
             glyph_ids: vec![65, 66],
             positions: vec![(Fixed::ZERO, Fixed::ZERO), (Fixed::from_f64(10.0), Fixed::ZERO)],
             size: Fixed::from_f64(16.0),
+            path_data: vec![None, None],
         }]);
         let svg = render_formula_result(&res).expect("render");
         assert!(svg.contains(r#"data-glyph-run="lmr""#));
