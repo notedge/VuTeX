@@ -4,8 +4,9 @@
 //! `\prod`, `\coprod`) stacks its scripts above and below the operator in
 //! display style, while the `intop` class (`\int`, `\iint`, `\oint`) keeps
 //! them beside the operator unless `\limits` explicitly asks for stacking.
-//! Named functions such as `\sin`, `\log` and `\lim` are operators for
-//! spacing purposes but never stack, and every other atom is ordinary.
+//! Named functions are operators for spacing purposes: `\sin` and `\log`
+//! keep their scripts beside the text, while `\lim`, `\max` and `\det` stack
+//! them the way `\mathop{…}\limits` does.  Every other atom is ordinary.
 //!
 //! The classification and the placement rule live here so the layout engine
 //! never has to inspect a glyph character, and so the arithmetic that TeX
@@ -46,7 +47,55 @@ impl LimitsPolicy {
     pub const fn from_flag(flag: bool) -> Self {
         if flag { Self::Limits } else { Self::NoLimits }
     }
+
+    /// The default policy of an upright text nucleus.
+    ///
+    /// TeX's name table splits the `\rm` operators in two.  Names such as
+    /// `\lim`, `\max` and `\det` print like `\mathop{…}\limits`, so their
+    /// scripts stack above and below in every math style.  Function names such
+    /// as `\sin` and `\log` stay on the baseline and keep their scripts beside
+    /// the operator.  Any other text is not an operator at all, so it keeps
+    /// `Auto`, which never stacks a named operator.
+    ///
+    /// The table is keyed by the printed text, so every text atom that spells
+    /// one of these names — `\lim` and `\operatorname{lim}` alike — takes that
+    /// name's default.
+    pub fn of_text(text: &str) -> Self {
+        if LIMIT_NAMED_OPERATORS.contains(&text) {
+            Self::Limits
+        }
+        else if SIDE_NAMED_OPERATORS.contains(&text) {
+            Self::NoLimits
+        }
+        else {
+            Self::Auto
+        }
+    }
+
+    /// The default policy of an atom nucleus.
+    ///
+    /// Named operators read [`of_text`](Self::of_text), everything else keeps
+    /// `Auto` so the [`OperatorClass`] and the math style decide.
+    pub fn of_node(node: &SemanticNode) -> Self {
+        match node {
+            SemanticNode::Text { text, .. } => Self::of_text(text),
+            _ => Self::Auto,
+        }
+    }
 }
+
+/// Named operators that stack their scripts like `\mathop{…}\limits`.
+const LIMIT_NAMED_OPERATORS: &[&str] =
+    &["lim", "limsup", "liminf", "max", "min", "sup", "inf", "det", "gcd", "Pr", "argmax", "argmin"];
+
+/// Named operators that keep their scripts beside the symbol.
+///
+/// The names are the bare spellings `\DeclareMathOperator` receives, without
+/// the leading backslash.
+const SIDE_NAMED_OPERATORS: &[&str] = &[
+    "sin", "cos", "tan", "cot", "sec", "csc", "arcsin", "arccos", "arctan", "sinh", "cosh", "tanh", "log", "ln", "lg", "exp",
+    "deg", "dim", "hom", "ker",
+];
 
 impl OperatorClass {
     /// TeX's operator dictionary, keyed by the operator's code point.
@@ -87,11 +136,12 @@ impl OperatorClass {
     /// Whether the scripts go above and below the operator.
     ///
     /// `Auto` follows TeX: only the `op` class stacks, and only in display
-    /// style.  An explicit policy still cannot make a non-operator stack —
-    /// `\limits` applies to large operators alone.
+    /// style.  An explicit policy still cannot make a plain atom stack —
+    /// `\limits` applies to operators, which includes the named operators
+    /// TeX spells as `\mathop{…}\limits`.
     pub fn places_limits(self, policy: LimitsPolicy, style: MathStyle) -> bool {
         match policy {
-            LimitsPolicy::Limits => self.is_large_operator(),
+            LimitsPolicy::Limits => self.is_large_operator() || self == Self::NamedOp,
             LimitsPolicy::NoLimits => false,
             LimitsPolicy::Auto => matches!(self, Self::Op) && style == MathStyle::Display,
         }
@@ -131,12 +181,41 @@ mod tests {
 
     #[test]
     fn ordinary_atoms_never_stack() {
-        let class = OperatorClass::of_node(&SemanticNode::Text {
-            text: "sin".to_string(),
-            font_style: super::super::semantic::FontStyle::Normal,
-        });
-        assert_eq!(class, OperatorClass::NamedOp);
-        assert!(!class.places_limits(LimitsPolicy::Limits, MathStyle::Display));
         assert!(!OperatorClass::Ord.places_limits(LimitsPolicy::Limits, MathStyle::Display));
+        assert!(!OperatorClass::Ord.places_limits(LimitsPolicy::Auto, MathStyle::Display));
+        assert!(!OperatorClass::Ord.places_limits(LimitsPolicy::Auto, MathStyle::Text));
+    }
+
+    #[test]
+    fn named_operator_name_table_splits_stacked_and_beside_limits() {
+        // `\lim`, `\max`, `\det` … print like `\mathop{…}\limits`, so their
+        // scripts stack in display *and* text style.
+        for name in ["lim", "limsup", "liminf", "max", "min", "sup", "inf", "det", "gcd", "Pr", "argmax", "argmin"] {
+            assert_eq!(LimitsPolicy::of_text(name), LimitsPolicy::Limits, "`{name}` must stack its limits");
+            let class = OperatorClass::of_node(&named_op(name));
+            assert_eq!(class, OperatorClass::NamedOp, "`{name}` must be a named operator");
+            assert!(class.places_limits(LimitsPolicy::of_text(name), MathStyle::Display), "`{name}` stacks in display");
+            assert!(class.places_limits(LimitsPolicy::of_text(name), MathStyle::Text), "`{name}` stacks in text style");
+        }
+
+        // Function names stay on the baseline and keep their scripts beside.
+        for name in [
+            "sin", "cos", "tan", "cot", "sec", "csc", "arcsin", "arccos", "arctan", "sinh", "cosh", "tanh", "log", "ln", "lg",
+            "exp", "deg", "dim", "hom", "ker",
+        ] {
+            assert_eq!(LimitsPolicy::of_text(name), LimitsPolicy::NoLimits, "`{name}` must not stack");
+            let class = OperatorClass::of_node(&named_op(name));
+            assert!(!class.places_limits(LimitsPolicy::of_text(name), MathStyle::Display), "`{name}` stays beside");
+            assert!(!class.places_limits(LimitsPolicy::of_text(name), MathStyle::Text), "`{name}` stays beside");
+        }
+
+        // Text that is not one of those names is no operator and keeps the
+        // class default, which never stacks a `NamedOp`.
+        assert_eq!(LimitsPolicy::of_text("some text"), LimitsPolicy::Auto);
+        assert!(!OperatorClass::NamedOp.places_limits(LimitsPolicy::of_text("some text"), MathStyle::Display));
+    }
+
+    fn named_op(text: &str) -> SemanticNode {
+        SemanticNode::Text { text: text.to_string(), font_style: super::super::semantic::FontStyle::Normal }
     }
 }

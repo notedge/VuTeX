@@ -1470,6 +1470,46 @@ fn operator_default_limits_follow_tex() {
     );
 }
 
+/// Named operators read their own limits table: `\lim` prints like
+/// `\mathop{…}\limits` and stacks in every style, while `\log` and `\sin` keep
+/// their scripts beside the text.
+#[test]
+fn named_operators_follow_their_own_limits_table() {
+    let (_, lim_base) = layout_formula("\\lim", false).expect("`\\lim` should lay out");
+    let (_, lim_limits) = layout_formula("\\lim_{x}", false).expect("`\\lim` with a subscript");
+    assert!(
+        (lim_limits.width - lim_base.width).abs() < 0.5,
+        "a stacked `\\lim` subscript is centred under the name, so the atom must not grow: {} vs {}",
+        lim_limits.width,
+        lim_base.width
+    );
+    assert!(
+        lim_limits.depth > lim_base.depth,
+        "the stacked subscript of `\\lim` sits below the name: {} vs {}",
+        lim_limits.depth,
+        lim_base.depth
+    );
+
+    let (_, log_base) = layout_formula("\\log", false).expect("`\\log` should lay out");
+    let (_, log_beside) = layout_formula("\\log_{x}", false).expect("`\\log` with a subscript");
+    assert!(
+        log_beside.width > log_base.width,
+        "`\\log` keeps its subscript beside the text, which advances the box: {} vs {}",
+        log_beside.width,
+        log_base.width
+    );
+
+    // The name table also accepts the spellings the parser used to reject.
+    let (_, limsup) = layout_formula("\\limsup", false).expect("`\\limsup` should lay out");
+    let (_, limsup_sub) = layout_formula("\\limsup_{n}", false).expect("`\\limsup` with a subscript");
+    assert!(
+        (limsup_sub.width - limsup.width).abs() < 0.5,
+        "`\\limsup` stacks its limits like `\\lim`: {} vs {}",
+        limsup_sub.width,
+        limsup.width
+    );
+}
+
 /// The `op` class stacks in display style only: in text style `\sum` keeps its
 /// scripts beside the operator exactly like `\sum\nolimits`.
 #[test]

@@ -792,23 +792,11 @@ fn named_symbol(name: &str) -> Option<(char, SymbolRole)> {
 }
 
 /// Named operators that render as upright multi-character text.
-fn named_function(name: &str) -> Option<&'static str> {
-    let text = match name {
-        "sin" => "sin",
-        "cos" => "cos",
-        "tan" => "tan",
-        "cot" => "cot",
-        "sec" => "sec",
-        "csc" => "csc",
-        "log" => "log",
-        "ln" => "ln",
-        "exp" => "exp",
-        "max" => "max",
-        "min" => "min",
-        "lim" => "lim",
-        "det" => "det",
-        "gcd" => "gcd",
-        _ => return None,
-    };
-    Some(text)
+///
+/// The name table lives with the operator classification in `vutex-types`: a
+/// spelling is a named operator exactly when it has its own `LimitsPolicy`
+/// default, so the parser and the limits rule cannot disagree about which
+/// `\rm` names exist.
+fn named_function(name: &str) -> Option<&str> {
+    if matches!(LimitsPolicy::of_text(name), LimitsPolicy::Auto) { None } else { Some(name) }
 }

@@ -614,16 +614,22 @@ impl LayoutEngine {
                 }
                 // A script node reached directly (outside the noad pipeline)
                 // carries no `\limits` information of its own, so placement
-                // follows the operator class default.
+                // follows the operator class default and the named-operator
+                // name table.
                 SemanticNode::Subscript { base, sub } => {
-                    self.layout_subsup(base, Some(sub), None, style, OperatorClass::of_node(base), LimitsPolicy::Auto)
+                    self.layout_subsup(base, Some(sub), None, style, OperatorClass::of_node(base), LimitsPolicy::of_node(base))
                 }
                 SemanticNode::Superscript { base, sup } => {
-                    self.layout_subsup(base, None, Some(sup), style, OperatorClass::of_node(base), LimitsPolicy::Auto)
+                    self.layout_subsup(base, None, Some(sup), style, OperatorClass::of_node(base), LimitsPolicy::of_node(base))
                 }
-                SemanticNode::SubSuperscript { base, sub, sup } => {
-                    self.layout_subsup(base, Some(sub), Some(sup), style, OperatorClass::of_node(base), LimitsPolicy::Auto)
-                }
+                SemanticNode::SubSuperscript { base, sub, sup } => self.layout_subsup(
+                    base,
+                    Some(sub),
+                    Some(sup),
+                    style,
+                    OperatorClass::of_node(base),
+                    LimitsPolicy::of_node(base),
+                ),
                 // A math space is a kern of the current em: `width` is already
                 // in em, so the style scale is the only factor left to apply.
                 SemanticNode::Space { width } => {
@@ -737,14 +743,16 @@ impl LayoutEngine {
                     let sup_ref = scripts.sup.as_deref();
                     // Both the operator class and the `\limits` / `\nolimits`
                     // policy come straight from this noad, so script placement
-                    // never depends on the order noads are lowered in.
+                    // never depends on the order noads are lowered in.  An
+                    // authored policy wins, otherwise the nucleus supplies its
+                    // own default (large-operator class or named-operator name).
                     self.layout_subsup(
                         nucleus,
                         sub_ref,
                         sup_ref,
                         style,
                         OperatorClass::of_node(nucleus),
-                        noad.limits.unwrap_or(LimitsPolicy::Auto),
+                        noad.limits.unwrap_or_else(|| LimitsPolicy::of_node(nucleus)),
                     )?
                 }
                 (Some(nucleus), None) => self.layout_node(nucleus, style)?,
