@@ -2,9 +2,12 @@
 
 use notedown_ir::{Block, DocumentGraph, DocumentId, Inline, ListItem};
 use vutex_layout::{
-    LayoutHint, layout,
+    Diagrams, LayoutHint,
+    document::layout_with_diagnostics,
+    layout,
     plan::{LayoutItem, LayoutPage, TextRun},
 };
+use vutex_types::Severity;
 
 fn text(value: &str) -> Inline {
     Inline::Text { text: value.to_string() }
@@ -122,4 +125,20 @@ fn honours_explicit_page_size_and_margins() {
     let first = text_runs(&plan.pages[0]);
     assert_eq!(first[0].x, 40.0);
     assert!(first[0].y > 40.0);
+}
+
+/// A math warning raised inside the document reaches the layout diagnostics,
+/// and the formula still lays out: `x\limits_1` keeps its scripts beside `x`.
+#[test]
+fn inline_math_limits_misuse_reaches_the_document_diagnostics() {
+    let mut graph = DocumentGraph::new(DocumentId(3));
+    graph.push_block(Block::Paragraph {
+        content: vec![Inline::InlineMath { content: "x\\limits_1".to_string(), language: None }],
+    });
+
+    let (plan, diagnostics) = layout_with_diagnostics(&graph, &LayoutHint::a4(), &Diagrams::new());
+    assert_eq!(diagnostics.len(), 1, "the misuse must be reported once: {diagnostics:?}");
+    assert_eq!(diagnostics[0].code, "vutex.layout.math.limits_misuse");
+    assert_eq!(diagnostics[0].severity, Severity::Warning);
+    assert!(!plan.pages.is_empty() && !plan.pages[0].items.is_empty(), "the formula must still lay out: {plan:?}");
 }
