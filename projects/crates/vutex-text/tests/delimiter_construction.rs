@@ -21,11 +21,7 @@ fn every_delimiter_glyph_has_its_own_metrics_and_outline() {
         for variant in &construction.variants {
             let metrics = system.get_metrics(&variant.glyph).expect("variant metrics");
             assert!(metrics.width.to_f64() > 0.1, "{ch}: variant {:?} has no advance", variant.glyph.glyph_id);
-            assert!(
-                system.get_glyph_path(&variant.glyph).is_ok(),
-                "{ch}: variant {:?} has no outline",
-                variant.glyph.glyph_id
-            );
+            assert!(system.get_glyph_path(&variant.glyph).is_ok(), "{ch}: variant {:?} has no outline", variant.glyph.glyph_id);
         }
 
         for component in &construction.components {

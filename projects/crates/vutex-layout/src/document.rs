@@ -164,11 +164,7 @@ pub fn layout_with_diagrams(graph: &DocumentGraph, hint: &LayoutHint, diagrams: 
 /// Today the only source is a math glyph the embedded font supplies no outline
 /// for: it is skipped instead of being painted with a host serif face, so the
 /// caller can surface the gap rather than silently losing the glyph.
-pub fn layout_with_diagnostics(
-    graph: &DocumentGraph,
-    hint: &LayoutHint,
-    diagrams: &Diagrams,
-) -> (LayoutPlan, Vec<Diagnostic>) {
+pub fn layout_with_diagnostics(graph: &DocumentGraph, hint: &LayoutHint, diagrams: &Diagrams) -> (LayoutPlan, Vec<Diagnostic>) {
     let mut builder = PageBuilder::new(*hint, diagrams);
     builder.render_blocks(graph, &root_ids(graph), 0.0);
     (LayoutPlan { pages: builder.pages }, builder.diagnostics)
@@ -343,10 +339,7 @@ fn display_skips(size: f64, short: bool) -> (DisplaySkip, DisplaySkip) {
     if short {
         (
             DisplaySkip { natural: ABOVE_DISPLAY_SHORT_SKIP_EM * size, shrink: 0.0 },
-            DisplaySkip {
-                natural: BELOW_DISPLAY_SHORT_SKIP_EM * size,
-                shrink: BELOW_DISPLAY_SHORT_SKIP_SHRINK_EM * size,
-            },
+            DisplaySkip { natural: BELOW_DISPLAY_SHORT_SKIP_EM * size, shrink: BELOW_DISPLAY_SHORT_SKIP_SHRINK_EM * size },
         )
     }
     else {
@@ -922,8 +915,7 @@ impl<'a> PageBuilder<'a> {
                 self.diagnostics.extend(math_diagnostics);
                 let left = self.left(indent);
                 let offset = ((self.content_width(indent) - formula.width) / 2.0).max(0.0);
-                let short = preceding_line_right
-                    .is_some_and(|right| right + SHORT_DISPLAY_MARGIN_EM * size <= left + offset);
+                let short = preceding_line_right.is_some_and(|right| right + SHORT_DISPLAY_MARGIN_EM * size <= left + offset);
                 let (above, below) = display_skips(size, short);
                 let (above_space, below_space) = self.fit_display(formula.height + formula.depth, above, below);
                 self.ensure_space(above_space + formula.height + formula.depth + below_space);

@@ -1,6 +1,6 @@
 {
     "name": "@vutex/vutex-linux-x64",
-    "version": "0.0.9",
+    "version": "0.0.10",
     "description": "VuTeX Node-API binary for Linux x64",
     "type": "module",
     "license": "MPL-2.0",

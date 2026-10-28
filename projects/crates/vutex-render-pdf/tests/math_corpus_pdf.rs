@@ -10,8 +10,10 @@
 use std::{env, fs, path::PathBuf};
 
 use serde::Deserialize;
-use vutex_layout::math::{LayoutNode, collect_layout_with_diagnostics, layout_formula};
-use vutex_layout::plan::{LayoutItem, LayoutPage, LayoutPlan};
+use vutex_layout::{
+    math::{LayoutNode, collect_layout_with_diagnostics, layout_formula},
+    plan::{LayoutItem, LayoutPage, LayoutPlan},
+};
 use vutex_presentation::build_display_presentation;
 use vutex_render_pdf::render_pdf_with_diagnostics;
 
@@ -42,9 +44,8 @@ struct GateCorpus {
 }
 
 fn load_corpus() -> GateCorpus {
-    let corpus: GateCorpus =
-        serde_json::from_str(include_str!("../../vutex-layout/tests/fixtures/math_gate_corpus.json"))
-            .expect("math_gate_corpus.json must parse");
+    let corpus: GateCorpus = serde_json::from_str(include_str!("../../vutex-layout/tests/fixtures/math_gate_corpus.json"))
+        .expect("math_gate_corpus.json must parse");
     assert_eq!(corpus.corpus, "vutex-math-gate", "the gate reads the shared math corpus");
     corpus
 }
@@ -68,8 +69,8 @@ fn path_primitives(node: &LayoutNode) -> usize {
 /// Lay one corpus case out, lower it to display primitives and render a page.
 fn render_page(case: &GateCase) -> (Vec<u8>, Vec<LayoutItem>, LayoutNode) {
     let display = is_display(case);
-    let (root, layout) = layout_formula(&case.src, display)
-        .unwrap_or_else(|e| panic!("`{}` ({}) must lay out: {e}", case.src, case.style));
+    let (root, layout) =
+        layout_formula(&case.src, display).unwrap_or_else(|e| panic!("`{}` ({}) must lay out: {e}", case.src, case.style));
 
     let baseline = MARGIN + layout.height;
     let mut diagnostics = Vec::new();

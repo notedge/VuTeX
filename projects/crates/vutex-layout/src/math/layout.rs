@@ -1697,11 +1697,9 @@ impl LayoutEngine {
     /// overbar as a rule spanning the nucleus, sized from the MATH table's
     /// overbar constants, which is what TeX's own `\bar` produces.
     fn layout_overbar(&self, base_layout: LayoutNode, size: Fixed) -> LayoutNode {
-        let thickness = self
-            .font_system
-            .get_math_constant("default", MathConstant::OverbarRuleThickness)
-            .unwrap_or(Fixed::from_f64(0.06))
-            * size;
+        let thickness =
+            self.font_system.get_math_constant("default", MathConstant::OverbarRuleThickness).unwrap_or(Fixed::from_f64(0.06))
+                * size;
         let gap =
             self.font_system.get_math_constant("default", MathConstant::OverbarVerticalGap).unwrap_or(Fixed::from_f64(0.1))
                 * size;

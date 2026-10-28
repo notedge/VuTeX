@@ -275,7 +275,11 @@ fn display_math_after_a_short_line_uses_the_short_skips() {
 
     // `\abovedisplayshortskip` is 0 pt and `\belowdisplayshortskip` is 6 pt
     // plus 3 minus 3, both scaled to the body size.
-    assert!(above.abs() < 1.0, "short display above skip {above} pt must collapse to `\\abovedisplayshortskip`: {:?}", text_runs(&plan.pages[0]));
+    assert!(
+        above.abs() < 1.0,
+        "short display above skip {above} pt must collapse to `\\abovedisplayshortskip`: {:?}",
+        text_runs(&plan.pages[0])
+    );
     let short_below = 0.6 * hint.base_font_size;
     assert!(
         (below - short_below).abs() <= 1.0,

@@ -8,9 +8,7 @@
 //! fractions, script fractions, stretched delimiters, the `\bar` rule).
 
 use serde::Deserialize;
-use vutex_layout::math::{
-    FormulaLayout, LayoutNode, collect_layout_with_diagnostics, layout_formula, render_layout_node,
-};
+use vutex_layout::math::{FormulaLayout, LayoutNode, collect_layout_with_diagnostics, layout_formula, render_layout_node};
 use vutex_render_svg::math::SvgBackend;
 
 /// One formula record in the gate corpus.
@@ -47,9 +45,8 @@ const IMPLEMENTED: &[&str] = &[
 ];
 
 fn load_corpus() -> GateCorpus {
-    let corpus: GateCorpus =
-        serde_json::from_str(include_str!("../../vutex-layout/tests/fixtures/math_gate_corpus.json"))
-            .expect("math_gate_corpus.json must parse");
+    let corpus: GateCorpus = serde_json::from_str(include_str!("../../vutex-layout/tests/fixtures/math_gate_corpus.json"))
+        .expect("math_gate_corpus.json must parse");
     assert_eq!(corpus.corpus, "vutex-math-gate", "the gate reads the shared math corpus");
     corpus
 }
@@ -309,12 +306,8 @@ fn every_case_paints_outlines_without_host_text() {
             violations.push(format!("{label}: the font could not outline every glyph: {diagnostics:?}"));
         }
 
-        let positive = [
-            ("width", metrics.width),
-            ("height", metrics.height),
-            ("depth", metrics.depth),
-            ("baseline", metrics.baseline),
-        ];
+        let positive =
+            [("width", metrics.width), ("height", metrics.height), ("depth", metrics.depth), ("baseline", metrics.baseline)];
         for (name, value) in positive {
             if !value.is_finite() || value < 0.0 || (name != "depth" && value == 0.0) {
                 violations.push(format!("{label}: {name} is not a positive metric, got {value}"));
@@ -373,9 +366,7 @@ fn display_fraction_is_at_least_one_and_a_half_times_the_text_fraction() {
     let display = corpus
         .cases
         .iter()
-        .find(|case| {
-            case.invariants.iter().any(|invariant| invariant == "display_fraction_height") && case.style == "display"
-        })
+        .find(|case| case.invariants.iter().any(|invariant| invariant == "display_fraction_height") && case.style == "display")
         .expect("the corpus records a display fraction case");
     let text = corpus
         .cases
