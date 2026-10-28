@@ -16,8 +16,9 @@ pub enum DisplayMode {
 pub struct RenderOptions {
     /// Inline or block layout mode.
     pub display_mode: DisplayMode,
-    /// When `true`, the SVG backend runs in deterministic (path-only) strict mode,
-    /// rejecting any glyph that lacks pre-computed outline paths.
+    /// Strict path-only SVG output. Defaults to `true` when omitted, so the
+    /// public render path never falls back to a host-font `<text>` run.
+    /// Passing `false` opts into that host-font fallback explicitly.
     #[serde(default)]
     pub outline: Option<bool>,
 }

@@ -30,16 +30,18 @@ pub fn measure(source: &str, options: &RenderOptions) -> FormulaRender {
 
 /// Render a formula to SVG.
 ///
-/// A glyph the math font ships no outline for is painted as a host-font `<text>`
-/// run in the non-strict mode and reported as a `vutex.layout.math.outline_missing`
-/// warning, so a host-font dependency is never silent.
+/// Strict path-only output is the default: a glyph the math font ships no
+/// outline for fails the render instead of being painted as a host-font
+/// `<text>` run. Callers opt into that fallback with `outline: false`, which
+/// also reports a `vutex.layout.math.outline_missing` warning so a host-font
+/// dependency is never silent.
 pub fn render_svg(source: &str, options: &RenderOptions) -> FormulaRender {
     let diagnostics = collect_diagnostics(source);
     if has_error(&diagnostics) {
         return FormulaRender { metrics: FormulaMetrics::default(), svg: String::new(), mathml: None, diagnostics };
     }
 
-    match render_formula_svg_inner(source, options.display_mode == DisplayMode::Block, options.outline.unwrap_or(false)) {
+    match render_formula_svg_inner(source, options.display_mode == DisplayMode::Block, options.outline.unwrap_or(true)) {
         Ok((svg, layout, layout_diagnostics)) => FormulaRender {
             metrics: layout_to_metrics(&layout),
             svg,
