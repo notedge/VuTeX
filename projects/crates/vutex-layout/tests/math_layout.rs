@@ -234,7 +234,11 @@ fn radical_index_uses_scriptscript_size_and_the_math_constants() {
     let rule_thickness = constant(MathConstant::RadicalRuleThickness);
 
     for display in [false, true] {
-        let gap = if display { display_gap } else { vertical_gap };
+        // Inline formulas clamp the MATH table's `RadicalVerticalGap` to at
+        // least 0.1 em so the rule stays visibly separated from the radicand.
+        let raw_gap = if display { display_gap } else { vertical_gap };
+        let min_clearance = 0.1;
+        let gap = raw_gap.max(min_clearance);
         let (tree, _) = layout_formula("\\sqrt[3]{x}", display).expect("radical should lay out");
         let (index_x, index_y, index) = glyph_at(&tree, '3');
         let (surd_x, _, surd) = glyph_at(&tree, '√');

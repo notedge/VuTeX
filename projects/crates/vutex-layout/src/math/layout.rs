@@ -949,6 +949,13 @@ impl LayoutEngine {
         else {
             self.font_system.get_math_constant(family, MathConstant::RadicalVerticalGap).unwrap_or(Fixed::from_f64(0.05)) * size
         };
+        // TeX's `RadicalVerticalGap` for inline formulas is often tight. The
+        // clearance between the rule paint bottom and the radicand's ink top
+        // must stay at least 0.1 em so the surd reads visually separated from
+        // the radicand even when the font's own MATH constants are small. We
+        // clamp at that minimum without touching the rest of the surd geometry.
+        let min_clearance = Fixed::from_f64(0.1) * size;
+        let vertical_gap = vertical_gap.max(min_clearance);
 
         // Height of the radical bar above the radicand baseline. The sign is
         // raised so its own top bar lands exactly on this line and the two
