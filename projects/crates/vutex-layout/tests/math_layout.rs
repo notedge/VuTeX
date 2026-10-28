@@ -2148,3 +2148,112 @@ fn empty_nucleus_keeps_scripts_beside_and_leaves_no_policy() {
         "the empty nucleus keeps its scripts beside it and the `\\sum` keeps its default: {misused:?} vs {plain:?}"
     );
 }
+
+/// ——— `cramped` ———
+
+/// Vertical rise of `sup` above `base` within one laid-out formula.
+///
+/// Both glyph positions are baselines, so the difference is the shift the
+/// layout applied to the script, independent of where the shared box sits.
+fn sup_rise(tree: &LayoutNode, base: char, sup: char) -> f64 {
+    glyph_at(tree, base).1 - glyph_at(tree, sup).1
+}
+
+fn math_constant(system: &FontMetricsSystem, constant: MathConstant) -> f64 {
+    system.get_math_constant("default", constant).expect("the font must publish its `MATH` constants").to_f64()
+}
+
+/// A radical's radicand is cramped, so a superscript inside it takes
+/// `SuperscriptShiftUpCramped` rather than `SuperscriptShiftUp`.
+///
+/// A period's ink is short enough that the constant is the binding constraint:
+/// a taller nucleus is raised by `height + SuperscriptBottomMin` instead, which
+/// is why `x^2` cannot show the flag at all.
+#[test]
+fn radical_radicand_takes_the_cramped_superscript_shift() {
+    let system = builtin_font_metrics();
+    let em = default_base_size(false);
+    let regular = math_constant(&system, MathConstant::SuperscriptShiftUp) * em;
+    let cramped = math_constant(&system, MathConstant::SuperscriptShiftUpCramped) * em;
+    assert!(cramped < regular, "the cramped minimum must be smaller: {cramped} vs {regular}");
+
+    let (plain, _) = layout_formula(".^2", false).expect("plain `\\.^2`");
+    let (rooted, _) = layout_formula("\\sqrt{.^2}", false).expect("`\\sqrt{.^2}`");
+
+    assert!((sup_rise(&plain, '.', '2') - regular).abs() < 0.01, "an uncramped base keeps the regular shift");
+    assert!((sup_rise(&rooted, '.', '2') - cramped).abs() < 0.01, "a radicand base takes the cramped shift");
+}
+
+/// The fraction denominator is always cramped, while the numerator only
+/// inherits the flag from its parent.
+#[test]
+fn fraction_denominator_is_cramped_and_the_numerator_inherits() {
+    let system = builtin_font_metrics();
+    let em = default_base_size(false);
+    let script_em = em * math_constant(&system, MathConstant::ScriptPercentScaleDown);
+    let regular = math_constant(&system, MathConstant::SuperscriptShiftUp) * script_em;
+    let cramped = math_constant(&system, MathConstant::SuperscriptShiftUpCramped) * script_em;
+
+    let (numerator, _) = layout_formula("\\frac{.^2}{x}", false).expect("`\\frac{.^2}{x}`");
+    let (denominator, _) = layout_formula("\\frac{x}{.^2}", false).expect("`\\frac{x}{.^2}`");
+
+    let num_rise = sup_rise(&numerator, '.', '2');
+    let den_rise = sup_rise(&denominator, '.', '2');
+    assert!((num_rise - regular).abs() < 0.01, "the numerator inherits the uncramped shift: {num_rise} vs {regular}");
+    assert!((den_rise - cramped).abs() < 0.01, "the denominator must be cramped: {den_rise} vs {cramped}");
+    assert!(den_rise < num_rise, "cramping must hug the denominator's script closer");
+}
+
+/// `sup()` keeps the parent's flag and `sub()` forces it, so a script nested
+/// one level deeper follows the structure it entered.
+#[test]
+fn cramped_is_inherited_by_superscripts_and_forced_by_subscripts() {
+    let system = builtin_font_metrics();
+    let em = default_base_size(false);
+    let script_em = em * math_constant(&system, MathConstant::ScriptPercentScaleDown);
+    let regular = math_constant(&system, MathConstant::SuperscriptShiftUp) * script_em;
+    let cramped = math_constant(&system, MathConstant::SuperscriptShiftUpCramped) * script_em;
+
+    let (sup_side, _) = layout_formula("x^{.^2}", false).expect("`x^{.^2}`");
+    let (sub_side, _) = layout_formula("x_{.^2}", false).expect("`x_{.^2}`");
+
+    let sup_rise_in_script = sup_rise(&sup_side, '.', '2');
+    let sub_rise_in_script = sup_rise(&sub_side, '.', '2');
+    assert!((sup_rise_in_script - regular).abs() < 0.01, "a superscript must inherit the uncramped flag");
+    assert!((sub_rise_in_script - cramped).abs() < 0.01, "a subscript must force the cramped flag");
+}
+
+/// The cramped flag may not disturb formulas whose nucleus is tall enough for
+/// `SuperscriptBottomMin` to win over both shift constants.
+///
+/// `\sqrt{\frac{a}{b}}` contains no script at all, and the fraction under the
+/// `^2` of `\frac{a}{b}^2` is taller than `SuperscriptShiftUp`, so both keep the
+/// exact metrics they had before the flag reached the geometry.
+#[test]
+fn cramped_leaves_the_insensitive_formulas_unchanged() {
+    let system = builtin_font_metrics();
+    let em = default_base_size(false);
+    let bottom_min = math_constant(&system, MathConstant::SuperscriptBottomMin) * em;
+    let regular = math_constant(&system, MathConstant::SuperscriptShiftUp) * em;
+
+    let (tree, _) = layout_formula("\\frac{a}{b}^2", false).expect("`\\frac{a}{b}^2`");
+    let base_height = layout("\\frac{a}{b}").height;
+    assert!(base_height + bottom_min > regular, "the fraction is tall enough to make the shift constant irrelevant");
+    let (_, sup_y, _) = glyph_at(&tree, '2');
+    assert!(
+        (sup_y.abs() - (base_height + bottom_min)).abs() < 0.01,
+        "the superscript must sit on `height + bottom min`: {sup_y}"
+    );
+
+    for (source, width, height, depth) in
+        [("\\sqrt{\\frac{a}{b}}", 19.911, 11.866, 6.338), ("\\frac{a}{b}^2", 13.149, 17.945, 4.937)]
+    {
+        let metrics = layout(source);
+        assert!(
+            (metrics.width - width).abs() < 0.01
+                && (metrics.height - height).abs() < 0.01
+                && (metrics.depth - depth).abs() < 0.01,
+            "`{source}` must keep its uncramped metrics: {metrics:?}"
+        );
+    }
+}

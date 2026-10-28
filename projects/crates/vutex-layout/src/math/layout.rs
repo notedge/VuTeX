@@ -7,8 +7,9 @@ use vutex_types::{
     Diagnostic, Severity,
     math::{
         Alignment, BBox, DelimiterComponent, Fixed, FontMetricsSnapshot, FontStyle, FormulaLayoutResult, FormulaMetrics,
-        GlyphKey, GlyphMetrics, LimitsPolicy, LineStyle, MathConstant, MathKern, MathList, MathResult, MathStyle, Noad,
-        NoadKind, OperatorClass, PaintNode, SemanticNode, SpacingRule, SymbolRole, normalize_math_list, project_semantic,
+        GlyphKey, GlyphMetrics, LimitsPolicy, LineStyle, MathConstant, MathKern, MathList, MathResult, MathStyle,
+        MathStyleState, Noad, NoadKind, OperatorClass, PaintNode, SemanticNode, SpacingRule, SymbolRole, normalize_math_list,
+        project_semantic_with_state,
     },
 };
 
@@ -552,15 +553,26 @@ impl LayoutEngine {
 
     /// Lay out a semantic node in the given math style.
     pub fn layout_node<'a>(&'a self, node: &'a SemanticNode, style: MathStyle) -> MathResult<LayoutNode> {
+        self.layout_node_state(node, MathStyleState::from_style(style))
+    }
+
+    /// Lay out a semantic node in a recursive style state.
+    ///
+    /// `cramped` travels with the style because it is not derivable from
+    /// [`MathStyle`] alone: fraction denominators, radical radicands and
+    /// subscripts raise it, while superscripts, numerators and plain sequence
+    /// bodies inherit it.  A superscript's shift picks
+    /// `SuperscriptShiftUpCramped` over `SuperscriptShiftUp` accordingly.
+    fn layout_node_state<'a>(&'a self, node: &'a SemanticNode, state: MathStyleState) -> MathResult<LayoutNode> {
         {
             match node {
-                SemanticNode::Symbol { glyph_key, role } => self.layout_math_symbol(glyph_key, *role, style),
-                SemanticNode::Sequence(nodes) => self.layout_sequence(nodes, style),
+                SemanticNode::Symbol { glyph_key, role } => self.layout_math_symbol(glyph_key, *role, state.style),
+                SemanticNode::Sequence(nodes) => self.layout_sequence(nodes, state),
                 SemanticNode::HorizontalBox { content, spacing } => {
                     let mut children = Vec::new();
                     let n = content.len();
                     for (i, node) in content.iter().enumerate() {
-                        children.push(self.layout_node(node, style)?);
+                        children.push(self.layout_node_state(node, state)?);
                         if i + 1 < n {
                             if let Some(glue) = self.get_spacing_glue(*spacing) {
                                 children.push(LayoutNode::Glue(glue));
@@ -573,7 +585,7 @@ impl LayoutEngine {
                     let mut children = Vec::new();
                     let n = content.len();
                     for (i, node) in content.iter().enumerate() {
-                        children.push(self.layout_node(node, style)?);
+                        children.push(self.layout_node_state(node, state)?);
                         if i + 1 < n {
                             // Add a default space (glue) between nodes in a paragraph
                             children.push(LayoutNode::Glue(Glue {
@@ -585,18 +597,18 @@ impl LayoutEngine {
                     }
                     Ok(self.break_lines(children, vec![*width], 1.0))
                 }
-                SemanticNode::Fraction { num, den, line } => self.layout_fraction(num, den, *line, style),
-                SemanticNode::Radical { degree, radicand } => self.layout_radical(degree.as_deref(), radicand, style),
+                SemanticNode::Fraction { num, den, line } => self.layout_fraction(num, den, *line, state),
+                SemanticNode::Radical { degree, radicand } => self.layout_radical(degree.as_deref(), radicand, state),
                 SemanticNode::VerticalBox { content, alignment } => {
                     let mut children = Vec::new();
                     for node in content {
-                        children.push(self.layout_node(node, style)?);
+                        children.push(self.layout_node_state(node, state)?);
                     }
                     Ok(self.pack_vbox(children, *alignment))
                 }
                 SemanticNode::Text { text, font_style } => {
                     let mut children = Vec::new();
-                    let size = self.base_size * self.get_style_scale(style);
+                    let size = self.base_size * self.get_style_scale(state.style);
                     for c in text.chars() {
                         let key = GlyphKey::from_char(c, None, *font_style);
                         // Whitespace is a horizontal advance, not a glyph: TeX
@@ -607,7 +619,7 @@ impl LayoutEngine {
                             children.push(LayoutNode::Kern(self.font_system.get_metrics(&key)?.width * size));
                         }
                         else {
-                            children.push(self.layout_symbol(&key, style)?);
+                            children.push(self.layout_symbol(&key, state.style)?);
                         }
                     }
                     Ok(self.pack_hbox(children, None))
@@ -617,35 +629,31 @@ impl LayoutEngine {
                 // follows the operator class default and the named-operator
                 // name table.
                 SemanticNode::Subscript { base, sub } => {
-                    self.layout_subsup(base, Some(sub), None, style, OperatorClass::of_node(base), LimitsPolicy::of_node(base))
+                    self.layout_subsup(base, Some(sub), None, state, OperatorClass::of_node(base), LimitsPolicy::of_node(base))
                 }
                 SemanticNode::Superscript { base, sup } => {
-                    self.layout_subsup(base, None, Some(sup), style, OperatorClass::of_node(base), LimitsPolicy::of_node(base))
+                    self.layout_subsup(base, None, Some(sup), state, OperatorClass::of_node(base), LimitsPolicy::of_node(base))
                 }
-                SemanticNode::SubSuperscript { base, sub, sup } => self.layout_subsup(
-                    base,
-                    Some(sub),
-                    Some(sup),
-                    style,
-                    OperatorClass::of_node(base),
-                    LimitsPolicy::of_node(base),
-                ),
+                SemanticNode::SubSuperscript { base, sub, sup } => {
+                    self.layout_subsup(base, Some(sub), Some(sup), state, OperatorClass::of_node(base), LimitsPolicy::of_node(base))
+                }
                 // A math space is a kern of the current em: `width` is already
                 // in em, so the style scale is the only factor left to apply.
                 SemanticNode::Space { width } => {
-                    let size = self.base_size * self.get_style_scale(style);
+                    let size = self.base_size * self.get_style_scale(state.style);
                     Ok(LayoutNode::Kern(*width * size))
                 }
                 SemanticNode::Matrix { rows, row_spacing, col_spacing, display_style, column_alignment } => {
                     // `align` / `align*` pin their cells to display style so an
-                    // enclosing `\scriptstyle` cannot demote the grid.
-                    let style = if *display_style { MathStyle::Display } else { style };
-                    self.layout_matrix(rows, *row_spacing, *col_spacing, column_alignment, style)
+                    // enclosing `\scriptstyle` cannot demote the grid.  The
+                    // cramped flag still follows the surrounding formula.
+                    let state = if *display_style { MathStyleState { style: MathStyle::Display, ..state } } else { state };
+                    self.layout_matrix(rows, *row_spacing, *col_spacing, column_alignment, state)
                 }
                 SemanticNode::Delimited { left, right, content } => {
-                    self.layout_delimited(left.as_ref(), right.as_ref(), content, style)
+                    self.layout_delimited(left.as_ref(), right.as_ref(), content, state)
                 }
-                SemanticNode::Accent { accent, base } => self.layout_accent(accent, base, style),
+                SemanticNode::Accent { accent, base } => self.layout_accent(accent, base, state),
                 // Imperative nodes: no boxes; side-effects are handled by
                 // `layout_sequence` and `layout_subsup` when they iterate.
                 SemanticNode::SetMathStyle(_) | SemanticNode::LimitsSpec(_) => Ok(LayoutNode::Kern(Fixed::ZERO)),
@@ -657,8 +665,8 @@ impl LayoutEngine {
     /// [`layout_math_list`] pipeline (project → demote → layout-by-noads).
     /// Kept as a named method so callers don't need to know the pipeline
     /// name; internals can be swapped later without changing call sites.
-    fn layout_sequence(&self, nodes: &[SemanticNode], style: MathStyle) -> MathResult<LayoutNode> {
-        self.layout_math_list(nodes, style)
+    fn layout_sequence(&self, nodes: &[SemanticNode], state: MathStyleState) -> MathResult<LayoutNode> {
+        self.layout_math_list_state(nodes, state)
     }
 
     /// New normalized pipeline: project → normalize → layout by noads.
@@ -667,9 +675,18 @@ impl LayoutEngine {
     /// this entry point is called, so the spacing phase in [`layout_noads`]
     /// only needs to key off the already-resolved [`NoadKind`].
     pub fn layout_math_list(&self, nodes: &[SemanticNode], style: MathStyle) -> MathResult<LayoutNode> {
-        let projected = project_semantic(nodes, style);
+        self.layout_math_list_state(nodes, MathStyleState::from_style(style))
+    }
+
+    /// [`layout_math_list`] for callers that already track `cramped`.
+    ///
+    /// The state has to reach [`project_semantic_with_state`], otherwise the
+    /// projected noads lose the cramped flag their scripts and nested
+    /// structures inherit from the enclosing fraction or radical.
+    fn layout_math_list_state(&self, nodes: &[SemanticNode], state: MathStyleState) -> MathResult<LayoutNode> {
+        let projected = project_semantic_with_state(nodes, state);
         let normalized = normalize_math_list(projected);
-        self.layout_noads(&normalized, style)
+        self.layout_noads(&normalized)
     }
 
     /// 新入口：直接产出不可变 [`FormulaLayoutResult`]。
@@ -692,7 +709,7 @@ impl LayoutEngine {
     /// Spacing glue uses [`tex_skip_between_noad`] keyed by the already-
     /// resolved [`NoadKind`].  Each nucleus is lowered via [`layout_node`]
     /// or [`layout_subsup`] depending on whether scripts are attached.
-    fn layout_noads(&self, list: &MathList, _base_style: MathStyle) -> MathResult<LayoutNode> {
+    fn layout_noads(&self, list: &MathList) -> MathResult<LayoutNode> {
         Ok(self.pack_hbox(self.layout_noad_run(&list.0)?, None))
     }
 
@@ -711,7 +728,8 @@ impl LayoutEngine {
 
         while i < n {
             let noad = &noads[i];
-            let style = noad.style;
+            let state = MathStyleState { style: noad.style, cramped: noad.cramped };
+            let style = state.style;
 
             // spacing glue between the previous noad and this one.
             // Effective kind already collapses structural kinds (Fence → Inner
@@ -756,7 +774,7 @@ impl LayoutEngine {
                     let left = Self::delimiter_key(noads[i].nucleus.as_deref());
                     let right = Self::delimiter_key(noads[close].nucleus.as_deref());
                     let body = self.pack_hbox(self.layout_noad_run(&noads[i + 1..close])?, None);
-                    children.push(self.layout_fence(left.as_ref(), right.as_ref(), body, style)?);
+                    children.push(self.layout_fence(left.as_ref(), right.as_ref(), body, state)?);
                     i = close + 1;
                     continue;
                 }
@@ -776,12 +794,12 @@ impl LayoutEngine {
                         nucleus,
                         sub_ref,
                         sup_ref,
-                        style,
+                        state,
                         OperatorClass::of_node(nucleus),
                         noad.limits.unwrap_or_else(|| LimitsPolicy::of_node(nucleus)),
                     )?
                 }
-                (Some(nucleus), None) => self.layout_node(nucleus, style)?,
+                (Some(nucleus), None) => self.layout_node_state(nucleus, state)?,
                 (None, Some(scripts)) => {
                     let sub_ref = scripts.sub.as_deref();
                     let sup_ref = scripts.sup.as_deref();
@@ -791,7 +809,7 @@ impl LayoutEngine {
                         &SemanticNode::SetMathStyle(style),
                         sub_ref,
                         sup_ref,
-                        style,
+                        state,
                         OperatorClass::Ord,
                         LimitsPolicy::Auto,
                     )?
@@ -1100,20 +1118,16 @@ impl LayoutEngine {
         numerator: &SemanticNode,
         denominator: &SemanticNode,
         line_style: LineStyle,
-        style: MathStyle,
+        state: MathStyleState,
     ) -> MathResult<LayoutNode> {
         // TeX demotes fraction arguments exactly one style: display -> text,
         // text -> script, and both script styles -> scriptscript.  Keeping
         // script arguments in script style would let them outgrow the parent.
-        let next_style = match style {
-            MathStyle::Display => MathStyle::Text,
-            MathStyle::Text => MathStyle::Script,
-            MathStyle::Script | MathStyle::ScriptScript => MathStyle::ScriptScript,
-        };
+        // The numerator inherits `cramped`, the denominator is always cramped.
+        let num_layout = self.layout_node_state(numerator, state.frac_num())?;
+        let den_layout = self.layout_node_state(denominator, state.frac_den())?;
 
-        let num_layout = self.layout_node(numerator, next_style)?;
-        let den_layout = self.layout_node(denominator, next_style)?;
-
+        let style = state.style;
         let family = "default";
         let style_scale = self.get_style_scale(style);
         let size = self.base_size * style_scale;
@@ -1238,10 +1252,13 @@ impl LayoutEngine {
         &self,
         degree: Option<&SemanticNode>,
         radicand: &SemanticNode,
-        style: MathStyle,
+        state: MathStyleState,
     ) -> MathResult<LayoutNode> {
-        let radicand_layout = self.layout_node(radicand, style)?;
+        // A radical's radicand is cramped, so any superscript inside it takes
+        // `SuperscriptShiftUpCramped`.
+        let radicand_layout = self.layout_node_state(radicand, state.cramp())?;
 
+        let style = state.style;
         let family = "default";
         let style_scale = self.get_style_scale(style);
         let size = self.base_size * style_scale;
@@ -1360,21 +1377,19 @@ impl LayoutEngine {
         base: &SemanticNode,
         sub: Option<&SemanticNode>,
         sup: Option<&SemanticNode>,
-        style: MathStyle,
+        state: MathStyleState,
     ) -> MathResult<LayoutNode> {
         // Upper and lower limits are one style smaller than the operator, so a
         // display/text operator takes script limits and a script operator takes
-        // scriptscript limits.
-        let next_style = match style {
-            MathStyle::Display | MathStyle::Text => MathStyle::Script,
-            _ => MathStyle::ScriptScript,
-        };
+        // scriptscript limits.  An upper limit inherits `cramped`, a lower one
+        // is forced cramped, exactly like the scripts they mirror.
+        let style = state.style;
 
         let family = "default";
         let style_scale = self.get_style_scale(style);
         let size = self.base_size * style_scale;
 
-        let base_layout = self.layout_node(base, style)?;
+        let base_layout = self.layout_node_state(base, state)?;
         let axis_height =
             self.font_system.get_math_constant(family, MathConstant::AxisHeight).unwrap_or(Fixed::from_f64(0.25)) * size;
         let base_shift = axis_height - (base_layout.height() - base_layout.depth()) / Fixed::from_f64(2.0);
@@ -1388,11 +1403,11 @@ impl LayoutEngine {
         // We need the widths of sup and sub to calculate the total width
         let mut sup_layout = None;
         if let Some(s) = sup {
-            sup_layout = Some(self.layout_node(s, next_style)?);
+            sup_layout = Some(self.layout_node_state(s, state.sup())?);
         }
         let mut sub_layout = None;
         if let Some(s) = sub {
-            sub_layout = Some(self.layout_node(s, next_style)?);
+            sub_layout = Some(self.layout_node_state(s, state.sub())?);
         }
 
         let total_width = base_layout
@@ -1486,20 +1501,16 @@ impl LayoutEngine {
         base: &SemanticNode,
         sub: Option<&SemanticNode>,
         sup: Option<&SemanticNode>,
-        style: MathStyle,
+        state: MathStyleState,
         class: OperatorClass,
         limits: LimitsPolicy,
     ) -> MathResult<LayoutNode> {
+        let style = state.style;
         if class.places_limits(limits, style) {
-            return self.layout_limits(base, sub, sup, style);
+            return self.layout_limits(base, sub, sup, state);
         }
 
-        let base_layout = self.layout_node(base, style)?;
-
-        let next_style = match style {
-            MathStyle::Display | MathStyle::Text => MathStyle::Script,
-            _ => MathStyle::ScriptScript,
-        };
+        let base_layout = self.layout_node_state(base, state)?;
 
         let family = "default";
         let style_scale = self.get_style_scale(style);
@@ -1510,10 +1521,13 @@ impl LayoutEngine {
         let mut sup_depth = Fixed::ZERO;
 
         if let Some(sup_node) = sup {
-            let sup_layout = self.layout_node(sup_node, next_style)?;
-            let sup_shift =
-                self.font_system.get_math_constant(family, MathConstant::SuperscriptShiftUp).unwrap_or(Fixed::from_f64(0.4))
-                    * size;
+            let sup_layout = self.layout_node_state(sup_node, state.sup())?;
+            // A cramped base takes the font's cramped minimum instead of the
+            // regular one.  `SuperscriptBottomMin` still wins over both when the
+            // nucleus is tall enough.
+            let sup_constant =
+                if state.cramped { MathConstant::SuperscriptShiftUpCramped } else { MathConstant::SuperscriptShiftUp };
+            let sup_shift = self.font_system.get_math_constant(family, sup_constant).unwrap_or(Fixed::from_f64(0.4)) * size;
             let sup_bottom_min =
                 self.font_system.get_math_constant(family, MathConstant::SuperscriptBottomMin).unwrap_or(Fixed::from_f64(0.1))
                     * size;
@@ -1527,7 +1541,7 @@ impl LayoutEngine {
         }
 
         if let Some(sub_node) = sub {
-            let sub_layout = self.layout_node(sub_node, next_style)?;
+            let sub_layout = self.layout_node_state(sub_node, state.sub())?;
             let sub_shift =
                 self.font_system.get_math_constant(family, MathConstant::SubscriptShiftDown).unwrap_or(Fixed::from_f64(0.2))
                     * size;
@@ -1658,7 +1672,7 @@ impl LayoutEngine {
         row_spacing: Fixed,
         col_spacing: Fixed,
         column_alignment: &[Alignment],
-        style: MathStyle,
+        state: MathStyleState,
     ) -> MathResult<LayoutNode> {
         if rows.is_empty() {
             return Ok(LayoutNode::Kern(Fixed::ZERO));
@@ -1671,7 +1685,7 @@ impl LayoutEngine {
             return Ok(LayoutNode::Kern(Fixed::ZERO));
         }
 
-        let style_scale = self.get_style_scale(style);
+        let style_scale = self.get_style_scale(state.style);
         let size = self.base_size * style_scale;
 
         let row_spacing = row_spacing * size;
@@ -1683,7 +1697,7 @@ impl LayoutEngine {
 
         for r in 0..num_rows {
             for c in 0..rows[r].len() {
-                let layout = self.layout_node(&rows[r][c], style)?;
+                let layout = self.layout_node_state(&rows[r][c], state)?;
                 col_widths[c] = col_widths[c].max(layout.width());
                 cell_layouts[r][c] = Some(layout);
             }
@@ -1776,10 +1790,10 @@ impl LayoutEngine {
         left: Option<&GlyphKey>,
         right: Option<&GlyphKey>,
         content: &SemanticNode,
-        style: MathStyle,
+        state: MathStyleState,
     ) -> MathResult<LayoutNode> {
-        let content_layout = self.layout_node(content, style)?;
-        self.layout_fence(left, right, content_layout, style)
+        let content_layout = self.layout_node_state(content, state)?;
+        self.layout_fence(left, right, content_layout, state)
     }
 
     /// Size a `\left…\right` pair around an already-laid-out body.
@@ -1793,8 +1807,9 @@ impl LayoutEngine {
         left: Option<&GlyphKey>,
         right: Option<&GlyphKey>,
         content_layout: LayoutNode,
-        style: MathStyle,
+        state: MathStyleState,
     ) -> MathResult<LayoutNode> {
+        let style = state.style;
         let style_scale = self.get_style_scale(style);
         let size = self.base_size * style_scale;
         let family = "default";
@@ -1903,8 +1918,9 @@ impl LayoutEngine {
         Ok(self.center_delimiter(vbox, axis_height))
     }
 
-    fn layout_accent(&self, accent: &GlyphKey, base: &SemanticNode, style: MathStyle) -> MathResult<LayoutNode> {
-        let base_layout = self.layout_node(base, style)?;
+    fn layout_accent(&self, accent: &GlyphKey, base: &SemanticNode, state: MathStyleState) -> MathResult<LayoutNode> {
+        let base_layout = self.layout_node_state(base, state)?;
+        let style = state.style;
         let style_scale = self.get_style_scale(style);
         let size = self.base_size * style_scale;
 
