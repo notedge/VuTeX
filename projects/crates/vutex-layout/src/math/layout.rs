@@ -163,6 +163,14 @@ pub struct Glyph {
     pub metrics: GlyphMetrics,
     /// Pre-scaled SVG path data when the font provides outlines.
     pub path_data: Option<String>,
+    /// Font unique identifier (family hash) matched against
+    /// [`PaintNode::GlyphRun::font_id`].  `None` when the glyph came from a
+    /// text fallback or the font system carried no face id.
+    pub font_id: Option<String>,
+    /// Glyph id within the referenced font face.  `None` when the GlyphKey
+    /// lacked an id (e.g. a char-only reference) or the font could not
+    /// resolve one.
+    pub glyph_id: Option<u16>,
 }
 
 /// Flexible space that can stretch or shrink during packing.
@@ -692,7 +700,7 @@ impl LayoutEngine {
         style: MathStyle,
     ) -> MathResult<FormulaLayoutResult> {
         let layout_node = self.layout_math_list(nodes, style)?;
-        let paint = lower_layout_to_paint(&layout_node);
+        let paint = lower_layout_to_paint(&layout_node, self.base_size);
         let metrics = extract_metrics(&layout_node);
         let fonts = FontMetricsSnapshot::default();
         Ok(FormulaLayoutResult { metrics, paint, diagnostics: Vec::new(), fonts })
@@ -811,10 +819,16 @@ impl LayoutEngine {
     fn layout_scaled_symbol(&self, key: &GlyphKey, size: Fixed) -> MathResult<LayoutNode> {
         let metrics = self.font_system.get_metrics(key)?;
         let path_data = self.font_system.get_glyph_path(key).ok();
+        let font_family = key.font_family.clone().unwrap_or_else(|| "default".to_string());
+        // `font_id` echoes the family name for now — the font snapshot layer
+        // can refine this to a hash later.  `glyph_id` comes straight from
+        // the GlyphKey; text-only keys carry None here.
+        let font_id = Some(font_family.clone());
+        let glyph_id = key.glyph_id;
 
         Ok(LayoutNode::Glyph(Glyph {
             char: key.char,
-            font_family: key.font_family.clone().unwrap_or_else(|| "default".to_string()),
+            font_family,
             font_style: key.style,
             size,
             metrics: GlyphMetrics {
@@ -825,6 +839,8 @@ impl LayoutEngine {
                 top_accent_attachment: metrics.top_accent_attachment * size.to_f64(),
             },
             path_data,
+            font_id,
+            glyph_id,
         }))
     }
 
@@ -1905,26 +1921,34 @@ fn accent_ink_extents(node: &LayoutNode) -> Option<(Fixed, Fixed)> {
 
 /// 递归把 [`LayoutNode`] 树降成 [`PaintNode`] 树。
 ///
-/// 第一版策略：
-/// * HBox / VBox → [`PaintNode::Group`]，递归子节点；advances（kerns/glue）
-///   不 paint，已经折叠在 metrics 里。
-/// * Glyph → 优先走 [`PaintNode::VectorPath`]（SVG outline），其次退化成
-///   空 Group（占位），因为 PaintNode 的 GlyphRun 需要真实 font_id +
-///   glyph_ids 快照，目前 LayoutNode::Glyph 没那份数据。
+/// * HBox / VBox → [`PaintNode::Group`]，递归子节点。
+/// * Glyph → 优先 [`PaintNode::GlyphRun`]（font_id + glyph_ids + positions），
+///   缺 glyph_id 时回退 [`PaintNode::VectorPath`]（SVG outline），再兜底空
+///   Group。
 /// * Rule → [`PaintNode::Rect`]。
 /// * Path → [`PaintNode::VectorPath`]。
 /// * Kern / Glue / Penalty → 空 Group（不 paint，advance 进 metrics）。
-fn lower_layout_to_paint(node: &LayoutNode) -> PaintNode {
+fn lower_layout_to_paint(node: &LayoutNode, base_size: Fixed) -> PaintNode {
     match node {
         LayoutNode::HBox(hbox) => {
-            let children: Vec<_> = hbox.children.iter().map(lower_layout_to_paint).collect();
+            let children: Vec<_> = hbox.children.iter().map(|c| lower_layout_to_paint(c, base_size)).collect();
             PaintNode::Group(children)
         }
         LayoutNode::VBox(vbox) => {
-            let children: Vec<_> = vbox.children.iter().map(lower_layout_to_paint).collect();
+            let children: Vec<_> = vbox.children.iter().map(|c| lower_layout_to_paint(c, base_size)).collect();
             PaintNode::Group(children)
         }
         LayoutNode::Glyph(glyph) => {
+            // 有 glyph_id 就走 GlyphRun；这是 PaintNode 里字体友好的表示。
+            if glyph.glyph_id.is_some() {
+                return PaintNode::GlyphRun {
+                    font_id: glyph.font_id.clone().unwrap_or_default(),
+                    glyph_ids: vec![glyph.glyph_id.unwrap_or(0)],
+                    positions: vec![(Fixed::ZERO, Fixed::ZERO)],
+                    size: glyph.size,
+                };
+            }
+            // 没 glyph_id 但有 outline path：走 VectorPath。
             if let Some(ref path) = glyph.path_data {
                 let bbox = BBox {
                     x: Fixed::ZERO,
@@ -1932,12 +1956,12 @@ fn lower_layout_to_paint(node: &LayoutNode) -> PaintNode {
                     width: glyph.metrics.width,
                     height: glyph.metrics.height + glyph.metrics.depth,
                 };
-                PaintNode::VectorPath { d: path.clone(), bbox }
+                return PaintNode::VectorPath { d: path.clone(), bbox };
             }
-            else {
-                // 占位：真实场景应填 PaintNode::GlyphRun{font_id, glyph_ids, ...}。
-                PaintNode::Group(Vec::new())
-            }
+            // 兜底：空 Group。renderer 应该能接受，但这表示 layout
+            // 没为这个 glyph 准备好任何可见内容。
+            let _ = base_size; // 当前 Glyph.size 已足够，留签名给将来 fallback
+            PaintNode::Group(Vec::new())
         }
         LayoutNode::Rule { width, height, depth } => PaintNode::Rect {
             x: Fixed::ZERO,

@@ -196,6 +196,8 @@ fn glyph_without_an_outline_is_reported_instead_of_falling_back() {
             top_accent_attachment: Fixed::ZERO,
         },
         path_data: None,
+        font_id: None,
+        glyph_id: None,
     });
 
     let mut diagnostics = Vec::new();
