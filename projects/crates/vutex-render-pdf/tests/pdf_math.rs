@@ -5,10 +5,10 @@
 //! embedded font cannot outline is reported instead of being drawn with a host
 //! serif face.
 
-use vutex_layout::math::{
-    Glyph, LayoutNode, collect_layout, collect_layout_with_diagnostics, layout_formula,
+use vutex_layout::{
+    math::{Glyph, LayoutNode, collect_layout, collect_layout_with_diagnostics, layout_formula},
+    plan::{LayoutItem, LayoutPage, LayoutPlan},
 };
-use vutex_layout::plan::{LayoutItem, LayoutPage, LayoutPlan};
 use vutex_presentation::build_display_presentation;
 use vutex_render_pdf::render_pdf_with_diagnostics;
 use vutex_types::{
@@ -78,11 +78,8 @@ fn rectangle_fills(content: &str, min_width: f64) -> usize {
             if ops != ["m", "l", "l", "l", "h"] {
                 return false;
             }
-            let xs: Vec<f64> = lines
-                .iter()
-                .take(4)
-                .filter_map(|line| line.split_whitespace().next()?.parse::<f64>().ok())
-                .collect();
+            let xs: Vec<f64> =
+                lines.iter().take(4).filter_map(|line| line.split_whitespace().next()?.parse::<f64>().ok()).collect();
             xs.len() == 4 && (xs[0] - xs[2]).abs() >= min_width
         })
         .count()
@@ -127,11 +124,8 @@ fn path_origins(content: &str) -> Vec<(f64, f64)> {
     let mut origins = Vec::new();
     for block in content.split("q\n").skip(1) {
         if let Some(line) = block.lines().find(|line| line.ends_with(" m")) {
-            let numbers: Vec<f64> = line
-                .trim_end_matches(" m")
-                .split_whitespace()
-                .map(|value| value.parse().expect("path operand"))
-                .collect();
+            let numbers: Vec<f64> =
+                line.trim_end_matches(" m").split_whitespace().map(|value| value.parse().expect("path operand")).collect();
             origins.push((numbers[0], numbers[1]));
         }
     }
@@ -164,10 +158,7 @@ fn math_pages_paint_outlines_without_host_text() {
         );
         let rules = rule_primitives(&root);
         let painted = content.matches(" re\n").count() + rectangle_fills(&content, 2.0);
-        assert_eq!(
-            painted, rules,
-            "{source}: every rule paints as a filled rectangle, expected {rules}: {content}"
-        );
+        assert_eq!(painted, rules, "{source}: every rule paints as a filled rectangle, expected {rules}: {content}");
         assert!(!content.contains("\nS\n"), "{source}: a math page strokes nothing: {content}");
     }
 }

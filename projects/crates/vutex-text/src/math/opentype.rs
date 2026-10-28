@@ -10,8 +10,8 @@
 use acorn_ttf::{FontFace, OutlineBuilder, tables::math::PartRecord};
 
 use vutex_types::math::{
-    DelimiterComponent, DelimiterConstruction, DelimiterVariant, Fixed, FontMetricsData, FontStyle, GlyphKey,
-    GlyphMetrics, MathConstant,
+    DelimiterComponent, DelimiterConstruction, DelimiterVariant, Fixed, FontMetricsData, FontStyle, GlyphKey, GlyphMetrics,
+    MathConstant,
 };
 
 /// Embedded OpenType MATH font: Latin Modern Math Regular.
@@ -186,10 +186,8 @@ pub fn opentype_font_metrics() -> Option<FontMetricsData> {
 
 fn extract_math_constants(constants: &acorn_ttf::tables::math::MathConstants, data: &mut FontMetricsData, one_em: f64) {
     // Percentage constants → store as fraction (e.g. 70 → 0.7)
-    data.constants.insert(
-        MathConstant::ScriptPercentScaleDown,
-        Fixed::from_f64(constants.script_percent_scale_down as f64 / 100.0),
-    );
+    data.constants
+        .insert(MathConstant::ScriptPercentScaleDown, Fixed::from_f64(constants.script_percent_scale_down as f64 / 100.0));
     data.constants.insert(
         MathConstant::ScriptScriptPercentScaleDown,
         Fixed::from_f64(constants.script_script_percent_scale_down as f64 / 100.0),
@@ -198,10 +196,8 @@ fn extract_math_constants(constants: &acorn_ttf::tables::math::MathConstants, da
         MathConstant::DelimitedSubFormulaMinHeight,
         Fixed::from_f64(constants.delimited_sub_formula_min_height as f64 / one_em),
     );
-    data.constants.insert(
-        MathConstant::DisplayOperatorMinHeight,
-        Fixed::from_f64(constants.display_operator_min_height as f64 / one_em),
-    );
+    data.constants
+        .insert(MathConstant::DisplayOperatorMinHeight, Fixed::from_f64(constants.display_operator_min_height as f64 / one_em));
 
     // All the MathValue-based constants — acorn-ttf stores them as raw f32 font units.
     let m = |v: f32| Fixed::from_f64(v as f64 / one_em);
@@ -218,10 +214,7 @@ fn extract_math_constants(constants: &acorn_ttf::tables::math::MathConstants, da
     data.constants.insert(MathConstant::SuperscriptBottomMin, m(constants.superscript_bottom_min));
     data.constants.insert(MathConstant::SuperscriptBaselineDropMax, m(constants.superscript_baseline_drop_max));
     data.constants.insert(MathConstant::SubSuperscriptGapMin, m(constants.sub_superscript_gap_min));
-    data.constants.insert(
-        MathConstant::SuperscriptBottomMaxWithSubscript,
-        m(constants.superscript_bottom_max_with_subscript),
-    );
+    data.constants.insert(MathConstant::SuperscriptBottomMaxWithSubscript, m(constants.superscript_bottom_max_with_subscript));
     data.constants.insert(MathConstant::SpaceAfterScript, m(constants.space_after_script));
     data.constants.insert(MathConstant::UpperLimitGapMin, m(constants.upper_limit_gap_min));
     data.constants.insert(MathConstant::UpperLimitBaselineRiseMin, m(constants.upper_limit_baseline_rise_min));
@@ -230,10 +223,7 @@ fn extract_math_constants(constants: &acorn_ttf::tables::math::MathConstants, da
     data.constants.insert(MathConstant::StackTopShiftUp, m(constants.stack_top_shift_up));
     data.constants.insert(MathConstant::StackTopDisplayStyleShiftUp, m(constants.stack_top_display_style_shift_up));
     data.constants.insert(MathConstant::StackBottomShiftDown, m(constants.stack_bottom_shift_down));
-    data.constants.insert(
-        MathConstant::StackBottomDisplayStyleShiftDown,
-        m(constants.stack_bottom_display_style_shift_down),
-    );
+    data.constants.insert(MathConstant::StackBottomDisplayStyleShiftDown, m(constants.stack_bottom_display_style_shift_down));
     data.constants.insert(MathConstant::StackGapMin, m(constants.stack_gap_min));
     data.constants.insert(MathConstant::StackDisplayStyleGapMin, m(constants.stack_display_style_gap_min));
     data.constants.insert(MathConstant::StretchStackTopShiftUp, m(constants.stretch_stack_top_shift_up));
@@ -241,10 +231,8 @@ fn extract_math_constants(constants: &acorn_ttf::tables::math::MathConstants, da
     data.constants.insert(MathConstant::StretchStackGapAboveMin, m(constants.stretch_stack_gap_above_min));
     data.constants.insert(MathConstant::StretchStackGapBelowMin, m(constants.stretch_stack_gap_below_min));
     data.constants.insert(MathConstant::FractionNumeratorShiftUp, m(constants.fraction_numerator_shift_up));
-    data.constants.insert(
-        MathConstant::FractionNumeratorDisplayStyleShiftUp,
-        m(constants.fraction_numerator_display_style_shift_up),
-    );
+    data.constants
+        .insert(MathConstant::FractionNumeratorDisplayStyleShiftUp, m(constants.fraction_numerator_display_style_shift_up));
     data.constants.insert(MathConstant::FractionDenominatorShiftDown, m(constants.fraction_denominator_shift_down));
     data.constants.insert(
         MathConstant::FractionDenominatorDisplayStyleShiftDown,
@@ -315,16 +303,12 @@ fn extract_glyph_metrics_and_outlines(
         let width_emu = advance as f64 / one_em;
 
         // Real italic correction from MathGlyphInfo, in em units.
-        let italic_correction = italic_corrections
-            .get(&gid)
-            .map(|mv| Fixed::from_f64(*mv as f64 / one_em))
-            .unwrap_or(Fixed::ZERO);
+        let italic_correction =
+            italic_corrections.get(&gid).map(|mv| Fixed::from_f64(*mv as f64 / one_em)).unwrap_or(Fixed::ZERO);
 
         // MathTopAccentAttachment TopRight Y value, in em units.
-        let top_accent_attachment = top_accent_attachments
-            .get(&gid)
-            .map(|mv| Fixed::from_f64(*mv as f64 / one_em))
-            .unwrap_or(Fixed::ZERO);
+        let top_accent_attachment =
+            top_accent_attachments.get(&gid).map(|mv| Fixed::from_f64(*mv as f64 / one_em)).unwrap_or(Fixed::ZERO);
 
         let metrics = GlyphMetrics {
             width: Fixed::from_f64(width_emu.max(0.01)),

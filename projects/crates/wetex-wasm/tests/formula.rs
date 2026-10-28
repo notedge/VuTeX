@@ -59,11 +59,7 @@ fn strict_outline_covers_ascii_relations() {
     let svg = value["svg"].as_str().unwrap_or_default();
     assert!(svg.contains("<path"), "strict outline emitted no paths: {value}");
     assert!(!svg.contains("<text"), "strict outline fell back to a host font: {svg}");
-    assert_eq!(
-        value["diagnostics"].as_array().map(Vec::len),
-        Some(0),
-        "strict outline reported diagnostics: {value}"
-    );
+    assert_eq!(value["diagnostics"].as_array().map(Vec::len), Some(0), "strict outline reported diagnostics: {value}");
 }
 
 #[test]

@@ -119,12 +119,7 @@ fn spacing_commands_paint_no_glyph_and_raise_no_outline_gap() {
     // The space still advances the pen, it just does so without ink.
     let (_, spaced) = layout_formula(r"a\ b", true).expect("layout");
     let (_, tight) = layout_formula("ab", true).expect("layout");
-    assert!(
-        spaced.width > tight.width,
-        "a spacing command must still advance the pen: {} vs {}",
-        spaced.width,
-        tight.width
-    );
+    assert!(spaced.width > tight.width, "a spacing command must still advance the pen: {} vs {}", spaced.width, tight.width);
 
     // A glyph the font really cannot outline keeps its diagnostic.
     let (root, _layout) = layout_formula(r"\text{中}", true).expect("layout");

@@ -38,7 +38,11 @@ fn glyphs(node: &LayoutNode) -> Vec<(f64, f64, Glyph)> {
                 }
             }
             LayoutNode::Glyph(glyph) => out.push((x, y, glyph.clone())),
-            LayoutNode::Rule { .. } | LayoutNode::Glue(_) | LayoutNode::Kern(_) | LayoutNode::Path(_) | LayoutNode::Penalty { .. } => {}
+            LayoutNode::Rule { .. }
+            | LayoutNode::Glue(_)
+            | LayoutNode::Kern(_)
+            | LayoutNode::Path(_)
+            | LayoutNode::Penalty { .. } => {}
         }
     }
 
@@ -643,7 +647,10 @@ fn bmatrix_supported() {
 #[test]
 fn hat_accent_centres_on_base_top_accent_attachment() {
     let (tree, _) = layout_formula("\\hat{f}", false).expect("\\hat{f} should lay out");
-    let LayoutNode::VBox(vbox) = &tree else { panic!("an accent stacks an accent box over a base box: {tree:?}") };
+    let LayoutNode::VBox(vbox) = &tree
+    else {
+        panic!("an accent stacks an accent box over a base box: {tree:?}")
+    };
     assert_eq!(vbox.children.len(), 2, "accent stack should hold exactly the accent and the base");
 
     let (accent_offset, accent) = first_glyph(&vbox.children[0]);
@@ -732,7 +739,10 @@ fn rules(node: &LayoutNode) -> Vec<(f64, f64, f64, f64)> {
 #[test]
 fn hat_accent_paints_font_ink_on_the_base_attachment() {
     let (tree, _) = layout_formula("\\hat{x}", false).expect("\\hat{x} should lay out");
-    let LayoutNode::VBox(vbox) = &tree else { panic!("an accent stacks an accent box over a base box: {tree:?}") };
+    let LayoutNode::VBox(vbox) = &tree
+    else {
+        panic!("an accent stacks an accent box over a base box: {tree:?}")
+    };
     assert_eq!(vbox.children.len(), 2, "accent stack should hold exactly the accent and the base");
 
     let (accent_x, accent_y, accent) = glyph_at(&tree, 'ˆ');
@@ -1101,10 +1111,7 @@ fn fraction_arguments_demote_one_style_further() {
         let sizes = glyph_sizes(&tree);
         assert!(!sizes.is_empty(), "`{source}` must lay out glyphs");
         for size in sizes {
-            assert!(
-                (size - expected).abs() < 0.01,
-                "`{source}` arguments must be set at {expected} px, found {size}"
-            );
+            assert!((size - expected).abs() < 0.01, "`{source}` arguments must be set at {expected} px, found {size}");
         }
     }
 }
@@ -1293,8 +1300,7 @@ fn display_style_uses_the_fonts_display_size_operator() {
 /// each start at their column's left edge, so short cells are never centred.
 #[test]
 fn cases_left_aligns_its_columns() {
-    let (tree, _) =
-        layout_formula("\\begin{cases} q & a \\\\ xyz & b \\end{cases}", false).expect("cases should lay out");
+    let (tree, _) = layout_formula("\\begin{cases} q & a \\\\ xyz & b \\end{cases}", false).expect("cases should lay out");
 
     let (expression_x, _, _) = glyph_at(&tree, 'q');
     let (wide_expression_x, _, _) = glyph_at(&tree, 'x');
@@ -1315,10 +1321,9 @@ fn cases_left_aligns_its_columns() {
 /// before the relation is right-aligned and every relation lands on one x.
 #[test]
 fn aligned_alternates_right_and_left_columns() {
-    for source in [
-        "\\begin{aligned} q &= a \\\\ xyz &= b \\end{aligned}",
-        "\\begin{alignedat}{2} q &= a \\\\ xyz &= b \\end{alignedat}",
-    ] {
+    for source in
+        ["\\begin{aligned} q &= a \\\\ xyz &= b \\end{aligned}", "\\begin{alignedat}{2} q &= a \\\\ xyz &= b \\end{alignedat}"]
+    {
         let (tree, _) = layout_formula(source, false).expect(source);
 
         let (short_x, _, _) = glyph_at(&tree, 'q');

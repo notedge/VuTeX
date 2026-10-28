@@ -16,13 +16,8 @@ use vutex_types::math::MathErrorKind;
 /// Invariants every `layout` record is checked against by the gate.
 const BASE_INVARIANTS: &[&str] = &["glyph_count", "ink_in_viewbox", "no_text", "positive_metrics"];
 /// Extra invariants a record may request on top of [`BASE_INVARIANTS`].
-const EXTRA_INVARIANTS: &[&str] = &[
-    "display_fraction_height",
-    "script_fraction_shrinks",
-    "delimiter_covers_body",
-    "rule_for_bar",
-    "parse_error",
-];
+const EXTRA_INVARIANTS: &[&str] =
+    &["display_fraction_height", "script_fraction_shrinks", "delimiter_covers_body", "rule_for_bar", "parse_error"];
 
 /// One formula record in the gate corpus.
 #[derive(Debug, Deserialize)]
@@ -69,8 +64,21 @@ fn corpus_declares_its_provenance_and_version() {
 #[test]
 fn corpus_covers_every_required_construct_group() {
     const REQUIRED: &[&str] = &[
-        "arithmetic", "relation", "fraction", "radical", "scripts", "limits", "accent", "delimiter", "matrix", "cases",
-        "aligned", "split", "inline", "display", "error",
+        "arithmetic",
+        "relation",
+        "fraction",
+        "radical",
+        "scripts",
+        "limits",
+        "accent",
+        "delimiter",
+        "matrix",
+        "cases",
+        "aligned",
+        "split",
+        "inline",
+        "display",
+        "error",
     ];
 
     let corpus = load_corpus();
@@ -105,16 +113,8 @@ fn corpus_records_declare_well_formed_expectations() {
 
     for case in &corpus.cases {
         let label = format!("`{}` ({})", case.src, case.group);
-        assert!(
-            matches!(case.style.as_str(), "display" | "text" | "script"),
-            "{label}: unknown style `{}`",
-            case.style
-        );
-        assert!(
-            matches!(case.expected.as_str(), "layout" | "error"),
-            "{label}: unknown expectation `{}`",
-            case.expected
-        );
+        assert!(matches!(case.style.as_str(), "display" | "text" | "script"), "{label}: unknown style `{}`", case.style);
+        assert!(matches!(case.expected.as_str(), "layout" | "error"), "{label}: unknown expectation `{}`", case.expected);
         assert!(!case.invariants.is_empty(), "{label}: a record must name the invariants it locks");
 
         for invariant in &case.invariants {
@@ -144,10 +144,15 @@ fn corpus_layout_records_produce_positive_metrics() {
 
     for case in corpus.cases.iter().filter(|case| case.expected == "layout") {
         let display = is_display(&case.style);
-        let (_, metrics) = layout_formula(&case.src, display)
-            .unwrap_or_else(|e| panic!("`{}` ({}) must lay out: {e}", case.src, case.style));
+        let (_, metrics) =
+            layout_formula(&case.src, display).unwrap_or_else(|e| panic!("`{}` ({}) must lay out: {e}", case.src, case.style));
 
-        assert!(metrics.width.is_finite() && metrics.width > 0.0, "`{}`: width must be positive, got {}", case.src, metrics.width);
+        assert!(
+            metrics.width.is_finite() && metrics.width > 0.0,
+            "`{}`: width must be positive, got {}",
+            case.src,
+            metrics.width
+        );
         assert!(
             metrics.height.is_finite() && metrics.height > 0.0,
             "`{}`: height must be positive, got {}",
@@ -165,7 +170,8 @@ fn corpus_layout_records_produce_positive_metrics() {
         );
 
         if let Some(body) = &case.body {
-            layout_formula(body, display).unwrap_or_else(|e| panic!("`{}`: delimiter body `{body}` must lay out: {e}", case.src));
+            layout_formula(body, display)
+                .unwrap_or_else(|e| panic!("`{}`: delimiter body `{body}` must lay out: {e}", case.src));
         }
     }
 }
@@ -175,8 +181,7 @@ fn corpus_error_records_really_fail_to_parse() {
     let corpus = load_corpus();
 
     for case in corpus.cases.iter().filter(|case| case.expected == "error") {
-        let error = layout_formula(&case.src, is_display(&case.style))
-            .expect_err(&format!("`{}` must be rejected", case.src));
+        let error = layout_formula(&case.src, is_display(&case.style)).expect_err(&format!("`{}` must be rejected", case.src));
         assert!(
             matches!(*error.kind, MathErrorKind::ParseError { .. }),
             "`{}` must fail as a parse error, got {:?}",
