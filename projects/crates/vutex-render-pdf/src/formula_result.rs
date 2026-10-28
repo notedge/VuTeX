@@ -14,12 +14,12 @@
 //! | `Group`          | recursive descent                |
 //! | `Rect`           | `re` + `f` (filled), `re` + `S`  |
 //! | `VectorPath`     | tokenize SVG `d` → PDF path ops  |
-//! | `GlyphRun`       | placeholder marker (no outlines)  |
+//! | `GlyphRun`       | per-glyph `d` → path ops, scaled & translated |
 
 use std::fmt::{self, Write};
 
 use vutex_types::{Diagnostic, Severity};
-use vutex_types::math::{FormulaLayoutResult, PaintNode};
+use vutex_types::math::{Fixed, FormulaLayoutResult, PaintNode};
 
 /// Render a fully laid-out formula as a minimal single-page PDF document.
 ///
@@ -98,40 +98,25 @@ fn render_paint_pdf(out: &mut String, node: &PaintNode, origin_x: f64, origin_y:
                 let _ = write!(out, "q\n0.0 f\n{ops}f\nQ\n");
             }
         }
-        PaintNode::GlyphRun { font_id: _, glyph_ids: _, positions: _, size: _, path_data: _ } => {
-            // Placeholder: glyph outline paths are not yet plumbed into the
-            // paint tree.  A future change will look up glyph outlines from
-            // the font snapshot and emit real PDF path ops here.
-            //
-            // ## Outline-path query chain — current gap
-            //
-            // Layout produces `LayoutNode::Glyph` which carries BOTH
-            // `path_data: Option<String>` (real SVG outline, populated from
-            // `FontMetricsData.glyph_paths`) AND `glyph_id: Option<u16>`.
-            // `lower_layout_to_paint` currently routes glyphs that have a
-            // `glyph_id` into `PaintNode::GlyphRun`, discarding the sibling
-            // `path_data`.  Only glyphs WITHOUT a `glyph_id` fall through to
-            // `PaintNode::VectorPath`, where the outline IS preserved.
-            //
-            // `PaintNode::GlyphRun` itself has no `path_data` field, and
-            // `FormulaLayoutResult.fonts` (`FontMetricsSnapshot`) only stores
-            // face metadata (font_id, family, upm, axes) — the real
-            // `glyph_paths: HashMap<GlyphKey, String>` lives inside
-            // `FontMetricsData` which never leaves the layout engine.
-            //
-            // To render real outlines here, one of the following must happen:
-            //   (a) Extend `PaintNode::GlyphRun` with per-glyph `path_data`,
-            //       or a single merged outline;
-            //   (b) Snapshot `glyph_paths` into `FontMetricsSnapshot` keyed by
-            //       (font_id, glyph_id) so renderers can look them up;
-            //   (c) Change `lower_layout_to_paint` to emit
-            //       `PaintNode::VectorPath` for glyphs that have BOTH
-            //       glyph_id AND path_data.
-            //
-            // Once a path string is available, the existing
-            // `svg_path_to_pdf_ops` helper already handles SVG→PDF path
-            // conversion — each glyph's outline simply needs to be emitted
-            // as a `q ... f Q` block translated by its per-glyph position.
+        PaintNode::GlyphRun { font_id, glyph_ids, positions, size, path_data } => {
+            // 每个 glyph 的 path_data 是 em 单位的 SVG `d`，用 PDF `cm` 矩阵
+            // 统一做 scale (em → math pixels) + translate (per-glyph offset)，
+            // 然后 svg_path_to_pdf_ops 只需输出相对原点的路径即可。
+            let scale = size.to_f64();
+            for (i, d_opt) in path_data.iter().enumerate() {
+                if let Some(d) = d_opt {
+                    let (ox, oy) = positions.get(i).copied().unwrap_or((Fixed::ZERO, Fixed::ZERO));
+                    let ops = svg_path_to_pdf_ops(d, 0.0, 0.0);
+                    if !ops.is_empty() {
+                        let _ = write!(
+                            out,
+                            "q\n0.0 f\n{:.4} 0 0 {:.4} {:.4} {:.4} cm\n{ops}f\nQ\n",
+                            scale, scale, ox.to_f64(), oy.to_f64()
+                        );
+                    }
+                }
+            }
+            let _ = (font_id, glyph_ids); // 将来用于 CID font 引用
         }
     }
 }
