@@ -1,6 +1,9 @@
-use vutex_layout::math::{FormulaLayout, default_base_size, layout_formula, layout_formula_with_diagnostics};
+use vutex_layout::math::{FormulaLayout, default_base_size, layout_formula, layout_formula_with_diagnostics, parse_formula};
 use vutex_render_svg::math::{MathmlBackend, SvgBackend};
-use vutex_types::{Diagnostic, Severity, math::MathError};
+use vutex_types::{
+    Diagnostic, Severity,
+    math::{MathError, MathSemantics},
+};
 
 use crate::types::{DisplayMode, FormulaDiagnostic, FormulaMetrics, FormulaRender, RenderOptions};
 
@@ -111,10 +114,13 @@ fn render_formula_svg_inner(
 }
 
 fn render_formula_mathml_inner(source: &str, display: bool) -> Result<(String, FormulaLayout), MathError> {
-    use vutex_layout::math::render_layout_node;
-    let (root, layout) = layout_formula(source, display)?;
+    // Structure comes from the parsed math IR and metrics from the same layout
+    // engine the SVG path uses, so both backends describe one formula.
+    let tree = parse_formula(source)?;
+    let (_, layout) = layout_formula(source, display)?;
+    let semantics = MathSemantics::from_semantic_tree(&tree);
     let mut backend = MathmlBackend::new();
-    render_layout_node(&mut backend, &root, 0.0, layout.height)?;
+    backend.render_semantics(&semantics);
     Ok((backend.finish(), layout))
 }
 

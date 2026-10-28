@@ -5,9 +5,9 @@
 //! laid-out formula produces sane box metrics (positive width, non-negative
 //! height and depth).
 
-use vutex_layout::math::{FormulaLayout, LayoutNode, layout_formula, render_layout_node};
+use vutex_layout::math::{FormulaLayout, LayoutNode, layout_formula, parse_formula, render_layout_node};
 use vutex_render_svg::math::{MathmlBackend, SvgBackend};
-use vutex_types::math::Fixed;
+use vutex_types::math::{Fixed, MathSemantics};
 
 /// A curated list of representative formulas that exercise every major node
 /// kind in the layout engine: plain atoms, fractions, radicals, sub/super-
@@ -35,6 +35,15 @@ fn layout(source: &str) -> (LayoutNode, FormulaLayout) {
 
 fn layout_display(source: &str) -> (LayoutNode, FormulaLayout) {
     layout_formula(source, true).unwrap_or_else(|e| panic!("failed to layout (display) {source}: {e}"))
+}
+
+/// Render the structured MathML of one formula source.
+fn render_mathml(source: &str) -> String {
+    let tree = parse_formula(source).unwrap_or_else(|e| panic!("failed to parse {source}: {e}"));
+    let semantics = MathSemantics::from_semantic_tree(&tree);
+    let mut backend = MathmlBackend::new();
+    backend.render_semantics(&semantics);
+    backend.finish()
 }
 
 // ——— group 1: box-metric sanity ——— //
@@ -114,17 +123,12 @@ fn all_formulas_render_through_svg_backend() {
 
 /// The same set of formulas must also render cleanly through the MathML
 /// backend — this gives us a real cross-backend comparison: the exact same
-/// [`LayoutNode`] is painted by two fundamentally different sinks (geometry
-/// vs. semantic tree) and both must succeed at producing well-formed output.
+/// parsed formula feeds both sinks (geometry vs. semantic tree) and both must
+/// succeed at producing well-formed output.
 #[test]
 fn all_formulas_render_through_mathml_backend() {
     for formula in formula_list() {
-        let (root, layout) = layout(formula);
-        let mut backend = MathmlBackend::new();
-        render_layout_node(&mut backend, &root, 0.0, layout.height)
-            .unwrap_or_else(|e| panic!("mathml render failed for {formula}: {e}"));
-
-        let mathml = backend.finish();
+        let mathml = render_mathml(formula);
         assert!(mathml.starts_with("<math"), "{formula}: mathml output must start with <math, got {mathml:?}");
         assert!(mathml.ends_with("</math>"), "{formula}: mathml output must end with </math>, got {mathml:?}");
     }
@@ -132,10 +136,10 @@ fn all_formulas_render_through_mathml_backend() {
 
 // ——— group 4: SVG vs MathML cross-backend coherence ——— //
 
-/// For every formula, both backends must successfully render the same node —
-/// this is the actual cross-backend consistency check.  The two sinks produce
-/// completely different wire formats, but they *must* both be able to paint
-/// every node type the layout engine can emit.
+/// For every formula, both backends must successfully render the same formula
+/// source — this is the actual cross-backend consistency check.  The two sinks
+/// produce completely different wire formats, but they *must* both be able to
+/// paint every construct the parser and layout engine can emit.
 #[test]
 fn svg_and_mathml_backends_both_render_every_formula() {
     for formula in formula_list() {
@@ -147,10 +151,7 @@ fn svg_and_mathml_backends_both_render_every_formula() {
             .unwrap_or_else(|e| panic!("svg failed for {formula}: {e}"));
         let svg_ok = svg_backend.finish().starts_with("<svg");
 
-        let mut mathml_backend = MathmlBackend::new();
-        render_layout_node(&mut mathml_backend, &root, 0.0, layout.height)
-            .unwrap_or_else(|e| panic!("mathml failed for {formula}: {e}"));
-        let mathml_ok = mathml_backend.finish().starts_with("<math");
+        let mathml_ok = render_mathml(formula).starts_with("<math");
 
         assert!(
             svg_ok && mathml_ok,
