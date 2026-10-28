@@ -3,7 +3,7 @@
 use vutex_text::math::builtin_font_metrics;
 use vutex_types::{
     Diagnostic,
-    math::{MathResult, MathStyle},
+    math::{MathResult, MathSemanticTree, MathStyle},
 };
 
 use super::{LayoutEngine, parser::parse_math_with_diagnostics};
@@ -24,6 +24,15 @@ pub struct FormulaLayout {
 /// Em size used for a formula laid out without an explicit base size.
 pub fn default_base_size(display: bool) -> f64 {
     if display { 16.0 } else { 14.0 }
+}
+
+/// Parse TeX math into its semantic tree without laying it out.
+///
+/// Structured backends (Presentation MathML) render the derived
+/// [`MathSemantics`](vutex_types::math::MathSemantics) tree directly instead of
+/// reconstructing formula structure from laid-out geometry.
+pub fn parse_formula(source: &str) -> MathResult<MathSemanticTree> {
+    parse_math_with_diagnostics(source).map(|(tree, _)| tree)
 }
 
 /// Parse TeX math and produce a layout tree plus metrics.
