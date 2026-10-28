@@ -1,8 +1,11 @@
 //! Integration tests for the math parse/layout pipeline.
 
-use vutex_layout::math::{FormulaLayout, Glyph, LayoutNode, layout_formula};
+use vutex_layout::math::{FormulaLayout, Glyph, LayoutNode, layout_formula, layout_formula_with_diagnostics};
 use vutex_text::math::builtin_font_metrics;
-use vutex_types::math::{Fixed, FontStyle, GlyphKey, MathConstant};
+use vutex_types::{
+    Severity,
+    math::{Fixed, FontStyle, GlyphKey, MathConstant},
+};
 
 fn layout(source: &str) -> FormulaLayout {
     let (_, metrics) = layout_formula(source, false).expect("formula should lay out");
@@ -974,4 +977,124 @@ fn plain_matrix_keeps_centred_cells() {
     let expected_shift = (layout("xyz").width - layout("q").width) / 2.0;
     let shift = short_x - wide_x;
     assert!((shift - expected_shift).abs() < 0.02, "matrix cells stay centred: shift {shift} vs {expected_shift}");
+}
+
+#[test]
+fn alignedat_fixes_the_grid_to_the_declared_column_pairs() {
+    let source = "\\begin{alignedat}{2} q &= a & r &= b \\\\ xyz &= c & s &= d \\end{alignedat}";
+    let (tree, metrics, diagnostics) = layout_formula_with_diagnostics(source, false, 14.0).expect("alignedat should lay out");
+    assert!(diagnostics.is_empty(), "a body that fills the declared pairs must not warn: {diagnostics:?}");
+
+    // Two pairs fix four `rl` columns, so each row carries two relations and
+    // the same pair lands on one x across rows.
+    let relations = glyphs_of(&tree, '=');
+    assert_eq!(relations.len(), 4, "two pairs over two rows carry four relations");
+    assert!(
+        (relations[0].0 - relations[2].0).abs() < 0.01,
+        "the first pair's relation must line up across rows: {} vs {}",
+        relations[0].0,
+        relations[2].0
+    );
+    assert!(
+        (relations[1].0 - relations[3].0).abs() < 0.01,
+        "the second pair's relation must line up across rows: {} vs {}",
+        relations[1].0,
+        relations[3].0
+    );
+    assert!(
+        relations[1].0 > relations[0].0 + 1.0,
+        "the second pair must sit to the right of the first: {} vs {}",
+        relations[1].0,
+        relations[0].0
+    );
+
+    // Column x coordinates: column 1 and column 3 are left-aligned, columns 0
+    // and 2 are right-aligned, so their right edges are what coincide.
+    assert!((relations[0].0 - 32.5354).abs() < 0.01, "column 1 starts at 32.5354: {}", relations[0].0);
+    let (b_x, _, _) = glyph_at(&tree, 'b');
+    let (d_x, _, _) = glyph_at(&tree, 'd');
+    assert!((b_x - 97.1664).abs() < 0.01, "column 3 starts at 97.1664: {b_x}");
+    assert!((b_x - d_x).abs() < 0.01, "column 3 must start at one x: {b_x} vs {d_x}");
+
+    let (q_x, _, _) = glyph_at(&tree, 'q');
+    let (x_x, _, _) = glyph_at(&tree, 'x');
+    let expected_shift = layout("xyz").width - layout("q").width;
+    assert!(
+        ((q_x - x_x) - expected_shift).abs() < 0.02,
+        "column 0 must be right-aligned: shift {} vs {expected_shift}",
+        q_x - x_x
+    );
+    let (r_x, _, _) = glyph_at(&tree, 'r');
+    let (s_x, _, _) = glyph_at(&tree, 's');
+    // Right alignment shifts the narrower cell until both right edges meet, so
+    // the offset is the width difference whichever of the two is wider.
+    let widths = [layout("r").width, layout("s").width];
+    let expected_shift = widths[0].max(widths[1]) - widths[0].min(widths[1]);
+    assert!(
+        ((r_x - s_x).abs() - expected_shift).abs() < 0.02,
+        "column 2 must be right-aligned: shift {} vs {expected_shift}",
+        r_x - s_x
+    );
+
+    assert!((metrics.width - 104.9504).abs() < 0.01, "four columns are 104.9504 px wide: {}", metrics.width);
+}
+
+/// A body that types fewer columns than `alignedat{n}` declares pads the missing
+/// columns instead of silently shrinking the grid, and says so through a warning.
+#[test]
+fn alignedat_pads_missing_columns_and_reports_the_mismatch() {
+    let padded = "\\begin{alignedat}{2} q &= a \\\\ xyz &= b \\end{alignedat}";
+    let one_pair = "\\begin{alignedat}{1} q &= a \\\\ xyz &= b \\end{alignedat}";
+
+    let (padded_tree, padded_metrics, diagnostics) =
+        layout_formula_with_diagnostics(padded, false, 14.0).expect("alignedat should lay out");
+    assert_eq!(diagnostics.len(), 1, "the column mismatch must be reported once: {diagnostics:?}");
+    assert_eq!(diagnostics[0].code, "vutex.layout.math.alignedat_columns");
+    assert_eq!(diagnostics[0].severity, Severity::Warning);
+
+    let (one_pair_tree, one_pair_metrics, clean) =
+        layout_formula_with_diagnostics(one_pair, false, 14.0).expect("alignedat should lay out");
+    assert!(clean.is_empty(), "a body that fills its pair must not warn: {clean:?}");
+
+    // Two empty trailing columns add their inter-column spacing and nothing
+    // else: `0.8 em` at the 14 px base em.
+    let extra = padded_metrics.width - one_pair_metrics.width;
+    assert!((extra - 22.4).abs() < 0.02, "two padded columns add 22.4 px, found {extra}");
+
+    // Padding must not move the cells the author typed.
+    for glyph in ['q', '=', 'a'] {
+        let padded_x: Vec<f64> = glyphs_of(&padded_tree, glyph).into_iter().map(|(x, _, _)| x).collect();
+        let declared_x: Vec<f64> = glyphs_of(&one_pair_tree, glyph).into_iter().map(|(x, _, _)| x).collect();
+        assert_eq!(padded_x.len(), declared_x.len(), "`{glyph}` must keep its occurrences");
+        for (left, right) in padded_x.iter().zip(&declared_x) {
+            assert!((left - right).abs() < 0.01, "`{glyph}` moved from {right} to {left} when columns were padded");
+        }
+    }
+}
+
+/// The starred `alignedat*` shares the grid of `alignedat`: the star only drops
+/// equation numbering, which belongs to the document layer.
+#[test]
+fn starred_alignedat_keeps_the_unstarred_geometry() {
+    let plain = "\\begin{alignedat}{2} q &= a & r &= b \\\\ xyz &= c & s &= d \\end{alignedat}";
+    let starred = "\\begin{alignedat*}{2} q &= a & r &= b \\\\ xyz &= c & s &= d \\end{alignedat*}";
+
+    let (plain_tree, plain_metrics, plain_diagnostics) =
+        layout_formula_with_diagnostics(plain, false, 14.0).expect("alignedat");
+    let (starred_tree, starred_metrics, starred_diagnostics) =
+        layout_formula_with_diagnostics(starred, false, 14.0).expect("alignedat*");
+    assert!(plain_diagnostics.is_empty() && starred_diagnostics.is_empty(), "both bodies fill their pairs");
+
+    assert!(
+        (plain_metrics.width - starred_metrics.width).abs() < 0.01,
+        "`alignedat*` must share the grid: {} vs {}",
+        starred_metrics.width,
+        plain_metrics.width
+    );
+    let plain_x: Vec<f64> = glyphs(&plain_tree).into_iter().map(|(x, _, _)| x).collect();
+    let starred_x: Vec<f64> = glyphs(&starred_tree).into_iter().map(|(x, _, _)| x).collect();
+    assert_eq!(plain_x.len(), starred_x.len(), "`alignedat*` must hold the same glyphs");
+    for (left, right) in starred_x.iter().zip(&plain_x) {
+        assert!((left - right).abs() < 0.01, "`alignedat*` moved a glyph to {left} from {right}");
+    }
 }

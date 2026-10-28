@@ -1,4 +1,4 @@
-use vutex_layout::math::{FormulaLayout, layout_formula};
+use vutex_layout::math::{FormulaLayout, default_base_size, layout_formula, layout_formula_with_diagnostics};
 use vutex_render_svg::math::{MathmlBackend, SvgBackend};
 use vutex_types::{Diagnostic, Severity, math::MathError};
 
@@ -8,13 +8,17 @@ const UNSUPPORTED_COMMANDS: &[&str] = &["usepackage", "input", "include", "write
 
 /// Measure a formula without emitting a full render payload.
 pub fn measure(source: &str, options: &RenderOptions) -> FormulaRender {
-    let diagnostics = collect_diagnostics(source);
+    let mut diagnostics = collect_diagnostics(source);
     if has_error(&diagnostics) {
         return FormulaRender { metrics: FormulaMetrics::default(), svg: String::new(), mathml: None, diagnostics };
     }
 
-    match layout_formula(source, options.display_mode == DisplayMode::Block) {
-        Ok((_, layout)) => FormulaRender { metrics: layout_to_metrics(&layout), svg: String::new(), mathml: None, diagnostics },
+    let display = options.display_mode == DisplayMode::Block;
+    match layout_formula_with_diagnostics(source, display, default_base_size(display)) {
+        Ok((_, layout, math_diagnostics)) => {
+            diagnostics.extend(math_diagnostics.into_iter().map(FormulaDiagnostic::from));
+            FormulaRender { metrics: layout_to_metrics(&layout), svg: String::new(), mathml: None, diagnostics }
+        }
         Err(err) => FormulaRender {
             metrics: FormulaMetrics::default(),
             svg: String::new(),
@@ -88,7 +92,7 @@ fn render_formula_svg_inner(
     outline: bool,
 ) -> Result<(String, FormulaLayout, Vec<Diagnostic>), MathError> {
     use vutex_layout::math::{collect_layout_with_diagnostics, render_layout_node};
-    let (root, layout) = layout_formula(source, display)?;
+    let (root, layout, math_diagnostics) = layout_formula_with_diagnostics(source, display, default_base_size(display))?;
     let svg_height = layout.height + layout.depth;
     let mut backend = if outline {
         SvgBackend::new_deterministic(layout.width, svg_height)
@@ -99,7 +103,7 @@ fn render_formula_svg_inner(
     render_layout_node(&mut backend, &root, 0.0, layout.height)?;
     // A glyph without an embedded outline is exactly what sends the non-strict
     // backend to a host font, so this walk doubles as the fallback report.
-    let mut layout_diagnostics = Vec::new();
+    let mut layout_diagnostics = math_diagnostics;
     collect_layout_with_diagnostics(&root, 0.0, layout.height, &mut layout_diagnostics);
     Ok((backend.finish(), layout, layout_diagnostics))
 }

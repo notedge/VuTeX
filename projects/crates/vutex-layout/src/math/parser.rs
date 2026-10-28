@@ -4,20 +4,29 @@
 //! semantic nodes the layout engine understands. It is not a document language frontend
 //! and does not own any document IR — the surrounding document stays `notedown-ir`.
 
-use vutex_types::math::{
-    Alignment, Fixed, FontStyle, GlyphKey, LineStyle, MathError, MathResult, MathSemanticTree, MathStyle, SemanticNode,
-    SymbolRole,
+use vutex_types::{
+    Diagnostic, Severity,
+    math::{
+        Alignment, Fixed, FontStyle, GlyphKey, LineStyle, MathError, MathResult, MathSemanticTree, MathStyle, SemanticNode,
+        SymbolRole,
+    },
 };
 
-/// Parse TeX math source into the semantic tree consumed by the layout engine.
-pub(super) fn parse_math(source: &str) -> MathResult<MathSemanticTree> {
+/// Parse TeX math source and report the math-layer warnings it raised.
+///
+/// A warning describes source the grammar accepts but the layout semantics can
+/// only partly honour, such as a matrix environment whose body does not match
+/// its declared column count. Errors stay fatal and are returned through
+/// [`MathError`].
+pub(super) fn parse_math_with_diagnostics(source: &str) -> MathResult<(MathSemanticTree, Vec<Diagnostic>)> {
     let mut parser = Parser::new(source);
     let items = parser.parse_list(&[])?;
     parser.skip_whitespace();
     if let Some(c) = parser.peek() {
         return Err(parser.error(format!("unexpected character `{c}`")));
     }
-    Ok(MathSemanticTree { root: sequence(items) })
+    let diagnostics = std::mem::take(&mut parser.diagnostics);
+    Ok((MathSemanticTree { root: sequence(items) }, diagnostics))
 }
 
 /// Terminators that a list parse may stop in front of.
@@ -41,11 +50,14 @@ enum Stop {
 struct Parser {
     chars: Vec<char>,
     index: usize,
+    /// Warnings raised while lowering source the grammar accepts but the
+    /// layout semantics can only partly honour.
+    diagnostics: Vec<Diagnostic>,
 }
 
 impl Parser {
     fn new(source: &str) -> Self {
-        Self { chars: source.chars().collect(), index: 0 }
+        Self { chars: source.chars().collect(), index: 0, diagnostics: Vec::new() }
     }
 
     fn position(&self) -> usize {
@@ -72,6 +84,11 @@ impl Parser {
 
     fn error(&self, message: impl Into<String>) -> MathError {
         MathError::parse_error(message, Some(self.position()))
+    }
+
+    /// Record a warning for source that parses but cannot be fully honoured.
+    fn warn(&mut self, code: &str, message: String) {
+        self.diagnostics.push(Diagnostic { code: code.to_string(), severity: Severity::Warning, message });
     }
 
     /// Parse a list of atoms until one of `stops` is reached (without consuming it).
@@ -401,6 +418,7 @@ impl Parser {
             "cases",
             "aligned",
             "alignedat",
+            "alignedat*",
             "smallmatrix",
             "gathered",
             "split",
@@ -411,14 +429,12 @@ impl Parser {
             return Err(self.error(format!("unsupported environment `{name}`")));
         }
 
-        if name == "alignedat" {
-            // `\begin{alignedat}{n}` names the number of column pairs.  The
-            // alternating alignment applies to however many columns are typed,
-            // so the count is read and discarded.
-            let _pairs = self.read_text_group()?;
-        }
+        let column_pairs = match name.as_str() {
+            "alignedat" | "alignedat*" => Some(self.read_column_pairs(&name)?),
+            _ => None,
+        };
 
-        let matrix = self.parse_matrix(&name)?;
+        let matrix = self.parse_matrix(&name, column_pairs)?;
         let (left, right) = match name.as_str() {
             "pmatrix" => (Some(delimiter('(')), Some(delimiter(')'))),
             "bmatrix" => (Some(delimiter('[')), Some(delimiter(']'))),
@@ -434,7 +450,7 @@ impl Parser {
         Ok(SemanticNode::Delimited { left, right, content: Box::new(matrix) })
     }
 
-    fn parse_matrix(&mut self, name: &str) -> MathResult<SemanticNode> {
+    fn parse_matrix(&mut self, name: &str, column_pairs: Option<usize>) -> MathResult<SemanticNode> {
         let mut rows = Vec::new();
         loop {
             let mut row = Vec::new();
@@ -470,13 +486,39 @@ impl Parser {
             "smallmatrix" => Fixed::from_f64(0.2),
             _ => Fixed::from_f64(0.35),
         };
-        let columns = rows.iter().map(|row| row.len()).max().unwrap_or(0);
+
+        // `alignedat{n}` fixes the grid to `n` right/left column pairs.  A body
+        // that types fewer cells than the declaration leaves the remaining
+        // columns empty, and one that types a different count is reported
+        // instead of silently keeping whatever the author happened to write.
+        let typed_columns = rows.iter().map(|row| row.len()).max().unwrap_or(0);
+        let declared_columns = column_pairs.map(|pairs| pairs * 2);
+        if let Some(declared) = declared_columns {
+            if declared != typed_columns {
+                self.warn(
+                    "vutex.layout.math.alignedat_columns",
+                    format!(
+                        "`\\begin{{{name}}}` declares {} column pairs ({} columns) but its body has {} columns, so the grid keeps {} columns",
+                        declared / 2,
+                        declared,
+                        typed_columns,
+                        declared.max(typed_columns)
+                    ),
+                );
+            }
+            for row in &mut rows {
+                while row.len() < declared {
+                    row.push(SemanticNode::Sequence(Vec::new()));
+                }
+            }
+        }
+        let columns = declared_columns.unwrap_or(typed_columns).max(typed_columns);
         let column_alignment = match name {
             // `cases` is a left-aligned expression/condition pair.
             "cases" => vec![Alignment::Left; columns],
             // `aligned`, `alignedat` and `split` alternate right/left at every
             // `&`, so the relation column lines up across rows.
-            "aligned" | "alignedat" | "split" => {
+            "aligned" | "alignedat" | "alignedat*" | "split" => {
                 (0..columns).map(|column| if column % 2 == 0 { Alignment::Right } else { Alignment::Left }).collect()
             }
             // Everything else is the generic centred matrix, `gathered`
@@ -485,6 +527,16 @@ impl Parser {
         };
 
         Ok(SemanticNode::Matrix { rows, row_spacing, col_spacing: Fixed::from_f64(0.8), column_alignment })
+    }
+
+    /// Read the `{n}` column-pair argument of `alignedat`.
+    fn read_column_pairs(&mut self, name: &str) -> MathResult<usize> {
+        let raw = self.read_text_group()?;
+        let trimmed = raw.trim();
+        match trimmed.parse::<usize>() {
+            Ok(pairs) if pairs > 0 => Ok(pairs),
+            _ => Err(self.error(format!("`\\begin{{{name}}}` expects a positive column-pair count but found `{trimmed}`"))),
+        }
     }
 
     /// Read `{...}` verbatim, keeping nested braces and escaped characters.
