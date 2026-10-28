@@ -7,8 +7,8 @@ use vutex_types::{
     Diagnostic, Severity,
     math::{
         Alignment, BBox, DelimiterComponent, Fixed, FontMetricsSnapshot, FontStyle, FormulaLayoutResult, FormulaMetrics,
-        GlyphKey, GlyphMetrics, LimitsPolicy, LineStyle, MathConstant, MathKern, MathList, MathResult, MathStyle, NoadKind,
-        OperatorClass, PaintNode, SemanticNode, SpacingRule, SymbolRole, normalize_math_list, project_semantic,
+        GlyphKey, GlyphMetrics, LimitsPolicy, LineStyle, MathConstant, MathKern, MathList, MathResult, MathStyle, Noad,
+        NoadKind, OperatorClass, PaintNode, SemanticNode, SpacingRule, SymbolRole, normalize_math_list, project_semantic,
     },
 };
 
@@ -693,11 +693,23 @@ impl LayoutEngine {
     /// resolved [`NoadKind`].  Each nucleus is lowered via [`layout_node`]
     /// or [`layout_subsup`] depending on whether scripts are attached.
     fn layout_noads(&self, list: &MathList, _base_style: MathStyle) -> MathResult<LayoutNode> {
-        let mut children = Vec::new();
-        let noads = &list.0;
-        let n = noads.len();
+        Ok(self.pack_hbox(self.layout_noad_run(&list.0)?, None))
+    }
 
-        for i in 0..n {
+    /// Lower one run of noads into the horizontal children between two boxes,
+    /// with the inter-atom glue already inserted.
+    ///
+    /// A `\left…\right` pair reaches this list as `Open` · body · `Close` noads
+    /// so the Appendix G columns keep seeing a fence as an Open / Close atom.
+    /// The delimiters themselves, though, have to be sized against the whole
+    /// body between them, so the pair is laid out through [`Self::layout_fence`]
+    /// and the body is lowered as a run of its own.
+    fn layout_noad_run(&self, noads: &[Noad]) -> MathResult<Vec<LayoutNode>> {
+        let mut children = Vec::new();
+        let n = noads.len();
+        let mut i = 0;
+
+        while i < n {
             let noad = &noads[i];
             let style = noad.style;
 
@@ -733,6 +745,20 @@ impl LayoutEngine {
                             children.push(LayoutNode::Kern(kern * size));
                         }
                     }
+                }
+            }
+
+            // A fence pair is lowered as one box: both delimiters are built
+            // from the body's extents, so neither depends on what precedes or
+            // follows the pair in this formula.
+            if noad.fence && noad.kind == NoadKind::Open {
+                if let Some(close) = Self::fence_close(noads, i) {
+                    let left = Self::delimiter_key(noads[i].nucleus.as_deref());
+                    let right = Self::delimiter_key(noads[close].nucleus.as_deref());
+                    let body = self.pack_hbox(self.layout_noad_run(&noads[i + 1..close])?, None);
+                    children.push(self.layout_fence(left.as_ref(), right.as_ref(), body, style)?);
+                    i = close + 1;
+                    continue;
                 }
             }
 
@@ -773,9 +799,42 @@ impl LayoutEngine {
                 (None, None) => LayoutNode::Kern(Fixed::ZERO),
             };
             children.push(node);
+            i += 1;
         }
 
-        Ok(self.pack_hbox(children, None))
+        Ok(children)
+    }
+
+    /// Index of the `Close` noad that shuts the fence opened at `open`.
+    ///
+    /// Nested pairs are paired innermost-first, exactly like the source `\left`
+    /// … `\right` nesting they came from.
+    fn fence_close(noads: &[Noad], open: usize) -> Option<usize> {
+        let mut depth = 0usize;
+        for (offset, noad) in noads[open + 1..].iter().enumerate() {
+            if !noad.fence {
+                continue;
+            }
+            match noad.kind {
+                NoadKind::Open => depth += 1,
+                NoadKind::Close => {
+                    if depth == 0 {
+                        return Some(open + 1 + offset);
+                    }
+                    depth -= 1;
+                }
+                _ => {}
+            }
+        }
+        None
+    }
+
+    /// Delimiter glyph a fence noad carries as its synthetic symbol nucleus.
+    fn delimiter_key(nucleus: Option<&SemanticNode>) -> Option<GlyphKey> {
+        match nucleus? {
+            SemanticNode::Symbol { glyph_key, .. } => Some(glyph_key.clone()),
+            _ => None,
+        }
     }
 
     fn layout_symbol(&self, key: &GlyphKey, style: MathStyle) -> MathResult<LayoutNode> {
@@ -1720,7 +1779,22 @@ impl LayoutEngine {
         style: MathStyle,
     ) -> MathResult<LayoutNode> {
         let content_layout = self.layout_node(content, style)?;
+        self.layout_fence(left, right, content_layout, style)
+    }
 
+    /// Size a `\left…\right` pair around an already-laid-out body.
+    ///
+    /// Both delimiters are built from `content_layout` alone, so the pair keeps
+    /// the same extents whether it is the whole formula or sits after another
+    /// atom.  The one-noad `Delimited` path and the projected `Open` / `Close`
+    /// fence pair both route here for exactly that reason.
+    fn layout_fence(
+        &self,
+        left: Option<&GlyphKey>,
+        right: Option<&GlyphKey>,
+        content_layout: LayoutNode,
+        style: MathStyle,
+    ) -> MathResult<LayoutNode> {
         let style_scale = self.get_style_scale(style);
         let size = self.base_size * style_scale;
         let family = "default";
