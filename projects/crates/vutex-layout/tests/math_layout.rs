@@ -637,6 +637,50 @@ fn bar_accent_is_a_rule_covering_the_base() {
     );
 }
 
+/// Glyph accents clear the base ink by `FractionRuleThickness`, the MATH
+/// table's `\defaultrulethickness`, and not by the much larger overbar gap.
+///
+/// `OverbarVerticalGap` is 0.12 em and belongs to `\bar`, so `\hat` and
+/// `\tilde` floated 1.68 px above the letter at 14 px. `FractionRuleThickness`
+/// is 0.039993 em, a 0.5599 px clearance.
+#[test]
+fn glyph_accents_clear_the_base_ink_by_the_rule_thickness() {
+    let system = builtin_font_metrics();
+    let thickness = system.get_math_constant("default", MathConstant::FractionRuleThickness).expect("font constant").to_f64();
+
+    for (source, accent_char, base_char) in [("\\hat{f}", 'ˆ', 'f'), ("\\tilde{x}", '˜', 'x')] {
+        let (tree, _) = layout_formula(source, false).expect(source);
+        let (_, accent_y, accent) = glyph_at(&tree, accent_char);
+        let (_, base_y, base) = glyph_at(&tree, base_char);
+
+        let accent_ink = accent.path_data.as_deref().expect("the accent must paint the font outline");
+        let base_ink = base.path_data.as_deref().expect("the base must paint its own outline");
+        let (_, _, accent_min_y, _) = ink_bounds(accent_ink);
+        let (_, _, _, base_max_y) = ink_bounds(base_ink);
+
+        let ink_bottom = accent_y - accent_min_y * accent.size.to_f64();
+        let ink_top = base_y - base_max_y * base.size.to_f64();
+        let clearance = ink_top - ink_bottom;
+        let expected = thickness * accent.size.to_f64();
+        assert!(
+            (clearance - expected).abs() < 1e-3,
+            "`{source}` accent ink must clear the base ink by {expected}, not {clearance}"
+        );
+    }
+
+    // `\bar` is a rule, not a glyph, and keeps the overbar gap.
+    let (tree, _) = layout_formula("\\bar{x}", false).expect("\\bar{x} should lay out");
+    let (_, base_y, base) = glyph_at(&tree, 'x');
+    let base_top = base_y - base.metrics.height.to_f64();
+    let bars = rules(&tree);
+    assert_eq!(bars.len(), 1, "`\\bar` must paint exactly one overbar rule");
+    let (_, bar_top, _, bar_height) = bars[0];
+    let gap = base_top - (bar_top + bar_height);
+    let expected = system.get_math_constant("default", MathConstant::OverbarVerticalGap).expect("font constant").to_f64()
+        * base.size.to_f64();
+    assert!((gap - expected).abs() < 1e-3, "`\\bar` must keep the overbar gap {expected}, not {gap}");
+}
+
 /// Every glyph size inside a tree, in pixels.
 fn glyph_sizes(node: &LayoutNode) -> Vec<f64> {
     glyphs(node).into_iter().map(|(_, _, glyph)| glyph.size.to_f64()).collect()
