@@ -383,15 +383,12 @@ const THIN_MUSIP_EM: f64 = 3.0 / 18.0;
 pub struct LayoutEngine {
     font_system: FontMetricsSystem,
     base_size: Fixed,
-    /// Sticky override from the most recent `\limits` / `\nolimits` that has
-    /// not yet been consumed by a large operator.
-    limits_override: std::cell::Cell<Option<LimitsPolicy>>,
 }
 
 impl LayoutEngine {
     /// Create an engine with a base em size of `1.0`.
     pub fn new(font_system: FontMetricsSystem) -> Self {
-        Self { font_system, base_size: Fixed::ONE, limits_override: std::cell::Cell::new(None) }
+        Self { font_system, base_size: Fixed::ONE }
     }
 
     /// Set the base em size in pixels.
@@ -614,9 +611,33 @@ impl LayoutEngine {
                     }
                     Ok(self.pack_hbox(children, None))
                 }
-                SemanticNode::Subscript { base, sub } => self.layout_subsup(base, Some(sub), None, style),
-                SemanticNode::Superscript { base, sup } => self.layout_subsup(base, None, Some(sup), style),
-                SemanticNode::SubSuperscript { base, sub, sup } => self.layout_subsup(base, Some(sub), Some(sup), style),
+                // A script node reached directly (outside the noad pipeline)
+                // carries no `\limits` information of its own, so placement
+                // follows the operator class default.
+                SemanticNode::Subscript { base, sub } => self.layout_subsup(
+                    base,
+                    Some(sub),
+                    None,
+                    style,
+                    OperatorClass::of_node(base),
+                    LimitsPolicy::Auto,
+                ),
+                SemanticNode::Superscript { base, sup } => self.layout_subsup(
+                    base,
+                    None,
+                    Some(sup),
+                    style,
+                    OperatorClass::of_node(base),
+                    LimitsPolicy::Auto,
+                ),
+                SemanticNode::SubSuperscript { base, sub, sup } => self.layout_subsup(
+                    base,
+                    Some(sub),
+                    Some(sup),
+                    style,
+                    OperatorClass::of_node(base),
+                    LimitsPolicy::Auto,
+                ),
                 // A math space is a kern of the current em: `width` is already
                 // in em, so the style scale is the only factor left to apply.
                 SemanticNode::Space { width } => {
@@ -733,16 +754,19 @@ impl LayoutEngine {
             // lay out nucleus + optional scripts.
             let node = match (&noad.nucleus, &noad.scripts) {
                 (Some(nucleus), Some(scripts)) => {
-                    // Restore the per-noad limits policy before layout_subsup
-                    // consumes it.
-                    if noad.kind == NoadKind::Op {
-                        if let Some(policy) = noad.limits {
-                            self.limits_override.set(Some(policy));
-                        }
-                    }
                     let sub_ref = scripts.sub.as_deref();
                     let sup_ref = scripts.sup.as_deref();
-                    self.layout_subsup(nucleus, sub_ref, sup_ref, style)?
+                    // Both the operator class and the `\limits` / `\nolimits`
+                    // policy come straight from this noad, so script placement
+                    // never depends on the order noads are lowered in.
+                    self.layout_subsup(
+                        nucleus,
+                        sub_ref,
+                        sup_ref,
+                        style,
+                        OperatorClass::of_node(nucleus),
+                        noad.limits.unwrap_or(LimitsPolicy::Auto),
+                    )?
                 }
                 (Some(nucleus), None) => self.layout_node(nucleus, style)?,
                 (None, Some(scripts)) => {
@@ -750,7 +774,14 @@ impl LayoutEngine {
                     let sup_ref = scripts.sup.as_deref();
                     // No nucleus → call layout_subsup with a zero-width kern as
                     // the base so the scripts still get positioned correctly.
-                    self.layout_subsup(&SemanticNode::SetMathStyle(style), sub_ref, sup_ref, style)?
+                    self.layout_subsup(
+                        &SemanticNode::SetMathStyle(style),
+                        sub_ref,
+                        sup_ref,
+                        style,
+                        OperatorClass::Ord,
+                        LimitsPolicy::Auto,
+                    )?
                 }
                 (None, None) => LayoutNode::Kern(Fixed::ZERO),
             };
@@ -1349,26 +1380,22 @@ impl LayoutEngine {
         }
     }
 
+    /// Attach `sub` / `sup` to `base` in `style`.
+    ///
+    /// `class` and `limits` are resolved by the caller from the noad being laid
+    /// out: `\limits` / `\nolimits` belongs to the atom it was authored after,
+    /// so it arrives as an argument instead of being stashed on the engine and
+    /// consumed by whichever large operator happens to be lowered next.
     fn layout_subsup(
         &self,
         base: &SemanticNode,
         sub: Option<&SemanticNode>,
         sup: Option<&SemanticNode>,
         style: MathStyle,
+        class: OperatorClass,
+        limits: LimitsPolicy,
     ) -> MathResult<LayoutNode> {
-        let class = OperatorClass::of_node(base);
-
-        // Consume any pending `\limits` / `\nolimits` policy.  It applies to
-        // this operator only; for non-operator bases we leave the override in
-        // place so it still reaches a later operator.
-        let policy = if class.is_large_operator() {
-            self.limits_override.take().unwrap_or(LimitsPolicy::Auto)
-        }
-        else {
-            LimitsPolicy::Auto
-        };
-
-        if class.places_limits(policy, style) {
+        if class.places_limits(limits, style) {
             return self.layout_limits(base, sub, sup, style);
         }
 

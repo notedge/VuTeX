@@ -14,7 +14,10 @@
 
 use vutex_layout::math::{LayoutEngine, LayoutNode};
 use vutex_text::math::builtin_font_metrics;
-use vutex_types::math::{FontStyle, GlyphKey, LineStyle, MathStyle, SemanticNode, SymbolRole};
+use vutex_types::math::{
+    FontStyle, GlyphKey, LimitsPolicy, LineStyle, MathStyle, SemanticNode, SymbolRole, normalize_math_list,
+    project_semantic,
+};
 
 /// Build a symbol atom for a single char.
 fn sym(c: char, role: SymbolRole) -> SemanticNode {
@@ -131,4 +134,134 @@ fn inner_fraction_next_to_binary_keeps_medium_glue() {
         },
     ])];
     compare_pipelines(&nodes, "a + frac{b}{c}");
+}
+
+// ---------------------------------------------------------------------------
+// `\limits` / `\nolimits` ownership
+//
+// The policy belongs to the atom it follows.  It travels through the noad that
+// atom produced and into `layout_subsup` as an argument, so neither projection
+// nor layout can hand it to a different operator.
+// ---------------------------------------------------------------------------
+
+/// Project and normalize a math list in text style, the context where an
+/// accidental `\limits` shows up as stacked instead of side-mounted scripts.
+fn text_noads(nodes: &[SemanticNode]) -> vutex_types::math::MathList {
+    normalize_math_list(project_semantic(nodes, MathStyle::Text))
+}
+
+/// A `\limits` authored after an ordinary atom is consumed by that atom: it is
+/// not stored on it and it does not reach the operator that follows.
+#[test]
+fn limits_after_an_ordinary_atom_do_not_reach_a_later_operator() {
+    let nodes = vec![
+        SemanticNode::LimitsSpec(LimitsPolicy::Limits),
+        SemanticNode::Subscript {
+            base: Box::new(sym('x', SymbolRole::Ordinary)),
+            sub: Box::new(sym('1', SymbolRole::Ordinary)),
+        },
+        SemanticNode::Superscript {
+            base: Box::new(sym('∑', SymbolRole::LargeOperator)),
+            sup: Box::new(sym('2', SymbolRole::Ordinary)),
+        },
+        sym('y', SymbolRole::Ordinary),
+    ];
+    let list = text_noads(&nodes);
+    assert_eq!(list.len(), 3);
+    assert_eq!(list.0[0].limits, None, "`x` is not an operator and must not carry the policy");
+    assert_eq!(
+        list.0[1].limits, None,
+        "a policy authored after `x` must not be attached to the following `∑`"
+    );
+    assert_eq!(list.0[1].kind, vutex_types::math::NoadKind::Op);
+}
+
+/// Consecutive `\limits` then `\nolimits` on one operator: the last policy
+/// wins, and the policy stays on that operator.
+#[test]
+fn consecutive_limits_keep_the_last_policy() {
+    let nodes = vec![
+        SemanticNode::LimitsSpec(LimitsPolicy::Limits),
+        SemanticNode::LimitsSpec(LimitsPolicy::NoLimits),
+        SemanticNode::SubSuperscript {
+            base: Box::new(sym('∑', SymbolRole::LargeOperator)),
+            sub: Box::new(sym('1', SymbolRole::Ordinary)),
+            sup: Box::new(sym('2', SymbolRole::Ordinary)),
+        },
+        sym('y', SymbolRole::Ordinary),
+    ];
+    let list = text_noads(&nodes);
+    assert_eq!(list.len(), 2);
+    assert_eq!(
+        list.0[0].limits,
+        Some(LimitsPolicy::NoLimits),
+        "the last `\\limits` / `\\nolimits` before the operator wins"
+    );
+    assert_eq!(list.0[1].limits, None, "the policy must not reach the next atom");
+}
+
+/// A policy authored inside a group stays inside it: the operator after the
+/// group keeps TeX's default placement.
+#[test]
+fn limits_inside_a_group_stay_with_that_operator() {
+    let group = SemanticNode::Sequence(vec![
+        SemanticNode::LimitsSpec(LimitsPolicy::Limits),
+        SemanticNode::Superscript {
+            base: Box::new(sym('∑', SymbolRole::LargeOperator)),
+            sup: Box::new(sym('2', SymbolRole::Ordinary)),
+        },
+    ]);
+    let nodes = vec![
+        group,
+        SemanticNode::Subscript {
+            base: Box::new(sym('∫', SymbolRole::LargeOperator)),
+            sub: Box::new(sym('0', SymbolRole::Ordinary)),
+        },
+    ];
+    let list = text_noads(&nodes);
+    assert_eq!(list.len(), 2);
+    assert_eq!(list.0[0].limits, Some(LimitsPolicy::Limits), "the grouped `∑` keeps its own `\\limits`");
+    assert_eq!(list.0[1].limits, None, "the grouped policy must not escape to `∫`");
+}
+
+/// Layout is a pure function of its arguments: the same math list laid out
+/// twice on one engine produces the same tree, and laying out an unrelated
+/// formula in between changes nothing.
+#[test]
+fn repeated_layout_of_one_math_list_is_identical() {
+    let engine = LayoutEngine::new(builtin_font_metrics());
+    let nodes = vec![SemanticNode::Sequence(vec![
+        sym('x', SymbolRole::Ordinary),
+        SemanticNode::LimitsSpec(LimitsPolicy::Limits),
+        SemanticNode::Subscript {
+            base: Box::new(sym('x', SymbolRole::Ordinary)),
+            sub: Box::new(sym('1', SymbolRole::Ordinary)),
+        },
+        SemanticNode::Superscript {
+            base: Box::new(sym('∑', SymbolRole::LargeOperator)),
+            sup: Box::new(sym('2', SymbolRole::Ordinary)),
+        },
+    ])];
+
+    let first = engine.layout_math_list(&nodes, MathStyle::Text).expect("first layout");
+    let second = engine.layout_math_list(&nodes, MathStyle::Text).expect("second layout");
+    assert_eq!(
+        format!("{first:?}"),
+        format!("{second:?}"),
+        "the same math list must lay out identically every time"
+    );
+
+    let unrelated = vec![SemanticNode::SubSuperscript {
+        base: Box::new(sym('∫', SymbolRole::LargeOperator)),
+        sub: Box::new(sym('0', SymbolRole::Ordinary)),
+        sup: Box::new(sym('1', SymbolRole::Ordinary)),
+    }];
+    engine.layout_math_list(&unrelated, MathStyle::Text).expect("unrelated layout");
+
+    let third = engine.layout_math_list(&nodes, MathStyle::Text).expect("layout after an unrelated formula");
+    assert_eq!(
+        format!("{first:?}"),
+        format!("{third:?}"),
+        "no layout may leave state behind for the next one"
+    );
 }

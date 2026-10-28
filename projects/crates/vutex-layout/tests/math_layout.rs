@@ -1865,3 +1865,88 @@ fn starred_alignedat_keeps_the_unstarred_geometry() {
         assert!((left - right).abs() < 0.01, "`alignedat*` moved a glyph to {left} from {right}");
     }
 }
+
+/// `\limits` belongs to the atom it follows, so a misuse is spent there: the
+/// warning fires and the next operator keeps TeX's default placement instead of
+/// inheriting the stray policy.
+#[test]
+fn limits_misuse_does_not_reach_a_later_operator() {
+    let (plain_tree, plain) = layout_formula("x_1\\sum^2 y", false).expect("plain `x_1\\sum^2 y`");
+    let (misused_tree, misused, diagnostics) =
+        layout_formula_with_diagnostics("x\\limits_1\\sum^2 y", false, 14.0).expect("misused `x\\limits_1\\sum^2 y`");
+    assert_eq!(diagnostics.len(), 1, "`x\\limits_1` must warn once: {diagnostics:?}");
+    assert_eq!(diagnostics[0].code, "vutex.layout.math.limits_misuse");
+
+    assert!(
+        (misused.width - plain.width).abs() < 0.01
+            && (misused.height - plain.height).abs() < 0.01
+            && (misused.depth - plain.depth).abs() < 0.01,
+        "the stray `\\limits` must not restack the following `\\sum`: {misused:?} vs {plain:?}"
+    );
+
+    let plain_glyphs: Vec<(char, f64, f64)> =
+        glyphs(&plain_tree).into_iter().map(|(x, y, glyph)| (glyph.char.unwrap_or('?'), x, y)).collect();
+    let misused_glyphs: Vec<(char, f64, f64)> =
+        glyphs(&misused_tree).into_iter().map(|(x, y, glyph)| (glyph.char.unwrap_or('?'), x, y)).collect();
+    assert_eq!(plain_glyphs.len(), misused_glyphs.len(), "a misuse must not drop a glyph: {misused_glyphs:?}");
+    for (left, right) in misused_glyphs.iter().zip(&plain_glyphs) {
+        assert_eq!(left.0, right.0, "the misuse changed the glyph order: {misused_glyphs:?}");
+        assert!(
+            (left.1 - right.1).abs() < 0.01 && (left.2 - right.2).abs() < 0.01,
+            "the misuse moved `{}` from ({}, {}) to ({}, {})",
+            left.0,
+            right.1,
+            right.2,
+            left.1,
+            left.2
+        );
+    }
+}
+
+/// Consecutive limit controls on one operator settle on the last policy: the
+/// stray `\nolimits` must not survive to change an operator or an atom after it.
+#[test]
+fn consecutive_limits_settle_on_the_last_policy() {
+    let (_, settled) = layout_formula("\\sum\\limits\\nolimits x", false).expect("`\\sum\\limits\\nolimits x`");
+    let (_, plain) = layout_formula("\\sum x", false).expect("`\\sum x`");
+    assert!(
+        (settled.width - plain.width).abs() < 0.01 && (settled.height - plain.height).abs() < 0.01,
+        "`\\limits` before `\\nolimits` must cancel out: {settled:?} vs {plain:?}"
+    );
+    for source in ["\\sum\\limits\\nolimits x", "\\sum\\limits x"] {
+        let (_, _, diagnostics) = layout_formula_with_diagnostics(source, false, 14.0).expect(source);
+        assert!(diagnostics.is_empty(), "`{source}` is a valid use of limit controls: {diagnostics:?}");
+    }
+}
+
+/// A `\limits` inside a group stays with the group's operator: the operator
+/// after the group keeps TeX's `intop` default of scripts beside it.
+#[test]
+fn limits_inside_a_group_do_not_reach_the_operator_after_it() {
+    let (_, grouped) = layout_formula("{\\sum\\limits_1}\\int^2", false).expect("grouped limits");
+    let (_, explicit_beside) = layout_formula("{\\sum\\limits_1}\\int\\nolimits^2", false).expect("explicit nolimits");
+    assert!(
+        (grouped.width - explicit_beside.width).abs() < 0.01
+            && (grouped.height - explicit_beside.height).abs() < 0.01
+            && (grouped.depth - explicit_beside.depth).abs() < 0.01,
+        "the grouped `\\limits` must not stack `\\int`: {grouped:?} vs {explicit_beside:?}"
+    );
+}
+
+/// A nucleus-less atom still gets its scripts beside it and leaves no policy
+/// behind for the next operator.
+#[test]
+fn empty_nucleus_keeps_scripts_beside_and_leaves_no_policy() {
+    let (_, plain) = layout_formula("{}^2\\sum^2 x", false).expect("plain `{}^2\\sum^2 x`");
+    let (_, misused, diagnostics) =
+        layout_formula_with_diagnostics("{}\\limits^2\\sum^2 x", false, 14.0).expect("`\\limits` after an empty group");
+    assert_eq!(diagnostics.len(), 1, "`\\limits` after an empty group is a misuse: {diagnostics:?}");
+    assert_eq!(diagnostics[0].code, "vutex.layout.math.limits_misuse");
+
+    assert!(
+        (misused.width - plain.width).abs() < 0.01
+            && (misused.height - plain.height).abs() < 0.01
+            && (misused.depth - plain.depth).abs() < 0.01,
+        "the empty nucleus keeps its scripts beside it and the `\\sum` keeps its default: {misused:?} vs {plain:?}"
+    );
+}
