@@ -49,21 +49,23 @@ impl LayoutNode {
         match self {
             LayoutNode::HBox(h) => h.width,
             LayoutNode::VBox(v) => v.width,
-            LayoutNode::Glyph(g) => {
-                let mut w = g.metrics.width;
-                // Italic / math-style glyphs carry an `italic_correction` from
-                // the font that TeX appends to the advance width so slanted
-                // characters don't collide with what follows on the right.
-                if matches!(g.font_style, FontStyle::Italic | FontStyle::Math) {
-                    w = w + g.metrics.italic_correction;
-                }
-                w
-            }
+            LayoutNode::Glyph(g) => g.metrics.width + self.italic_correction(),
             LayoutNode::Glue(g) => g.width,
             LayoutNode::Kern(k) => *k,
             LayoutNode::Rule { width, .. } => *width,
             LayoutNode::Path(p) => p.width,
             LayoutNode::Penalty { width, .. } => *width,
+        }
+    }
+
+    /// Italic correction that [`LayoutNode::width`] folds into the advance.
+    ///
+    /// Only italic and math-style glyphs contribute one; every other node
+    /// advances by its bare width.
+    pub fn italic_correction(&self) -> Fixed {
+        match self {
+            LayoutNode::Glyph(g) if matches!(g.font_style, FontStyle::Italic | FontStyle::Math) => g.metrics.italic_correction,
+            _ => Fixed::ZERO,
         }
     }
 
@@ -1323,6 +1325,19 @@ impl LayoutEngine {
 
         let mut children = Vec::new();
         children.push(base_layout);
+        // A large operator keeps TeX's `\nolimits` placement when its scripts
+        // sit beside it: the scripts hang off the operator's advance, not off
+        // its italic correction. `\int` carries a third of an em of italic
+        // correction that only exists to keep a following atom clear of the
+        // slanted tail, so folding it in would push the scripts far right. The
+        // gap is the font's own script spacing instead. Limits above and below
+        // the operator are built by `layout_limits` and never reach this kern.
+        if is_large_op {
+            let script_space =
+                self.font_system.get_math_constant(family, MathConstant::SpaceAfterScript).unwrap_or(Fixed::from_f64(0.05))
+                    * size;
+            children.push(LayoutNode::Kern(script_space - children[0].italic_correction()));
+        }
         children.push(final_scripts);
 
         Ok(self.pack_hbox(children, None))
