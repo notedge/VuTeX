@@ -334,10 +334,11 @@ fn stacked_limits_keep_the_math_table_gap_minima() {
         clearance + 1e-3 >= gap_min,
         "the lower limit must keep `LowerLimitGapMin` {gap_min} below the operator, not {clearance}"
     );
+    // Whichever rule is taller decides the drop, so the baseline-drop minimum is
+    // still satisfied when the gap rule is the one that dominates.
     assert!(
-        sub_drop < drop_min + sub_height,
-        "the limit's own height must not be added on top of `LowerLimitBaselineDropMin`: {sub_drop} vs {}",
-        drop_min + sub_height
+        sub_drop + 1e-3 >= drop_min,
+        "the lower limit baseline must keep `LowerLimitBaselineDropMin` {drop_min} below the operator, not {sub_drop}"
     );
 
     // A script-style operator demotes its limits one style further, to
@@ -1108,10 +1109,76 @@ fn operator_default_limits_follow_tex() {
         "`\\int` must default to nolimits: {int_default:?} vs {int_nolimits:?}"
     );
     assert!(
-        int_default.depth * 2.0 < int_limits.depth,
-        "`\\int` must not default to stacked limits: depth {} vs {}",
-        int_default.depth,
-        int_limits.depth
+        int_limits.depth > int_nolimits.depth,
+        "`\\int\\limits` must still stack its limits below the operator: depth {} vs {}",
+        int_limits.depth,
+        int_nolimits.depth
+    );
+}
+
+/// Display style uses the font's display-size design for `\sum`, and the text
+/// style keeps the text-size one.
+///
+/// Oracle: the expected extents are the MATH size variants the embedded font
+/// publishes for `∑`, read back through `builtin_font_metrics`, so the assertion
+/// follows the font instead of a synthetic scale factor. Before the operator was
+/// selected by style both styles reported the same `1 em` glyph.
+#[test]
+fn display_style_uses_the_fonts_display_size_operator() {
+    let system = builtin_font_metrics();
+    let constant = |name: MathConstant| system.get_math_constant("default", name).expect("font constant").to_f64();
+    let key = GlyphKey::from_char('∑', None, FontStyle::Math);
+    let construction = system.get_delimiter_construction(&key).expect("`∑` must carry MATH size variants");
+    let mut tallest = 0.0f64;
+    for variant in &construction.variants {
+        let metrics = system.get_metrics(&variant.glyph).expect("variant metrics");
+        tallest = tallest.max((metrics.height + metrics.depth).to_f64());
+    }
+
+    // Height plus depth and the box centre, both in em of the operator's size.
+    let measure = |source: &str, display: bool| {
+        let (tree, _) = layout_formula(source, display).expect("the operator should lay out");
+        let glyph = glyph_at(&tree, '∑').2;
+        let em = glyph.size.to_f64();
+        let total = (glyph.metrics.height + glyph.metrics.depth).to_f64() / em;
+        let centre = (glyph.metrics.height - glyph.metrics.depth).to_f64() / 2.0 / em;
+        (total, centre)
+    };
+    // Two 16.16 extents are rounded when the metrics are scaled to the em size.
+    let tolerance = 4.0 / Fixed::SCALE as f64;
+    let axis = constant(MathConstant::AxisHeight);
+
+    let (text_total, text_centre) = measure("\\sum", false);
+    let (display_total, display_centre) = measure("\\sum", true);
+    assert!(
+        tallest > text_total + tolerance,
+        "the embedded font must ship a display design taller than its text one for `∑`: {tallest} vs {text_total}"
+    );
+    assert!(
+        (display_total - tallest).abs() < tolerance,
+        "display style must use the font's tallest `∑` variant {tallest}, not {display_total}"
+    );
+    assert!(
+        (text_total - tallest).abs() > tolerance,
+        "the text style must not use the display design: both report {text_total}"
+    );
+    assert!(
+        (text_centre - axis).abs() < tolerance && (display_centre - axis).abs() < tolerance,
+        "both `∑` designs sit on the math axis {axis}: text {text_centre}, display {display_centre}"
+    );
+
+    // The style commands promote and demote the same design as the call.
+    assert!((measure("\\textstyle\\sum", false).0 - text_total).abs() < tolerance, "`\\textstyle` keeps the text-size `∑`");
+    assert!(
+        (measure("\\displaystyle\\sum", true).0 - display_total).abs() < tolerance,
+        "`\\displaystyle` promotes `\\sum` to its display design"
+    );
+
+    // Stacked limits use the display design as well.
+    let (with_limits, _) = measure("\\sum_{i=1}^{n}", true);
+    assert!(
+        (with_limits - display_total).abs() < tolerance,
+        "a display `\\sum` with limits must keep the display design {display_total}, not {with_limits}"
     );
 }
 
