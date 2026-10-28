@@ -414,9 +414,15 @@ fn beside_scripts_sit_on_the_shift_and_drop_minima() {
             "`{source}` subscript must drop {expected_drop} below the baseline, not {sub_drop}"
         );
 
-        // The scripts start after the operator's advance plus its italic
-        // correction, which is the font's own request for clearance.
-        let expected_x = base_x + base.metrics.width.to_f64() + base.metrics.italic_correction.to_f64();
+        // The scripts start after the operator's advance. An ordinary base also
+        // adds its italic correction, which is the font's own request for
+        // clearance. A large operator keeps TeX's `\nolimits` placement, where
+        // that correction is reserved for the following atom and the scripts
+        // take the font's script spacing instead.
+        let large_op = matches!(base_char, '∫' | '∑' | '∏');
+        let gap =
+            if large_op { constant(MathConstant::SpaceAfterScript) * em } else { base.metrics.italic_correction.to_f64() };
+        let expected_x = base_x + base.metrics.width.to_f64() + gap;
         assert!((sup_x - expected_x).abs() < 1e-3, "`{source}` superscript starts at {sup_x}, not {expected_x}");
         assert!((sub_x - expected_x).abs() < 1e-3, "`{source}` subscript starts at {sub_x}, not {expected_x}");
     }
