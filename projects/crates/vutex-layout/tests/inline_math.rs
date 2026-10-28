@@ -118,7 +118,11 @@ fn inline_fraction_keeps_its_bar_between_the_text_runs_and_grows_the_line() {
         formula.height + formula.depth
     );
 
-    let formula_graph = followed_by_marker(vec![text("The ratio "), math("\\frac{a}{b}"), text(" here")]);
+    // A single text-style `\frac{a}{b}` is only about 1.06 em tall and its
+    // denominator stays above the descender allowance of a 1.2 line, so the
+    // sample that must push the baseline uses a denominator with a real
+    // descender, whose box reaches past the line's descent.
+    let formula_graph = followed_by_marker(vec![text("The ratio "), math("\\frac{a}{g}"), text(" here")]);
     let plain_graph = followed_by_marker(vec![text("The ratio a/b here")]);
     let formula_plan = layout_with_hint(&formula_graph, &hint);
     let plain_plan = layout_with_hint(&plain_graph, &hint);

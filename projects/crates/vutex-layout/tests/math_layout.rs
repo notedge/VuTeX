@@ -1,6 +1,8 @@
 //! Integration tests for the math parse/layout pipeline.
 
-use vutex_layout::math::{FormulaLayout, Glyph, LayoutNode, layout_formula, layout_formula_with_diagnostics};
+use vutex_layout::math::{
+    FormulaLayout, Glyph, LayoutNode, default_base_size, layout_formula, layout_formula_with_diagnostics,
+};
 use vutex_text::math::builtin_font_metrics;
 use vutex_types::{
     Severity,
@@ -687,6 +689,127 @@ fn glyph_accents_clear_the_base_ink_by_the_rule_thickness() {
 /// Every glyph size inside a tree, in pixels.
 fn glyph_sizes(node: &LayoutNode) -> Vec<f64> {
     glyphs(node).into_iter().map(|(_, _, glyph)| glyph.size.to_f64()).collect()
+}
+
+/// TeX centres the fraction bar on the math axis and measures both clearances
+/// from that axis.  A fraction that instead shifts its whole stack down by the
+/// denominator drop leaves the rule half an axis below the baseline and the bar
+/// off-centre in the box.
+#[test]
+fn fraction_rule_sits_on_the_math_axis() {
+    let constants = builtin_font_metrics();
+    let constant = |name: MathConstant| constants.get_math_constant("default", name).expect("MATH constant").to_f64();
+
+    for display in [false, true] {
+        let em = default_base_size(display);
+        let axis = constant(MathConstant::AxisHeight) * em;
+        let rule = constant(MathConstant::FractionRuleThickness) * em;
+        // `Fixed` keeps 16 fractional bits, so a constant quantized to one step
+        // and scaled to `em` is exact to well under a thousandth of a pixel.
+        let tolerance = 8.0 * em / Fixed::SCALE as f64;
+
+        let (tree, metrics) = layout_formula("\\frac{a}{b}", display).expect("`\\frac{a}{b}` should lay out");
+        let bars = rules(&tree);
+        assert_eq!(bars.len(), 1, "a solid fraction must paint exactly one rule: {bars:?}");
+        let (_, rule_top, _, rule_total) = bars[0];
+        // Canvas y grows downward, so "above the baseline" is `-y`.
+        let rule_centre = -(rule_top + rule_total / 2.0);
+        assert!(
+            (rule_centre - axis).abs() < tolerance,
+            "the fraction bar centre {rule_centre} must sit on the axis {axis} (display={display})"
+        );
+        assert!(
+            (rule_total - rule).abs() < tolerance,
+            "the fraction bar thickness {rule_total} must be `FractionRuleThickness` {rule} (display={display})"
+        );
+
+        let (num_shift, den_shift, num_gap, den_gap) = if display {
+            (
+                constant(MathConstant::FractionNumeratorDisplayStyleShiftUp) * em,
+                constant(MathConstant::FractionDenominatorDisplayStyleShiftDown) * em,
+                constant(MathConstant::FractionNumDisplayStyleGapMin) * em,
+                constant(MathConstant::FractionDenomDisplayStyleGapMin) * em,
+            )
+        }
+        else {
+            (
+                constant(MathConstant::FractionNumeratorShiftUp) * em,
+                constant(MathConstant::FractionDenominatorShiftDown) * em,
+                constant(MathConstant::FractionNumeratorGapMin) * em,
+                constant(MathConstant::FractionDenominatorGapMin) * em,
+            )
+        };
+
+        let (_, num_y, num) = glyph_at(&tree, 'a');
+        let (_, den_y, den) = glyph_at(&tree, 'b');
+        let num_height = num.metrics.height.to_f64();
+        let num_depth = num.metrics.depth.to_f64();
+        let den_height = den.metrics.height.to_f64();
+        let den_depth = den.metrics.depth.to_f64();
+
+        let expected_num_shift = num_shift.max(axis + rule / 2.0 + num_gap + num_depth);
+        let expected_den_shift = den_shift.max(rule / 2.0 + den_gap + den_height - axis);
+        assert!(
+            (-num_y - expected_num_shift).abs() < tolerance,
+            "numerator baseline {} must sit {expected_num_shift} above the fraction baseline (display={display})",
+            -num_y
+        );
+        assert!(
+            (-den_y + expected_den_shift).abs() < tolerance,
+            "denominator baseline {} must sit {expected_den_shift} below the fraction baseline (display={display})",
+            -den_y
+        );
+
+        let expected_height = num_height + expected_num_shift;
+        let expected_depth = den_depth + expected_den_shift;
+        assert!(
+            (metrics.height - expected_height).abs() < tolerance,
+            "fraction height {} must be {expected_height} above the baseline (display={display})",
+            metrics.height
+        );
+        assert!(
+            (metrics.depth - expected_depth).abs() < tolerance,
+            "fraction depth {} must be {expected_depth} below the baseline (display={display})",
+            metrics.depth
+        );
+    }
+}
+
+/// The fraction's axis alignment must not move the surrounding line: in
+/// `x+\frac{a}{b}+y` all three atoms keep one baseline while the bar stays on
+/// the axis, which is what makes the group read as a single line of maths.
+#[test]
+fn fraction_stays_on_the_surrounding_baseline() {
+    let constants = builtin_font_metrics();
+    let axis_em = constants.get_math_constant("default", MathConstant::AxisHeight).expect("`AxisHeight`").to_f64();
+
+    for display in [false, true] {
+        let em = default_base_size(display);
+        let axis = axis_em * em;
+        let tolerance = 8.0 * em / Fixed::SCALE as f64;
+
+        let (tree, _) = layout_formula("x+\\frac{a}{b}+y", display).expect("`x+\\frac{a}{b}+y` should lay out");
+        let (_, x_y, _) = glyph_at(&tree, 'x');
+        let (_, y_y, _) = glyph_at(&tree, 'y');
+        let (_, num_y, _) = glyph_at(&tree, 'a');
+        let (_, den_y, _) = glyph_at(&tree, 'b');
+        assert!((x_y - y_y).abs() < tolerance, "`x` and `y` must share one baseline: {x_y} vs {y_y}");
+        assert!((x_y.abs() < tolerance), "`x` must sit on the formula baseline, found {x_y} (display={display})");
+        assert!(
+            (-num_y).abs() > 0.0 && num_y < -axis,
+            "the numerator must stay above the axis, found {} (display={display})",
+            -num_y
+        );
+        assert!(den_y > axis, "the denominator must stay below the axis, found {} (display={display})", -den_y);
+
+        for (_, rule_top, _, rule_total) in rules(&tree) {
+            let rule_centre = -(rule_top + rule_total / 2.0);
+            assert!(
+                (rule_centre - axis).abs() < tolerance,
+                "the bar must sit on the axis of the surrounding baseline: {rule_centre} vs {axis} (display={display})"
+            );
+        }
+    }
 }
 
 /// `\displaystyle` must really switch the enclosing style.  In TeX a display
