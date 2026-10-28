@@ -56,6 +56,10 @@ pub enum PaintNode {
         positions: Vec<(Fixed, Fixed)>,
         /// Design size in the same units as [`Fixed`].
         size: Fixed,
+        /// Per-glyph SVG `d` outline path.  Same length as `glyph_ids` /
+        /// `positions`.  `None` entries mean the glyph has no outline
+        /// (e.g. whitespace or a character that only has a text fallback).
+        path_data: Vec<Option<String>>,
     },
     /// A filled rectangle (rule bar, fraction line, underline, ...).
     Rect {
@@ -96,6 +100,10 @@ impl PaintNode {
                 .iter()
                 .map(|c| c.bbox())
                 .fold(BBox::default(), |acc, b| bbox_union(acc, b)),
+            // path_data bbox computation delegated to render-time: the
+            // renderer can inspect `path_data` / `glyph_paths` in
+            // [`FontMetricsSnapshot`] and build the real box from SVG
+            // geometry.  Layout keeps the paint tree backend-free.
             PaintNode::GlyphRun { .. } => BBox::default(),
             PaintNode::Rect { x, y, width, height, .. } => BBox {
                 x: *x,
@@ -140,6 +148,10 @@ pub struct FormulaLayoutResult {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct FontMetricsSnapshot {
     pub faces: Vec<FontFaceSnapshot>,
+    /// SVG `d` outline paths keyed by `(font_id, glyph_id)`.
+    /// Populated at layout time so renderers can draw glyph outlines
+    /// without re-querying the font system.
+    pub glyph_paths: Vec<(String, u16, String)>,
 }
 
 /// A single font face captured at layout time.
