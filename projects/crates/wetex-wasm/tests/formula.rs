@@ -67,11 +67,24 @@ fn strict_outline_covers_ascii_relations() {
 }
 
 #[test]
-fn missing_outline_warns_alongside_the_host_font_fallback() {
-    // CJK is absent from Latin Modern Math, so the non-strict backend paints a
-    // `<text>` run whose metrics came from the synthetic fallback. That host-font
-    // dependency must be reported instead of passing silently.
+fn default_render_is_strict_path_only() {
+    // The public render path must not depend on a host font. Omitting `outline`
+    // therefore means strict, and a glyph Latin Modern Math cannot outline fails
+    // the render instead of being painted as `<text>`.
     let value = parse(&render_svg_wasm("\\text{字}", None));
+    assert_eq!(value["svg"].as_str(), Some(""), "the default render must not emit a host-font run: {value}");
+
+    let diagnostics = value["diagnostics"].as_array().expect("diagnostics");
+    assert_eq!(diagnostics[0]["code"].as_str(), Some("WETEX_MATH_ERROR"));
+    assert_eq!(diagnostics[0]["severity"].as_str(), Some("error"));
+}
+
+#[test]
+fn missing_outline_warns_alongside_the_host_font_fallback() {
+    // CJK is absent from Latin Modern Math, so the opt-in non-strict backend
+    // paints a `<text>` run whose metrics came from the synthetic fallback. That
+    // host-font dependency must be reported instead of passing silently.
+    let value = parse(&render_svg_wasm("\\text{字}", Some("{\"outline\":false}".to_string())));
     let svg = value["svg"].as_str().unwrap_or_default();
     assert!(svg.contains("<text"), "the non-strict backend must paint the fallback run: {value}");
 
