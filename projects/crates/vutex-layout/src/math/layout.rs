@@ -431,12 +431,20 @@ impl LayoutEngine {
         }
     }
 
-    /// Whether a large operator stacks its scripts by default in display style.
+    /// Whether a large operator stacks its scripts by default in the given
+    /// math style.
     ///
-    /// TeX's `op` class (`\sum`, `\prod`, `\coprod`) puts limits above/below,
-    /// while the `intop` class (`\int`, `\iint`, `\oint`) never does unless
-    /// `\limits` asks for it.
-    fn default_limits(base: &SemanticNode) -> bool {
+    /// TeX's `op` class (`\sum`, `\prod`, `\coprod`) puts limits above/below in
+    /// display style, while the `intop` class (`\int`, `\iint`, `\oint`) never
+    /// does unless `\limits` asks for it. Our rule is broader: every
+    /// `LargeOperator` role — including integrals — must stack in `Display`
+    /// because the operator is drawn at a larger size specifically for that
+    /// layout. Text and script styles keep TeX's `op` / `intop` split.
+    fn default_limits(base: &SemanticNode, style: MathStyle) -> bool {
+        let is_large_op = matches!(base, SemanticNode::Symbol { role: SymbolRole::LargeOperator, .. });
+        if is_large_op && style == MathStyle::Display {
+            return true;
+        }
         match base {
             SemanticNode::Symbol { glyph_key, .. } => !matches!(glyph_key.char, Some('∫' | '∬' | '∮')),
             _ => true,
@@ -1164,7 +1172,7 @@ impl LayoutEngine {
         let use_limits = if is_large_op {
             match self.limits_override.take() {
                 Some(flag) => flag,
-                None => style == MathStyle::Display && Self::default_limits(base),
+                None => Self::default_limits(base, style),
             }
         }
         else {
