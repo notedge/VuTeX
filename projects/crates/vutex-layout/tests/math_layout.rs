@@ -215,6 +215,40 @@ fn delimited_box_is_body_plus_the_delimiter_advances() {
     }
 }
 
+/// A `\left…\right` pair is sized from the body alone, so the delimiters keep
+/// their extents no matter which atoms precede the pair.
+///
+/// Both routes must agree: the pair as the whole formula is a single
+/// `Delimited` node, while after `x+` it reaches the layout as the projected
+/// `Open` · body · `Close` noads.  Sizing the second route from the delimiter's
+/// own design would draw a visibly shorter parenthesis.
+#[test]
+fn fence_delimiters_ignore_the_preceding_atom() {
+    for display in [false, true] {
+        let (bare, _) = layout_formula("\\left(\\frac{a}{b}\\right)", display).expect("bare fence should lay out");
+        let (prefixed, _) = layout_formula("x+\\left(\\frac{a}{b}\\right)", display).expect("prefixed fence should lay out");
+
+        let (bare_x, _, bare_open) = glyph_at(&bare, '(');
+        let (prefixed_x, _, prefixed_open) = glyph_at(&prefixed, '(');
+        let extent = |glyph: &Glyph| (glyph.metrics.height + glyph.metrics.depth).to_f64() * glyph.size.to_f64();
+
+        assert_eq!(bare_x, 0.0, "the bare fence starts the formula");
+        assert!(
+            (extent(&bare_open) - extent(&prefixed_open)).abs() < 1e-3,
+            "the fence must not depend on the preceding atom: {} vs {}",
+            extent(&bare_open),
+            extent(&prefixed_open)
+        );
+        assert!(prefixed_x > bare_x, "`x+` must shift the fence right");
+        assert!(
+            extent(&prefixed_open) > prefixed_open.size.to_f64(),
+            "the fence must stretch past the delimiter's own design: {} at size {}",
+            extent(&prefixed_open),
+            prefixed_open.size.to_f64()
+        );
+    }
+}
+
 /// The radical index is set at scriptscript size and placed with the MATH
 /// table's radical constants instead of fixed fractions of an em.
 ///

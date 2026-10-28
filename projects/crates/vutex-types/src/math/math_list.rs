@@ -139,6 +139,15 @@ pub struct Noad {
     /// TeX `cramped` flag for the style that governs this noad's nucleus.
     /// Raised inside radicals, in fraction denominators and in subscripts.
     pub cramped: bool,
+    /// True when this `Open` / `Close` noad is one half of a `\left…\right`
+    /// pair rather than a literal delimiter typed into the source.
+    ///
+    /// Pairs stay two noads so the Appendix G table still sees an Open and a
+    /// Close atom, but the layout engine must size both delimiters against the
+    /// whole body between them, the way TeX does.  A literal `(` or `)` is not
+    /// marked and keeps its own glyph design at any body size.
+    #[serde(default)]
+    pub fence: bool,
 }
 
 /// Sub- and/or superscript attached to a [`Noad`].
@@ -151,7 +160,7 @@ pub struct Scripts {
 impl Noad {
     /// Constructor for the most common case: a plain atom of the given kind.
     pub fn new(kind: NoadKind, style: MathStyle, cramped: bool) -> Self {
-        Self { kind, nucleus: None, scripts: None, limits: None, style, cramped }
+        Self { kind, nucleus: None, scripts: None, limits: None, style, cramped, fence: false }
     }
 
     /// True when this noad should participate in Appendix G spacing glue.
@@ -448,11 +457,17 @@ fn project_one(
             push_noad(list, noad, pending_limits);
         }
         SemanticNode::Delimited { left, right, content } => {
+            // A `\left…\right` pair is one fence split into its two spacing
+            // atoms.  Both halves carry `fence` so the layout engine can pair
+            // them back up and size the delimiters against the body, which the
+            // flattened list no longer exposes on its own.
+            let paired = left.is_some() && right.is_some();
             // Left delimiter → Open noad with a synthetic Symbol nucleus
             // so the spacing engine can read its glyph for metrics.
             if let Some(gk) = left {
                 let mut open = Noad::new(NoadKind::Open, state.style, state.cramped);
                 open.nucleus = Some(Box::new(SemanticNode::Symbol { glyph_key: gk.clone(), role: SymbolRole::Opening }));
+                open.fence = paired;
                 push_noad(list, open, pending_limits);
             }
 
@@ -470,6 +485,7 @@ fn project_one(
             if let Some(gk) = right {
                 let mut close = Noad::new(NoadKind::Close, state.style, state.cramped);
                 close.nucleus = Some(Box::new(SemanticNode::Symbol { glyph_key: gk.clone(), role: SymbolRole::Closing }));
+                close.fence = paired;
                 push_noad(list, close, pending_limits);
             }
         }
