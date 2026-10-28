@@ -15,8 +15,8 @@
 //! * [`MathList`] — a newtype over `Vec<Noad>`.
 //! * [`MathStyleState`] — the recursive `(MathStyle, cramped)` pair that
 //!   descends into subtrees.
-//! * [`normalize_math_list`] — flatten transparent groups, demote Bin / Rel /
-//!   Op per Appendix G and merge consecutive text atoms in one left-to-right
+//! * [`normalize_math_list`] — flatten transparent groups, demote `Bin` atoms
+//!   per TeX Appendix G and merge consecutive text atoms in one left-to-right
 //!   sweep.
 //! * [`From<&[SemanticNode]>` for `MathList`] — a shallow projector that
 //!   lowers a SemanticNode sequence into a MathList.
@@ -543,17 +543,20 @@ fn with_style(node: &SemanticNode, target: MathStyle) -> SemanticNode {
 ///    proper `Symbol` nucleus for their delimiters and are therefore
 ///    preserved; the trim only catches artifact atoms from future
 ///    sources that have neither a glyph nor a sub/superscript.
-/// 2. **Bin / Rel / Op demotion** — downgrade binary, relation and large
-///    operator atoms per TeX Appendix G Rules 5–7, evaluated in one
-///    left-to-right pass (each noad sees its original neighbours; TeX
-///    does not re-resolve).
+/// 2. **`Bin` demotion** — downgrade binary-operator atoms per TeXbook
+///    Chapter 17 / Appendix G, evaluated in one left-to-right pass (each noad
+///    sees its original neighbours; TeX does not re-resolve).  `Bin` is the
+///    only class TeX converts: relations keep their `Rel` class and operators
+///    keep their `Op` class whatever surrounds them, so a relation never turns
+///    into a binary operator and a large operator is never downgraded to
+///    `Ord`.
 /// 3. **Consecutive Atom merge** — fold adjacent `Atom` noads into a
 ///    single one; later scripts override earlier ones.
 pub fn normalize_math_list(mut list: MathList) -> MathList {
     // ── Pass 1: boundary trim ────────────────────────────────────────
     trim_boundary(&mut list);
 
-    // ── Pass 2: Bin / Rel / Op demote per TeX Appendix G ──────────────
+    // ── Pass 2: Bin demote per TeXbook Chapter 17 ─────────────────────
     let v = demote_pass(&list.0);
 
     // ── Pass 3: consecutive **Text** Atom merge ───────────────────────
@@ -605,13 +608,18 @@ fn trim_boundary(list: &mut MathList) {
 // Pass 2 — demote
 // ────────────────────────────────────────────────────────────────────────
 
-/// TeX Appendix G demote pass — one left-to-right sweep.
+/// TeXbook Chapter 17 demote pass — one left-to-right sweep.
 ///
 /// Each noad's **left** neighbour is read from the already-demoted `out`
-/// array (so a Bin→Atom demotion immediately affects the Rel/Op that
-/// follows), while the **right** neighbour is still the raw `input`.  This is
-/// the single place where atom classes are resolved: downstream spacing reads
-/// the resulting [`NoadKind`] and never re-applies these rules.
+/// array (so a `Bin→Atom` demotion is what the next atom sees), while the
+/// **right** neighbour is still the raw `input`.  This is the single place
+/// where atom classes are resolved: downstream spacing reads the resulting
+/// [`NoadKind`] and never re-applies these rules.
+///
+/// Only `Bin` is converted.  TeX leaves `Rel` and `Op` alone: `(` followed by
+/// `=` keeps a relation (it never becomes a binary operator) and `∑` followed
+/// by a closing delimiter is still a large operator, so its scripts keep
+/// stacking and its Appendix G glue stays that of an `Op`.
 ///
 /// Neighbours are read via [`Noad::effective_kind`] so structural kinds
 /// (`Fence`, `Radical`, `Vcent`, `TableCell`) collapse to `Inner` before
@@ -627,30 +635,15 @@ fn demote_pass(input: &[Noad]) -> Vec<Noad> {
         // before any neighbour has changed.
         let right = (i + 1 < n).then(|| input[i + 1].effective_kind());
         let mut noad = input[i].clone();
-        match noad.kind {
-            NoadKind::Bin => {
-                if bin_demotes(left, right) {
-                    noad.kind = NoadKind::Atom;
-                }
-            }
-            NoadKind::Rel => {
-                if rel_demotes(left) {
-                    noad.kind = NoadKind::Bin;
-                }
-            }
-            NoadKind::Op => {
-                if op_demotes(left, right) {
-                    noad.kind = NoadKind::Atom;
-                }
-            }
-            _ => {}
+        if noad.kind == NoadKind::Bin && bin_demotes(left, right) {
+            noad.kind = NoadKind::Atom;
         }
         out.push(noad);
     }
     out
 }
 
-/// Rule 5 — Bin → Atom.
+/// TeXbook Chapter 17 — a `Bin` that cannot bind becomes `Ord`.
 ///
 /// Demotes when the **left** neighbour is "strong" enough to absorb the
 /// binary operator (or Bin is first), **or** the **right** neighbour is
@@ -669,22 +662,6 @@ fn bin_demotes(left: Option<NoadKind>, right: Option<NoadKind>) -> bool {
     use NoadKind::*;
     let left_strong = matches!(left, None | Some(Bin | Open | Rel | Op | Punct));
     let right_strong = matches!(right, None | Some(Rel | Close | Punct));
-    left_strong || right_strong
-}
-
-/// Rule 6 — Rel → Bin when left ∈ {Open, Bin}.
-fn rel_demotes(left: Option<NoadKind>) -> bool {
-    matches!(left, Some(NoadKind::Open | NoadKind::Bin))
-}
-
-/// Rule 7 — Op → Atom when flanked by demoting neighbours.
-///
-/// Large operators are also mapped to [`NoadKind::Op`] by
-/// [`NoadKind::from_role`], so this same rule covers both.
-fn op_demotes(left: Option<NoadKind>, right: Option<NoadKind>) -> bool {
-    use NoadKind::*;
-    let left_strong = matches!(left, Some(Open | Close | Bin | Punct | Op));
-    let right_strong = matches!(right, Some(Bin | Rel | Close | Punct | Op));
     left_strong || right_strong
 }
 
@@ -1048,43 +1025,77 @@ mod tests {
     }
 
     #[test]
-    fn rel_demotes_after_open() {
-        // ( = → Open + Bin — Rel after Open demotes to Bin.
+    fn bin_at_the_list_head_becomes_ord() {
+        // `+ x` → Ord · Atom — a Bin with no left neighbour cannot bind.
+        let nodes = vec![sym('+', SymbolRole::Binary), sym('x', SymbolRole::Ordinary)];
+        let projected = MathList::from(nodes.as_slice());
+        let normalized = normalize_math_list(projected);
+        assert_eq!(normalized.len(), 2);
+        assert_eq!(normalized.0[0].kind, NoadKind::Atom);
+        assert_eq!(normalized.0[1].kind, NoadKind::Atom);
+    }
+
+    #[test]
+    fn bin_after_a_relation_becomes_ord() {
+        // `a = + b` → Atom · Rel · Ord · Atom — the Bin follows a Rel.
+        let nodes = vec![
+            sym('a', SymbolRole::Ordinary),
+            sym('=', SymbolRole::Relation),
+            sym('+', SymbolRole::Binary),
+            sym('b', SymbolRole::Ordinary),
+        ];
+        let projected = MathList::from(nodes.as_slice());
+        let normalized = normalize_math_list(projected);
+        assert_eq!(normalized.len(), 4);
+        assert_eq!(normalized.0[0].kind, NoadKind::Atom);
+        assert_eq!(normalized.0[1].kind, NoadKind::Rel, "the relation keeps its class");
+        assert_eq!(normalized.0[2].kind, NoadKind::Atom, "the Bin after a Rel demotes");
+        assert_eq!(normalized.0[3].kind, NoadKind::Atom);
+    }
+
+    #[test]
+    fn relation_is_never_demoted_to_bin() {
+        // `( =` → Open · Rel.  TeX only converts Bin atoms, so the relation
+        // must not turn into a binary operator after an Open.
         let nodes = vec![sym('(', SymbolRole::Opening), sym('=', SymbolRole::Relation)];
         let projected = MathList::from(nodes.as_slice());
         let normalized = normalize_math_list(projected);
         assert_eq!(normalized.len(), 2);
         assert_eq!(normalized.0[0].kind, NoadKind::Open);
-        assert_eq!(normalized.0[1].kind, NoadKind::Bin);
+        assert_eq!(normalized.0[1].kind, NoadKind::Rel);
     }
 
     #[test]
-    fn op_demotes_before_close() {
-        // ∑ ) → Atom + Close — LargeOp (Op) before Close demotes.
+    fn relation_between_atoms_stays_a_relation() {
+        // `x = y` → Atom · Rel · Atom.
+        let nodes = vec![sym('x', SymbolRole::Ordinary), sym('=', SymbolRole::Relation), sym('y', SymbolRole::Ordinary)];
+        let projected = MathList::from(nodes.as_slice());
+        let normalized = normalize_math_list(projected);
+        assert_eq!(normalized.len(), 3);
+        assert_eq!(normalized.0[0].kind, NoadKind::Atom);
+        assert_eq!(normalized.0[1].kind, NoadKind::Rel);
+        assert_eq!(normalized.0[2].kind, NoadKind::Atom);
+    }
+
+    #[test]
+    fn op_keeps_its_class_before_close() {
+        // ∑ ) → Op · Close — TeX never downgrades an operator to Ord, so the
+        // large operator keeps stacking its limits and its Op spacing class.
         let nodes = vec![sym('∑', SymbolRole::LargeOperator), sym(')', SymbolRole::Closing)];
         let projected = MathList::from(nodes.as_slice());
         let normalized = normalize_math_list(projected);
         assert_eq!(normalized.len(), 2);
-        assert_eq!(normalized.0[0].kind, NoadKind::Atom);
+        assert_eq!(normalized.0[0].kind, NoadKind::Op);
         assert_eq!(normalized.0[1].kind, NoadKind::Close);
     }
 
     #[test]
     fn op_stays_at_first() {
-        // ∑ + x — LargeOp is first (no left neighbour), so does NOT demote.
-        // Plus, the Op has right neighbour Bin — but right_strong needs Bin,
-        // so it *does* demote by the right side.  Wait — let me re-check...
-        // Rule 7: Op → Atom if right ∈ {Bin, Rel, Close, Punct, Op}.
-        // So ∑ + x → Op right=Bin → Op demotes to Atom → Atom + Bin + Atom.
-        // Hmm, the test name says "op_stays_at_first".  Let me change the
-        // scenario so Op stays: put an Atom on the right instead.
-        // Actually let me just test what the demote engine *should* do and
-        // pick a scenario where Op genuinely stays.
+        // ∑ x — the operator is first and the right neighbour is an Atom, so
+        // nothing demotes it.
         let nodes = vec![sym('∑', SymbolRole::LargeOperator), sym('x', SymbolRole::Ordinary)];
         let projected = MathList::from(nodes.as_slice());
         let normalized = normalize_math_list(projected);
-        // first (no left) → left_strong false; right=Atom → right_strong false.
-        // Op does NOT demote.
         assert_eq!(normalized.len(), 2);
         assert_eq!(normalized.0[0].kind, NoadKind::Op);
         assert_eq!(normalized.0[1].kind, NoadKind::Atom);

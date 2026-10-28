@@ -646,11 +646,11 @@ fn binary_demotes_after_open() {
 }
 
 #[test]
-fn relation_demotes_after_open() {
-    // `(=a)`: Rel `=` has left neighbour Open `(`, so the single normalize
-    // pass demotes it to Bin.  Spacing then reads that resolved Bin and never
-    // re-derives a class from the source role: Open→Bin = NoGlue and
-    // Bin→Ord = Medium 4mu.  A Rel left standing here would take thick 5mu.
+fn relation_after_open_keeps_its_class() {
+    // `(=a)`: TeX only demotes Bin atoms, so the Rel `=` keeps its class after
+    // the Open `(`.  Spacing reads that resolved Rel and never re-derives a
+    // class from the source role: Appendix G gives Open→Rel = NoGlue and
+    // Rel→Ord = Thick 5mu.
     let em = default_base_size(false);
     let tol = 2.0 * em / Fixed::SCALE as f64;
 
@@ -659,18 +659,18 @@ fn relation_demotes_after_open() {
     let eq_x = glyph_at(&tree, '=').0;
     let open_tail = open_x + open_g.metrics.width.to_f64() + open_g.metrics.italic_correction.to_f64();
     let open_eq = eq_x - open_tail;
-    assert!(open_eq.abs() < tol, "Open→demoted Rel(Bin) must be NoGlue, got {open_eq}");
+    assert!(open_eq.abs() < tol, "Open→Rel must be NoGlue, got {open_eq}");
 
     let eq_a = mu_gap_between(&tree, '=', 'a');
-    assert!((eq_a - 4.0 / 18.0 * em).abs() < tol, "Bin→Ord after the Rel→Bin demote must be 4mu, got {eq_a}");
+    assert!((eq_a - 5.0 / 18.0 * em).abs() < tol, "Rel→Ord must be Thick 5mu, got {eq_a}");
 }
 
 #[test]
 fn nested_group_keeps_the_same_atom_classes() {
     // The demote pass runs once per math list, including the lists a nested
     // group opens.  `(=b`, `{(=b}` and `\sqrt{(=b)}` therefore classify `=`
-    // identically: Open→Bin = NoGlue, Bin→Ord = 4mu.  A group that skipped
-    // normalization would leave `=` a Rel and take thick 5mu instead.
+    // identically: Open→Rel = NoGlue, Rel→Ord = thick 5mu.  A group that
+    // skipped normalization would leave `=` a Rel and take thick 5mu instead.
     let em = default_base_size(false);
     let tol = 2.0 * em / Fixed::SCALE as f64;
 
@@ -683,10 +683,10 @@ fn nested_group_keeps_the_same_atom_classes() {
         let eq_x = glyph_at(tree, '=').0;
         let open_tail = open_x + open_g.metrics.width.to_f64() + open_g.metrics.italic_correction.to_f64();
         let open_eq = eq_x - open_tail;
-        assert!(open_eq.abs() < tol, "{label}: Open→Bin must be NoGlue, got {open_eq}");
+        assert!(open_eq.abs() < tol, "{label}: Open→Rel must be NoGlue, got {open_eq}");
 
         let eq_b = mu_gap_between(tree, '=', 'b');
-        assert!((eq_b - 4.0 / 18.0 * em).abs() < tol, "{label}: Bin→Ord must be 4mu, got {eq_b}");
+        assert!((eq_b - 5.0 / 18.0 * em).abs() < tol, "{label}: Rel→Ord must be 5mu, got {eq_b}");
     }
 }
 
