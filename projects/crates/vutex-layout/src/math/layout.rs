@@ -821,8 +821,18 @@ impl LayoutEngine {
         }
 
         // Gap between rule and den
-        let actual_den_shift = den_shift.max(axis_height - rule_thickness / 2.0 + den_gap + den_height);
-        v_children.push(LayoutNode::Kern(actual_den_shift - axis_height - rule_thickness / 2.0 - den_height));
+        //
+        // `actual_den_shift` is the distance from the fraction's baseline down
+        // to the denominator baseline, and the rule centre sits `AxisHeight`
+        // above that baseline, so the clearance below the rule is
+        // `actual_den_shift + axis - rule/2 - den_height`.  Requiring it to stay
+        // at least `den_gap` gives the minimum below and the kern that follows.
+        // Both sides of the rule must be measured from the axis: taking
+        // `axis - rule/2` here inverts the sign and leaves an extra half axis
+        // of empty space under the rule.
+        let den_min_shift = rule_thickness / Fixed::from_f64(2.0) + den_gap + den_height - axis_height;
+        let actual_den_shift = den_shift.max(den_min_shift);
+        v_children.push(LayoutNode::Kern(actual_den_shift + axis_height - rule_thickness / Fixed::from_f64(2.0) - den_height));
 
         let den_hbox = self
             .pack_hbox(vec![LayoutNode::Kern((width - den_layout.width()) / Fixed::from_f64(2.0)), den_layout], Some(width));
@@ -833,7 +843,12 @@ impl LayoutEngine {
             v.shift = Fixed::ZERO;
         }
 
-        // Align the baseline of the VBox with the axis height by wrapping in HBox and shifting
+        // The vertical list is built downwards from the numerator and its last
+        // item is the denominator, so the list's own reference point is the
+        // denominator baseline.  Lowering the whole list by `actual_den_shift`
+        // puts the fraction baseline back on the math axis: the rule centre then
+        // lands exactly `AxisHeight` above it, and `height`/`depth` fold the
+        // shift so the box reports its real extents around the axis.
         let mut wrapper = self.pack_hbox(vec![vbox_node], None);
         if let LayoutNode::HBox(ref mut h) = wrapper {
             h.shift = actual_den_shift;
