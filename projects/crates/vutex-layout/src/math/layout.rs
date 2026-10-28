@@ -462,62 +462,15 @@ impl LayoutEngine {
         }
     }
 
-    /// TeXbook Appendix G: downgrade Bin / Rel / Op atoms before spacing.
-    ///
-    /// `current`'s neighbours are `left` and `right`.  An atom demotes to a
-    /// weaker role when flanked by classes that would otherwise glue on both
-    /// sides — e.g. `$(a+b)$` must not take thick glue between `(` and `+`
-    /// because `+` becomes Ordinary next to Open on the left and Close on the
-    /// right.
-    fn demote_role(current: SymbolRole, left: Option<SymbolRole>, right: Option<SymbolRole>) -> SymbolRole {
-        use SymbolRole::*;
-        let l = left.unwrap_or(Ordinary);
-        let r = right.unwrap_or(Ordinary);
-
-        match current {
-            // TeX G Rules 5 & 6: Bin → Ord if
-            //   left  ∈ {首位置, Bin, Open, Rel, Op, Punct}
-            //   right ∈ {末位置, Rel, Close, Punct}
-            // Close is NOT a bin-left-canceller and Open is NOT a bin-right-
-            // canceller — a Bin flanked only by Ordinary on both sides stays
-            // Bin and takes medium muskip even inside parentheses like `(a+b)`.
-            Binary
-                if matches!(l, Binary | Opening | Relation | Operator | Punctuation)
-                    || matches!(r, Relation | Closing | Punctuation) =>
-            {
-                Ordinary
-            }
-            // TeX G: Rel → Bin if left neighbor is Open or Bin
-            Relation if matches!(l, Opening | Binary) => Binary,
-            // TeX G: Op → Ord if flanked by Open/Close/Bin/Punct/LargeOp on left
-            //           or Bin/Rel/Close/Punct/LargeOp on right
-            Operator
-                if matches!(l, Opening | Closing | Binary | Punctuation | LargeOperator)
-                    || matches!(r, Binary | Relation | Closing | Punctuation | LargeOperator) =>
-            {
-                Ordinary
-            }
-            _ => current,
-        }
-    }
-
-    /// TeXbook Appendix G spacing table keyed by [`SymbolRole`].
-    ///
-    /// Thin wrapper over [`tex_skip_between_noad`]: roles map onto the same
-    /// eight atom classes, so there is exactly one copy of the table.
-    fn tex_skip_between(left: SymbolRole, right: SymbolRole) -> TexSkip {
-        Self::tex_skip_between_noad(NoadKind::from_role(left), NoadKind::from_role(right))
-    }
-
     /// TeXbook Appendix G spacing table keyed by [`NoadKind`].
     ///
     /// This is the unique source of truth for inter-atom math glue.  Rows are
     /// the left atom's class and columns the right atom's class, in the
     /// canonical order Ord, Op, Bin, Rel, Open, Close, Punct, Inner.  Because
-    /// [`normalize_math_list`] runs demotion before the spacing phase, this
-    /// function does **not** call [`demote_role`] — it consumes already
-    /// resolved kinds and follows Knuth's table cell by cell.  Blank cells
-    /// (demoted away in practice) are spelled out as `NoGlue`.
+    /// [`normalize_math_list`] runs the demotion pass before the spacing phase,
+    /// this function consumes already-resolved kinds and follows Knuth's table
+    /// cell by cell — it never re-derives a class from a source role.  Blank
+    /// cells (demoted away in practice) are spelled out as `NoGlue`.
     fn tex_skip_between_noad(left: NoadKind, right: NoadKind) -> TexSkip {
         use AtomClass::*;
         use TexSkip::*;
@@ -597,25 +550,6 @@ impl LayoutEngine {
             (Inner, Punct) => Thin,
             (Inner, Inner) => Thin,
         }
-    }
-
-    /// TeX math spacing between two adjacent atoms.
-    ///
-    /// The caller passes the role of the atom to the left of `left` (if any),
-    /// the role of `left`, the role of `right`, and the role of the atom to the
-    /// right of `right` (if any).  Both atoms are then demoted per TeXbook
-    /// Appendix G and the spacing rule applied to the resulting roles.
-    fn spacing_between(
-        left_neighbor: Option<SymbolRole>,
-        left: SymbolRole,
-        right: SymbolRole,
-        right_neighbor: Option<SymbolRole>,
-        size: Fixed,
-    ) -> Option<Glue> {
-        let left = Self::demote_role(left, left_neighbor, Some(right));
-        let right = Self::demote_role(right, Some(left), right_neighbor);
-        let skip = Self::tex_skip_between(left, right);
-        skip.to_glue(size)
     }
 
     /// Lay out a semantic node in the given math style.

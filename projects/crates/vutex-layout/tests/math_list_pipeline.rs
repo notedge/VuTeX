@@ -1,16 +1,16 @@
-//! Dual-pipeline parity smoke tests.
+//! Math-list pipeline parity and glue-shape smoke tests.
 //!
-//! Compare glue count / width between the legacy
-//!   `SemanticNode → layout_sequence → spacing_between(demote) → LayoutNode`
-//! path and the new
+//! Every math list reaches the layout engine through the normalized pipeline
 //!   `SemanticNode → project_semantic → normalize_math_list → tex_skip_between_noad → LayoutNode`
-//! path.
+//! driven by `LayoutEngine::layout_math_list`, which `layout_node` on a
+//! `Sequence` delegates to.
 //!
-//! `normalize_math_list` now runs demotion and consecutive-Atom merge in one
-//! pass, and `tex_skip_between_noad` consumes the already-resolved
-//! [`NoadKind`] directly (no re-demote).  As long as the normalizer stays
-//! faithful to TeX Appendix G, the two paths should emit identical glue
-//! sequences for formulas where merge_atoms_pass does not shrink the list.
+//! `normalize_math_list` runs demotion and consecutive-Atom merge in one pass,
+//! and `tex_skip_between_noad` consumes the already-resolved `NoadKind`
+//! directly (no re-demote).  These tests pin the glue the two public entry
+//! points emit for the Appendix G cases where no atom merge shrinks the list,
+//! so re-introducing a second, role-based demotion path anywhere in `layout`
+//! shows up as a glue mismatch here.
 
 use vutex_layout::math::{LayoutEngine, LayoutNode};
 use vutex_text::math::builtin_font_metrics;
@@ -68,7 +68,7 @@ fn compare_pipelines(nodes: &[SemanticNode], label: &str) {
 
 // ---------------------------------------------------------------------------
 // Cases where NO demotion fires AND merge_atoms_pass does not shrink the list.
-// These should be glue-identical across both pipelines.
+// Both entry points must agree on the glue sequence here.
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -131,32 +131,4 @@ fn inner_fraction_next_to_binary_keeps_medium_glue() {
         },
     ])];
     compare_pipelines(&nodes, "a + frac{b}{c}");
-}
-
-// ---------------------------------------------------------------------------
-// Case where merge_atoms_pass would shrink the list — intentionally ignored
-// because the two pipelines are *not* expected to be equal here.  Keeping
-// the test as a marker so future work can decide whether the layout engine
-// should demote *before* merge (as TeX does) or *after*.
-// ---------------------------------------------------------------------------
-
-#[test]
-#[ignore = "merge_atoms_pass collapses consecutive Atoms; legacy path does not — pipelines intentionally diverge here"]
-fn consecutive_atoms_merge_changes_glue_count() {
-    // `a b + c`: Ord Ord Bin Ord → normalized collapses first two into one Atom
-    // legacy: 3 glues (NoGlue, Medium, NoGlue)
-    // normalized: 2 glues (Medium, NoGlue) — merged first two atoms
-    // We skip this test; it documents the known delta.
-    let nodes = vec![SemanticNode::Sequence(vec![
-        sym('a', SymbolRole::Ordinary),
-        sym('b', SymbolRole::Ordinary),
-        sym('+', SymbolRole::Binary),
-        sym('c', SymbolRole::Ordinary),
-    ])];
-    let engine = LayoutEngine::new(builtin_font_metrics());
-    let legacy = engine.layout_node(&nodes[0], MathStyle::Display).unwrap();
-    let normalized = engine.layout_math_list(nodes.as_slice(), MathStyle::Display).unwrap();
-    let lg = glue_widths(&legacy);
-    let ng = glue_widths(&normalized);
-    assert_ne!(lg.len(), ng.len(), "this test expects different glue counts! legacy={lg:?} normalized={ng:?}");
 }
