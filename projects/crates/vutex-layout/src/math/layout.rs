@@ -4,8 +4,9 @@
 use serde::{Deserialize, Serialize};
 use vutex_text::math::FontMetricsSystem;
 use vutex_types::math::{
-    Alignment, DelimiterComponent, Fixed, FontStyle, GlyphKey, GlyphMetrics, LineStyle, MathConstant, MathKern, MathList,
-    MathResult, MathStyle, NoadKind, SemanticNode, SpacingRule, SymbolRole, normalize_math_list, project_semantic,
+    Alignment, BBox, DelimiterComponent, Fixed, FontMetricsSnapshot, FontStyle, FormulaLayoutResult, FormulaMetrics,
+    GlyphKey, GlyphMetrics, LineStyle, MathConstant, MathKern, MathList, MathResult, MathStyle, NoadKind, PaintNode,
+    SemanticNode, SpacingRule, SymbolRole, normalize_math_list, project_semantic,
 };
 
 /// A node in the math layout tree.
@@ -678,6 +679,23 @@ impl LayoutEngine {
         let projected = project_semantic(nodes, style);
         let normalized = normalize_math_list(projected);
         self.layout_noads(&normalized, style)
+    }
+
+    /// 新入口：直接产出不可变 [`FormulaLayoutResult`]。
+    ///
+    /// 保持现有 `layout_noads → LayoutNode` 路径完全不变；本方法只是在
+    /// 计算完 LayoutNode 树之后再跑一遍 lower + extract，把它降成
+    /// `PaintNode` 树 + `FormulaMetrics`。
+    pub fn layout_formula_result(
+        &self,
+        nodes: &[SemanticNode],
+        style: MathStyle,
+    ) -> MathResult<FormulaLayoutResult> {
+        let layout_node = self.layout_math_list(nodes, style)?;
+        let paint = lower_layout_to_paint(&layout_node);
+        let metrics = extract_metrics(&layout_node);
+        let fonts = FontMetricsSnapshot::default();
+        Ok(FormulaLayoutResult { metrics, paint, diagnostics: Vec::new(), fonts })
     }
 
     /// Lay out a flat, normalized [`MathList`].
@@ -1882,5 +1900,103 @@ fn accent_ink_extents(node: &LayoutNode) -> Option<(Fixed, Fixed)> {
         }
         LayoutNode::HBox(hbox) => hbox.children.iter().find_map(accent_ink_extents),
         _ => None,
+    }
+}
+
+/// 递归把 [`LayoutNode`] 树降成 [`PaintNode`] 树。
+///
+/// 第一版策略：
+/// * HBox / VBox → [`PaintNode::Group`]，递归子节点；advances（kerns/glue）
+///   不 paint，已经折叠在 metrics 里。
+/// * Glyph → 优先走 [`PaintNode::VectorPath`]（SVG outline），其次退化成
+///   空 Group（占位），因为 PaintNode 的 GlyphRun 需要真实 font_id +
+///   glyph_ids 快照，目前 LayoutNode::Glyph 没那份数据。
+/// * Rule → [`PaintNode::Rect`]。
+/// * Path → [`PaintNode::VectorPath`]。
+/// * Kern / Glue / Penalty → 空 Group（不 paint，advance 进 metrics）。
+fn lower_layout_to_paint(node: &LayoutNode) -> PaintNode {
+    match node {
+        LayoutNode::HBox(hbox) => {
+            let children: Vec<_> = hbox.children.iter().map(lower_layout_to_paint).collect();
+            PaintNode::Group(children)
+        }
+        LayoutNode::VBox(vbox) => {
+            let children: Vec<_> = vbox.children.iter().map(lower_layout_to_paint).collect();
+            PaintNode::Group(children)
+        }
+        LayoutNode::Glyph(glyph) => {
+            if let Some(ref path) = glyph.path_data {
+                let bbox = BBox {
+                    x: Fixed::ZERO,
+                    y: Fixed::ZERO - glyph.metrics.height,
+                    width: glyph.metrics.width,
+                    height: glyph.metrics.height + glyph.metrics.depth,
+                };
+                PaintNode::VectorPath { d: path.clone(), bbox }
+            }
+            else {
+                // 占位：真实场景应填 PaintNode::GlyphRun{font_id, glyph_ids, ...}。
+                PaintNode::Group(Vec::new())
+            }
+        }
+        LayoutNode::Rule { width, height, depth } => PaintNode::Rect {
+            x: Fixed::ZERO,
+            y: Fixed::ZERO - *height,
+            width: *width,
+            height: *height + *depth,
+            stroke_width: Fixed::ZERO,
+        },
+        LayoutNode::Path(path) => PaintNode::VectorPath {
+            d: path.d.clone(),
+            bbox: BBox {
+                x: Fixed::ZERO,
+                y: Fixed::ZERO - path.height,
+                width: path.width,
+                height: path.height + path.depth,
+            },
+        },
+        LayoutNode::Kern(_) | LayoutNode::Glue(_) | LayoutNode::Penalty { .. } => {
+            // 只推进位置，不 paint。
+            PaintNode::Group(Vec::new())
+        }
+    }
+}
+
+/// 从 [`LayoutNode`] 树根节点收集 [`FormulaMetrics`]。
+///
+/// 根节点通常是 `pack_hbox` / `pack_vbox` 出来的 HBox / VBox，它自己
+/// 已经把 width / height / depth 算好了；直接取这几个字段即可。
+/// 递归兜底处理某些场景下 root 是单个 Glyph 或 Rule 的情况。
+///
+/// `axis` 暂时留 ZERO（等 layout 引擎把 MATH 表 AxisHeight 传进来）；
+/// `ink_bounds` 用 width/height/depth 推导一个以 baseline 为 y=0 的矩形。
+fn extract_metrics(root: &LayoutNode) -> FormulaMetrics {
+    let width;
+    let height;
+    let depth;
+    match root {
+        LayoutNode::HBox(h) => {
+            width = h.width;
+            height = h.height - h.shift;
+            depth = h.depth + h.shift;
+        }
+        LayoutNode::VBox(v) => {
+            width = v.width;
+            height = v.height;
+            depth = v.depth;
+        }
+        _ => {
+            width = root.width();
+            height = root.height();
+            depth = root.depth();
+        }
+    }
+
+    FormulaMetrics {
+        width,
+        height,
+        depth,
+        axis: Fixed::ZERO,
+        ink_bounds: BBox { x: Fixed::ZERO, y: Fixed::ZERO - height, width, height: height + depth },
     }
 }
