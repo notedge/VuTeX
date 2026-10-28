@@ -186,18 +186,20 @@ pub struct Glue {
 
 /// TeXbook Appendix G math spacing skip between two adjacent atoms.
 ///
-/// Each cell of the 9×9 spacing table says whether to insert no glue,
-/// thin (3mu), medium (4mu), or thick (5mu).  The lookup always runs after
-/// [`demote_role`] has downgraded Bin / Rel / Op atoms flanked by certain
-/// neighbours, so the table itself is simpler than it first appears.
+/// Each cell of the 8×8 table over the atom classes (Ord, Op, Bin, Rel, Open,
+/// Close, Punct, Inner) says whether to insert no glue, thin (3mu), medium
+/// (4mu), or thick (5mu).  The lookup always runs after demotion has downgraded
+/// Bin / Rel / Op atoms flanked by certain neighbours, so the table itself is
+/// simpler than it first appears.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 enum TexSkip {
     NoGlue,
-    /// `thinmuskip` = 3mu = 3/18 em.  Binary operators.
+    /// `thinmuskip` = 3mu = 3/18 em.  Ordinary atoms next to operators,
+    /// delimiters, punctuation and inner atoms.
     Thin,
-    /// `medmuskip` = 4mu = 4/18 em.  Large operators, math functions.
+    /// `medmuskip` = 4mu = 4/18 em.  Around binary operators.
     Medium,
-    /// `thickmuskip` = 5mu = 5/18 em.  Relations, Inner atoms.
+    /// `thickmuskip` = 5mu = 5/18 em.  Around relations.
     Thick,
 }
 
@@ -209,6 +211,41 @@ impl TexSkip {
             TexSkip::Thin => Some(Glue { width: em(THIN_MUSIP_EM), stretch: Fixed::ZERO, shrink: Fixed::ZERO }),
             TexSkip::Medium => Some(Glue { width: em(MEDIUM_MUSIP_EM), stretch: Fixed::ZERO, shrink: Fixed::ZERO }),
             TexSkip::Thick => Some(Glue { width: em(THICK_MUSIP_EM), stretch: Fixed::ZERO, shrink: Fixed::ZERO }),
+        }
+    }
+}
+
+/// The eight atom classes of the TeXbook Appendix G spacing table.
+///
+/// [`NoadKind`] also carries structural kinds (fences, radicals, `\vcenter`
+/// boxes and table cells) that TeX classifies as Inner for glue purposes, so
+/// this projection gives the table a closed 8×8 domain and lets the lookup be
+/// spelled out cell by cell.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum AtomClass {
+    Ord,
+    Op,
+    Bin,
+    Rel,
+    Open,
+    Close,
+    Punct,
+    Inner,
+}
+
+impl AtomClass {
+    fn of(kind: NoadKind) -> Self {
+        match kind {
+            NoadKind::Atom => AtomClass::Ord,
+            NoadKind::Op => AtomClass::Op,
+            NoadKind::Bin => AtomClass::Bin,
+            NoadKind::Rel => AtomClass::Rel,
+            NoadKind::Open => AtomClass::Open,
+            NoadKind::Close => AtomClass::Close,
+            NoadKind::Punct => AtomClass::Punct,
+            NoadKind::Inner | NoadKind::Fence | NoadKind::Radical | NoadKind::Vcent | NoadKind::TableCell => {
+                AtomClass::Inner
+            }
         }
     }
 }
@@ -464,82 +501,101 @@ impl LayoutEngine {
         }
     }
 
-    /// TeXbook Appendix G 9×9 spacing table.
+    /// TeXbook Appendix G spacing table keyed by [`SymbolRole`].
     ///
-    /// Runs after [`demote_role`], so the rare cells marked `*` by Knuth (where
-    /// glue would be inserted only between classes that survived demotion) are
-    /// simply `NoGlue` when demoted away.  `LargeOperator` shares the Op column
-    /// except for a few cells, so both match branches appear side by side.
+    /// Thin wrapper over [`tex_skip_between_noad`]: roles map onto the same
+    /// eight atom classes, so there is exactly one copy of the table.
     fn tex_skip_between(left: SymbolRole, right: SymbolRole) -> TexSkip {
-        use SymbolRole::*;
-        use TexSkip::*;
-
-        match (left, right) {
-            // ─────────── Opening: never take glue on the left ───────────
-            (Opening, _) => NoGlue,
-
-            // ─────────── Closing / Punctuation: never take glue on the right ───────────
-            (_, Closing | Punctuation) => NoGlue,
-
-            // ─────────── Relation: thick on both sides (demote may have turned one into Bin) ───────────
-            (Relation, _) | (_, Relation) => Thick,
-
-            // ─────────── LargeOperator and Op share the medium-left column ───────────
-            // ─────────── LargeOperator: medium on both sides ───────────
-            (LargeOperator, _) | (_, LargeOperator) => Medium,
-
-            // ─────────── Operator (text math \sin, \cos, \log): thin on both sides
-            // TeX Book 表 Op-Ord = 1 (Thin), KaTeX spacingData.js 同 ───────────
-            (Operator, _) | (_, Operator) => Thin,
-
-            // ─────────── Inner (Fraction / Radical / Delimited / Matrix): thick both sides ───────────
-            (Inner, _) | (_, Inner) => Thick,
-
-            // ─────────── Binary: Medium 4mu on both sides (TeX Book Bin-Ord = 2 Medium)
-            // Demote may have already turned it into Ord above ───────────
-            (Binary, _) | (_, Binary) => Medium,
-            (Punctuation, _) => Thin,
-
-            // ─────────── Ordinary adjacency: no glue ───────────
-            _ => NoGlue,
-        }
+        Self::tex_skip_between_noad(NoadKind::from_role(left), NoadKind::from_role(right))
     }
 
-    /// Appendix G spacing table keyed by [`NoadKind`].
+    /// TeXbook Appendix G spacing table keyed by [`NoadKind`].
     ///
-    /// This is the normalized pipeline's counterpart to [`tex_skip_between`].
-    /// Because [`normalize_math_list`] runs demotion before the spacing phase,
-    /// this function does **not** call [`demote_role`] — it consumes already-
-    /// resolved kinds.  The table shape is otherwise identical to Knuth's
-    /// original 9×9.
+    /// This is the unique source of truth for inter-atom math glue.  Rows are
+    /// the left atom's class and columns the right atom's class, in the
+    /// canonical order Ord, Op, Bin, Rel, Open, Close, Punct, Inner.  Because
+    /// [`normalize_math_list`] runs demotion before the spacing phase, this
+    /// function does **not** call [`demote_role`] — it consumes already
+    /// resolved kinds and follows Knuth's table cell by cell.  Blank cells
+    /// (demoted away in practice) are spelled out as `NoGlue`.
     fn tex_skip_between_noad(left: NoadKind, right: NoadKind) -> TexSkip {
-        use NoadKind::*;
+        use AtomClass::*;
         use TexSkip::*;
 
+        let (left, right) = (AtomClass::of(left), AtomClass::of(right));
         match (left, right) {
-            // ─────────── Open: never take glue on the left ───────────
-            (Open, _) => NoGlue,
-
-            // ─────────── Close / Punct: never take glue on the right ───────────
-            (_, Close | Punct) => NoGlue,
-
-            // ─────────── Rel: thick on both sides ───────────
-            (Rel, _) | (_, Rel) => Thick,
-
-            // ─────────── Op: medium on both sides ───────────
-            // (Op also covers TeX's LargeOperator — collapsed in NoadKind)
-            (Op, _) | (_, Op) => Medium,
-
-            // ─────────── Inner: thick both sides ───────────
-            (Inner, _) | (_, Inner) => Thick,
-
-            // ─────────── Bin: medium both sides (demote may have turned it
-            // into Atom by the time this runs) ───────────
-            (Bin, _) | (_, Bin) => Medium,
-            (Punct, _) => Thin,
-
-            // ─────────── Atom adjacency: no glue ───────────
-            _ => NoGlue,
+            // Ord row: 0 1 2 3 0 0 0 1
+            (Ord, Ord) => NoGlue,
+            (Ord, Op) => Thin,
+            (Ord, Bin) => Medium,
+            (Ord, Rel) => Thick,
+            (Ord, Open) => NoGlue,
+            (Ord, Close) => NoGlue,
+            (Ord, Punct) => NoGlue,
+            (Ord, Inner) => Thin,
+            // Op row: 1 1 - 3 0 0 0 1
+            (Op, Ord) => Thin,
+            (Op, Op) => Thin,
+            (Op, Bin) => NoGlue,
+            (Op, Rel) => Thick,
+            (Op, Open) => NoGlue,
+            (Op, Close) => NoGlue,
+            (Op, Punct) => NoGlue,
+            (Op, Inner) => Thin,
+            // Bin row: 2 2 - - 2 - - 2
+            (Bin, Ord) => Medium,
+            (Bin, Op) => Medium,
+            (Bin, Bin) => NoGlue,
+            (Bin, Rel) => NoGlue,
+            (Bin, Open) => Medium,
+            (Bin, Close) => NoGlue,
+            (Bin, Punct) => NoGlue,
+            (Bin, Inner) => Medium,
+            // Rel row: 3 3 - 0 3 0 0 3
+            (Rel, Ord) => Thick,
+            (Rel, Op) => Thick,
+            (Rel, Bin) => NoGlue,
+            (Rel, Rel) => NoGlue,
+            (Rel, Open) => Thick,
+            (Rel, Close) => NoGlue,
+            (Rel, Punct) => NoGlue,
+            (Rel, Inner) => Thick,
+            // Open row: 0 0 - 0 0 0 0 0
+            (Open, Ord) => NoGlue,
+            (Open, Op) => NoGlue,
+            (Open, Bin) => NoGlue,
+            (Open, Rel) => NoGlue,
+            (Open, Open) => NoGlue,
+            (Open, Close) => NoGlue,
+            (Open, Punct) => NoGlue,
+            (Open, Inner) => NoGlue,
+            // Close row: 0 1 2 3 0 0 0 1
+            (Close, Ord) => NoGlue,
+            (Close, Op) => Thin,
+            (Close, Bin) => Medium,
+            (Close, Rel) => Thick,
+            (Close, Open) => NoGlue,
+            (Close, Close) => NoGlue,
+            (Close, Punct) => NoGlue,
+            (Close, Inner) => Thin,
+            // Punct row: 1 1 - 1 1 1 1 1
+            (Punct, Ord) => Thin,
+            (Punct, Op) => Thin,
+            (Punct, Bin) => NoGlue,
+            (Punct, Rel) => Thin,
+            (Punct, Open) => Thin,
+            (Punct, Close) => Thin,
+            (Punct, Punct) => Thin,
+            (Punct, Inner) => Thin,
+            // Inner row: 1 1 2 3 1 0 1 1
+            (Inner, Ord) => Thin,
+            (Inner, Op) => Thin,
+            (Inner, Bin) => Medium,
+            (Inner, Rel) => Thick,
+            (Inner, Open) => Thin,
+            (Inner, Close) => NoGlue,
+            (Inner, Punct) => Thin,
+            (Inner, Inner) => Thin,
         }
     }
 

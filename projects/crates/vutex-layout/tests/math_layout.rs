@@ -478,8 +478,10 @@ fn spacing_relation_takes_thick_five_mu_per_side() {
 }
 
 #[test]
-fn spacing_fraction_inner_takes_thick_five_mu_per_side() {
-    // TeX Book: Ord→Inner = 3 = Thick 5mu, Inner→Ord = 3 = Thick 5mu.
+fn spacing_fraction_inner_takes_thin_three_mu_per_side() {
+    // TeXbook Appendix G Table 18: Ord→Inner = 1 = Thin 3mu (not thick),
+    // Inner→Ord = 1 = Thin 3mu.  Fractions are Inner atoms, and Inner only
+    // takes thick glue against relations.
     // The fraction body uses script-style fonts so leaf glyph x-coords are
     // indented by the fraction rule padding; measure glue by subtracting the
     // natural widths instead.
@@ -496,8 +498,95 @@ fn spacing_fraction_inner_takes_thick_five_mu_per_side() {
     let left_glue = left_pair - w_a - w_frac;
     let right_glue = right_pair - w_frac - w_c;
 
-    assert!((left_glue - 5.0 / 18.0 * em).abs() < tol, "Ord→Inner must be 5mu, got {left_glue}");
-    assert!((right_glue - 5.0 / 18.0 * em).abs() < tol, "Inner→Ord must be 5mu, got {right_glue}");
+    assert!((left_glue - 3.0 / 18.0 * em).abs() < tol, "Ord→Inner must be 3mu, got {left_glue}");
+    assert!((right_glue - 3.0 / 18.0 * em).abs() < tol, "Inner→Ord must be 3mu, got {right_glue}");
+}
+
+/// Every Appendix G glue in tree order, as absolute widths.
+fn glue_widths(node: &LayoutNode) -> Vec<f64> {
+    fn walk(node: &LayoutNode, out: &mut Vec<f64>) {
+        match node {
+            LayoutNode::HBox(hbox) => {
+                for child in &hbox.children {
+                    walk(child, out);
+                }
+            }
+            LayoutNode::VBox(vbox) => {
+                for child in &vbox.children {
+                    walk(child, out);
+                }
+            }
+            LayoutNode::Glue(glue) => out.push(glue.width.to_f64()),
+            LayoutNode::Glyph(_)
+            | LayoutNode::Rule { .. }
+            | LayoutNode::Kern(_)
+            | LayoutNode::Path(_)
+            | LayoutNode::Penalty { .. } => {}
+        }
+    }
+
+    let mut out = Vec::new();
+    walk(node, &mut out);
+    out
+}
+
+/// Assert `actual` glue widths equal `expected` mu values, in order.
+fn assert_glues(actual: &[f64], expected: &[f64], em: f64, label: &str) {
+    assert_eq!(actual.len(), expected.len(), "{label}: glue count mismatch, got {actual:?}");
+    let tol = 2.0 * em / Fixed::SCALE as f64;
+    for (i, (got, mu)) in actual.iter().zip(expected.iter()).enumerate() {
+        let want = mu / 18.0 * em;
+        assert!((got - want).abs() < tol, "{label}: glue[{i}] must be {mu}mu, got {got}");
+    }
+}
+
+#[test]
+fn spacing_fraction_after_ordinary_takes_thin_three_mu() {
+    // `\frac{a}{b}c` — Inner→Ord = 1 = Thin 3mu.
+    let em = default_base_size(false);
+    let (tree, _) = layout_formula("\\frac{a}{b}c", false).expect("formula should lay out");
+    assert_glues(&glue_widths(&tree), &[3.0], em, "frac c");
+}
+
+#[test]
+fn spacing_radical_neighbours_take_thin_three_mu() {
+    // `x\sqrt{y}` — Ord→Inner(Radical) = 1 = Thin 3mu.
+    // `\sqrt{y}z` — Inner(Radical)→Ord = 1 = Thin 3mu.
+    let em = default_base_size(false);
+
+    let (left, _) = layout_formula("x\\sqrt{y}", false).expect("formula should lay out");
+    assert_glues(&glue_widths(&left), &[3.0], em, "x sqrt");
+
+    let (right, _) = layout_formula("\\sqrt{y}z", false).expect("formula should lay out");
+    assert_glues(&glue_widths(&right), &[3.0], em, "sqrt z");
+}
+
+#[test]
+fn spacing_closed_group_before_fraction_takes_thin_three_mu() {
+    // `(a+b)\frac{c}{d}` — inside the group Ord→Bin and Bin→Ord are Medium
+    // 4mu, and Close→Inner = 1 = Thin 3mu after `)`.
+    let em = default_base_size(false);
+    let (tree, _) = layout_formula("(a+b)\\frac{c}{d}", false).expect("formula should lay out");
+    assert_glues(&glue_widths(&tree), &[4.0, 4.0, 3.0], em, "(a+b) frac");
+}
+
+#[test]
+fn spacing_fenced_fraction_uses_the_open_close_columns() {
+    // `\left(\frac{a}{b}\right)` — the delimiters are Open / Close atoms, so
+    // Open→Inner = 0 and Inner→Close = 0: no glue inside the fence, and no
+    // glue against surrounding ordinaries either (Ord→Open = 0, Close→Ord = 0).
+    let em = default_base_size(false);
+
+    let (fence, _) = layout_formula("\\left(\\frac{a}{b}\\right)", false).expect("formula should lay out");
+    assert_glues(&glue_widths(&fence), &[], em, "left( frac right)");
+
+    let (tree, _) = layout_formula("x\\left(\\frac{a}{b}\\right)y", false).expect("formula should lay out");
+    assert_glues(&glue_widths(&tree), &[], em, "x left( frac right) y");
+
+    // The fence's left delimiter is an Open atom, so a neighbouring Inner
+    // (fraction) takes Thin 3mu: Inner→Open = 1.
+    let (inner_open, _) = layout_formula("\\frac{a}{b}\\left(c\\right)", false).expect("formula should lay out");
+    assert_glues(&glue_widths(&inner_open), &[3.0], em, "frac left( c right)");
 }
 
 /// ——— TeXbook Appendix G demote rules ———
