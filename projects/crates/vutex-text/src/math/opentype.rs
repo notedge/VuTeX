@@ -259,6 +259,14 @@ fn extract_math_constants(constants: &acorn_ttf::tables::math::MathConstants, da
     data.constants.insert(MathConstant::RadicalExtraAscender, m(constants.radical_extra_ascender));
     data.constants.insert(MathConstant::RadicalKernBeforeDegree, m(constants.radical_kern_before_degree));
     data.constants.insert(MathConstant::RadicalKernAfterDegree, m(constants.radical_kern_after_degree));
+
+    // This is the only MATH constant stored as a percentage rather than in
+    // design units: 60 means 60%. Normalize it to the 0–1 fraction the layout
+    // and `default_math_constant` use.
+    data.constants.insert(
+        MathConstant::RadicalDegreeBottomRaisePercent,
+        Fixed::from_f64(constants.radical_degree_bottom_raise_percent as f64 / 100.0),
+    );
 }
 
 // ---------------------------------------------------------------------------

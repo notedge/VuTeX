@@ -650,7 +650,11 @@ impl LayoutEngine {
 
         let mut total_height = Fixed::ZERO;
         for (i, child) in children.iter().enumerate() {
-            width = width.max(child.width());
+            // Kerns, glue and penalties only advance vertically here: their
+            // numeric value is vertical space, so it must not widen the box.
+            if !matches!(child, LayoutNode::Kern(_) | LayoutNode::Glue(_) | LayoutNode::Penalty { .. }) {
+                width = width.max(child.width());
+            }
             if i < last_idx {
                 total_height = total_height + child.height() + child.depth();
             }
@@ -897,13 +901,33 @@ impl LayoutEngine {
         let mut children = Vec::new();
 
         if let Some(deg_node) = degree {
+            // TeXbook rule 11 and the MATH table agree on three offsets: a kern
+            // before the index, a (negative) kern after it that tucks the surd
+            // under the index, and a bottom raise taken as a percentage of the
+            // radical's own ascent above the radicand.
             let deg_layout = self.layout_node(deg_node, MathStyle::ScriptScript)?;
-            // Position the degree. This is complex in TeX, but we'll do something simple.
+            let kern_before = self
+                .font_system
+                .get_math_constant(family, MathConstant::RadicalKernBeforeDegree)
+                .unwrap_or(Fixed::from_f64(0.2))
+                * size;
+            let kern_after = self
+                .font_system
+                .get_math_constant(family, MathConstant::RadicalKernAfterDegree)
+                .unwrap_or(Fixed::from_f64(-0.2))
+                * size;
+            let raise_percent = self
+                .font_system
+                .get_math_constant(family, MathConstant::RadicalDegreeBottomRaisePercent)
+                .unwrap_or(Fixed::from_f64(0.6));
+            let raise = raise_percent * (bar_top - radicand_layout.depth());
+
             let mut deg_vbox = Vec::new();
             deg_vbox.push(deg_layout);
-            deg_vbox.push(LayoutNode::Kern(Fixed::from_f64(0.2) * size));
+            deg_vbox.push(LayoutNode::Kern(raise));
+            children.push(LayoutNode::Kern(kern_before));
             children.push(self.pack_vbox(deg_vbox, Alignment::Left));
-            children.push(LayoutNode::Kern(Fixed::from_f64(-0.2) * size)); // Negative kern to pull radical symbol under degree
+            children.push(LayoutNode::Kern(kern_after));
         }
 
         children.push(radical_box);
