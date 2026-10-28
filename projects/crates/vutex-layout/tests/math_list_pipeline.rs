@@ -118,9 +118,9 @@ fn three_operators_take_glue_on_each_gap() {
 }
 
 #[test]
-fn inner_fraction_takes_thick_glue_on_both_sides() {
+fn inner_fraction_next_to_binary_keeps_medium_glue() {
     // `a + \frac{b}{c}`: Ord Bin Inner — Bin stays Bin (no demote before Inner, Bin after Atom)
-    // spacing: Bin→Inner = Medium, Ord→Bin = Medium.  2 glues total.
+    // Appendix G: Ord→Bin = 2 (Medium), Bin→Inner = 2 (Medium).  2 glues total.
     let nodes = vec![SemanticNode::Sequence(vec![
         sym('a', SymbolRole::Ordinary),
         sym('+', SymbolRole::Binary),
