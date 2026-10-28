@@ -62,13 +62,7 @@ pub enum PaintNode {
         path_data: Vec<Option<String>>,
     },
     /// A filled rectangle (rule bar, fraction line, underline, ...).
-    Rect {
-        x: Fixed,
-        y: Fixed,
-        width: Fixed,
-        height: Fixed,
-        stroke_width: Fixed,
-    },
+    Rect { x: Fixed, y: Fixed, width: Fixed, height: Fixed, stroke_width: Fixed },
     /// A raw SVG path for complex glyph outlines that cannot be represented
     /// as a [`PaintNode::GlyphRun`].
     VectorPath {
@@ -96,21 +90,13 @@ impl PaintNode {
     /// in a follow-up change.
     pub fn bbox(&self) -> BBox {
         match self {
-            PaintNode::Group(children) => children
-                .iter()
-                .map(|c| c.bbox())
-                .fold(BBox::default(), |acc, b| bbox_union(acc, b)),
+            PaintNode::Group(children) => children.iter().map(|c| c.bbox()).fold(BBox::default(), |acc, b| bbox_union(acc, b)),
             // path_data bbox computation delegated to render-time: the
             // renderer can inspect `path_data` / `glyph_paths` in
             // [`FontMetricsSnapshot`] and build the real box from SVG
             // geometry.  Layout keeps the paint tree backend-free.
             PaintNode::GlyphRun { .. } => BBox::default(),
-            PaintNode::Rect { x, y, width, height, .. } => BBox {
-                x: *x,
-                y: *y,
-                width: *width,
-                height: *height,
-            },
+            PaintNode::Rect { x, y, width, height, .. } => BBox { x: *x, y: *y, width: *width, height: *height },
             PaintNode::VectorPath { bbox, .. } => *bbox,
         }
     }
@@ -123,12 +109,7 @@ fn bbox_union(a: BBox, b: BBox) -> BBox {
     let by2 = b.y + b.height;
     let x = a.x.min(b.x);
     let y = a.y.min(b.y);
-    BBox {
-        x,
-        y,
-        width: (ax2.max(bx2)) - x,
-        height: (ay2.max(by2)) - y,
-    }
+    BBox { x, y, width: (ax2.max(bx2)) - x, height: (ay2.max(by2)) - y }
 }
 
 /// Full layout result — single source of truth for all backends.

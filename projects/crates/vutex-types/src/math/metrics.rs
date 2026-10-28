@@ -1,8 +1,10 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use super::math_kern::MathKern;
-use super::semantic::{Fixed, GlyphKey};
+use super::{
+    math_kern::MathKern,
+    semantic::{Fixed, GlyphKey},
+};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum MathConstant {

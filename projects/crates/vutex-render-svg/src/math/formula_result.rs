@@ -32,22 +32,16 @@ pub fn render_formula_result(result: &FormulaLayoutResult) -> Result<String, Str
 
     // Determine viewBox from ink_bounds when it has real content, otherwise
     // derive a box from the formula's advance metrics.
-    let (vb_x, vb_y, vb_w, vb_h) = if result.metrics.ink_bounds.width.to_f64() > 0.0
-        || result.metrics.ink_bounds.height.to_f64() > 0.0
-    {
-        let ib = &result.metrics.ink_bounds;
-        (
-            ib.x.to_f64(),
-            -(ib.y.to_f64() + ib.height.to_f64()),
-            ib.width.to_f64(),
-            ib.height.to_f64(),
-        )
-    }
-    else {
-        let w = metrics.width.to_f64().max(1.0);
-        let h = (metrics.height.to_f64() + metrics.depth.to_f64()).max(1.0);
-        (0.0, -metrics.height.to_f64(), w, h)
-    };
+    let (vb_x, vb_y, vb_w, vb_h) =
+        if result.metrics.ink_bounds.width.to_f64() > 0.0 || result.metrics.ink_bounds.height.to_f64() > 0.0 {
+            let ib = &result.metrics.ink_bounds;
+            (ib.x.to_f64(), -(ib.y.to_f64() + ib.height.to_f64()), ib.width.to_f64(), ib.height.to_f64())
+        }
+        else {
+            let w = metrics.width.to_f64().max(1.0);
+            let h = (metrics.height.to_f64() + metrics.depth.to_f64()).max(1.0);
+            (0.0, -metrics.height.to_f64(), w, h)
+        };
 
     let mut out = String::new();
     write!(
@@ -127,21 +121,13 @@ fn render_paint_node(out: &mut String, node: &PaintNode, origin_x: f64, origin_y
             for (i, d_opt) in path_data.iter().enumerate() {
                 if let Some(d) = d_opt {
                     let (ox, oy) = positions.get(i).copied().unwrap_or((Fixed::ZERO, Fixed::ZERO));
-                    let transform = format!(
-                        "translate({} {}) scale({} {})",
-                        ox.to_f64() * scale,
-                        -oy.to_f64() * scale,
-                        scale,
-                        -scale,
-                    );
+                    let transform =
+                        format!("translate({} {}) scale({} {})", ox.to_f64() * scale, -oy.to_f64() * scale, scale, -scale,);
                     let gid = glyph_ids.get(i).copied().unwrap_or(0);
                     write!(
                         out,
                         r#"<g transform="{}" data-glyph-id="{}" data-font="{}"><path d="{}" fill="currentColor"/></g>"#,
-                        transform,
-                        gid,
-                        font_id,
-                        d,
+                        transform, gid, font_id, d,
                     )
                     .map_err(|e| e.to_string())?;
                     emitted_any = true;
@@ -209,12 +195,7 @@ mod tests {
         let mut res = rect_result();
         res.paint = PaintNode::Group(vec![PaintNode::VectorPath {
             d: "M 0 0 L 10 0 L 5 10 Z".to_string(),
-            bbox: BBox {
-                x: Fixed::ZERO,
-                y: Fixed::ZERO,
-                width: Fixed::from_f64(10.0),
-                height: Fixed::from_f64(10.0),
-            },
+            bbox: BBox { x: Fixed::ZERO, y: Fixed::ZERO, width: Fixed::from_f64(10.0), height: Fixed::from_f64(10.0) },
         }]);
         let svg = render_formula_result(&res).expect("render");
         assert!(svg.contains("<path d=\"M 0 0 L 10 0 L 5 10 Z\""));

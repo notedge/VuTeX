@@ -246,9 +246,7 @@ impl AtomClass {
             NoadKind::Open => AtomClass::Open,
             NoadKind::Close => AtomClass::Close,
             NoadKind::Punct => AtomClass::Punct,
-            NoadKind::Inner | NoadKind::Fence | NoadKind::Radical | NoadKind::Vcent | NoadKind::TableCell => {
-                AtomClass::Inner
-            }
+            NoadKind::Inner | NoadKind::Fence | NoadKind::Radical | NoadKind::Vcent | NoadKind::TableCell => AtomClass::Inner,
         }
     }
 }
@@ -617,30 +615,15 @@ impl LayoutEngine {
                 // A script node reached directly (outside the noad pipeline)
                 // carries no `\limits` information of its own, so placement
                 // follows the operator class default.
-                SemanticNode::Subscript { base, sub } => self.layout_subsup(
-                    base,
-                    Some(sub),
-                    None,
-                    style,
-                    OperatorClass::of_node(base),
-                    LimitsPolicy::Auto,
-                ),
-                SemanticNode::Superscript { base, sup } => self.layout_subsup(
-                    base,
-                    None,
-                    Some(sup),
-                    style,
-                    OperatorClass::of_node(base),
-                    LimitsPolicy::Auto,
-                ),
-                SemanticNode::SubSuperscript { base, sub, sup } => self.layout_subsup(
-                    base,
-                    Some(sub),
-                    Some(sup),
-                    style,
-                    OperatorClass::of_node(base),
-                    LimitsPolicy::Auto,
-                ),
+                SemanticNode::Subscript { base, sub } => {
+                    self.layout_subsup(base, Some(sub), None, style, OperatorClass::of_node(base), LimitsPolicy::Auto)
+                }
+                SemanticNode::Superscript { base, sup } => {
+                    self.layout_subsup(base, None, Some(sup), style, OperatorClass::of_node(base), LimitsPolicy::Auto)
+                }
+                SemanticNode::SubSuperscript { base, sub, sup } => {
+                    self.layout_subsup(base, Some(sub), Some(sup), style, OperatorClass::of_node(base), LimitsPolicy::Auto)
+                }
                 // A math space is a kern of the current em: `width` is already
                 // in em, so the style scale is the only factor left to apply.
                 SemanticNode::Space { width } => {
@@ -688,20 +671,13 @@ impl LayoutEngine {
     /// 保持现有 `layout_noads → LayoutNode` 路径完全不变；本方法只是在
     /// 计算完 LayoutNode 树之后再跑一遍 lower + extract，把它降成
     /// `PaintNode` 树 + `FormulaMetrics`。
-    pub fn layout_formula_result(
-        &self,
-        nodes: &[SemanticNode],
-        style: MathStyle,
-    ) -> MathResult<FormulaLayoutResult> {
+    pub fn layout_formula_result(&self, nodes: &[SemanticNode], style: MathStyle) -> MathResult<FormulaLayoutResult> {
         let layout_node = self.layout_math_list(nodes, style)?;
         let paint = lower_layout_to_paint(&layout_node, self.base_size);
         let metrics = extract_metrics(&layout_node, &self.font_system);
         let mut glyph_paths = Vec::new();
         collect_glyph_paths(&layout_node, &mut glyph_paths);
-        let fonts = FontMetricsSnapshot {
-            faces: Vec::new(),
-            glyph_paths,
-        };
+        let fonts = FontMetricsSnapshot { faces: Vec::new(), glyph_paths };
         Ok(FormulaLayoutResult { metrics, paint, diagnostics: self.script_scale_diagnostics(), fonts })
     }
 
@@ -2008,9 +1984,7 @@ fn collect_glyph_paths(node: &LayoutNode, out: &mut Vec<(String, u16, String)>) 
             }
         }
         LayoutNode::Glyph(g) => {
-            if let (Some(font_id), Some(glyph_id), Some(path_data)) =
-                (&g.font_id, g.glyph_id, &g.path_data)
-            {
+            if let (Some(font_id), Some(glyph_id), Some(path_data)) = (&g.font_id, g.glyph_id, &g.path_data) {
                 out.push((font_id.clone(), glyph_id, path_data.clone()));
             }
         }
@@ -2072,12 +2046,7 @@ fn lower_layout_to_paint(node: &LayoutNode, base_size: Fixed) -> PaintNode {
         },
         LayoutNode::Path(path) => PaintNode::VectorPath {
             d: path.d.clone(),
-            bbox: BBox {
-                x: Fixed::ZERO,
-                y: Fixed::ZERO - path.height,
-                width: path.width,
-                height: path.height + path.depth,
-            },
+            bbox: BBox { x: Fixed::ZERO, y: Fixed::ZERO - path.height, width: path.width, height: path.height + path.depth },
         },
         LayoutNode::Kern(_) | LayoutNode::Glue(_) | LayoutNode::Penalty { .. } => {
             // 只推进位置，不 paint。

@@ -15,8 +15,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      # Formatting must match the toolchain pinned in `rust-toolchain.toml`,
+      # otherwise stable rustfmt and the pinned nightly disagree on every run.
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: nightly-2026-07-20
           components: rustfmt
       - run: cargo fmt --all --check
 
