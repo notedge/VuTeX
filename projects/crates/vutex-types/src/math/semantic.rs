@@ -177,7 +177,7 @@ pub enum SymbolRole {
     LargeOperator,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum MathStyle {
     Display,
     Text,
