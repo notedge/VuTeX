@@ -4,8 +4,8 @@
 use serde::{Deserialize, Serialize};
 use vutex_text::math::FontMetricsSystem;
 use vutex_types::math::{
-    Alignment, DelimiterComponent, Fixed, FontStyle, GlyphKey, GlyphMetrics, LineStyle, MathConstant, MathResult, MathStyle,
-    SemanticNode, SpacingRule, SymbolRole,
+    Alignment, DelimiterComponent, Fixed, FontStyle, GlyphKey, GlyphMetrics, LineStyle, MathConstant, MathList, MathResult,
+    MathStyle, NoadKind, SemanticNode, SpacingRule, SymbolRole, normalize_math_list, project_semantic,
 };
 
 /// A node in the math layout tree.
@@ -470,6 +470,44 @@ impl LayoutEngine {
         }
     }
 
+    /// Appendix G spacing table keyed by [`NoadKind`].
+    ///
+    /// This is the normalized pipeline's counterpart to [`tex_skip_between`].
+    /// Because [`normalize_math_list`] runs demotion before the spacing phase,
+    /// this function does **not** call [`demote_role`] — it consumes already-
+    /// resolved kinds.  The table shape is otherwise identical to Knuth's
+    /// original 9×9.
+    fn tex_skip_between_noad(left: NoadKind, right: NoadKind) -> TexSkip {
+        use NoadKind::*;
+        use TexSkip::*;
+
+        match (left, right) {
+            // ─────────── Open: never take glue on the left ───────────
+            (Open, _) => NoGlue,
+
+            // ─────────── Close / Punct: never take glue on the right ───────────
+            (_, Close | Punct) => NoGlue,
+
+            // ─────────── Rel: thick on both sides ───────────
+            (Rel, _) | (_, Rel) => Thick,
+
+            // ─────────── Op: medium on both sides ───────────
+            // (Op also covers TeX's LargeOperator — collapsed in NoadKind)
+            (Op, _) | (_, Op) => Medium,
+
+            // ─────────── Inner: thick both sides ───────────
+            (Inner, _) | (_, Inner) => Thick,
+
+            // ─────────── Bin: medium both sides (demote may have turned it
+            // into Atom by the time this runs) ───────────
+            (Bin, _) | (_, Bin) => Medium,
+            (Punct, _) => Thin,
+
+            // ─────────── Atom adjacency: no glue ───────────
+            _ => NoGlue,
+        }
+    }
+
     /// TeX math spacing between two adjacent atoms.
     ///
     /// The caller passes the role of the atom to the left of `left` (if any),
@@ -644,6 +682,76 @@ impl LayoutEngine {
 
             children.push(self.layout_node(node, style)?);
         }
+        Ok(self.pack_hbox(children, None))
+    }
+
+    /// New normalized pipeline: project → normalize → layout by noads.
+    ///
+    /// Kept alongside [`layout_sequence`] for dual-pipeline comparison.
+    /// [`normalize_math_list`] runs the TeX Appendix G demote and merge
+    /// passes before this entry point is called, so the spacing phase in
+    /// [`layout_noads`] only needs to key off the already-resolved
+    /// [`NoadKind`].
+    pub fn layout_math_list(&self, nodes: &[SemanticNode], style: MathStyle) -> MathResult<LayoutNode> {
+        let projected = project_semantic(nodes);
+        let normalized = normalize_math_list(projected);
+        self.layout_noads(&normalized, style)
+    }
+
+    /// Lay out a flat, normalized [`MathList`].
+    ///
+    /// Spacing glue uses [`tex_skip_between_noad`] keyed by the already-
+    /// resolved [`NoadKind`].  Each nucleus is lowered via [`layout_node`]
+    /// or [`layout_subsup`] depending on whether scripts are attached.
+    fn layout_noads(&self, list: &MathList, _base_style: MathStyle) -> MathResult<LayoutNode> {
+        let mut children = Vec::new();
+        let noads = &list.0;
+        let n = noads.len();
+
+        for i in 0..n {
+            let noad = &noads[i];
+            let style = noad.style;
+
+            // spacing glue between the previous noad and this one.
+            // Effective kind already collapses structural kinds (Fence → Inner
+            // etc.) and is the spacing class the table expects.
+            if i > 0 {
+                let left_kind = noads[i - 1].effective_kind();
+                let right_kind = noad.effective_kind();
+                let style_scale = self.get_style_scale(style);
+                let size = self.base_size * style_scale;
+                if let Some(glue) = Self::tex_skip_between_noad(left_kind, right_kind).to_glue(size) {
+                    children.push(LayoutNode::Glue(glue));
+                }
+            }
+
+            // lay out nucleus + optional scripts.
+            let node = match (&noad.nucleus, &noad.scripts) {
+                (Some(nucleus), Some(scripts)) => {
+                    // Restore per-noad limits override before layout_subsup
+                    // consumes it.
+                    if noad.kind == NoadKind::Op {
+                        if let Some(flag) = noad.limits {
+                            self.limits_override.set(Some(flag));
+                        }
+                    }
+                    let sub_ref = scripts.sub.as_deref();
+                    let sup_ref = scripts.sup.as_deref();
+                    self.layout_subsup(nucleus, sub_ref, sup_ref, style)?
+                }
+                (Some(nucleus), None) => self.layout_node(nucleus, style)?,
+                (None, Some(scripts)) => {
+                    let sub_ref = scripts.sub.as_deref();
+                    let sup_ref = scripts.sup.as_deref();
+                    // No nucleus → call layout_subsup with a zero-width kern as
+                    // the base so the scripts still get positioned correctly.
+                    self.layout_subsup(&SemanticNode::SetMathStyle(style), sub_ref, sup_ref, style)?
+                }
+                (None, None) => LayoutNode::Kern(Fixed::ZERO),
+            };
+            children.push(node);
+        }
+
         Ok(self.pack_hbox(children, None))
     }
 
