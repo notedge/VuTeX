@@ -265,6 +265,157 @@ fn radical_index_uses_scriptscript_size_and_the_math_constants() {
     }
 }
 
+/// Stacked limits use the MATH table's gap minima as clearances, not as
+/// additions on top of one another.
+///
+/// TeX keeps `LowerLimitGapMin` of clearance under the operator, so the
+/// subscript baseline lands at `max(depth + LowerLimitGapMin + height(sub),
+/// LowerLimitBaselineDropMin)` below the operator baseline. The previous
+/// `depth + max(gap, drop - depth) + height(sub)` added the limit's height to
+/// the baseline drop a second time and pushed the subscript 2.9 px too low at
+/// the display size.
+#[test]
+fn stacked_limits_keep_the_math_table_gap_minima() {
+    let system = builtin_font_metrics();
+    let constant = |name: MathConstant| system.get_math_constant("default", name).expect("font constant").to_f64();
+    let (tree, _) = layout_formula("\\sum_{i=1}^{n}", true).expect("display limits");
+
+    let (_, op_y, op) = glyph_at(&tree, '∑');
+    let em = op.size.to_f64();
+    let base_height = op.metrics.height.to_f64();
+    let base_depth = op.metrics.depth.to_f64();
+
+    // Both limits demote once, from display to script, so they are never set at
+    // the operator's own size.
+    let script = em * constant(MathConstant::ScriptPercentScaleDown);
+    for c in ['n', 'i', '=', '1'] {
+        let (_, _, glyph) = glyph_at(&tree, c);
+        assert!(
+            (glyph.size.to_f64() - script).abs() < 1e-3,
+            "`{c}` must be set at the script size {script}, not {}",
+            glyph.size.to_f64()
+        );
+    }
+
+    // Upper limit: `UpperLimitGapMin` below the operator's top, or the baseline
+    // rise minimum, whichever is larger.
+    let (_, sup_y, sup) = glyph_at(&tree, 'n');
+    let sup_bottom = sup_y + sup.metrics.depth.to_f64();
+    let op_top = op_y - base_height;
+    let gap_min_upper = constant(MathConstant::UpperLimitGapMin) * em;
+    let rise_min = constant(MathConstant::UpperLimitBaselineRiseMin) * em;
+    let expected_upper = gap_min_upper.max(rise_min - base_height - sup.metrics.depth.to_f64());
+    assert!(
+        (op_top - sup_bottom - expected_upper).abs() < 1e-3,
+        "the upper limit must clear the operator by {expected_upper}, not {}",
+        op_top - sup_bottom
+    );
+
+    // Lower limit: the gap rule and the baseline-drop rule are alternatives, so
+    // the taller of them wins without being stacked on the other.
+    let sub_height =
+        ['i', '=', '1'].into_iter().map(|c| glyph_at(&tree, c).2.metrics.height.to_f64()).fold(f64::NEG_INFINITY, f64::max);
+    let (_, sub_y, _) = glyph_at(&tree, 'i');
+    let gap_min = constant(MathConstant::LowerLimitGapMin) * em;
+    let drop_min = constant(MathConstant::LowerLimitBaselineDropMin) * em;
+    let sub_drop = sub_y - op_y;
+    let expected_drop = (base_depth + gap_min + sub_height).max(drop_min);
+    assert!(
+        (sub_drop - expected_drop).abs() < 1e-3,
+        "the lower limit baseline must sit {expected_drop} below the operator, not {sub_drop}"
+    );
+    let clearance = sub_y - sub_height - (op_y + base_depth);
+    assert!(
+        clearance + 1e-3 >= gap_min,
+        "the lower limit must keep `LowerLimitGapMin` {gap_min} below the operator, not {clearance}"
+    );
+    assert!(
+        sub_drop < drop_min + sub_height,
+        "the limit's own height must not be added on top of `LowerLimitBaselineDropMin`: {sub_drop} vs {}",
+        drop_min + sub_height
+    );
+
+    // A script-style operator demotes its limits one style further, to
+    // scriptscript, instead of leaving them at the operator's script size.
+    // 14 px is the inline base em used by `layout_formula`.
+    let (tree, _) = layout_formula("\\scriptstyle\\sum\\limits_{j}^{k}", false).expect("script limits");
+    let (_, _, op) = glyph_at(&tree, '∑');
+    let em = op.size.to_f64();
+    assert!(
+        (em - 14.0 * constant(MathConstant::ScriptPercentScaleDown)).abs() < 1e-3,
+        "the operator itself is script-sized: {em}"
+    );
+    let scriptscript = 14.0 * constant(MathConstant::ScriptScriptPercentScaleDown);
+    for c in ['j', 'k'] {
+        let (_, _, glyph) = glyph_at(&tree, c);
+        assert!(
+            (glyph.size.to_f64() - scriptscript).abs() < 1e-3,
+            "`{c}` under a script-style operator must be scriptscript {scriptscript}, not {}",
+            glyph.size.to_f64()
+        );
+    }
+}
+
+/// Scripts beside an operator land on the `sup1`/`sup2` and `sub1`/`sub2`
+/// minima measured from the operator's own baseline, so a subscript's height
+/// never lifts the superscript.
+///
+/// A vertical box advances a child by its line height, and the previous kern
+/// treated the sup-to-sub baseline distance as that line advance, adding the
+/// subscript's height and the superscript's depth once more. At 16 px the
+/// integral's `1` sat 22.07 px above the baseline instead of 14.61 px.
+#[test]
+fn beside_scripts_sit_on_the_shift_and_drop_minima() {
+    let system = builtin_font_metrics();
+    let constant = |name: MathConstant| system.get_math_constant("default", name).expect("font constant").to_f64();
+
+    for (source, display, base_char, sup_char, sub_char) in
+        [("\\int_0^1", true, '∫', '1', '0'), ("x_i^j", false, 'x', 'j', 'i')]
+    {
+        let (tree, _) = layout_formula(source, display).expect(source);
+        let (base_x, base_y, base) = glyph_at(&tree, base_char);
+        let (sup_x, sup_y, sup) = glyph_at(&tree, sup_char);
+        let (sub_x, sub_y, sub) = glyph_at(&tree, sub_char);
+        let em = base.size.to_f64();
+
+        let script = em * constant(MathConstant::ScriptPercentScaleDown);
+        for glyph in [&sup, &sub] {
+            assert!(
+                (glyph.size.to_f64() - script).abs() < 1e-3,
+                "`{source}` scripts must be set at the script size {script}, not {}",
+                glyph.size.to_f64()
+            );
+        }
+
+        // `sup1` and `sup2`: the shift up minimum, or enough to keep the
+        // superscript's bottom above the base's top by `SuperscriptBottomMin`.
+        let sup_rise = base_y - sup_y;
+        let expected_rise = (constant(MathConstant::SuperscriptShiftUp) * em)
+            .max(base.metrics.height.to_f64() + constant(MathConstant::SuperscriptBottomMin) * em);
+        assert!(
+            (sup_rise - expected_rise).abs() < 1e-3,
+            "`{source}` superscript must rise {expected_rise} above the baseline, not {sup_rise}"
+        );
+
+        // `sub1` and `sub2`: the shift down minimum, or enough to keep the
+        // subscript's top below `SubscriptTopMax`.
+        let sub_drop = sub_y - base_y;
+        let shift_down = constant(MathConstant::SubscriptShiftDown) * em;
+        let top_max = constant(MathConstant::SubscriptTopMax) * em;
+        let expected_drop = shift_down.max(sub.metrics.height.to_f64() - top_max);
+        assert!(
+            (sub_drop - expected_drop).abs() < 1e-3,
+            "`{source}` subscript must drop {expected_drop} below the baseline, not {sub_drop}"
+        );
+
+        // The scripts start after the operator's advance plus its italic
+        // correction, which is the font's own request for clearance.
+        let expected_x = base_x + base.metrics.width.to_f64() + base.metrics.italic_correction.to_f64();
+        assert!((sup_x - expected_x).abs() < 1e-3, "`{source}` superscript starts at {sup_x}, not {expected_x}");
+        assert!((sub_x - expected_x).abs() < 1e-3, "`{source}` subscript starts at {sub_x}, not {expected_x}");
+    }
+}
+
 #[test]
 fn matrix_lays_out_with_two_rows() {
     let metrics = layout("\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}");
