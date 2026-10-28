@@ -1581,12 +1581,18 @@ impl LayoutEngine {
 
         // 2. Pack cells into rows
         //
-        // `aligned` / `align` grids alternate a right-aligned and a left-aligned
-        // column.  A relation such as `=` normally opens the left column, where
-        // it has no left neighbour inside its own cell, so the grid has to
-        // supply the thick muskip TeX puts on both sides of a relation.  Without
-        // it the relation keeps only its right-hand space and the equation reads
-        // lopsided.
+        // `aligned`, `alignedat{n}`, `align`, `align*` and `split` grids all
+        // alternate a right-aligned and a left-aligned column.  A relation such
+        // as `=` normally opens the left column, where it has no left neighbour
+        // inside its own cell, so the grid has to supply the thick muskip TeX
+        // puts on both sides of a relation.  Without it the relation keeps only
+        // its right-hand space and the equation reads lopsided.
+        //
+        // `alignedat{n}` fixes the grid to exactly `n` column pairs by padding
+        // short rows with empty cells (parser responsibility), so `layout_matrix`
+        // only sees a uniform `column_alignment` array.  `split` is just one
+        // equation split over two rows — it shares the rl geometry of `aligned`
+        // and is consumed identically by the layout path.
         let rl_grid = matches!(column_alignment.first(), Some(Alignment::Right));
         let mut packed_rows = Vec::new();
         for r in 0..num_rows {
