@@ -470,6 +470,47 @@ fn spacing_adds_width_around_fraction_inner() {
     assert!(spaced.width > plain_sum, "inner spacing must add width: {} vs {}", spaced.width, plain_sum);
 }
 
+/// TeX sets the spacing commands as multiples of `mu`, where `1mu` is
+/// `em / 18`: `\,` 3mu, `\:` 4mu, `\;` 5mu, `\ ` 6mu, `\quad` 18mu and
+/// `\qquad` 36mu.  Folding them into one blank glyph leaves every one of them
+/// at that glyph's advance, which is what made `\,` as wide as a literal word
+/// space.
+#[test]
+fn spacing_commands_advance_by_mu_multiples() {
+    let em = default_base_size(false);
+    // `mu` is quantized once into `Fixed` and then scaled to pixels.
+    let tolerance = 2.0 * em / Fixed::SCALE as f64;
+
+    let (plain, _) = layout_formula("ab", false).expect("`ab` should lay out");
+    let (plain_a, _, _) = glyph_at(&plain, 'a');
+    let (plain_b, _, _) = glyph_at(&plain, 'b');
+    let base_gap = plain_b - plain_a;
+
+    for (source, mu) in
+        [("a\\,b", 3.0), ("a\\:b", 4.0), ("a\\;b", 5.0), ("a\\ b", 6.0), ("a\\quad b", 18.0), ("a\\qquad b", 36.0)]
+    {
+        let (tree, _) = layout_formula(source, false).expect(source);
+        let (a_x, _, _) = glyph_at(&tree, 'a');
+        let (b_x, _, _) = glyph_at(&tree, 'b');
+        let gap = b_x - a_x - base_gap;
+        let expected = mu / 18.0 * em;
+        assert!((gap - expected).abs() < tolerance, "`{source}` must advance {expected} px, found {gap}");
+    }
+}
+
+/// A literal space in math mode is ignored, so `a b` keeps the plain advance.
+#[test]
+fn literal_math_space_adds_no_advance() {
+    let (_, plain) = layout_formula("ab", false).expect("`ab` should lay out");
+    let (_, spaced) = layout_formula("a b", false).expect("`a b` should lay out");
+    assert!(
+        (spaced.width - plain.width).abs() < 1e-4,
+        "a literal space must not change the width: {} vs {}",
+        spaced.width,
+        plain.width
+    );
+}
+
 #[test]
 fn big_delimiter_parses() {
     let metrics = layout("\\big(x\\big)");

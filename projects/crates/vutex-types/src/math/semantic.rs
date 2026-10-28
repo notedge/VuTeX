@@ -43,6 +43,16 @@ pub enum SemanticNode {
         text: String,
         font_style: FontStyle,
     },
+    /// Horizontal space requested by a spacing command.
+    ///
+    /// `width` is measured in em of the current math size and is scaled by the
+    /// layout engine, exactly like the `row_spacing` / `col_spacing` of
+    /// [`SemanticNode::Matrix`].  TeX sets `\,` to 3mu, `\:` to 4mu and `\;` to
+    /// 5mu of the current em (`1mu` is `em / 18`), `\ ` to a third of an em,
+    /// `\quad` to 1em and `\qquad` to 2em.
+    Space {
+        width: Fixed,
+    },
     Subscript {
         base: Box<SemanticNode>,
         sub: Box<SemanticNode>,

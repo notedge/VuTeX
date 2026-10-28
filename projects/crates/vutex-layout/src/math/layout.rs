@@ -343,6 +343,7 @@ impl LayoutEngine {
             | SemanticNode::Paragraph { .. } => SymbolRole::Inner,
             SemanticNode::Sequence(_)
             | SemanticNode::Text { .. }
+            | SemanticNode::Space { .. }
             | SemanticNode::SetMathStyle(_)
             | SemanticNode::LimitsSpec(_) => SymbolRole::Ordinary,
         }
@@ -497,6 +498,12 @@ impl LayoutEngine {
                 SemanticNode::Subscript { base, sub } => self.layout_subsup(base, Some(sub), None, style),
                 SemanticNode::Superscript { base, sup } => self.layout_subsup(base, None, Some(sup), style),
                 SemanticNode::SubSuperscript { base, sub, sup } => self.layout_subsup(base, Some(sub), Some(sup), style),
+                // A math space is a kern of the current em: `width` is already
+                // in em, so the style scale is the only factor left to apply.
+                SemanticNode::Space { width } => {
+                    let size = self.base_size * self.get_style_scale(style);
+                    Ok(LayoutNode::Kern(*width * size))
+                }
                 SemanticNode::Matrix { rows, row_spacing, col_spacing, display_style, column_alignment } => {
                     // `align` / `align*` pin their cells to display style so an
                     // enclosing `\scriptstyle` cannot demote the grid.
