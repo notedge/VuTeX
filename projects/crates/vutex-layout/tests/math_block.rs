@@ -2,7 +2,9 @@
 
 use notedown_ir::{Block, DocumentGraph, DocumentId, Inline};
 use vutex_layout::{
-    LayoutHint, layout,
+    Diagrams, LayoutHint,
+    document::layout_with_diagnostics,
+    layout,
     math::layout_formula_with_size,
     plan::{LayoutItem, LayoutPage, Path, Rule, TextRun},
 };
@@ -284,4 +286,23 @@ fn display_math_after_a_short_line_uses_the_short_skips() {
     // directions, which is the whole point of the TeX distinction.
     assert!(above < hint.base_font_size - 2.0, "short above skip {above} pt is not tighter than the full skip");
     assert!(below < hint.base_font_size - 2.0, "short below skip {below} pt is not tighter than the full skip");
+}
+
+#[test]
+fn spacing_commands_never_raise_outline_warnings_in_a_document() {
+    let hint = LayoutHint::a4();
+    // `\,`, `\:` and `\ ` reach layout as text spaces. They advance the pen
+    // without ink, so the report must not carry an outline gap for them.
+    for source in ["a\\ b", "a\\quad b", "\\text{a b}"] {
+        let mut graph = DocumentGraph::new(DocumentId(11));
+        graph.push_block(Block::Math { content: source.to_string(), language: None });
+        graph.push_block(Block::Paragraph {
+            content: vec![Inline::InlineMath { content: source.to_string(), language: Some("tex".to_string()) }],
+        });
+
+        let (plan, diagnostics) = layout_with_diagnostics(&graph, &hint, &Diagrams::default());
+        assert_eq!(plan.pages.len(), 1, "{source} fits one page");
+        let gaps: Vec<_> = diagnostics.iter().filter(|d| d.code == "vutex.layout.math.outline_missing").collect();
+        assert!(gaps.is_empty(), "{source}: whitespace must not be reported as a missing outline: {gaps:#?}");
+    }
 }

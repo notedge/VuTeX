@@ -93,6 +93,49 @@ fn lowercase_vmatrix_keeps_a_single_bar() {
     assert_eq!(strokes, 2, "expected a single vmatrix bar stroke per side, found {strokes} in:\n{svg}");
 }
 
+/// Whitespace the source spells as a spacing command paints no glyph, so it must
+/// never be reported as a glyph without an outline.
+///
+/// `\,`, `\:`, `\;`, `\ `, `\quad`, `\qquad` and the spaces inside `\text{}` all
+/// reach layout as `SemanticNode::Text`, which TeX sets as a horizontal kern.
+/// Turning them into glyphs made the collector warn about a blank glyph the font
+/// cannot outline even though no ink was ever meant to be painted.
+#[test]
+fn spacing_commands_paint_no_glyph_and_raise_no_outline_gap() {
+    use vutex_layout::math::collect_layout_with_diagnostics;
+
+    for source in [r"a\ b", r"a\,b", r"a\:b", r"a\;b", r"a\quad b", r"a\qquad b", r"\text{a b}"] {
+        let (root, _layout) = layout_formula(source, true).unwrap_or_else(|error| panic!("layout {source}: {error}"));
+        let mut diagnostics = Vec::new();
+        let items = collect_layout_with_diagnostics(&root, 0.0, 0.0, &mut diagnostics);
+
+        assert!(
+            diagnostics.iter().all(|d| d.code != "vutex.layout.math.outline_missing"),
+            "{source}: whitespace is not a missing glyph: {diagnostics:#?}"
+        );
+        assert_eq!(items.len(), 2, "{source}: only `a` and `b` paint ink: {items:#?}");
+    }
+
+    // The space still advances the pen, it just does so without ink.
+    let (_, spaced) = layout_formula(r"a\ b", true).expect("layout");
+    let (_, tight) = layout_formula("ab", true).expect("layout");
+    assert!(
+        spaced.width > tight.width,
+        "a spacing command must still advance the pen: {} vs {}",
+        spaced.width,
+        tight.width
+    );
+
+    // A glyph the font really cannot outline keeps its diagnostic.
+    let (root, _layout) = layout_formula(r"\text{中}", true).expect("layout");
+    let mut diagnostics = Vec::new();
+    let items = collect_layout_with_diagnostics(&root, 0.0, 0.0, &mut diagnostics);
+    assert!(items.is_empty(), "the CJK glyph paints nothing: {items:#?}");
+    assert_eq!(diagnostics.len(), 1, "the CJK gap is still reported: {diagnostics:#?}");
+    assert_eq!(diagnostics[0].code, "vutex.layout.math.outline_missing");
+    assert!(diagnostics[0].message.contains("U+4E2D"), "the report names the code point: {diagnostics:#?}");
+}
+
 #[test]
 fn outline_positions_are_not_all_at_origin() {
     let (svg, _) = render_outline("x + y", false);

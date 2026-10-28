@@ -478,9 +478,19 @@ impl LayoutEngine {
                 }
                 SemanticNode::Text { text, font_style } => {
                     let mut children = Vec::new();
+                    let size = self.base_size * self.get_style_scale(style);
                     for c in text.chars() {
                         let key = GlyphKey::from_char(c, None, *font_style);
-                        children.push(self.layout_symbol(&key, style)?);
+                        // Whitespace is a horizontal advance, not a glyph: TeX
+                        // sets the spaces `\,`, `\:` and `\ ` as kerns, and a
+                        // blank glyph would be reported as a missing outline
+                        // without ever painting ink.
+                        if c.is_whitespace() {
+                            children.push(LayoutNode::Kern(self.font_system.get_metrics(&key)?.width * size));
+                        }
+                        else {
+                            children.push(self.layout_symbol(&key, style)?);
+                        }
                     }
                     Ok(self.pack_hbox(children, None))
                 }
