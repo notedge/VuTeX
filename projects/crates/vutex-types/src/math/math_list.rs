@@ -243,6 +243,11 @@ impl MathStyleState {
     /// Display style inside a radical or a fraction denominator.
     pub const DISPLAY_CRAMPED: Self = Self { style: MathStyle::Display, cramped: true };
 
+    /// Create a state from any outer math style, not cramped.
+    pub const fn from_style(style: MathStyle) -> Self {
+        Self { style, cramped: false }
+    }
+
     /// Push into a subscript: style drops one level, cramped inherited.
     pub fn subscript(self) -> Self {
         Self {
@@ -287,8 +292,12 @@ fn demote_script(s: MathStyle) -> MathStyle {
 /// * `SemanticNode::SetMathStyle(s)` — push `s` as the current style for
 ///   subsequent noads.  Does **not** itself emit a noad.
 /// * `SemanticNode::LimitsSpec(b)` — sets `limits` on the next `Op` noad.
-pub fn project_semantic(nodes: &[SemanticNode]) -> MathList {
-    let mut state = MathStyleState::DISPLAY;
+///
+/// `base_style` is the outer formula context math style (Display / Text /
+/// Script / ScriptScript).  Imperative nodes still override `state.style`
+/// in place, so subsequent noads carry the correct per-node style.
+pub fn project_semantic(nodes: &[SemanticNode], base_style: MathStyle) -> MathList {
+    let mut state = MathStyleState::from_style(base_style);
     let mut list = MathList::new();
     let mut pending_limits: Option<bool> = None;
 
@@ -640,13 +649,13 @@ fn merge_atoms_pass(input: Vec<Noad>) -> Vec<Noad> {
 
 impl From<&[SemanticNode]> for MathList {
     fn from(nodes: &[SemanticNode]) -> Self {
-        project_semantic(nodes)
+        project_semantic(nodes, MathStyle::Display)
     }
 }
 
 impl From<&Vec<SemanticNode>> for MathList {
     fn from(nodes: &Vec<SemanticNode>) -> Self {
-        project_semantic(nodes)
+        project_semantic(nodes, MathStyle::Display)
     }
 }
 

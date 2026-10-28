@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use vutex_types::math::{
     DelimiterConstruction, DelimiterVariant, Fixed, FontMetricsData, FontStyle, GlyphKey, GlyphMetrics, MathConstant,
-    MathError, MathResult,
+    MathError, MathKern, MathResult,
 };
 
 #[derive(Debug)]
@@ -85,6 +85,15 @@ impl FontMetricsSystem {
             }
         }
         Err(MathError::font_error(family, "glyph path not in cache"))
+    }
+
+    /// Return the four-corner MathKern for `glyph_key`.
+    ///
+    /// First returns `ZERO` while the MATH-kern extraction pipeline is wired
+    /// up (font-side storage + acorn-ttf parsing). When a real kern is
+    /// missing, callers fall through to the Appendix G glue unchanged.
+    pub fn get_math_kern(&self, _key: &GlyphKey) -> MathKern {
+        MathKern::ZERO
     }
 }
 
