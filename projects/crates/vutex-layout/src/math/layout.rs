@@ -1489,11 +1489,13 @@ impl LayoutEngine {
         // floating most of an em above the letter. Replace the accent box's
         // extents with the ink it really paints, plus `clearance` underneath,
         // so the VBox below lands the ink bottom just above the base's height.
-        let clearance = self
-            .font_system
-            .get_math_constant("default", MathConstant::OverbarVerticalGap)
-            .unwrap_or(Fixed::from_f64(0.1))
-            * size;
+        // TeX clears an accent glyph from the nucleus by the default rule
+        // thickness, which the MATH table publishes as
+        // `FractionRuleThickness`, while `\bar` keeps the overbar gap in
+        // `layout_overbar`.
+        let clearance =
+            self.font_system.get_math_constant("default", MathConstant::FractionRuleThickness).unwrap_or(Fixed::from_f64(0.04))
+                * size;
         let accent_layout = fit_accent_extents(accent_layout, clearance);
 
         Ok(self.pack_vbox(vec![accent_layout, base_hbox], Alignment::Center))
