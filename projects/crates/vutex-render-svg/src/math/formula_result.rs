@@ -9,7 +9,7 @@
 
 use std::fmt::Write;
 
-use vutex_types::math::{FormulaLayoutResult, PaintNode};
+use vutex_types::math::{Fixed, FormulaLayoutResult, PaintNode};
 
 /// Render a fully laid-out formula as an SVG document.
 ///
@@ -20,11 +20,13 @@ use vutex_types::math::{FormulaLayoutResult, PaintNode};
 ///
 /// # GlyphRun handling
 ///
-/// [`PaintNode::GlyphRun`] currently carries glyph ids and a `font_id` handle
-/// but does **not** yet embed glyph outline paths.  This renderer therefore
-/// emits a placeholder `<g data-glyph-run="..."/>` for each `GlyphRun` so the
-/// tree structure survives a round-trip, and the node is not lost.  A future
-/// change will plug the font snapshot back in and emit real outlines.
+/// [`PaintNode::GlyphRun`] now carries per-glyph SVG outline paths in
+/// `path_data: Vec<Option<String>>`.  Each glyph is emitted as a nested
+/// `<g transform="..."><path d="..."/></g>` with scale + y-flip from design
+/// space to SVG canvas, and a per-glyph translate for its offset inside the
+/// run.  Glyphs whose `path_data` entry is `None` are silently skipped.  If
+/// the whole run has no usable outline we fall back to the legacy placeholder
+/// `<g data-glyph-run="..."/>` so the tree structure survives a round-trip.
 pub fn render_formula_result(result: &FormulaLayoutResult) -> Result<String, String> {
     let metrics = &result.metrics;
 
@@ -119,47 +121,44 @@ fn render_paint_node(out: &mut String, node: &PaintNode, origin_x: f64, origin_y
             )
             .map_err(|e| e.to_string())?;
         }
-        PaintNode::GlyphRun { font_id, glyph_ids, positions: _, size, path_data: _ } => {
-            // Glyph outlines are intentionally not embedded in the paint tree
-            // yet — they live in the font snapshot and will be plumbed in a
-            // follow-up change.  Emit a marker group so the structure survives.
-            //
-            // ## Outline-path query chain — current gap
-            //
-            // Layout produces `LayoutNode::Glyph` which carries BOTH
-            // `path_data: Option<String>` (real SVG outline, populated from
-            // `FontMetricsData.glyph_paths`) AND `glyph_id: Option<u16>`.
-            // `lower_layout_to_paint` currently routes glyphs that have a
-            // `glyph_id` into `PaintNode::GlyphRun`, discarding the sibling
-            // `path_data`.  Only glyphs WITHOUT a `glyph_id` fall through to
-            // `PaintNode::VectorPath`, where the outline IS preserved.
-            //
-            // `PaintNode::GlyphRun` itself has no `path_data` field, and
-            // `FormulaLayoutResult.fonts` (`FontMetricsSnapshot`) only stores
-            // face metadata (font_id, family, upm, axes) — the real
-            // `glyph_paths: HashMap<GlyphKey, String>` lives inside
-            // `FontMetricsData` which never leaves the layout engine.
-            //
-            // To render real outlines here, one of the following must happen:
-            //   (a) Extend `PaintNode::GlyphRun` with per-glyph `path_data`,
-            //       or a single merged outline;
-            //   (b) Snapshot `glyph_paths` into `FontMetricsSnapshot` keyed by
-            //       (font_id, glyph_id) so renderers can look them up;
-            //   (c) Change `lower_layout_to_paint` to emit
-            //       `PaintNode::VectorPath` for glyphs that have BOTH
-            //       glyph_id AND path_data.
-            //
-            // Until then we keep the placeholder marker so the paint-tree
-            // round-trip stays structurally intact and the node is not lost.
-            write!(
-                out,
-                r#"<g data-glyph-run="{}" data-font="{}" data-size="{:.4}" data-count="{}"/>"#,
-                font_id,
-                font_id,
-                size.to_f64(),
-                glyph_ids.len(),
-            )
-            .map_err(|e| e.to_string())?;
+        PaintNode::GlyphRun { font_id, glyph_ids, positions, size, path_data } => {
+            let scale = size.to_f64();
+            let mut emitted_any = false;
+            for (i, d_opt) in path_data.iter().enumerate() {
+                if let Some(d) = d_opt {
+                    let (ox, oy) = positions.get(i).copied().unwrap_or((Fixed::ZERO, Fixed::ZERO));
+                    let transform = format!(
+                        "translate({} {}) scale({} {})",
+                        ox.to_f64() * scale,
+                        -oy.to_f64() * scale,
+                        scale,
+                        -scale,
+                    );
+                    let gid = glyph_ids.get(i).copied().unwrap_or(0);
+                    write!(
+                        out,
+                        r#"<g transform="{}" data-glyph-id="{}" data-font="{}"><path d="{}" fill="currentColor"/></g>"#,
+                        transform,
+                        gid,
+                        font_id,
+                        d,
+                    )
+                    .map_err(|e| e.to_string())?;
+                    emitted_any = true;
+                }
+            }
+            // Fallback: 没有可用 outline 时保持旧占位输出，确保 paint tree 结构不丢
+            if !emitted_any {
+                write!(
+                    out,
+                    r#"<g data-glyph-run="{}" data-font="{}" data-size="{:.4}" data-count="{}"/>"#,
+                    font_id,
+                    font_id,
+                    size.to_f64(),
+                    glyph_ids.len(),
+                )
+                .map_err(|e| e.to_string())?;
+            }
         }
     }
     Ok(())
