@@ -175,6 +175,35 @@ pub struct Glue {
     pub shrink: Fixed,
 }
 
+/// TeXbook Appendix G math spacing skip between two adjacent atoms.
+///
+/// Each cell of the 9×9 spacing table says whether to insert no glue,
+/// thin (3mu), medium (4mu), or thick (5mu).  The lookup always runs after
+/// [`demote_role`] has downgraded Bin / Rel / Op atoms flanked by certain
+/// neighbours, so the table itself is simpler than it first appears.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum TexSkip {
+    NoGlue,
+    /// `thinmuskip` = 3mu = 3/18 em.  Binary operators.
+    Thin,
+    /// `medmuskip` = 4mu = 4/18 em.  Large operators, math functions.
+    Medium,
+    /// `thickmuskip` = 5mu = 5/18 em.  Relations, Inner atoms.
+    Thick,
+}
+
+impl TexSkip {
+    fn to_glue(self, size: Fixed) -> Option<Glue> {
+        let em = |f: f64| Fixed::from_f64(f) * size;
+        match self {
+            TexSkip::NoGlue => None,
+            TexSkip::Thin => Some(Glue { width: em(THIN_MUSIP_EM), stretch: Fixed::ZERO, shrink: Fixed::ZERO }),
+            TexSkip::Medium => Some(Glue { width: em(MEDIUM_MUSIP_EM), stretch: Fixed::ZERO, shrink: Fixed::ZERO }),
+            TexSkip::Thick => Some(Glue { width: em(THICK_MUSIP_EM), stretch: Fixed::ZERO, shrink: Fixed::ZERO }),
+        }
+    }
+}
+
 /// A vector path scaled to the current font size.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Path {
@@ -361,76 +390,103 @@ impl LayoutEngine {
         }
     }
 
-    /// TeX math spacing between two adjacent atoms, simplified to the common cases.
+    /// TeXbook Appendix G: downgrade Bin / Rel / Op atoms before spacing.
     ///
-    /// Returns the glue to insert between `left` and `right` at the current em
-    /// `size` (in pixels).  `None` means no glue — but binary atoms on the wrong
-    /// side are treated as [`SymbolRole::Ordinary`] (caller must rerun or skip).
-    fn spacing_between(left: SymbolRole, right: SymbolRole, size: Fixed) -> Option<Glue> {
+    /// `current`'s neighbours are `left` and `right`.  An atom demotes to a
+    /// weaker role when flanked by classes that would otherwise glue on both
+    /// sides — e.g. `$(a+b)$` must not take thick glue between `(` and `+`
+    /// because `+` becomes Ordinary next to Open on the left and Close on the
+    /// right.
+    fn demote_role(current: SymbolRole, left: Option<SymbolRole>, right: Option<SymbolRole>) -> SymbolRole {
         use SymbolRole::*;
-        // Opening on the left, Closing on the right, or Punctuation on the right
-        // never take spacing.
-        if matches!(left, Opening) || matches!(right, Closing | Punctuation) {
-            return None;
+        let l = left.unwrap_or(Ordinary);
+        let r = right.unwrap_or(Ordinary);
+
+        match current {
+            // TeX G Rules 5 & 6: Bin → Ord if
+            //   left  ∈ {首位置, Bin, Open, Rel, Op, Punct}
+            //   right ∈ {末位置, Rel, Close, Punct}
+            // Close is NOT a bin-left-canceller and Open is NOT a bin-right-
+            // canceller — a Bin flanked only by Ordinary on both sides stays
+            // Bin and takes medium muskip even inside parentheses like `(a+b)`.
+            Binary
+                if matches!(l, Binary | Opening | Relation | Operator | Punctuation)
+                    || matches!(r, Relation | Closing | Punctuation) =>
+            {
+                Ordinary
+            }
+            // TeX G: Rel → Bin if left neighbor is Open or Bin
+            Relation if matches!(l, Opening | Binary) => Binary,
+            // TeX G: Op → Ord if flanked by Open/Close/Bin/Punct/LargeOp on left
+            //           or Bin/Rel/Close/Punct/LargeOp on right
+            Operator
+                if matches!(l, Opening | Closing | Binary | Punctuation | LargeOperator)
+                    || matches!(r, Binary | Relation | Closing | Punctuation | LargeOperator) =>
+            {
+                Ordinary
+            }
+            _ => current,
         }
+    }
+
+    /// TeXbook Appendix G 9×9 spacing table.
+    ///
+    /// Runs after [`demote_role`], so the rare cells marked `*` by Knuth (where
+    /// glue would be inserted only between classes that survived demotion) are
+    /// simply `NoGlue` when demoted away.  `LargeOperator` shares the Op column
+    /// except for a few cells, so both match branches appear side by side.
+    fn tex_skip_between(left: SymbolRole, right: SymbolRole) -> TexSkip {
+        use SymbolRole::*;
+        use TexSkip::*;
 
         match (left, right) {
-            // ——— Relation: thick on both sides ———
-            (_, Relation) | (Relation, _) => {
-                Some(Glue { width: Fixed::from_f64(THICK_MUSIP_EM) * size, stretch: Fixed::ZERO, shrink: Fixed::ZERO })
-            }
+            // ─────────── Opening: never take glue on the left ───────────
+            (Opening, _) => NoGlue,
 
-            // ——— LargeOperator: medium on both sides, but NOT after Opening ———
-            (LargeOperator, _) => {
-                Some(Glue { width: Fixed::from_f64(MEDIUM_MUSIP_EM) * size, stretch: Fixed::ZERO, shrink: Fixed::ZERO })
-            }
-            (_, LargeOperator) => {
-                if matches!(left, Opening) {
-                    None
-                }
-                else {
-                    Some(Glue { width: Fixed::from_f64(MEDIUM_MUSIP_EM) * size, stretch: Fixed::ZERO, shrink: Fixed::ZERO })
-                }
-            }
+            // ─────────── Closing / Punctuation: never take glue on the right ───────────
+            (_, Closing | Punctuation) => NoGlue,
 
-            // ——— Operator (text math function like sin, cos): medium both sides ———
-            (_, Operator) | (Operator, _) => {
-                Some(Glue { width: Fixed::from_f64(MEDIUM_MUSIP_EM) * size, stretch: Fixed::ZERO, shrink: Fixed::ZERO })
-            }
+            // ─────────── Relation: thick on both sides (demote may have turned one into Bin) ───────────
+            (Relation, _) | (_, Relation) => Thick,
 
-            // ——— Inner (fraction, radical, delimited group): thick both sides ———
-            (_, Inner) | (Inner, _) => {
-                Some(Glue { width: Fixed::from_f64(THICK_MUSIP_EM) * size, stretch: Fixed::ZERO, shrink: Fixed::ZERO })
-            }
+            // ─────────── LargeOperator and Op share the medium-left column ───────────
+            // ─────────── LargeOperator: medium on both sides ───────────
+            (LargeOperator, _) | (_, LargeOperator) => Medium,
 
-            // ——— Binary: thick glue when the neighbour can take one ———
-            // Skip glue on binary → binary / open / close / rel / punct transitions
-            // (TeX demotes the binary there; we keep it simple and just omit glue).
-            (Binary, _) => {
-                if matches!(right, Binary | Opening | Relation | Closing | Punctuation) {
-                    None
-                }
-                else {
-                    Some(Glue { width: Fixed::from_f64(THICK_MUSIP_EM) * size, stretch: Fixed::ZERO, shrink: Fixed::ZERO })
-                }
-            }
-            (_, Binary) => {
-                if matches!(left, Binary | Opening | Relation | Closing | Punctuation) {
-                    None
-                }
-                else {
-                    Some(Glue { width: Fixed::from_f64(THICK_MUSIP_EM) * size, stretch: Fixed::ZERO, shrink: Fixed::ZERO })
-                }
-            }
+            // ─────────── Operator (text math \sin, \cos, \log): thin on both sides
+            // TeX Book 表 Op-Ord = 1 (Thin), KaTeX spacingData.js 同 ───────────
+            (Operator, _) | (_, Operator) => Thin,
 
-            // ——— Punctuation: thin after, nothing before ———
-            (Punctuation, _) => {
-                Some(Glue { width: Fixed::from_f64(THIN_MUSIP_EM) * size, stretch: Fixed::ZERO, shrink: Fixed::ZERO })
-            }
+            // ─────────── Inner (Fraction / Radical / Delimited / Matrix): thick both sides ───────────
+            (Inner, _) | (_, Inner) => Thick,
 
-            // Ordinary / Text adjacency: no glue
-            _ => None,
+            // ─────────── Binary: Medium 4mu on both sides (TeX Book Bin-Ord = 2 Medium)
+            // Demote may have already turned it into Ord above ───────────
+            (Binary, _) | (_, Binary) => Medium,
+            (Punctuation, _) => Thin,
+
+            // ─────────── Ordinary adjacency: no glue ───────────
+            _ => NoGlue,
         }
+    }
+
+    /// TeX math spacing between two adjacent atoms.
+    ///
+    /// The caller passes the role of the atom to the left of `left` (if any),
+    /// the role of `left`, the role of `right`, and the role of the atom to the
+    /// right of `right` (if any).  Both atoms are then demoted per TeXbook
+    /// Appendix G and the spacing rule applied to the resulting roles.
+    fn spacing_between(
+        left_neighbor: Option<SymbolRole>,
+        left: SymbolRole,
+        right: SymbolRole,
+        right_neighbor: Option<SymbolRole>,
+        size: Fixed,
+    ) -> Option<Glue> {
+        let left = Self::demote_role(left, left_neighbor, Some(right));
+        let right = Self::demote_role(right, Some(left), right_neighbor);
+        let skip = Self::tex_skip_between(left, right);
+        skip.to_glue(size)
     }
 
     /// Whether a large operator stacks its scripts by default in the given
@@ -548,9 +604,12 @@ impl LayoutEngine {
     /// next `LargeOperator` base is seen. Neither produces boxes itself.
     fn layout_sequence(&self, nodes: &[SemanticNode], mut style: MathStyle) -> MathResult<LayoutNode> {
         let mut children = Vec::new();
-        let mut prev_role: Option<SymbolRole> = None;
+        // Pre-scan roles so spacing decisions see the full neighbour context
+        // each atom needs for TeX's demote rules (Bin / Rel / Op downgrade
+        // when flanked by Open/Close/Bin/Rel/Punct/LargeOp).
+        let roles: Vec<Option<SymbolRole>> = nodes.iter().map(Self::leading_role).collect();
 
-        for node in nodes {
+        for (i, node) in nodes.iter().enumerate() {
             // --- imperative nodes: update state, produce no boxes ---
             match node {
                 SemanticNode::SetMathStyle(new_style) => {
@@ -570,17 +629,20 @@ impl LayoutEngine {
             }
 
             // --- spacing glue between the previous visible node and this one ---
-            let style_scale = self.get_style_scale(style);
-            let size = self.base_size * style_scale;
-            if let Some(left_role) = prev_role {
-                let right_role = Self::role_of(node);
-                if let Some(glue) = Self::spacing_between(left_role, right_role, size) {
-                    children.push(LayoutNode::Glue(glue));
+            if i > 0 {
+                if let (Some(left_role), Some(right_role)) = (roles[i - 1], roles[i]) {
+                    let left_neighbor = roles[..i - 1].iter().rev().find_map(|r| *r);
+                    let right_neighbor = roles[i + 1..].iter().find_map(|r| *r);
+                    let style_scale = self.get_style_scale(style);
+                    let size = self.base_size * style_scale;
+                    let glue = Self::spacing_between(left_neighbor, left_role, right_role, right_neighbor, size);
+                    if let Some(glue) = glue {
+                        children.push(LayoutNode::Glue(glue));
+                    }
                 }
             }
 
             children.push(self.layout_node(node, style)?);
-            prev_role = Some(Self::role_of(node));
         }
         Ok(self.pack_hbox(children, None))
     }
