@@ -634,9 +634,14 @@ impl LayoutEngine {
                 SemanticNode::Superscript { base, sup } => {
                     self.layout_subsup(base, None, Some(sup), state, OperatorClass::of_node(base), LimitsPolicy::of_node(base))
                 }
-                SemanticNode::SubSuperscript { base, sub, sup } => {
-                    self.layout_subsup(base, Some(sub), Some(sup), state, OperatorClass::of_node(base), LimitsPolicy::of_node(base))
-                }
+                SemanticNode::SubSuperscript { base, sub, sup } => self.layout_subsup(
+                    base,
+                    Some(sub),
+                    Some(sup),
+                    state,
+                    OperatorClass::of_node(base),
+                    LimitsPolicy::of_node(base),
+                ),
                 // A math space is a kern of the current em: `width` is already
                 // in em, so the style scale is the only factor left to apply.
                 SemanticNode::Space { width } => {
