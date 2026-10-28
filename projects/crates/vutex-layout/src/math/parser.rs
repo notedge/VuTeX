@@ -552,8 +552,21 @@ impl Parser {
         // at display style even when the formula around them is demoted. The
         // starred and unstarred forms share this geometry, their numbering is a
         // document-level concern.
+        // `aligned`, `alignedat`, `split`, `align` and `align*` are rl grids:
+        // TeX places each row as `r <relation> l` with a thick muskip on both
+        // sides of the relation, and the column gap is the ordinary intercolumn
+        // glue of the alignment, which these environments set to nothing.  A
+        // blanket `col_spacing` would double the space on one side of the
+        // relation, so these grids get zero while every other matrix keeps the
+        // `\quad`-ish gutter.
+        let col_spacing = if matches!(name, "aligned" | "alignedat" | "alignedat*" | "split" | "align" | "align*") {
+            Fixed::ZERO
+        }
+        else {
+            Fixed::from_f64(0.8)
+        };
         let display_style = matches!(name, "align" | "align*");
-        Ok(SemanticNode::Matrix { rows, row_spacing, col_spacing: Fixed::from_f64(0.8), display_style, column_alignment })
+        Ok(SemanticNode::Matrix { rows, row_spacing, col_spacing, display_style, column_alignment })
     }
 
     /// Read the `{n}` column-pair argument of `alignedat`.
