@@ -172,6 +172,18 @@ impl Noad {
     pub fn effective_kind(&self) -> NoadKind {
         self.kind.spacing_class()
     }
+
+    /// True when this noad's nucleus is a `SemanticNode::Text` (not a
+    /// Symbol, not any other variant).
+    ///
+    /// Text noads come from `SemanticNode::Text { text, font_style }` while
+    /// Symbol noads come from `SemanticNode::Symbol { glyph_key, role }`.
+    /// We only merge adjacent Text atoms — Symbol atoms (even when both
+    /// happen to be Ordinary) must remain distinct because TeX keeps a
+    /// demoted `Bin→Atom` as its own spacing entity.
+    pub fn is_text_atom(&self) -> bool {
+        matches!(self.nucleus.as_deref(), Some(SemanticNode::Text { .. }))
+    }
 }
 
 /// A flat, normalized list of [`Noad`]s — TeX's equivalent of a "math list".
@@ -514,13 +526,10 @@ pub fn normalize_math_list(mut list: MathList) -> MathList {
     // ── Pass 2: Bin / Rel / Op demote per TeX Appendix G ──────────────
     let v = demote_pass(&list.0);
 
-    // ── Pass 3: consecutive Atom merge ────────────────────────────────
-    // Intentionally disabled — merging adjacent Atoms loses distinct glyphs
-    // that TeX keeps separate (a demoted Bin next to an Atom is still a
-    // distinct Ordinary atom).  Legacy layout_sequence never merges, so we
-    // keep the two pipelines in lock-step by returning the demote output
-    // unchanged here.
-    let v = v;
+    // ── Pass 3: consecutive **Text** Atom merge ───────────────────────
+    // Only merges Text-derived atoms; Symbol atoms stay distinct (TeX
+    // semantics — a demoted Bin→Atom remains its own spacing entity).
+    let v = merge_atoms_pass(v);
 
     MathList(v)
 }
@@ -651,44 +660,83 @@ fn op_demotes(left: Option<NoadKind>, right: Option<NoadKind>) -> bool {
 }
 
 // ────────────────────────────────────────────────────────────────────────
-// Pass 3 — merge consecutive Atoms
+// Pass 3 — merge consecutive Text atoms only
 // ────────────────────────────────────────────────────────────────────────
 
-/// Fold adjacent `Atom` noads into a single Atom.
+/// Fold adjacent **Text-derived** Atom noads into a single Atom.
 ///
-/// The resulting Atom keeps the **first** Atom's nucleus and style; when
-/// later Atoms carry `sub` / `sup` scripts, those slots override (if set)
-/// the ones already on the merged Atom.  Nucleus falls back to the later
-/// Atom when the first has none.
+/// TeX does **not** merge Symbol atoms even if both sides happen to be
+/// Ordinary — each remains a distinct atom with its own glyph and spacing
+/// context.  In particular, a Bin demoted to Atom still participates in
+/// spacing as a separate Ordinary atom.  But multiple consecutive `Text`
+/// fragments (e.g. a word split into several `SemanticNode::Text` during
+/// markdown import) should fold into a single atom so the layout engine
+/// sees one "word" instead of N single-letter atoms with zero glue between
+/// them.
+///
+/// Two Text atoms are merged only when:
+/// * both are `NoadKind::Atom`,
+/// * both carry a `SemanticNode::Text` nucleus (never Symbol),
+/// * they share the same `MathStyle` and `cramped` flag,
+/// * neither carries sub/superscripts (scripts break the run).
 fn merge_atoms_pass(input: Vec<Noad>) -> Vec<Noad> {
     let mut out: Vec<Noad> = Vec::with_capacity(input.len());
     for noad in input {
         if let Some(last) = out.last_mut() {
-            if last.kind == NoadKind::Atom && noad.kind == NoadKind::Atom {
-                // Later nucleus fills a hole but never overwrites an existing one.
-                if last.nucleus.is_none() {
-                    last.nucleus = noad.nucleus;
-                }
-                // Later scripts override slot-by-slot.
-                if let Some(new_sc) = noad.scripts {
-                    match last.scripts.as_mut() {
-                        Some(old) => {
-                            if new_sc.sub.is_some() {
-                                old.sub = new_sc.sub;
-                            }
-                            if new_sc.sup.is_some() {
-                                old.sup = new_sc.sup;
-                            }
-                        }
-                        None => last.scripts = Some(new_sc),
-                    }
-                }
+            if last.kind == NoadKind::Atom
+                && noad.kind == NoadKind::Atom
+                && last.is_text_atom()
+                && noad.is_text_atom()
+                && last.style == noad.style
+                && last.cramped == noad.cramped
+                && last.scripts.is_none()
+                && noad.scripts.is_none()
+            {
+                last.nucleus = Some(merge_text_nodes(
+                    last.nucleus.as_ref(),
+                    noad.nucleus.as_ref(),
+                ));
                 continue;
             }
         }
         out.push(noad);
     }
     out
+}
+
+/// Concatenate two Text nuclei into a single `SemanticNode::Text`.
+///
+/// Only succeeds when **both** are `SemanticNode::Text`; otherwise returns
+/// `b` verbatim as a safe fallback (the caller gate keeps Symbol/other
+/// nuclei out of this branch, so we only hit the fallback in defensive
+/// paths).  `font_style` is taken from `a` — in practice consecutive Text
+/// fragments always share the same style (checked by `merge_atoms_pass`),
+/// so this keeps the first fragment's face.
+fn merge_text_nodes(
+    a: Option<&Box<SemanticNode>>,
+    b: Option<&Box<SemanticNode>>,
+) -> Box<SemanticNode> {
+    let a_text = a.and_then(|x| match x.as_ref() {
+        SemanticNode::Text { text, font_style } => Some((text.clone(), *font_style)),
+        _ => None,
+    });
+    let b_text = b.and_then(|x| match x.as_ref() {
+        SemanticNode::Text { text, .. } => Some(text.clone()),
+        _ => None,
+    });
+    match (a_text, b_text) {
+        (Some((ta, fa)), Some(tb)) => Box::new(SemanticNode::Text {
+            text: format!("{ta}{tb}"),
+            font_style: fa,
+        }),
+        // Defensive fallback: keep b (caller already filtered).
+        (_, Some(_)) => b.unwrap().clone(),
+        (Some(_), None) => a.unwrap().clone(),
+        (None, None) => Box::new(SemanticNode::Text {
+            text: String::new(),
+            font_style: crate::math::FontStyle::Math,
+        }),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -901,9 +949,10 @@ mod tests {
     }
 
     #[test]
-    fn continuous_atoms_stay_separate_while_merge_pass_is_disabled() {
-        // merge_atoms_pass 目前被禁用（保持与 legacy layout_sequence 行为一致），
-        // 连续 Atom 不合并。将来重新启用时把这个断言改回 `assert_eq!(normalized.len(), 1)`。
+    fn symbol_atoms_never_merge() {
+        // Three Ordinary Symbol atoms must remain 3 distinct atoms — TeX
+        // keeps each Symbol-derived glyph separate even when both sides
+        // happen to be Ordinary.
         let nodes = vec![
             sym('a', SymbolRole::Ordinary),
             sym('b', SymbolRole::Ordinary),
@@ -911,7 +960,54 @@ mod tests {
         ];
         let projected = MathList::from(nodes.as_slice());
         let normalized = normalize_math_list(projected);
-        assert_eq!(normalized.len(), 3, "merge_atoms_pass 禁用时三个 Atom 保持分离");
+        assert_eq!(
+            normalized.len(),
+            3,
+            "Symbol atoms must never merge (TeX semantics)"
+        );
+        assert!(normalized.0.iter().all(|n| !n.is_text_atom()));
+    }
+
+    #[test]
+    fn text_atoms_do_merge() {
+        // Three consecutive Text fragments merge into one Atom whose
+        // nucleus carries the concatenated string.
+        use crate::math::FontStyle;
+        let nodes = vec![
+            SemanticNode::Text { text: "a".into(), font_style: FontStyle::Math },
+            SemanticNode::Text { text: "b".into(), font_style: FontStyle::Math },
+            SemanticNode::Text { text: "c".into(), font_style: FontStyle::Math },
+        ];
+        let projected = MathList::from(nodes.as_slice());
+        let normalized = normalize_math_list(projected);
+        assert_eq!(normalized.len(), 1, "three Text atoms must fold into one");
+        let n = &normalized.0[0];
+        assert!(n.is_text_atom());
+        match n.nucleus.as_deref() {
+            Some(SemanticNode::Text { text, .. }) => {
+                assert_eq!(text, "abc");
+            }
+            other => panic!("expected Text nucleus, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn mixed_symbol_text_symbol_stays_three() {
+        // Symbol + Text + Symbol — only adjacent Text runs merge; the Text
+        // run here is length 1 so no folding happens.  Result stays 3.
+        use crate::math::FontStyle;
+        let nodes = vec![
+            sym('a', SymbolRole::Ordinary),
+            SemanticNode::Text { text: "b".into(), font_style: FontStyle::Math },
+            sym('c', SymbolRole::Ordinary),
+        ];
+        let projected = MathList::from(nodes.as_slice());
+        let normalized = normalize_math_list(projected);
+        assert_eq!(
+            normalized.len(),
+            3,
+            "Symbol/Text/Symbol mix must stay 3 (only consecutive Text merges)"
+        );
     }
 
     #[test]
