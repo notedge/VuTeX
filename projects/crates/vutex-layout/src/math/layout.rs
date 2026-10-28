@@ -3,10 +3,13 @@
 
 use serde::{Deserialize, Serialize};
 use vutex_text::math::FontMetricsSystem;
-use vutex_types::math::{
-    Alignment, BBox, DelimiterComponent, Fixed, FontMetricsSnapshot, FontStyle, FormulaLayoutResult, FormulaMetrics, GlyphKey,
-    GlyphMetrics, LimitsPolicy, LineStyle, MathConstant, MathKern, MathList, MathResult, MathStyle, NoadKind, OperatorClass,
-    PaintNode, SemanticNode, SpacingRule, SymbolRole, normalize_math_list, project_semantic,
+use vutex_types::{
+    Diagnostic, Severity,
+    math::{
+        Alignment, BBox, DelimiterComponent, Fixed, FontMetricsSnapshot, FontStyle, FormulaLayoutResult, FormulaMetrics,
+        GlyphKey, GlyphMetrics, LimitsPolicy, LineStyle, MathConstant, MathKern, MathList, MathResult, MathStyle, NoadKind,
+        OperatorClass, PaintNode, SemanticNode, SpacingRule, SymbolRole, normalize_math_list, project_semantic,
+    },
 };
 
 /// A node in the math layout tree.
@@ -699,7 +702,7 @@ impl LayoutEngine {
             faces: Vec::new(),
             glyph_paths,
         };
-        Ok(FormulaLayoutResult { metrics, paint, diagnostics: Vec::new(), fonts })
+        Ok(FormulaLayoutResult { metrics, paint, diagnostics: self.script_scale_diagnostics(), fonts })
     }
 
     /// Lay out a flat, normalized [`MathList`].
@@ -866,12 +869,61 @@ impl LayoutEngine {
         }))
     }
 
+    /// Em scale of a math style relative to the base size.
+    ///
+    /// `Display` and `Text` both set the base em, so they scale by exactly
+    /// `1.0`. The two script levels are ratios the font publishes as
+    /// `ScriptPercentScaleDown` / `ScriptScriptPercentScaleDown` in its `MATH`
+    /// table, stored as fractions of the base em. Each ratio multiplies the base
+    /// size directly, the same nesting TeX applies when it demotes a formula one
+    /// level at a time.
+    ///
+    /// A font that publishes no ratio — a synthetic metrics table, or a font
+    /// whose `MATH` table failed to parse — keeps the synthetic ratios instead.
+    /// [`Self::script_scale_diagnostics`] reports that substitution so a
+    /// fallback is never mistaken for a measured value.
     fn get_style_scale(&self, style: MathStyle) -> Fixed {
         match style {
             MathStyle::Display | MathStyle::Text => Fixed::ONE,
-            MathStyle::Script => Fixed::from_f64(0.7),
-            MathStyle::ScriptScript => Fixed::from_f64(0.5),
+            MathStyle::Script => self.script_scale_ratio(MathConstant::ScriptPercentScaleDown),
+            MathStyle::ScriptScript => self.script_scale_ratio(MathConstant::ScriptScriptPercentScaleDown),
         }
+    }
+
+    /// A script scale ratio as the font publishes it, else the synthetic one.
+    fn script_scale_ratio(&self, constant: MathConstant) -> Fixed {
+        if let Some(ratio) = self.font_system.font_math_constant("default", constant) {
+            return ratio;
+        }
+        self.font_system.get_math_constant("default", constant).unwrap_or(Fixed::ONE)
+    }
+
+    /// Report every script scale ratio the font does not publish.
+    ///
+    /// Script levels whose ratio is missing are still set, from the synthetic
+    /// MATH table, so a font that failed to parse keeps laying out. This warning
+    /// is the record of that substitution: a caller can tell a font-derived
+    /// ratio from a fallback instead of both looking measured.
+    pub fn script_scale_diagnostics(&self) -> Vec<Diagnostic> {
+        let missing: Vec<&str> = [
+            ("ScriptPercentScaleDown", MathConstant::ScriptPercentScaleDown),
+            ("ScriptScriptPercentScaleDown", MathConstant::ScriptScriptPercentScaleDown),
+        ]
+        .into_iter()
+        .filter(|(_, constant)| self.font_system.font_math_constant("default", *constant).is_none())
+        .map(|(name, _)| name)
+        .collect();
+        if missing.is_empty() {
+            return Vec::new();
+        }
+        vec![Diagnostic {
+            code: "vutex.layout.math.script_scale_fallback".into(),
+            severity: Severity::Warning,
+            message: format!(
+                "the math font publishes no {} for family `default`, so script sizes use the synthetic MATH ratios",
+                missing.join("` or `")
+            ),
+        }]
     }
 
     fn get_spacing_glue(&self, spacing: SpacingRule) -> Option<Glue> {

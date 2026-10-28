@@ -1,12 +1,12 @@
 //! Integration tests for the math parse/layout pipeline.
 
 use vutex_layout::math::{
-    FormulaLayout, Glyph, LayoutNode, default_base_size, layout_formula, layout_formula_with_diagnostics,
+    FormulaLayout, Glyph, LayoutEngine, LayoutNode, default_base_size, layout_formula, layout_formula_with_diagnostics,
 };
-use vutex_text::math::builtin_font_metrics;
+use vutex_text::math::{FontMetricsSystem, builtin_font_metrics};
 use vutex_types::{
     Severity,
-    math::{Fixed, FontStyle, GlyphKey, MathConstant},
+    math::{Fixed, FontMetricsData, FontStyle, GlyphKey, MathConstant, MathStyle, SemanticNode, SymbolRole},
 };
 
 fn layout(source: &str) -> FormulaLayout {
@@ -1196,16 +1196,132 @@ fn display_mode_fraction_is_taller_than_text_mode() {
 
 /// `\scriptstyle` / `\scriptscriptstyle` scale the following atoms instead of
 /// being accepted and ignored.
+///
+/// The ratios are read from the embedded font's MATH table, so the assertion
+/// follows the font rather than a constant baked into either side.
 #[test]
 fn style_commands_scale_following_glyphs() {
+    let font_scale = |constant: MathConstant| {
+        builtin_font_metrics()
+            .font_math_constant("default", constant)
+            .unwrap_or_else(|| panic!("the embedded font must publish `{constant:?}`"))
+            .to_f64()
+    };
+    let script_scale = font_scale(MathConstant::ScriptPercentScaleDown);
+    let scriptscript_scale = font_scale(MathConstant::ScriptScriptPercentScaleDown);
+
     let base = layout("x").width;
     let script = layout("\\scriptstyle x").width;
     let scriptscript = layout("\\scriptscriptstyle x").width;
 
     let script_ratio = script / base;
     let scriptscript_ratio = scriptscript / base;
-    assert!((script_ratio - 0.7).abs() < 0.02, "`\\scriptstyle` must be 0.7 em: ratio {script_ratio}");
-    assert!((scriptscript_ratio - 0.5).abs() < 0.02, "`\\scriptscriptstyle` must be 0.5 em: ratio {scriptscript_ratio}");
+    assert!((script_ratio - script_scale).abs() < 0.02, "`\\scriptstyle` must be {script_scale} em: ratio {script_ratio}");
+    assert!(
+        (scriptscript_ratio - scriptscript_scale).abs() < 0.02,
+        "`\\scriptscriptstyle` must be {scriptscript_scale} em: ratio {scriptscript_ratio}"
+    );
+}
+
+/// Script and scriptscript sizes are the font's MATH ratios times the base em.
+///
+/// Nested scripts demote twice, so the innermost glyph must use the second
+/// level's ratio. Reading both ratios from the font makes a future font with
+/// different ratios a failing test instead of a silent geometry change.
+#[test]
+fn nested_scripts_use_the_font_script_ratios() {
+    let font = builtin_font_metrics();
+    let scale = |constant: MathConstant| {
+        font.font_math_constant("default", constant)
+            .unwrap_or_else(|| panic!("the embedded font must publish `{constant:?}`"))
+            .to_f64()
+    };
+    let script_scale = scale(MathConstant::ScriptPercentScaleDown);
+    let scriptscript_scale = scale(MathConstant::ScriptScriptPercentScaleDown);
+
+    let (tree, _) = layout_formula("x^{y^{z}}", false).expect("nested scripts should lay out");
+    let (_, _, base) = glyph_at(&tree, 'x');
+    let (_, _, script) = glyph_at(&tree, 'y');
+    let (_, _, scriptscript) = glyph_at(&tree, 'z');
+    let em = base.size.to_f64();
+
+    assert!((em - default_base_size(false)).abs() < 1e-6, "text style keeps the base em, got {em}");
+    assert!(
+        (script.size.to_f64() - em * script_scale).abs() < 1e-6,
+        "`y` must be set at the font's script ratio {script_scale}, not {}",
+        script.size.to_f64() / em
+    );
+    assert!(
+        (scriptscript.size.to_f64() - em * scriptscript_scale).abs() < 1e-6,
+        "`z` must be set at the font's scriptscript ratio {scriptscript_scale}, not {}",
+        scriptscript.size.to_f64() / em
+    );
+}
+
+/// `Display` and `Text` both keep the base em: the MATH ratios only demote
+/// scripts.
+#[test]
+fn display_and_text_styles_keep_the_base_em() {
+    for display in [false, true] {
+        let (tree, _) = layout_formula("x", display).expect("single symbol should lay out");
+        let (_, _, glyph) = glyph_at(&tree, 'x');
+        let em = default_base_size(display);
+        assert!(
+            (glyph.size.to_f64() - em).abs() < 1e-6,
+            "display={display} must set `x` at the base em {em}, not {}",
+            glyph.size.to_f64()
+        );
+    }
+}
+
+/// The font-backed ratios are the measured values, so layout reports no
+/// fallback for the embedded font.
+#[test]
+fn embedded_font_needs_no_script_scale_fallback() {
+    let (_, _, diagnostics) =
+        layout_formula_with_diagnostics("x^{y^{z}}", false, default_base_size(false)).expect("nested scripts should lay out");
+    assert!(
+        !diagnostics.iter().any(|d| d.code == "vutex.layout.math.script_scale_fallback"),
+        "the embedded font publishes both ratios, so no fallback warning is expected: {diagnostics:?}"
+    );
+}
+
+/// A font with no MATH table still sizes script levels, keeps `Display`/`Text`
+/// at the base em, and says that the script ratios are the synthetic fallback.
+#[test]
+fn missing_font_ratios_fall_back_and_are_reported() {
+    let font = FontMetricsSystem::new_with_metrics(FontMetricsData::new("default".to_string(), 1000));
+    let fallback = |constant: MathConstant| font.get_math_constant("default", constant).expect("synthetic ratio").to_f64();
+    let script_scale = fallback(MathConstant::ScriptPercentScaleDown);
+    let scriptscript_scale = fallback(MathConstant::ScriptScriptPercentScaleDown);
+    let engine = LayoutEngine::new(font).with_base_size(10.0);
+    let nodes =
+        vec![SemanticNode::Symbol { glyph_key: GlyphKey::from_char('x', None, FontStyle::Math), role: SymbolRole::Ordinary }];
+
+    for (style, expected) in [
+        (MathStyle::Display, 10.0),
+        (MathStyle::Text, 10.0),
+        (MathStyle::Script, 10.0 * script_scale),
+        (MathStyle::ScriptScript, 10.0 * scriptscript_scale),
+    ] {
+        let tree = engine.layout_math_list(&nodes, style).expect("style should lay out");
+        let (_, _, glyph) = glyph_at(&tree, 'x');
+        assert!(
+            (glyph.size.to_f64() - expected).abs() < 1e-6,
+            "`{style:?}` must be set at {expected}, not {}",
+            glyph.size.to_f64()
+        );
+    }
+
+    let diagnostics = engine.script_scale_diagnostics();
+    assert!(
+        diagnostics.iter().any(|d| d.code == "vutex.layout.math.script_scale_fallback"),
+        "a font without MATH ratios must report the fallback: {diagnostics:?}"
+    );
+    assert!(
+        diagnostics.iter().all(|d| d.severity == Severity::Warning),
+        "the fallback is a warning, not an error: {diagnostics:?}"
+    );
 }
 
 /// Fraction arguments demote one style further: display -> text, text -> script,
@@ -1213,13 +1329,21 @@ fn style_commands_scale_following_glyphs() {
 /// fraction are set at scriptscript size, never larger than their parent.
 #[test]
 fn fraction_arguments_demote_one_style_further() {
+    let font = builtin_font_metrics();
+    let scale = |constant: MathConstant| {
+        font.font_math_constant("default", constant)
+            .unwrap_or_else(|| panic!("the embedded font must publish `{constant:?}`"))
+            .to_f64()
+    };
+    let script_scale = scale(MathConstant::ScriptPercentScaleDown);
+    let scriptscript_scale = scale(MathConstant::ScriptScriptPercentScaleDown);
     // 14 px is the inline base em used by `layout_formula`.
     for (source, expected) in [
-        ("\\frac{a}{b}", 14.0 * 0.7),
-        ("\\textstyle \\frac{a}{b}", 14.0 * 0.7),
+        ("\\frac{a}{b}", 14.0 * script_scale),
+        ("\\textstyle \\frac{a}{b}", 14.0 * script_scale),
         ("\\displaystyle \\frac{a}{b}", 14.0),
-        ("\\scriptstyle \\frac{a}{b}", 14.0 * 0.5),
-        ("\\scriptscriptstyle \\frac{a}{b}", 14.0 * 0.5),
+        ("\\scriptstyle \\frac{a}{b}", 14.0 * scriptscript_scale),
+        ("\\scriptscriptstyle \\frac{a}{b}", 14.0 * scriptscript_scale),
     ] {
         let (tree, _) = layout_formula(source, false).expect(source);
         let sizes = glyph_sizes(&tree);
