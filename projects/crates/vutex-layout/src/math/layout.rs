@@ -668,10 +668,12 @@ impl LayoutEngine {
     /// next `LargeOperator` base is seen. Neither produces boxes itself.
     ///
     /// As of the MathList-pipeline integration, every Sequence also has an
-    /// equivalent normalized path via [`layout_math_list`].  The legacy
-    /// inline-demote implementation below remains the canonical entry point
-    /// while parity gaps in the normalized path are being closed; a future
-    /// commit will flip the default once parity is 100% for real formulas.
+    /// equivalent normalized path via [`layout_math_list`].  In debug builds
+    /// this function runs both pipelines and compares the emitted glue
+    /// sequence as a parity smoke test — mismatches are surfaced to stderr
+    /// for future fixing but never block the caller.  The legacy inline-demote
+    /// path remains the canonical entry point until parity is 100% for real
+    /// formulas.
     fn layout_sequence(&self, nodes: &[SemanticNode], mut style: MathStyle) -> MathResult<LayoutNode> {
         let mut children = Vec::new();
         // Pre-scan roles so spacing decisions see the full neighbour context
@@ -714,7 +716,63 @@ impl LayoutEngine {
 
             children.push(self.layout_node(node, style)?);
         }
-        Ok(self.pack_hbox(children, None))
+
+        let legacy = self.pack_hbox(children, None);
+
+        // --- DEBUG PARITY: run normalized path and diff glue widths ---
+        #[cfg(debug_assertions)]
+        {
+            self.limits_override.set(None);
+            if let Ok(normalized) = self.layout_math_list(nodes, style) {
+                Self::report_parity_glue_diff(&legacy, &normalized);
+            }
+            self.limits_override.set(None);
+        }
+
+        Ok(legacy)
+    }
+
+    /// Walk a [`LayoutNode`] tree depth-first collecting every glue width.
+    #[cfg(debug_assertions)]
+    fn collect_glue_widths(node: &LayoutNode, out: &mut Vec<f64>) {
+        match node {
+            LayoutNode::HBox(hb) => {
+                for c in &hb.children { Self::collect_glue_widths(c, out); }
+            }
+            LayoutNode::VBox(vb) => {
+                for c in &vb.children { Self::collect_glue_widths(c, out); }
+            }
+            LayoutNode::Glue(g) => out.push(g.width.to_f64()),
+            _ => {}
+        }
+    }
+
+    /// Compare glue widths produced by legacy vs normalized layout.
+    /// Counts differ or any width ≥1e-10 apart → diagnostic to stderr.
+    /// Never panics — parity gaps are expected while the normalized pipeline
+    /// is being brought up.
+    #[cfg(debug_assertions)]
+    fn report_parity_glue_diff(legacy: &LayoutNode, normalized: &LayoutNode) {
+        let mut l = Vec::new();
+        let mut n = Vec::new();
+        Self::collect_glue_widths(legacy, &mut l);
+        Self::collect_glue_widths(normalized, &mut n);
+
+        if l.len() != n.len() {
+            eprintln!(
+                "[parity] glue count mismatch: legacy={} normalized={}\n  legacy:    {l:?}\n  normalized: {n:?}",
+                l.len(), n.len()
+            );
+            return;
+        }
+        for (i, (a, b)) in l.iter().zip(n.iter()).enumerate() {
+            if (a - b).abs() >= 1e-10 {
+                eprintln!(
+                    "[parity] glue[{i}] width mismatch: legacy={a} normalized={b}\n  legacy:    {l:?}\n  normalized: {n:?}"
+                );
+                return;
+            }
+        }
     }
 
     /// New normalized pipeline: project → normalize → layout by noads.
@@ -725,7 +783,7 @@ impl LayoutEngine {
     /// [`layout_noads`] only needs to key off the already-resolved
     /// [`NoadKind`].
     pub fn layout_math_list(&self, nodes: &[SemanticNode], style: MathStyle) -> MathResult<LayoutNode> {
-        let projected = project_semantic(nodes);
+        let projected = project_semantic(nodes, style);
         let normalized = normalize_math_list(projected);
         self.layout_noads(&normalized, style)
     }
