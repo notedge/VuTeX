@@ -423,6 +423,7 @@ mod tests {
             glyph_ids: vec![65, 66],
             positions: vec![(Fixed::ZERO, Fixed::ZERO), (Fixed::from_f64(10.0), Fixed::ZERO)],
             size: Fixed::from_f64(16.0),
+            path_data: vec![None, None],
         }]);
         let pdf = render_formula_result(&res).expect("render");
         let text = String::from_utf8_lossy(&pdf);
