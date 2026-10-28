@@ -950,7 +950,13 @@ impl LayoutEngine {
         sup: Option<&SemanticNode>,
         style: MathStyle,
     ) -> MathResult<LayoutNode> {
-        let next_style = MathStyle::Script;
+        // Upper and lower limits are one style smaller than the operator, so a
+        // display/text operator takes script limits and a script operator takes
+        // scriptscript limits.
+        let next_style = match style {
+            MathStyle::Display | MathStyle::Text => MathStyle::Script,
+            _ => MathStyle::ScriptScript,
+        };
 
         let family = "default";
         let style_scale = self.get_style_scale(style);
@@ -1012,6 +1018,7 @@ impl LayoutEngine {
 
         let mut sub_height = Fixed::ZERO;
         let mut actual_drop = Fixed::ZERO;
+        let mut baseline_drop = Fixed::ZERO;
 
         if let Some(sub_l) = sub_layout {
             let gap =
@@ -1022,8 +1029,15 @@ impl LayoutEngine {
                 .get_math_constant(family, MathConstant::LowerLimitBaselineDropMin)
                 .unwrap_or(Fixed::from_f64(0.6))
                 * size;
-            actual_drop = gap.max(drop - base_depth);
             sub_height = sub_l.height();
+
+            // `LowerLimitGapMin` is the clearance below the operator's own
+            // bottom, while `LowerLimitBaselineDropMin` measures baseline to
+            // baseline across the subscript's height. Taking the max of both
+            // requirements keeps the gap rule from being applied on top of an
+            // already sufficient baseline drop.
+            actual_drop = gap;
+            baseline_drop = (base_depth + gap + sub_height).max(drop);
 
             v_children.push(LayoutNode::Kern(actual_drop));
             let sub_hbox = self.pack_hbox(
@@ -1036,7 +1050,7 @@ impl LayoutEngine {
         let vbox_node = self.pack_vbox(v_children, Alignment::Center);
 
         if sub_height != Fixed::ZERO {
-            let shift = base_depth + actual_drop + sub_height;
+            let shift = baseline_drop;
 
             let mut wrapper = self.pack_hbox(vec![vbox_node], None);
             if let LayoutNode::HBox(ref mut h) = wrapper {
@@ -1088,6 +1102,7 @@ impl LayoutEngine {
 
         let mut script_vbox_children = Vec::new();
         let mut calculated_sub_shift = Fixed::ZERO;
+        let mut sup_depth = Fixed::ZERO;
 
         if let Some(sup_node) = sup {
             let sup_layout = self.layout_node(sup_node, next_style)?;
@@ -1100,6 +1115,7 @@ impl LayoutEngine {
 
             let calculated_sup_shift = sup_shift.max(base_layout.height() + sup_bottom_min);
 
+            sup_depth = sup_layout.depth();
             script_vbox_children.push(sup_layout);
             // This kern will be between Sup and the baseline (or Sub)
             script_vbox_children.push(LayoutNode::Kern(calculated_sup_shift));
@@ -1125,11 +1141,15 @@ impl LayoutEngine {
                         .unwrap_or(Fixed::from_f64(0.1))
                         * size;
 
-                    let sup_layout_depth = script_vbox_children.last().map(|n| n.depth()).unwrap_or(Fixed::ZERO);
-                    let total_dist = (sup_kern + calculated_sub_shift).max(sup_layout_depth + subsup_gap + sub_layout.height());
+                    let sub_height = sub_layout.height();
+                    let baseline_distance = (sup_kern + calculated_sub_shift).max(sup_depth + subsup_gap + sub_height);
 
-                    // We'll push a kern that is the distance from Sup baseline to Sub baseline.
-                    script_vbox_children.push(LayoutNode::Kern(total_dist));
+                    // A vertical box advances a child by its full line height, so
+                    // the kern between the two scripts is the baseline distance
+                    // less the superscript's depth and the subscript's height.
+                    // Pushing the baseline distance itself would add both of them
+                    // again and lift the superscript by the subscript's height.
+                    script_vbox_children.push(LayoutNode::Kern(baseline_distance - sup_depth - sub_height));
                 }
             }
             else {
@@ -1193,7 +1213,10 @@ impl LayoutEngine {
                     let node = LayoutNode::VBox(v);
                     let mut wrapper = self.pack_hbox(vec![node], None);
                     if let LayoutNode::HBox(ref mut h) = wrapper {
-                        h.shift = Fixed::ZERO;
+                        // The kern above the last child is measured from the box's
+                        // top, so the superscript's own depth is already inside the
+                        // rise. Shift it back out to land on `SuperscriptShiftUp`.
+                        h.shift = Fixed::ZERO - sup_depth;
                     }
                     wrapper
                 }
