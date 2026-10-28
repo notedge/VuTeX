@@ -382,10 +382,37 @@ fn project_one(
             noad.nucleus = Some(Box::new(node.clone()));
             list.push(noad);
         }
-        SemanticNode::Delimited { .. } => {
-            let mut noad = Noad::new(NoadKind::Fence, state.style, state.cramped);
-            noad.nucleus = Some(Box::new(node.clone()));
-            list.push(noad);
+        SemanticNode::Delimited { left, right, content } => {
+            // Left delimiter → Open noad with a synthetic Symbol nucleus
+            // so the spacing engine can read its glyph for metrics.
+            if let Some(gk) = left {
+                let mut open = Noad::new(NoadKind::Open, state.style, state.cramped);
+                open.nucleus = Some(Box::new(SemanticNode::Symbol {
+                    glyph_key: gk.clone(),
+                    role: SymbolRole::Opening,
+                }));
+                list.push(open);
+            }
+
+            // Content → recursive projection, preserving its internal spacing
+            // classes (Atom / Bin / Rel / ...).  When the body is completely
+            // empty (e.g. `\left(\right)`), TeX still emits an Inner atom so
+            // the fence pair participates in spacing; we replicate that here.
+            let before = list.len();
+            project_one(content, state, list, pending_limits);
+            if list.len() == before {
+                list.push(Noad::new(NoadKind::Inner, state.style, state.cramped));
+            }
+
+            // Right delimiter → Close noad.
+            if let Some(gk) = right {
+                let mut close = Noad::new(NoadKind::Close, state.style, state.cramped);
+                close.nucleus = Some(Box::new(SemanticNode::Symbol {
+                    glyph_key: gk.clone(),
+                    role: SymbolRole::Closing,
+                }));
+                list.push(close);
+            }
         }
         SemanticNode::Accent { .. } => {
             let mut noad = Noad::new(NoadKind::Atom, state.style, state.cramped);
@@ -425,32 +452,66 @@ fn with_style(node: &SemanticNode, target: MathStyle) -> SemanticNode {
 
 /// Normalize a projected [`MathList`] with TeX Appendix G passes.
 ///
-/// 1. **Bin / Rel / Op demotion** — downgrade binary, relation and large
+/// 1. **Boundary trim** — strip leading `Open`/`Close`/`Punct` noads
+///    that have no nucleus (bare grouping atoms with no glyph of their
+///    own).  Fence pairs emitted by the `Delimited` projector carry a
+///    proper `Symbol` nucleus for their delimiters and are therefore
+///    preserved; the trim only catches artifact atoms from future
+///    sources that have neither a glyph nor a sub/superscript.
+/// 2. **Bin / Rel / Op demotion** — downgrade binary, relation and large
 ///    operator atoms per TeX Appendix G Rules 5–7, evaluated in one
 ///    left-to-right pass (each noad sees its original neighbours; TeX
 ///    does not re-resolve).
-/// 2. **Consecutive Atom merge** — fold adjacent `Atom` noads into a
+/// 3. **Consecutive Atom merge** — fold adjacent `Atom` noads into a
 ///    single one; later scripts override earlier ones.
-///
-/// A future third pass will strip boundary `Open`/`Close` noads once
-/// `Fence` structural noads are expanded into
-/// `Open · inner-content · Close` triples.
-pub fn normalize_math_list(list: MathList) -> MathList {
-    let v = list.0;
-
-    // Pass 1 (boundary trim) is intentionally omitted for now — it only
-    // makes sense once `Fence` structural noads are expanded into
-    // `Open · inner · Close` triples; bare leading `Open` / trailing
-    // `Close` noads are legitimate atoms and must be preserved for the
-    // demote engine below.
+pub fn normalize_math_list(mut list: MathList) -> MathList {
+    // ── Pass 1: boundary trim ────────────────────────────────────────
+    trim_boundary(&mut list);
 
     // ── Pass 2: Bin / Rel / Op demote per TeX Appendix G ──────────────
-    let v = demote_pass(&v);
+    let v = demote_pass(&list.0);
 
     // ── Pass 3: consecutive Atom merge ────────────────────────────────
     let v = merge_atoms_pass(v);
 
     MathList(v)
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Pass 1 — boundary trim
+// ────────────────────────────────────────────────────────────────────────
+
+/// Strip leading and trailing `Open`/`Close`/`Punct` noads that have no
+/// nucleus.
+///
+/// Open/Close atoms at the boundaries never have a useful neighbour on
+/// the outer side, so their spacing contribution is zero.  Bare atoms of
+/// those kinds that carry no glyph (no nucleus) are pure artifacts and
+/// can be dropped safely.  Delimiter noads emitted by the
+/// [`SemanticNode::Delimited`] projector always carry a synthetic
+/// `Symbol` nucleus, so they survive this pass — only placeholder noads
+/// from other sources are trimmed.
+fn trim_boundary(list: &mut MathList) {
+    // Trim leading.
+    while let Some(first) = list.0.first() {
+        let can_drop = first.nucleus.is_none()
+            && matches!(first.kind, NoadKind::Open | NoadKind::Close | NoadKind::Punct);
+        if can_drop {
+            list.0.remove(0);
+        } else {
+            break;
+        }
+    }
+    // Trim trailing.
+    while let Some(last) = list.0.last() {
+        let can_drop = last.nucleus.is_none()
+            && matches!(last.kind, NoadKind::Open | NoadKind::Close | NoadKind::Punct);
+        if can_drop {
+            list.0.pop();
+        } else {
+            break;
+        }
+    }
 }
 
 // ────────────────────────────────────────────────────────────────────────
@@ -818,5 +879,112 @@ mod tests {
         assert_eq!(list.0[0].kind, NoadKind::Op);
         assert_eq!(list.0[0].limits, Some(true));
         assert_eq!(list.0[1].kind, NoadKind::Atom);
+    }
+
+    // ── Delimited → Open · content · Close expansion ──────────────────
+
+    #[test]
+    fn delimited_expands_to_open_inner_close() {
+        // \left(a + b\right) → Open · Atom · Bin · Atom · Close
+        let delim = SemanticNode::Delimited {
+            left: Some(GlyphKey::from_char('(', None, crate::math::FontStyle::Math)),
+            right: Some(GlyphKey::from_char(')', None, crate::math::FontStyle::Math)),
+            content: Box::new(SemanticNode::Sequence(vec![
+                sym('a', SymbolRole::Ordinary),
+                sym('+', SymbolRole::Binary),
+                sym('b', SymbolRole::Ordinary),
+            ])),
+        };
+        let list = MathList::from(std::slice::from_ref(&delim));
+        assert_eq!(list.len(), 5);
+        assert_eq!(list.0[0].kind, NoadKind::Open);
+        assert!(list.0[0].nucleus.is_some(), "Open must carry delimiter glyph");
+        assert_eq!(list.0[1].kind, NoadKind::Atom);
+        assert_eq!(list.0[2].kind, NoadKind::Bin);
+        assert_eq!(list.0[3].kind, NoadKind::Atom);
+        assert_eq!(list.0[4].kind, NoadKind::Close);
+        assert!(list.0[4].nucleus.is_some(), "Close must carry delimiter glyph");
+    }
+
+    #[test]
+    fn delimited_empty_content_gets_inner_placeholder() {
+        // \left(\right) — empty body → Open · Inner · Close (TeX semantics).
+        let delim = SemanticNode::Delimited {
+            left: Some(GlyphKey::from_char('(', None, crate::math::FontStyle::Math)),
+            right: Some(GlyphKey::from_char(')', None, crate::math::FontStyle::Math)),
+            content: Box::new(SemanticNode::Sequence(vec![])),
+        };
+        let list = MathList::from(std::slice::from_ref(&delim));
+        assert_eq!(list.len(), 3);
+        assert_eq!(list.0[0].kind, NoadKind::Open);
+        assert_eq!(list.0[1].kind, NoadKind::Inner);
+        assert_eq!(list.0[2].kind, NoadKind::Close);
+    }
+
+    #[test]
+    fn delimited_content_projected_recursively() {
+        // Content containing SetMathStyle must propagate style.
+        let delim = SemanticNode::Delimited {
+            left: Some(GlyphKey::from_char('[', None, crate::math::FontStyle::Math)),
+            right: Some(GlyphKey::from_char(']', None, crate::math::FontStyle::Math)),
+            content: Box::new(SemanticNode::Sequence(vec![
+                SemanticNode::SetMathStyle(crate::math::MathStyle::Script),
+                sym('x', SymbolRole::Ordinary),
+            ])),
+        };
+        let list = MathList::from(std::slice::from_ref(&delim));
+        assert_eq!(list.len(), 3);
+        assert_eq!(list.0[0].kind, NoadKind::Open);
+        assert_eq!(list.0[1].kind, NoadKind::Atom);
+        assert_eq!(list.0[1].style, crate::math::MathStyle::Script);
+        assert_eq!(list.0[2].kind, NoadKind::Close);
+    }
+
+    // ── Boundary trim ────────────────────────────────────────────────
+
+    #[test]
+    fn boundary_trim_drops_bare_open_without_nucleus() {
+        // A bare Open noad with no nucleus at the leading edge is trimmed.
+        let mut list = MathList::new();
+        list.push(Noad::new(NoadKind::Open, crate::math::MathStyle::Display, false));
+        list.push(Noad::new(NoadKind::Atom, crate::math::MathStyle::Display, false));
+        // Add a trailing Close with no nucleus too.
+        list.push(Noad::new(NoadKind::Close, crate::math::MathStyle::Display, false));
+
+        let normalized = normalize_math_list(list);
+        assert_eq!(normalized.len(), 1, "bare Open+Close at boundaries must be trimmed");
+        assert_eq!(normalized.0[0].kind, NoadKind::Atom);
+    }
+
+    #[test]
+    fn boundary_trim_preserves_delimited_open_close() {
+        // Open/Close emitted from Delimited carry a nucleus and survive trim.
+        let delim = SemanticNode::Delimited {
+            left: Some(GlyphKey::from_char('(', None, crate::math::FontStyle::Math)),
+            right: Some(GlyphKey::from_char(')', None, crate::math::FontStyle::Math)),
+            content: Box::new(SemanticNode::Sequence(vec![])),
+        };
+        let projected = MathList::from(std::slice::from_ref(&delim));
+        let normalized = normalize_math_list(projected);
+        assert_eq!(normalized.len(), 3);
+        assert_eq!(normalized.0[0].kind, NoadKind::Open);
+        assert_eq!(normalized.0[1].kind, NoadKind::Inner);
+        assert_eq!(normalized.0[2].kind, NoadKind::Close);
+    }
+
+    #[test]
+    fn delimited_bin_demotes_after_open() {
+        // \left(+ — the Bin after Delimited's Open must demote exactly like
+        // bin_demotes_before_open, but the Open here comes from Delimited.
+        let delim = SemanticNode::Delimited {
+            left: Some(GlyphKey::from_char('(', None, crate::math::FontStyle::Math)),
+            right: None,
+            content: Box::new(SemanticNode::Sequence(vec![sym('+', SymbolRole::Binary)])),
+        };
+        let projected = MathList::from(std::slice::from_ref(&delim));
+        let normalized = normalize_math_list(projected);
+        assert_eq!(normalized.0[0].kind, NoadKind::Open);
+        // Bin is at position 1, left=Open → demotes to Atom.
+        assert_eq!(normalized.0[1].kind, NoadKind::Atom);
     }
 }
