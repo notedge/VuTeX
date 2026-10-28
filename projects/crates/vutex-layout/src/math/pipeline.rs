@@ -48,19 +48,20 @@ pub fn layout_formula_with_size(source: &str, display: bool, base_size: f64) -> 
 ///
 /// The warnings cover source the grammar accepts but the layout can only partly
 /// honour, such as a matrix body whose column count disagrees with the
-/// environment's declared column pairs. They are [`vutex_types::Severity::Warning`]
-/// records with a `vutex.layout.math.*` code and never replace the rendered
-/// geometry.
+/// environment's declared column pairs, and a math font that publishes no
+/// script scale ratios. They are [`vutex_types::Severity::Warning`] records with
+/// a `vutex.layout.math.*` code and never replace the rendered geometry.
 pub fn layout_formula_with_diagnostics(
     source: &str,
     display: bool,
     base_size: f64,
 ) -> MathResult<(super::LayoutNode, FormulaLayout, Vec<Diagnostic>)> {
     let style = if display { MathStyle::Display } else { MathStyle::Text };
-    let (tree, diagnostics) = parse_math_with_diagnostics(source)?;
+    let (tree, mut diagnostics) = parse_math_with_diagnostics(source)?;
     let font_system = builtin_font_metrics();
     let engine = LayoutEngine::new(font_system).with_base_size(base_size);
     let root = engine.layout_node(&tree.root, style)?;
+    diagnostics.extend(engine.script_scale_diagnostics());
     let width = root.width().to_f64();
     let height = root.height().to_f64();
     let depth = root.depth().to_f64();

@@ -73,6 +73,16 @@ impl FontMetricsSystem {
         Ok(default_math_constant(constant))
     }
 
+    /// A MATH constant exactly as the font publishes it.
+    ///
+    /// Unlike [`Self::get_math_constant`], which answers a synthetic value for
+    /// anything the font omitted, this returns `None` when the font carries no
+    /// such constant. Callers that must not mistake a fallback for a measured
+    /// value use this lookup and supply their own fallback.
+    pub fn font_math_constant(&self, family: &str, constant: MathConstant) -> Option<Fixed> {
+        self.metrics_cache.get(family)?.constants.get(&constant).copied()
+    }
+
     pub fn get_glyph_path(&self, key: &GlyphKey) -> MathResult<String> {
         let family = key.font_family.as_deref().unwrap_or("default");
         let normalized = GlyphKey { font_family: Some(family.to_string()), ..key.clone() };
@@ -326,9 +336,13 @@ fn default_math_constant(constant: MathConstant) -> Fixed {
 
 /// Complete list of math constants seeded on the synthetic fallback path.
 /// The opentype path ignores this (it seeds all constants from the MATH table).
+///
+/// `ScriptPercentScaleDown` and `ScriptScriptPercentScaleDown` are deliberately
+/// absent: they exist only when a font's MATH table published them, so a caller
+/// can tell a measured ratio from the synthetic one with
+/// [`FontMetricsSystem::font_math_constant`]. The synthetic ratio is still
+/// available through [`FontMetricsSystem::get_math_constant`].
 static ALL_SYNTHETIC_CONSTANTS: &[MathConstant] = &[
-    MathConstant::ScriptPercentScaleDown,
-    MathConstant::ScriptScriptPercentScaleDown,
     MathConstant::DelimitedSubFormulaMinHeight,
     MathConstant::DisplayOperatorMinHeight,
     MathConstant::MathLeading,
@@ -674,6 +688,28 @@ mod tests {
         assert!(sys.get_math_constant("default", MathConstant::AxisHeight).unwrap().to_f64() > 0.0);
         assert!(sys.get_math_constant("default", MathConstant::FractionRuleThickness).unwrap().to_f64() > 0.0);
         assert!(sys.get_math_constant("default", MathConstant::RadicalRuleThickness).unwrap().to_f64() > 0.0);
+    }
+
+    #[test]
+    fn embedded_font_publishes_the_script_scale_ratios() {
+        let sys = builtin_font_metrics();
+        for constant in [MathConstant::ScriptPercentScaleDown, MathConstant::ScriptScriptPercentScaleDown] {
+            let ratio = sys
+                .font_math_constant("default", constant)
+                .unwrap_or_else(|| panic!("the embedded math font must publish `{constant:?}`"))
+                .to_f64();
+            assert!(ratio > 0.0 && ratio < 1.0, "`{constant:?}` must be a fraction of the base em, got {ratio}");
+        }
+    }
+
+    #[test]
+    fn synthetic_metrics_publish_no_font_ratio() {
+        let sys = FontMetricsSystem::new_with_metrics(FontMetricsData::new("default".to_string(), 1000));
+        for constant in [MathConstant::ScriptPercentScaleDown, MathConstant::ScriptScriptPercentScaleDown] {
+            assert_eq!(sys.font_math_constant("default", constant), None, "`{constant:?}` must stay unmeasured");
+            // The general lookup still answers a value, from the synthetic table.
+            assert!(sys.get_math_constant("default", constant).unwrap().to_f64() > 0.0);
+        }
     }
 
     #[test]
