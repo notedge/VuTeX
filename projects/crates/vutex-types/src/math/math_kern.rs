@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use super::semantic::Fixed;
 
 /// Four-corner kerning values (in mu).
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq)]
 pub struct MathKern {
     pub bottom_right: Fixed,
     pub top_right: Fixed,
