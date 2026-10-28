@@ -447,7 +447,7 @@ impl LayoutEngine {
     pub fn layout_node<'a>(&'a self, node: &'a SemanticNode, style: MathStyle) -> MathResult<LayoutNode> {
         {
             match node {
-                SemanticNode::Symbol { glyph_key, .. } => self.layout_symbol(glyph_key, style),
+                SemanticNode::Symbol { glyph_key, role } => self.layout_math_symbol(glyph_key, *role, style),
                 SemanticNode::Sequence(nodes) => self.layout_sequence(nodes, style),
                 SemanticNode::HorizontalBox { content, spacing } => {
                     let mut children = Vec::new();
@@ -579,6 +579,47 @@ impl LayoutEngine {
         let style_scale = self.get_style_scale(style);
         let size = self.base_size * style_scale;
         self.layout_scaled_symbol(key, size)
+    }
+
+    /// Lay out a math symbol, preferring the font's display-size design for a
+    /// large operator.
+    ///
+    /// TeX typesets `\sum` and friends with a taller glyph in display style and
+    /// keeps the text-size design otherwise. MATH publishes those designs as the
+    /// size variants of the operator's glyph construction, so they come from the
+    /// font instead of being scaled up here.
+    fn layout_math_symbol(&self, key: &GlyphKey, role: SymbolRole, style: MathStyle) -> MathResult<LayoutNode> {
+        if matches!(role, SymbolRole::LargeOperator) && matches!(style, MathStyle::Display) {
+            if let Some(variant) = self.display_operator_variant(key)? {
+                let size = self.base_size * self.get_style_scale(style);
+                return self.layout_scaled_symbol(&variant, size);
+            }
+        }
+        self.layout_symbol(key, style)
+    }
+
+    /// Size variant of a large operator that reaches `DisplayOperatorMinHeight`,
+    /// else the largest design the font prepared.
+    ///
+    /// The variants live in the same MATH construction table delimiters stretch
+    /// from. TeX's constant is a minimum, not a stretch target: when the tallest
+    /// operator design still falls short, that design is used as-is and nothing
+    /// is synthesised. A font without a construction keeps the base glyph.
+    fn display_operator_variant(&self, key: &GlyphKey) -> MathResult<Option<GlyphKey>> {
+        let construction = self.font_system.get_delimiter_construction(key)?;
+        let min_height = self.font_system.get_math_constant("default", MathConstant::DisplayOperatorMinHeight)?.to_f64();
+        let mut tallest: Option<(Fixed, GlyphKey)> = None;
+        for variant in construction.variants {
+            let metrics = self.font_system.get_metrics(&variant.glyph)?;
+            let total = metrics.height + metrics.depth;
+            if total.to_f64() >= min_height {
+                return Ok(Some(variant.glyph));
+            }
+            if tallest.as_ref().is_none_or(|(best, _)| total > *best) {
+                tallest = Some((total, variant.glyph));
+            }
+        }
+        Ok(tallest.map(|(_, glyph)| glyph))
     }
 
     fn layout_scaled_symbol(&self, key: &GlyphKey, size: Fixed) -> MathResult<LayoutNode> {

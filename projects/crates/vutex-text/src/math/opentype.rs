@@ -2,7 +2,8 @@
 //!
 //! Embeds a real OpenType MATH font (Latin Modern Math) and extracts MATH table
 //! constants plus glyph advance widths, bounding boxes, SVG outline paths,
-//! and MATH Variants delimiter variants at build time via `include_bytes!`.
+//! and MATH Variants constructions (delimiter and large-operator size
+//! variants) at build time via `include_bytes!`.
 //! Falls back gracefully to synthetic metrics if parsing fails or the font
 //! lacks a MATH table.
 
@@ -136,6 +137,15 @@ const ACCENT_SYMBOLS: &[char] = &['ˆ', '¯', '˜', '˙', '¨', '˘', 'ˇ', '˚'
 /// Delimiter characters whose MATH Variants constructions we pull from the font.
 const DELIMITER_CHARS: &[char] = &['(', ')', '[', ']', '{', '}', '|', '‖', '⟨', '⟩', '/'];
 
+/// Large operators whose display-style size variants we pull from the font.
+///
+/// MATH keeps them in the same `MathVariants` construction table delimiters
+/// stretch from: `\sum`, `\prod`, `\coprod`, `\int`, `\iint` and `\oint` grow
+/// from their text-size design to a taller display design rather than being
+/// scaled. The list is exactly the characters the parser emits as
+/// `SymbolRole::LargeOperator`.
+const LARGE_OPERATOR_CHARS: &[char] = &['∑', '∏', '∐', '∫', '∬', '∮'];
+
 // ---------------------------------------------------------------------------
 // Top-level extraction
 // ---------------------------------------------------------------------------
@@ -164,8 +174,8 @@ pub fn opentype_font_metrics() -> Option<FontMetricsData> {
     // ---- Glyph advance widths bounding boxes outline paths MATH glyph info ----
     extract_glyph_metrics_and_outlines(&mut face, &math_table.glyph_info, &mut data, one_em);
 
-    // ---- MATH Variants for delimiter stretching ----
-    extract_delimiter_variants(&mut face, &math_table.variants, &mut data, one_em);
+    // ---- MATH Variants for delimiter stretching and operator display sizes ----
+    extract_glyph_variants(&mut face, &math_table.variants, &mut data, one_em);
 
     Some(data)
 }
@@ -344,10 +354,10 @@ fn extract_glyph_metrics_and_outlines(
 }
 
 // ---------------------------------------------------------------------------
-// MATH Variants delimiter extraction
+// MATH Variants extraction
 // ---------------------------------------------------------------------------
 
-fn extract_delimiter_variants(
+fn extract_glyph_variants(
     face: &mut FontFace,
     variants: &acorn_ttf::tables::math::MathVariants,
     data: &mut FontMetricsData,
@@ -355,7 +365,7 @@ fn extract_delimiter_variants(
 ) {
     let family = Some("latin-modern-math".to_string());
 
-    for &ch in DELIMITER_CHARS {
+    for &ch in DELIMITER_CHARS.iter().chain(LARGE_OPERATOR_CHARS) {
         let gid = match face.glyph_index(ch) {
             Some(g) => g,
             None => continue,
