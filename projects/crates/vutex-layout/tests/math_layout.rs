@@ -376,7 +376,7 @@ fn beside_scripts_sit_on_the_shift_and_drop_minima() {
     let constant = |name: MathConstant| system.get_math_constant("default", name).expect("font constant").to_f64();
 
     for (source, display, base_char, sup_char, sub_char) in
-        [("\\int_0^1", true, '∫', '1', '0'), ("x_i^j", false, 'x', 'j', 'i')]
+        [("\\int_0^1", false, '∫', '1', '0'), ("x_i^j", false, 'x', 'j', 'i')]
     {
         let (tree, _) = layout_formula(source, display).expect(source);
         let (base_x, base_y, base) = glyph_at(&tree, base_char);
@@ -1105,8 +1105,14 @@ fn operator_default_limits_follow_tex() {
     let (_, int_nolimits) = layout_formula("\\int\\nolimits_{0}^{1}", true).expect("display integral without limits");
     let (_, int_limits) = layout_formula("\\int\\limits_{0}^{1}", true).expect("display integral with limits");
     assert!(
-        (int_default.height - int_nolimits.height).abs() < 0.01 && (int_default.width - int_nolimits.width).abs() < 0.01,
-        "`\\int` must default to nolimits: {int_default:?} vs {int_nolimits:?}"
+        (int_default.height - int_limits.height).abs() < 0.01 && (int_default.width - int_limits.width).abs() < 0.01,
+        "`\\int` must default to limits in display style alongside other LargeOperators: {int_default:?} vs {int_limits:?}"
+    );
+    assert!(
+        int_default.width + 1.0 < int_nolimits.width,
+        "`\\int` must not default to scripts beside the operator even though TeX's `intop` class does: {} vs {}",
+        int_default.width,
+        int_nolimits.width
     );
     assert!(
         int_limits.depth > int_nolimits.depth,
