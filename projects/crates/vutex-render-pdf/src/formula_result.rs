@@ -98,7 +98,7 @@ fn render_paint_pdf(out: &mut String, node: &PaintNode, origin_x: f64, origin_y:
                 let _ = write!(out, "q\n0.0 f\n{ops}f\nQ\n");
             }
         }
-        PaintNode::GlyphRun { font_id: _, glyph_ids: _, positions: _, size: _ } => {
+        PaintNode::GlyphRun { font_id: _, glyph_ids: _, positions: _, size: _, path_data: _ } => {
             // Placeholder: glyph outline paths are not yet plumbed into the
             // paint tree.  A future change will look up glyph outlines from
             // the font snapshot and emit real PDF path ops here.
