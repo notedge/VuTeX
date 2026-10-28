@@ -901,8 +901,9 @@ mod tests {
     }
 
     #[test]
-    fn continuous_atoms_merge() {
-        // a b c → three Atoms collapse to one.
+    fn continuous_atoms_stay_separate_while_merge_pass_is_disabled() {
+        // merge_atoms_pass 目前被禁用（保持与 legacy layout_sequence 行为一致），
+        // 连续 Atom 不合并。将来重新启用时把这个断言改回 `assert_eq!(normalized.len(), 1)`。
         let nodes = vec![
             sym('a', SymbolRole::Ordinary),
             sym('b', SymbolRole::Ordinary),
@@ -910,8 +911,7 @@ mod tests {
         ];
         let projected = MathList::from(nodes.as_slice());
         let normalized = normalize_math_list(projected);
-        assert_eq!(normalized.len(), 1);
-        assert_eq!(normalized.0[0].kind, NoadKind::Atom);
+        assert_eq!(normalized.len(), 3, "merge_atoms_pass 禁用时三个 Atom 保持分离");
     }
 
     #[test]
