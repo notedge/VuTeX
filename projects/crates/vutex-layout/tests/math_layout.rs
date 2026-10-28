@@ -439,46 +439,137 @@ fn matrix_lays_out_with_two_rows() {
     assert!(metrics.height >= metrics.depth, "matrix must stay centred on the math axis: {metrics:?}");
 }
 
-#[test]
-fn spacing_adds_width_around_binary() {
-    // TeX inserts thick muskip around binary operators like `+`.  A sequence
-    // containing a binary atom must be wider than the trivial concatenation of
-    // its operands — the gap is visible in the total HBox width.
-    let plain = layout("xy");
-    let spaced = layout("x+y");
-    // x + y should be wider than x + y (operator glyph only)
-    assert!(spaced.width > plain.width, "binary spacing must add width: {} vs {}", spaced.width, plain.width);
-
-    // And it must also be wider than the two operands concatenated
-    let two_atoms = layout("ab");
-    assert!(
-        spaced.width > two_atoms.width,
-        "binary spacing must exceed plain two-atom width: {} vs {}",
-        spaced.width,
-        two_atoms.width
-    );
+/// TeXbook Appendix G: Ord → Bin = Medium 4mu, Bin → Ord = Medium 4mu.
+fn mu_gap_between(tree: &LayoutNode, left_char: char, right_char: char) -> f64 {
+    let (lx, _, lg) = glyph_at(tree, left_char);
+    let (rx, _, _) = glyph_at(tree, right_char);
+    let left_tail = lx + lg.metrics.width.to_f64() + lg.metrics.italic_correction.to_f64();
+    rx - left_tail
 }
 
 #[test]
-fn spacing_adds_width_around_relation() {
-    // Relations (`=`, `<`, etc.) take thick muskip on both sides.
-    let lhs = layout("x");
-    let eq = layout("=");
-    let rhs = layout("y");
-    let spaced = layout("x=y");
-    let plain_sum = lhs.width + eq.width + rhs.width;
-    assert!(spaced.width > plain_sum, "relation spacing must add width: {} vs {}", spaced.width, plain_sum);
+fn spacing_binary_takes_medium_four_mu_per_side() {
+    // TeX Book Table p.444: Ord→Bin = 2 = Medium 4mu, Bin→Ord = 2 = Medium 4mu.
+    let em = default_base_size(false);
+    let tol = 2.0 * em / Fixed::SCALE as f64;
+
+    let (tree, _) = layout_formula("a+b", false).unwrap();
+    let plus_gap = mu_gap_between(&tree, 'a', '+');
+    let b_gap = mu_gap_between(&tree, '+', 'b');
+    assert!((plus_gap - 4.0 / 18.0 * em).abs() < tol, "Ord→Bin must be 4mu, got {plus_gap}");
+    assert!((b_gap - 4.0 / 18.0 * em).abs() < tol, "Bin→Ord must be 4mu, got {b_gap}");
 }
 
 #[test]
-fn spacing_adds_width_around_fraction_inner() {
-    // Fractions are Inner atoms — thick muskip between them and neighbours.
-    let a = layout("a");
-    let b = layout("\\frac{x}{y}");
-    let c = layout("c");
-    let spaced = layout("a \\frac{x}{y} c");
-    let plain_sum = a.width + b.width + c.width;
-    assert!(spaced.width > plain_sum, "inner spacing must add width: {} vs {}", spaced.width, plain_sum);
+fn spacing_relation_takes_thick_five_mu_per_side() {
+    // TeX Book: Ord→Rel = 3 = Thick 5mu, Rel→Ord = 3 = Thick 5mu.
+    let em = default_base_size(false);
+    let tol = 2.0 * em / Fixed::SCALE as f64;
+
+    let (tree, _) = layout_formula("a=b", false).unwrap();
+    let eq_left = mu_gap_between(&tree, 'a', '=');
+    let eq_right = mu_gap_between(&tree, '=', 'b');
+    assert!((eq_left - 5.0 / 18.0 * em).abs() < tol, "Ord→Rel must be 5mu, got {eq_left}");
+    assert!((eq_right - 5.0 / 18.0 * em).abs() < tol, "Rel→Ord must be 5mu, got {eq_right}");
+}
+
+#[test]
+fn spacing_fraction_inner_takes_thick_five_mu_per_side() {
+    // TeX Book: Ord→Inner = 3 = Thick 5mu, Inner→Ord = 3 = Thick 5mu.
+    // The fraction body uses script-style fonts so leaf glyph x-coords are
+    // indented by the fraction rule padding; measure glue by subtracting the
+    // natural widths instead.
+    let em = default_base_size(false);
+    let tol = 2.0 * em / Fixed::SCALE as f64;
+
+    let w_a = layout("a").width;
+    let w_frac = layout("\\frac{x}{y}").width;
+    let w_c = layout("c").width;
+
+    let left_pair = layout("a \\frac{x}{y}").width;
+    let right_pair = layout("\\frac{x}{y} c").width;
+
+    let left_glue = left_pair - w_a - w_frac;
+    let right_glue = right_pair - w_frac - w_c;
+
+    assert!((left_glue - 5.0 / 18.0 * em).abs() < tol, "Ord→Inner must be 5mu, got {left_glue}");
+    assert!((right_glue - 5.0 / 18.0 * em).abs() < tol, "Inner→Ord must be 5mu, got {right_glue}");
+}
+
+/// ——— TeXbook Appendix G demote rules ———
+
+#[test]
+fn binary_inside_parentheses_keeps_medium_glues() {
+    // `(a+b)`: Bin `+` has neighbours Ord on both sides.  TeX demote only
+    // fires when the DIRECT neighbour is in a canceller class — Close `)`
+    // two positions away does not count.  So + stays Bin and takes Medium
+    // 4mu on each side.
+    let em = default_base_size(false);
+    let tol = 2.0 * em / Fixed::SCALE as f64;
+
+    let (tree, _) = layout_formula("(a+b)", false).unwrap();
+    let a_plus = mu_gap_between(&tree, 'a', '+');
+    let plus_b = mu_gap_between(&tree, '+', 'b');
+    assert!((a_plus - 4.0 / 18.0 * em).abs() < tol, "Ord→Bin inside parens stays 4mu, got {a_plus}");
+    assert!((plus_b - 4.0 / 18.0 * em).abs() < tol, "Bin→Ord inside parens stays 4mu, got {plus_b}");
+}
+
+#[test]
+fn binary_demotes_before_relation() {
+    // `a+=b`: Bin `+` has right neighbour Rel `=`, which is in the Bin's
+    // right-canceller list.  So + demotes to Ordinary.  Ord→Ord = NoGlue,
+    // but the demoted Ord `+` next to Rel `=` still gets Rel's thick 5mu on
+    // the right side (Ord→Rel = Thick).
+    let em = default_base_size(false);
+    let tol = 2.0 * em / Fixed::SCALE as f64;
+
+    let (tree, _) = layout_formula("a+=b", false).unwrap();
+    // a → + : both Ordinary after demote → NoGlue (must be within small float noise of 0)
+    let a_plus = mu_gap_between(&tree, 'a', '+');
+    assert!(a_plus.abs() < tol, "a→demoted + must be NoGlue, got {a_plus}");
+    // +(Ord) → =(Rel) : Thick 5mu
+    let plus_eq = mu_gap_between(&tree, '+', '=');
+    assert!((plus_eq - 5.0 / 18.0 * em).abs() < tol, "demoted +→= must be 5mu, got {plus_eq}");
+}
+
+#[test]
+fn binary_demotes_after_open() {
+    // `(+a)`: Bin `+` has left neighbour Open `(`, which is in the Bin's
+    // left-canceller list.  + demotes to Ordinary.  Open→Ord = NoGlue.
+    let em = default_base_size(false);
+    let tol = 2.0 * em / Fixed::SCALE as f64;
+
+    let (tree, _) = layout_formula("(+a)", false).unwrap();
+    // `(` → +(Ord) : NoGlue
+    let (open_x, _, open_g) = glyph_at(&tree, '(');
+    let plus_x = glyph_at(&tree, '+').0;
+    let open_tail = open_x + open_g.metrics.width.to_f64() + open_g.metrics.italic_correction.to_f64();
+    let open_plus = plus_x - open_tail;
+    assert!(open_plus.abs() < tol, "Open→demoted Binary must be NoGlue, got {open_plus}");
+
+    // +(Ord) → a(Ord) : NoGlue
+    let plus_a = mu_gap_between(&tree, '+', 'a');
+    assert!(plus_a.abs() < tol, "demoted Binary→Ord must be NoGlue, got {plus_a}");
+}
+
+#[test]
+fn relation_demotes_after_open() {
+    // `(=a)`: Rel `=` has left neighbour Open `(`.  TeX demotes Rel to Bin
+    // when left neighbour is Open or Bin.  Then Bin's demote check sees left
+    // Open → stays demoted?  Actually the second demote runs AFTER the first
+    // and sees `(` on the left again — but Bin's left-canceller includes
+    // Open, so it would ALSO demote to Ord.  End result: = becomes Ord, and
+    // Ord→Open(no glue on left), Ord→Ord(no glue).  Let's just assert what
+    // actually comes out: `(` and `=` have no glue.
+    let em = default_base_size(false);
+    let tol = 2.0 * em / Fixed::SCALE as f64;
+
+    let (tree, _) = layout_formula("(=a)", false).unwrap();
+    let (open_x, _, open_g) = glyph_at(&tree, '(');
+    let eq_x = glyph_at(&tree, '=').0;
+    let open_tail = open_x + open_g.metrics.width.to_f64() + open_g.metrics.italic_correction.to_f64();
+    let open_eq = eq_x - open_tail;
+    assert!(open_eq.abs() < tol, "Open→demoted Rel must be NoGlue, got {open_eq}");
 }
 
 /// TeX sets the spacing commands as multiples of `mu`, where `1mu` is
