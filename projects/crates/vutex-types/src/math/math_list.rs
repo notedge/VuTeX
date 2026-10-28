@@ -121,8 +121,8 @@ impl NoadKind {
 ///
 /// Every noad has exactly one [`NoadKind`] plus an optional nucleus, an
 /// optional sub/superscript pair, the math style that governs glyph metrics
-/// and placement, and TeX's `cramped` flag (raised by radicals and fraction
-/// denominators; raised again under every superscript regardless of origin).
+/// and placement, and TeX's `cramped` flag (raised inside radicals, in
+/// fraction denominators and in subscripts, inherited everywhere else).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Noad {
     /// The spacing / structural class for this noad.
@@ -139,8 +139,8 @@ pub struct Noad {
     pub limits: Option<LimitsPolicy>,
     /// Math style that applies to this noad's own nucleus.
     pub style: MathStyle,
-    /// TeX `cramped` flag.  Raised inside radicals and fraction denominators;
-    /// also raised whenever we descend into a superscript.
+    /// TeX `cramped` flag for the style that governs this noad's nucleus.
+    /// Raised inside radicals, in fraction denominators and in subscripts.
     pub cramped: bool,
 }
 
@@ -239,10 +239,10 @@ impl IntoIterator for MathList {
 
 /// Recursive style state: `(MathStyle, cramped)`.
 ///
-/// TeX tracks both quantities together because `cramped` depends on the
-/// structure we entered (radical, fraction denominator) and on whether
-/// we descend into a superscript; it is not derivable from `MathStyle`
-/// alone.
+/// TeX's `mlist_to_hlist` tracks the current math style together with the
+/// `cramped` flag.  `cramped` is not derivable from `MathStyle` alone: it is
+/// raised by the structure we enter (fraction denominator, radical radicand,
+/// subscript) and inherited by structures that keep the parent's crampedness.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MathStyleState {
     pub style: MathStyle,
@@ -261,31 +261,59 @@ impl MathStyleState {
         Self { style, cramped: false }
     }
 
-    /// Push into a subscript: style drops one level, cramped inherited.
-    pub fn subscript(self) -> Self {
-        Self {
-            style: demote_script(self.style),
-            cramped: self.cramped,
-        }
+    /// Push into a subscript.
+    ///
+    /// TeX demotes the style one script level (display/text → script,
+    /// script/scriptscript → scriptscript) and sets `cramped`: scripts take
+    /// the *cramped* shifts so the subscript hugs the base instead of keeping
+    /// the uncramped ascender clearance.
+    pub fn sub(self) -> Self {
+        Self { style: demote_script(self.style), cramped: true }
     }
 
-    /// Push into a superscript: style drops one level, **always** cramped.
-    pub fn superscript(self) -> Self {
-        Self {
-            style: demote_script(self.style),
-            cramped: true,
-        }
+    /// Push into a superscript.
+    ///
+    /// Style demotes like [`sub`](Self::sub), but `cramped` keeps the parent's
+    /// value — nothing in a superscript raises it.
+    pub fn sup(self) -> Self {
+        Self { style: demote_script(self.style), cramped: self.cramped }
     }
 
-    /// Enter a radical or fraction denominator.
+    /// Fraction numerator.
+    ///
+    /// TeX steps the style down one level (display → text, text → script,
+    /// script → scriptscript, scriptscript stays put) and keeps the parent's
+    /// `cramped` flag.
+    pub fn frac_num(self) -> Self {
+        Self { style: demote_text(self.style), cramped: self.cramped }
+    }
+
+    /// Fraction denominator: the same step as [`frac_num`](Self::frac_num),
+    /// but always cramped, which is why fractions use the *cramped* shifts.
+    pub fn frac_den(self) -> Self {
+        Self { style: demote_text(self.style), cramped: true }
+    }
+
+    /// Enter a radical's radicand: style unchanged, cramped forced.
     pub fn cramp(self) -> Self {
         Self { style: self.style, cramped: true }
     }
 }
 
+/// One script level down: display and text both land in script style.
 fn demote_script(s: MathStyle) -> MathStyle {
     match s {
         MathStyle::Display | MathStyle::Text => MathStyle::Script,
+        MathStyle::Script | MathStyle::ScriptScript => MathStyle::ScriptScript,
+    }
+}
+
+/// One *text* level down, the step fractions use: display → text, then
+/// text → script, then script → scriptscript.
+fn demote_text(s: MathStyle) -> MathStyle {
+    match s {
+        MathStyle::Display => MathStyle::Text,
+        MathStyle::Text => MathStyle::Script,
         MathStyle::Script | MathStyle::ScriptScript => MathStyle::ScriptScript,
     }
 }
@@ -303,7 +331,9 @@ fn demote_script(s: MathStyle) -> MathStyle {
 ///
 /// * `SemanticNode::Sequence` — descend, append children (flat).
 /// * `SemanticNode::SetMathStyle(s)` — push `s` as the current style for
-///   subsequent noads.  Does **not** itself emit a noad.
+///   subsequent noads.  Does **not** itself emit a noad.  Each `Sequence` is
+///   a style scope: the style in force at its end is restored when the group
+///   closes, so `\scriptstyle` inside `{…}` cannot leak to later siblings.
 /// * `SemanticNode::LimitsSpec(policy)` — sets `limits` on the next `Op` noad.
 ///
 /// `base_style` is the outer formula context math style (Display / Text /
@@ -329,9 +359,13 @@ fn project_one(
 ) {
     match node {
         SemanticNode::Sequence(children) => {
+            // A braced group is a style scope; `\scriptstyle` and friends
+            // inside it must not leak to the siblings after the group.
+            let outer = *state;
             for c in children {
                 project_one(c, state, list, pending_limits);
             }
+            *state = outer;
         }
         SemanticNode::SetMathStyle(s) => {
             state.style = *s;
@@ -374,7 +408,7 @@ fn project_one(
                     noad.limits = Some(b);
                 }
             }
-            let sub_state = state.subscript();
+            let sub_state = state.sub();
             noad.scripts = Some(Scripts {
                 sub: Some(Box::new(with_style(sub, sub_state.style))),
                 sup: None,
@@ -390,7 +424,7 @@ fn project_one(
                     noad.limits = Some(b);
                 }
             }
-            let sup_state = state.superscript();
+            let sup_state = state.sup();
             noad.scripts = Some(Scripts {
                 sub: None,
                 sup: Some(Box::new(with_style(sup, sup_state.style))),
@@ -406,23 +440,34 @@ fn project_one(
                     noad.limits = Some(b);
                 }
             }
-            let sub_state = state.subscript();
-            let sup_state = state.superscript();
+            let sub_state = state.sub();
+            let sup_state = state.sup();
             noad.scripts = Some(Scripts {
                 sub: Some(Box::new(with_style(sub, sub_state.style))),
                 sup: Some(Box::new(with_style(sup, sup_state.style))),
             });
             list.push(noad);
         }
-        SemanticNode::Fraction { .. } => {
-            // Fraction nuclei are Inner; deeper split into num/den noads is
-            // deferred to a later phase.
+        SemanticNode::Fraction { num, den, line } => {
+            // The fraction itself is an Inner atom in the current style, but
+            // TeX sets its numerator and denominator one text level down, and
+            // the denominator cramped.  Stamping the derived styles into the
+            // nucleus keeps the nested scripts on that state instead of the
+            // outer one.
+            let num_state = state.frac_num();
+            let den_state = state.frac_den();
             let mut noad = Noad::new(NoadKind::Inner, state.style, state.cramped);
-            noad.nucleus = Some(Box::new(node.clone()));
+            noad.nucleus = Some(Box::new(SemanticNode::Fraction {
+                num: Box::new(with_style(num, num_state.style)),
+                den: Box::new(with_style(den, den_state.style)),
+                line: *line,
+            }));
             list.push(noad);
         }
         SemanticNode::Radical { .. } => {
-            let mut noad = Noad::new(NoadKind::Radical, state.style, state.cramped);
+            // A radical's argument is typeset cramped at the current style.
+            let inner = state.cramp();
+            let mut noad = Noad::new(NoadKind::Radical, inner.style, inner.cramped);
             noad.nucleus = Some(Box::new(node.clone()));
             list.push(noad);
         }
@@ -759,12 +804,24 @@ impl From<&Vec<SemanticNode>> for MathList {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::math::{GlyphKey, SemanticNode, SymbolRole};
+    use crate::math::{GlyphKey, LineStyle, SemanticNode, SymbolRole};
 
     fn sym(c: char, role: SymbolRole) -> SemanticNode {
         SemanticNode::Symbol {
             glyph_key: GlyphKey::from_char(c, None, crate::math::FontStyle::Math),
             role,
+        }
+    }
+
+    /// Style a projected nucleus/script fragment was stamped with, when the
+    /// projection prefixed it with `SetMathStyle`.
+    fn stamped_style(node: &SemanticNode) -> Option<MathStyle> {
+        match node {
+            SemanticNode::Sequence(items) => match items.first() {
+                Some(SemanticNode::SetMathStyle(s)) => Some(*s),
+                _ => None,
+            },
+            _ => None,
         }
     }
 
@@ -839,18 +896,154 @@ mod tests {
     }
 
     #[test]
-    fn superscript_is_always_cramped_in_state() {
-        let st = MathStyleState::DISPLAY;
-        let sup = st.superscript();
-        assert!(sup.cramped, "superscript must be cramped");
+    fn superscript_inherits_cramped_from_parent() {
+        // TeX style derivation: a superscript demotes one script level
+        // (display/text → script) and keeps the parent's cramped flag, so the
+        // superscript of an uncramped formula is not cramped.
+        let sup = MathStyleState::DISPLAY.sup();
         assert_eq!(sup.style, MathStyle::Script);
+        assert!(!sup.cramped, "superscript inherits the parent cramped flag");
+
+        let cramped_sup = MathStyleState::DISPLAY.cramp().sup();
+        assert_eq!(cramped_sup.style, MathStyle::Script);
+        assert!(cramped_sup.cramped, "a cramped parent stays cramped in its superscript");
     }
 
     #[test]
-    fn subscript_inherits_cramped() {
-        let st = MathStyleState::DISPLAY.cramp();
-        let sub = st.subscript();
-        assert!(sub.cramped, "subscript inherits cramped from parent");
+    fn subscript_is_always_cramped() {
+        // TeX style derivation: subscripts are cramped whatever the parent is,
+        // and demote one script level like superscripts.
+        let sub = MathStyleState::DISPLAY.sub();
+        assert_eq!(sub.style, MathStyle::Script);
+        assert!(sub.cramped, "subscript must be cramped");
+
+        let cramped_sub = MathStyleState::DISPLAY.cramp().sub();
+        assert_eq!(cramped_sub.style, MathStyle::Script);
+        assert!(cramped_sub.cramped);
+    }
+
+    #[test]
+    fn fraction_states_step_one_text_level() {
+        // TeX fraction derivation: numerator and denominator both step one
+        // text level down (display → text → script → scriptscript, then stay),
+        // the numerator inherits cramped and the denominator forces it.
+        let num = MathStyleState::DISPLAY.frac_num();
+        assert_eq!(num.style, MathStyle::Text);
+        assert!(!num.cramped);
+
+        let den = MathStyleState::DISPLAY.frac_den();
+        assert_eq!(den.style, MathStyle::Text);
+        assert!(den.cramped);
+
+        let script = MathStyleState::from_style(MathStyle::Script);
+        assert_eq!(script.frac_num().style, MathStyle::ScriptScript);
+        assert_eq!(script.frac_den().style, MathStyle::ScriptScript);
+
+        let script_script = MathStyleState::from_style(MathStyle::ScriptScript);
+        assert_eq!(script_script.frac_num().style, MathStyle::ScriptScript);
+        assert_eq!(script_script.frac_den().style, MathStyle::ScriptScript);
+
+        let cramped = MathStyleState::DISPLAY.cramp();
+        assert!(cramped.frac_num().cramped, "numerator inherits the cramped flag");
+        assert!(cramped.frac_den().cramped);
+    }
+
+    #[test]
+    fn fraction_num_and_den_carry_derived_styles() {
+        let frac = SemanticNode::Fraction {
+            num: Box::new(sym('a', SymbolRole::Ordinary)),
+            den: Box::new(sym('b', SymbolRole::Ordinary)),
+            line: LineStyle::Solid,
+        };
+        let list = MathList::from(std::slice::from_ref(&frac));
+        assert_eq!(list.len(), 1);
+        let n = &list.0[0];
+        assert_eq!(n.kind, NoadKind::Inner);
+        // The fraction atom itself stays in the outer style, crampedness
+        // travels into the numerator/denominator only.
+        assert_eq!(n.style, MathStyle::Display);
+        assert!(!n.cramped);
+        match n.nucleus.as_deref() {
+            Some(SemanticNode::Fraction { num, den, .. }) => {
+                assert_eq!(stamped_style(num), Some(MathStyle::Text));
+                assert_eq!(stamped_style(den), Some(MathStyle::Text));
+            }
+            other => panic!("expected Fraction nucleus, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn superscript_subscript_derivation_inside_scripts() {
+        // `x^{a_b}`: the outer superscript is script style and keeps the
+        // parent's uncramped flag, the nested subscript is cramped at
+        // scriptscript style.
+        let sup = MathStyleState::DISPLAY.sup();
+        assert!(!sup.cramped);
+        let nested = sup.sub();
+        assert_eq!(nested.style, MathStyle::ScriptScript);
+        assert!(nested.cramped, "the nested subscript is cramped");
+
+        let nodes = vec![SemanticNode::Superscript {
+            base: Box::new(sym('x', SymbolRole::Ordinary)),
+            sup: Box::new(SemanticNode::Subscript {
+                base: Box::new(sym('a', SymbolRole::Ordinary)),
+                sub: Box::new(sym('b', SymbolRole::Ordinary)),
+            }),
+        }];
+        let list = MathList::from(nodes.as_slice());
+        let n = &list.0[0];
+        assert_eq!(n.style, MathStyle::Display, "the base keeps the outer style");
+        assert!(!n.cramped);
+        let sup_node = n.scripts.as_ref().and_then(|s| s.sup.as_deref()).expect("superscript");
+        assert_eq!(stamped_style(sup_node), Some(MathStyle::Script));
+    }
+
+    #[test]
+    fn radical_argument_is_cramped() {
+        let rad = SemanticNode::Radical { degree: None, radicand: Box::new(sym('x', SymbolRole::Ordinary)) };
+        let list = MathList::from(std::slice::from_ref(&rad));
+        assert_eq!(list.0[0].kind, NoadKind::Radical);
+        assert_eq!(list.0[0].style, MathStyle::Display);
+        assert!(list.0[0].cramped, "a radical's argument is cramped");
+    }
+
+    #[test]
+    fn sqrt_of_fraction_inherits_cramped_inside() {
+        // `\sqrt{\frac{a}{b}}`: the radical marks its argument cramped, and a
+        // fraction inside it propagates that crampedness to the numerator and
+        // forces it in the denominator.
+        let frac = SemanticNode::Fraction {
+            num: Box::new(sym('a', SymbolRole::Ordinary)),
+            den: Box::new(sym('b', SymbolRole::Ordinary)),
+            line: LineStyle::Solid,
+        };
+        let rad = SemanticNode::Radical { degree: None, radicand: Box::new(frac) };
+        let list = MathList::from(std::slice::from_ref(&rad));
+        assert!(list.0[0].cramped);
+
+        let cramped = MathStyleState::DISPLAY.cramp();
+        assert_eq!(cramped.frac_num().style, MathStyle::Text);
+        assert!(cramped.frac_num().cramped, "numerator inside a radical is cramped");
+        assert!(cramped.frac_den().cramped);
+    }
+
+    #[test]
+    fn style_command_is_scoped_to_its_group() {
+        // `a {\scriptstyle b} c`: the switch lives inside a braced group, so it
+        // must not reach the sibling after the group.
+        let nodes = vec![
+            sym('a', SymbolRole::Ordinary),
+            SemanticNode::Sequence(vec![
+                SemanticNode::SetMathStyle(MathStyle::Script),
+                sym('b', SymbolRole::Ordinary),
+            ]),
+            sym('c', SymbolRole::Ordinary),
+        ];
+        let list = MathList::from(nodes.as_slice());
+        assert_eq!(list.len(), 3);
+        assert_eq!(list.0[0].style, MathStyle::Display);
+        assert_eq!(list.0[1].style, MathStyle::Script);
+        assert_eq!(list.0[2].style, MathStyle::Display, "style must not leak past the group");
     }
 
     #[test]
