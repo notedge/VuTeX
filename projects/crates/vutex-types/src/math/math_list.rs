@@ -15,16 +15,16 @@
 //! * [`MathList`] — a newtype over `Vec<Noad>`.
 //! * [`MathStyleState`] — the recursive `(MathStyle, cramped)` pair that
 //!   descends into subtrees.
-//! * [`normalize_math_list`] — flatten transparent groups and apply explicit
-//!   role annotations.  Bin/Rel/Op **demotion** is intentionally left as a
-//!   TODO for the next phase.
+//! * [`normalize_math_list`] — flatten transparent groups, demote Bin / Rel /
+//!   Op per Appendix G and merge consecutive text atoms in one left-to-right
+//!   sweep.
 //! * [`From<&[SemanticNode]>` for `MathList`] — a shallow projector that
 //!   lowers a SemanticNode sequence into a MathList.
 //!
-//! **This module is NOT yet wired into the main layout pipeline.**  The
-//! existing `SemanticNode → LayoutNode` path in `vutex-layout` is
-//! untouched.  The goal here is to land the type contract, projectors and
-//! a first normalizer so the subsequent P0 migration has a stable target.
+//! The layout engine consumes this normalization: every math list it lays out
+//! is projected and normalized first, so inter-atom spacing only ever reads an
+//! already-resolved [`NoadKind`] and never re-derives a class from the source
+//! [`SymbolRole`].  There is no second demotion rule anywhere downstream.
 
 use serde::{Deserialize, Serialize};
 
@@ -625,10 +625,9 @@ fn trim_boundary(list: &mut MathList) {
 ///
 /// Each noad's **left** neighbour is read from the already-demoted `out`
 /// array (so a Bin→Atom demotion immediately affects the Rel/Op that
-/// follows), while the **right** neighbour is still the raw `input`.  This
-/// matches how [`LayoutEngine::spacing_between`] chains its two
-/// [`demote_role`] calls: the second atom always sees the first's resolved
-/// kind, not its original role.
+/// follows), while the **right** neighbour is still the raw `input`.  This is
+/// the single place where atom classes are resolved: downstream spacing reads
+/// the resulting [`NoadKind`] and never re-applies these rules.
 ///
 /// Neighbours are read via [`Noad::effective_kind`] so structural kinds
 /// (`Fence`, `Radical`, `Vcent`, `TableCell`) collapse to `Inner` before
