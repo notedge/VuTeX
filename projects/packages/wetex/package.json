@@ -1,6 +1,6 @@
 {
     "name": "@vutex/wetex",
-    "version": "0.0.10",
+    "version": "0.0.11",
     "description": "WeTeX: VuTeX formula rendering for browser and Node (Rust/WASM)",
     "type": "module",
     "license": "MPL-2.0",
