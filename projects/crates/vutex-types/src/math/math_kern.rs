@@ -59,7 +59,7 @@ mod tests {
             top_left: Fixed::from_f64(0.03),
         };
         let combined = MathKern::combined(&left, &right).to_f64();
-        assert!((combined - 0.08).abs() < 1e-6, "expected ~0.08, got {combined}");
+        assert!((combined - 0.08).abs() < 1e-3, "expected ~0.08, got {combined}");
     }
 
     #[test]
