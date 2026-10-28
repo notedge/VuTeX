@@ -1,11 +1,13 @@
 //! Math formula semantic types (ported from RuTeX).
 
 mod error;
+pub mod math_kern;
 pub mod math_list;
 mod metrics;
 mod semantic;
 
 pub use error::{MathError, MathErrorKind, MathResult};
+pub use math_kern::MathKern;
 pub use math_list::{
     MathList, MathStyleState, Noad, NoadKind, Scripts, normalize_math_list, project_semantic,
 };
