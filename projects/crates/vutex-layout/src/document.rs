@@ -16,7 +16,7 @@ use vutex_types::{
 use crate::{
     diagram::Diagrams,
     hint::LayoutHint,
-    math::{LayoutNode, collect_layout_with_diagnostics, layout_formula_with_size},
+    math::{LayoutNode, collect_layout_with_diagnostics, layout_formula_with_diagnostics},
     plan::{Graphic, ImagePlaceholder, LayoutItem, LayoutPage, LayoutPlan, Rect, Rule, TextRun},
 };
 
@@ -480,13 +480,16 @@ impl<'a> PageBuilder<'a> {
                 }
                 Inline::InlineMath { content, .. } => {
                     flow.pending.flush(&mut flow.atoms);
-                    match layout_formula_with_size(content, false, size) {
-                        Ok((node, formula)) => flow.atoms.push(InlineAtom::Math(MathAtom {
-                            node,
-                            width: formula.width,
-                            height: formula.height,
-                            depth: formula.depth,
-                        })),
+                    match layout_formula_with_diagnostics(content, false, size) {
+                        Ok((node, formula, math_diagnostics)) => {
+                            self.diagnostics.extend(math_diagnostics);
+                            flow.atoms.push(InlineAtom::Math(MathAtom {
+                                node,
+                                width: formula.width,
+                                height: formula.height,
+                                depth: formula.depth,
+                            }));
+                        }
                         Err(_) => flow.atoms.extend(split_inline_atoms(content, face, href, title)),
                     }
                 }
@@ -833,8 +836,9 @@ impl<'a> PageBuilder<'a> {
     fn emit_math(&mut self, content: &str, indent: f64) {
         let size = self.body_size();
         let padding = size * 0.8;
-        match layout_formula_with_size(content, true, size) {
-            Ok((node, formula)) => {
+        match layout_formula_with_diagnostics(content, true, size) {
+            Ok((node, formula, math_diagnostics)) => {
+                self.diagnostics.extend(math_diagnostics);
                 self.pad(padding);
                 self.ensure_space(formula.height + formula.depth + padding * 2.0);
                 let left = self.left(indent);

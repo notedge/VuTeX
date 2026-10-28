@@ -121,6 +121,16 @@ fn invalid_option_json_falls_back_to_defaults() {
 }
 
 #[test]
+fn alignedat_column_mismatch_reaches_the_host_diagnostics() {
+    let value = parse(&render_svg_wasm("\\begin{alignedat}{2} q &= a \\\\ xyz &= b \\end{alignedat}", None));
+    assert!(value["svg"].as_str().unwrap_or_default().contains("<path"), "the grid must still paint: {value}");
+    let diagnostics = value["diagnostics"].as_array().expect("diagnostics");
+    assert_eq!(diagnostics.len(), 1, "one mismatch, one warning: {value}");
+    assert_eq!(diagnostics[0]["code"].as_str(), Some("vutex.layout.math.alignedat_columns"));
+    assert_eq!(diagnostics[0]["severity"].as_str(), Some("warning"));
+}
+
+#[test]
 fn render_svg_with_outline_option_successfully_returns_svg() {
     // With outline=true, the deterministic SvgBackend is wired in.
     // Block A (real glyph outline paths) has landed, so ALL formula glyphs
