@@ -5,6 +5,7 @@ pub mod formula_layout;
 pub mod math_kern;
 pub mod math_list;
 mod metrics;
+pub mod operator;
 mod semantic;
 
 pub use error::{MathError, MathErrorKind, MathResult};
@@ -16,6 +17,7 @@ pub use math_kern::MathKern;
 pub use math_list::{
     MathList, MathStyleState, Noad, NoadKind, Scripts, normalize_math_list, project_semantic,
 };
+pub use operator::{LimitsPolicy, OperatorClass};
 pub use metrics::{
     DelimiterComponent, DelimiterConstruction, DelimiterVariant, FontMetricsData, GlyphMetrics,
     MathConstant,

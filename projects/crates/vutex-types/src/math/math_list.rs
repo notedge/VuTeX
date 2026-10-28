@@ -28,6 +28,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::operator::LimitsPolicy;
 use super::semantic::{MathStyle, SemanticNode, SymbolRole};
 
 /// TeX Appendix G spacing classes + structural extensions.
@@ -133,9 +134,9 @@ pub struct Noad {
     pub nucleus: Option<Box<SemanticNode>>,
     /// Attached sub/superscripts, if any.
     pub scripts: Option<Scripts>,
-    /// True when this noad carries an explicit `\limits` / `\nolimits`
-    /// override.  Only meaningful when `kind == NoadKind::Op`.
-    pub limits: Option<bool>,
+    /// An explicit `\limits` / `\nolimits` override, if any.  Only meaningful
+    /// when `kind == NoadKind::Op`.
+    pub limits: Option<LimitsPolicy>,
     /// Math style that applies to this noad's own nucleus.
     pub style: MathStyle,
     /// TeX `cramped` flag.  Raised inside radicals and fraction denominators;
@@ -303,7 +304,7 @@ fn demote_script(s: MathStyle) -> MathStyle {
 /// * `SemanticNode::Sequence` — descend, append children (flat).
 /// * `SemanticNode::SetMathStyle(s)` — push `s` as the current style for
 ///   subsequent noads.  Does **not** itself emit a noad.
-/// * `SemanticNode::LimitsSpec(b)` — sets `limits` on the next `Op` noad.
+/// * `SemanticNode::LimitsSpec(policy)` — sets `limits` on the next `Op` noad.
 ///
 /// `base_style` is the outer formula context math style (Display / Text /
 /// Script / ScriptScript).  Imperative nodes still override `state.style`
@@ -311,7 +312,7 @@ fn demote_script(s: MathStyle) -> MathStyle {
 pub fn project_semantic(nodes: &[SemanticNode], base_style: MathStyle) -> MathList {
     let mut state = MathStyleState::from_style(base_style);
     let mut list = MathList::new();
-    let mut pending_limits: Option<bool> = None;
+    let mut pending_limits: Option<LimitsPolicy> = None;
 
     for node in nodes {
         project_one(node, &mut state, &mut list, &mut pending_limits);
@@ -324,7 +325,7 @@ fn project_one(
     node: &SemanticNode,
     state: &mut MathStyleState,
     list: &mut MathList,
-    pending_limits: &mut Option<bool>,
+    pending_limits: &mut Option<LimitsPolicy>,
 ) {
     match node {
         SemanticNode::Sequence(children) => {
@@ -335,8 +336,8 @@ fn project_one(
         SemanticNode::SetMathStyle(s) => {
             state.style = *s;
         }
-        SemanticNode::LimitsSpec(b) => {
-            *pending_limits = Some(*b);
+        SemanticNode::LimitsSpec(policy) => {
+            *pending_limits = Some(*policy);
         }
         SemanticNode::Symbol { role, .. } => {
             let kind = NoadKind::from_role(*role);
@@ -1023,14 +1024,14 @@ mod tests {
     #[test]
     fn limits_spec_attaches_to_next_op() {
         let nodes = vec![
-            SemanticNode::LimitsSpec(true),
+            SemanticNode::LimitsSpec(LimitsPolicy::Limits),
             sym('∑', SymbolRole::LargeOperator),
             sym('x', SymbolRole::Ordinary),
         ];
         let list = MathList::from(nodes.as_slice());
         assert_eq!(list.len(), 2);
         assert_eq!(list.0[0].kind, NoadKind::Op);
-        assert_eq!(list.0[0].limits, Some(true));
+        assert_eq!(list.0[0].limits, Some(LimitsPolicy::Limits));
         assert_eq!(list.0[1].kind, NoadKind::Atom);
     }
 
