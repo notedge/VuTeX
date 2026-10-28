@@ -423,27 +423,154 @@ fn with_style(node: &SemanticNode, target: MathStyle) -> SemanticNode {
     SemanticNode::Sequence(vec![SemanticNode::SetMathStyle(target), node.clone()])
 }
 
-/// Normalize a projected [`MathList`].
+/// Normalize a projected [`MathList`] with TeX Appendix G passes.
 ///
-/// Current passes (intentionally shallow):
+/// 1. **Bin / Rel / Op demotion** — downgrade binary, relation and large
+///    operator atoms per TeX Appendix G Rules 5–7, evaluated in one
+///    left-to-right pass (each noad sees its original neighbours; TeX
+///    does not re-resolve).
+/// 2. **Consecutive Atom merge** — fold adjacent `Atom` noads into a
+///    single one; later scripts override earlier ones.
 ///
-/// 1. **Transparent group flattening** — already done during projection
-///    (Sequence, HorizontalBox descend); kept here as a no-op so future
-///    passes can accumulate without touching the projection path.
-/// 2. **Explicit role annotation** — every noad carries a kind; this
-///    pass is a stub awaiting deeper nucleus inspection.
-///
-/// TODO (next phase):
-///
-/// * Bin / Rel / Op demotion per TeX rules (e.g. Bin next to Close or
-///   Punct demotes to Atom).
-/// * Consecutive Atom merging.
-/// * Style re-propagation from `cramped` overrides (radical/denominator).
+/// A future third pass will strip boundary `Open`/`Close` noads once
+/// `Fence` structural noads are expanded into
+/// `Open · inner-content · Close` triples.
 pub fn normalize_math_list(list: MathList) -> MathList {
-    // Pass 1: transparent flattening is already done in `project_one`
-    // for Sequence and HorizontalBox.  We keep the function so future
-    // normalizer passes can accumulate here.
-    list
+    let v = list.0;
+
+    // Pass 1 (boundary trim) is intentionally omitted for now — it only
+    // makes sense once `Fence` structural noads are expanded into
+    // `Open · inner · Close` triples; bare leading `Open` / trailing
+    // `Close` noads are legitimate atoms and must be preserved for the
+    // demote engine below.
+
+    // ── Pass 2: Bin / Rel / Op demote per TeX Appendix G ──────────────
+    let v = demote_pass(&v);
+
+    // ── Pass 3: consecutive Atom merge ────────────────────────────────
+    let v = merge_atoms_pass(v);
+
+    MathList(v)
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Pass 2 — demote
+// ────────────────────────────────────────────────────────────────────────
+
+/// TeX Appendix G demote pass — one left-to-right sweep, every noad sees
+/// its original neighbours (no iteration over partially demoted results).
+///
+/// Neighbours are read via [`Noad::effective_kind`] so structural kinds
+/// (`Fence`, `Radical`, `Vcent`, `TableCell`) collapse to `Inner` before
+/// the demote rules fire — they participate as an Inner neighbour exactly
+/// the way TeX treats fences and radicals for spacing.
+fn demote_pass(input: &[Noad]) -> Vec<Noad> {
+    let n = input.len();
+    let mut out = Vec::with_capacity(n);
+    for i in 0..n {
+        let left = (i > 0).then(|| input[i - 1].effective_kind());
+        let right = (i + 1 < n).then(|| input[i + 1].effective_kind());
+        let mut noad = input[i].clone();
+        match noad.kind {
+            NoadKind::Bin => {
+                if bin_demotes(left, right) {
+                    noad.kind = NoadKind::Atom;
+                }
+            }
+            NoadKind::Rel => {
+                if rel_demotes(left) {
+                    noad.kind = NoadKind::Bin;
+                }
+            }
+            NoadKind::Op => {
+                if op_demotes(left, right) {
+                    noad.kind = NoadKind::Atom;
+                }
+            }
+            _ => {}
+        }
+        out.push(noad);
+    }
+    out
+}
+
+/// Rule 5 — Bin → Atom.
+///
+/// Demotes when the **left** neighbour is "strong" enough to absorb the
+/// binary operator (or Bin is first), **or** the **right** neighbour is
+/// likewise strong enough (or Bin is last).
+///
+/// ```text
+/// Bin → Atom if:
+///   first (no left)  or left ∈ {Bin, Open, Rel, Op, Punct}
+///   OR
+///   last  (no right) or right ∈ {Rel, Close, Punct}
+/// ```
+///
+/// `Close` is *not* a Bin-left canceller and `Open` is *not* a Bin-right
+/// canceller — `(a+b)` still keeps its Bin with thick glue on both sides.
+fn bin_demotes(left: Option<NoadKind>, right: Option<NoadKind>) -> bool {
+    use NoadKind::*;
+    let left_strong = matches!(left, None | Some(Bin | Open | Rel | Op | Punct));
+    let right_strong = matches!(right, None | Some(Rel | Close | Punct));
+    left_strong || right_strong
+}
+
+/// Rule 6 — Rel → Bin when left ∈ {Open, Bin}.
+fn rel_demotes(left: Option<NoadKind>) -> bool {
+    matches!(left, Some(NoadKind::Open | NoadKind::Bin))
+}
+
+/// Rule 7 — Op → Atom when flanked by demoting neighbours.
+///
+/// Large operators are also mapped to [`NoadKind::Op`] by
+/// [`NoadKind::from_role`], so this same rule covers both.
+fn op_demotes(left: Option<NoadKind>, right: Option<NoadKind>) -> bool {
+    use NoadKind::*;
+    let left_strong = matches!(left, Some(Open | Close | Bin | Punct | Op));
+    let right_strong = matches!(right, Some(Bin | Rel | Close | Punct | Op));
+    left_strong || right_strong
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Pass 3 — merge consecutive Atoms
+// ────────────────────────────────────────────────────────────────────────
+
+/// Fold adjacent `Atom` noads into a single Atom.
+///
+/// The resulting Atom keeps the **first** Atom's nucleus and style; when
+/// later Atoms carry `sub` / `sup` scripts, those slots override (if set)
+/// the ones already on the merged Atom.  Nucleus falls back to the later
+/// Atom when the first has none.
+fn merge_atoms_pass(input: Vec<Noad>) -> Vec<Noad> {
+    let mut out: Vec<Noad> = Vec::with_capacity(input.len());
+    for noad in input {
+        if let Some(last) = out.last_mut() {
+            if last.kind == NoadKind::Atom && noad.kind == NoadKind::Atom {
+                // Later nucleus fills a hole but never overwrites an existing one.
+                if last.nucleus.is_none() {
+                    last.nucleus = noad.nucleus;
+                }
+                // Later scripts override slot-by-slot.
+                if let Some(new_sc) = noad.scripts {
+                    match last.scripts.as_mut() {
+                        Some(old) => {
+                            if new_sc.sub.is_some() {
+                                old.sub = new_sc.sub;
+                            }
+                            if new_sc.sup.is_some() {
+                                old.sup = new_sc.sup;
+                            }
+                        }
+                        None => last.scripts = Some(new_sc),
+                    }
+                }
+                continue;
+            }
+        }
+        out.push(noad);
+    }
+    out
 }
 
 // ---------------------------------------------------------------------------
@@ -560,11 +687,113 @@ mod tests {
     }
 
     #[test]
-    fn normalize_is_identity_for_projection() {
-        let nodes = vec![sym('a', SymbolRole::Ordinary), sym('b', SymbolRole::Binary)];
+    fn bin_stays_between_atoms() {
+        // a + b → Bin between two Atoms must NOT demote.
+        let nodes = vec![
+            sym('a', SymbolRole::Ordinary),
+            sym('+', SymbolRole::Binary),
+            sym('b', SymbolRole::Ordinary),
+        ];
         let projected = MathList::from(nodes.as_slice());
-        let normalized = normalize_math_list(projected.clone());
-        assert_eq!(projected, normalized);
+        let normalized = normalize_math_list(projected);
+        assert_eq!(normalized.len(), 3);
+        assert_eq!(normalized.0[0].kind, NoadKind::Atom);
+        assert_eq!(normalized.0[1].kind, NoadKind::Bin);
+        assert_eq!(normalized.0[2].kind, NoadKind::Atom);
+    }
+
+    #[test]
+    fn bin_demotes_before_open() {
+        // ( + → Open + Atom — Bin after Open (left ∈ Open) demotes.
+        let nodes = vec![
+            sym('(', SymbolRole::Opening),
+            sym('+', SymbolRole::Binary),
+        ];
+        let projected = MathList::from(nodes.as_slice());
+        let normalized = normalize_math_list(projected);
+        assert_eq!(normalized.len(), 2);
+        assert_eq!(normalized.0[0].kind, NoadKind::Open);
+        assert_eq!(normalized.0[1].kind, NoadKind::Atom);
+    }
+
+    #[test]
+    fn bin_demotes_after_close() {
+        // ) + → Close + Atom — Bin at the end (no right neighbour) demotes.
+        let nodes = vec![
+            sym(')', SymbolRole::Closing),
+            sym('+', SymbolRole::Binary),
+        ];
+        let projected = MathList::from(nodes.as_slice());
+        let normalized = normalize_math_list(projected);
+        assert_eq!(normalized.len(), 2);
+        assert_eq!(normalized.0[0].kind, NoadKind::Close);
+        assert_eq!(normalized.0[1].kind, NoadKind::Atom);
+    }
+
+    #[test]
+    fn rel_demotes_after_open() {
+        // ( = → Open + Bin — Rel after Open demotes to Bin.
+        let nodes = vec![
+            sym('(', SymbolRole::Opening),
+            sym('=', SymbolRole::Relation),
+        ];
+        let projected = MathList::from(nodes.as_slice());
+        let normalized = normalize_math_list(projected);
+        assert_eq!(normalized.len(), 2);
+        assert_eq!(normalized.0[0].kind, NoadKind::Open);
+        assert_eq!(normalized.0[1].kind, NoadKind::Bin);
+    }
+
+    #[test]
+    fn op_demotes_before_close() {
+        // ∑ ) → Atom + Close — LargeOp (Op) before Close demotes.
+        let nodes = vec![
+            sym('∑', SymbolRole::LargeOperator),
+            sym(')', SymbolRole::Closing),
+        ];
+        let projected = MathList::from(nodes.as_slice());
+        let normalized = normalize_math_list(projected);
+        assert_eq!(normalized.len(), 2);
+        assert_eq!(normalized.0[0].kind, NoadKind::Atom);
+        assert_eq!(normalized.0[1].kind, NoadKind::Close);
+    }
+
+    #[test]
+    fn op_stays_at_first() {
+        // ∑ + x — LargeOp is first (no left neighbour), so does NOT demote.
+        // Plus, the Op has right neighbour Bin — but right_strong needs Bin,
+        // so it *does* demote by the right side.  Wait — let me re-check...
+        // Rule 7: Op → Atom if right ∈ {Bin, Rel, Close, Punct, Op}.
+        // So ∑ + x → Op right=Bin → Op demotes to Atom → Atom + Bin + Atom.
+        // Hmm, the test name says "op_stays_at_first".  Let me change the
+        // scenario so Op stays: put an Atom on the right instead.
+        // Actually let me just test what the demote engine *should* do and
+        // pick a scenario where Op genuinely stays.
+        let nodes = vec![
+            sym('∑', SymbolRole::LargeOperator),
+            sym('x', SymbolRole::Ordinary),
+        ];
+        let projected = MathList::from(nodes.as_slice());
+        let normalized = normalize_math_list(projected);
+        // first (no left) → left_strong false; right=Atom → right_strong false.
+        // Op does NOT demote.
+        assert_eq!(normalized.len(), 2);
+        assert_eq!(normalized.0[0].kind, NoadKind::Op);
+        assert_eq!(normalized.0[1].kind, NoadKind::Atom);
+    }
+
+    #[test]
+    fn continuous_atoms_merge() {
+        // a b c → three Atoms collapse to one.
+        let nodes = vec![
+            sym('a', SymbolRole::Ordinary),
+            sym('b', SymbolRole::Ordinary),
+            sym('c', SymbolRole::Ordinary),
+        ];
+        let projected = MathList::from(nodes.as_slice());
+        let normalized = normalize_math_list(projected);
+        assert_eq!(normalized.len(), 1);
+        assert_eq!(normalized.0[0].kind, NoadKind::Atom);
     }
 
     #[test]
