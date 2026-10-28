@@ -19,12 +19,8 @@ pub struct MathKern {
 }
 
 impl MathKern {
-    pub const ZERO: Self = Self {
-        bottom_right: Fixed::ZERO,
-        top_right: Fixed::ZERO,
-        bottom_left: Fixed::ZERO,
-        top_left: Fixed::ZERO,
-    };
+    pub const ZERO: Self =
+        Self { bottom_right: Fixed::ZERO, top_right: Fixed::ZERO, bottom_left: Fixed::ZERO, top_left: Fixed::ZERO };
 
     /// Combined kern between two adjacent noads.
     ///

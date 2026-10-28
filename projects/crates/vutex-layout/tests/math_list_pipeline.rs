@@ -15,16 +15,12 @@
 use vutex_layout::math::{LayoutEngine, LayoutNode};
 use vutex_text::math::builtin_font_metrics;
 use vutex_types::math::{
-    FontStyle, GlyphKey, LimitsPolicy, LineStyle, MathStyle, SemanticNode, SymbolRole, normalize_math_list,
-    project_semantic,
+    FontStyle, GlyphKey, LimitsPolicy, LineStyle, MathStyle, SemanticNode, SymbolRole, normalize_math_list, project_semantic,
 };
 
 /// Build a symbol atom for a single char.
 fn sym(c: char, role: SymbolRole) -> SemanticNode {
-    SemanticNode::Symbol {
-        glyph_key: GlyphKey::from_char(c, None, FontStyle::Math),
-        role,
-    }
+    SemanticNode::Symbol { glyph_key: GlyphKey::from_char(c, None, FontStyle::Math), role }
 }
 
 /// Glue widths extracted from every HBox leaf in layout order.
@@ -169,10 +165,7 @@ fn limits_after_an_ordinary_atom_do_not_reach_a_later_operator() {
     let list = text_noads(&nodes);
     assert_eq!(list.len(), 3);
     assert_eq!(list.0[0].limits, None, "`x` is not an operator and must not carry the policy");
-    assert_eq!(
-        list.0[1].limits, None,
-        "a policy authored after `x` must not be attached to the following `∑`"
-    );
+    assert_eq!(list.0[1].limits, None, "a policy authored after `x` must not be attached to the following `∑`");
     assert_eq!(list.0[1].kind, vutex_types::math::NoadKind::Op);
 }
 
@@ -192,11 +185,7 @@ fn consecutive_limits_keep_the_last_policy() {
     ];
     let list = text_noads(&nodes);
     assert_eq!(list.len(), 2);
-    assert_eq!(
-        list.0[0].limits,
-        Some(LimitsPolicy::NoLimits),
-        "the last `\\limits` / `\\nolimits` before the operator wins"
-    );
+    assert_eq!(list.0[0].limits, Some(LimitsPolicy::NoLimits), "the last `\\limits` / `\\nolimits` before the operator wins");
     assert_eq!(list.0[1].limits, None, "the policy must not reach the next atom");
 }
 
@@ -245,11 +234,7 @@ fn repeated_layout_of_one_math_list_is_identical() {
 
     let first = engine.layout_math_list(&nodes, MathStyle::Text).expect("first layout");
     let second = engine.layout_math_list(&nodes, MathStyle::Text).expect("second layout");
-    assert_eq!(
-        format!("{first:?}"),
-        format!("{second:?}"),
-        "the same math list must lay out identically every time"
-    );
+    assert_eq!(format!("{first:?}"), format!("{second:?}"), "the same math list must lay out identically every time");
 
     let unrelated = vec![SemanticNode::SubSuperscript {
         base: Box::new(sym('∫', SymbolRole::LargeOperator)),
@@ -259,9 +244,5 @@ fn repeated_layout_of_one_math_list_is_identical() {
     engine.layout_math_list(&unrelated, MathStyle::Text).expect("unrelated layout");
 
     let third = engine.layout_math_list(&nodes, MathStyle::Text).expect("layout after an unrelated formula");
-    assert_eq!(
-        format!("{first:?}"),
-        format!("{third:?}"),
-        "no layout may leave state behind for the next one"
-    );
+    assert_eq!(format!("{first:?}"), format!("{third:?}"), "no layout may leave state behind for the next one");
 }

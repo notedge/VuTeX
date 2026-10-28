@@ -18,11 +18,7 @@ fn make_test_engine() -> LayoutEngine {
 #[test]
 fn simple_formula_produces_nonzero_metrics() {
     let engine = make_test_engine();
-    let nodes = vec![
-        sym('x', SymbolRole::Ordinary),
-        sym('+', SymbolRole::Binary),
-        sym('y', SymbolRole::Ordinary),
-    ];
+    let nodes = vec![sym('x', SymbolRole::Ordinary), sym('+', SymbolRole::Binary), sym('y', SymbolRole::Ordinary)];
     let result = engine.layout_formula_result(&nodes, MathStyle::Display).unwrap();
 
     // 基本 sanity：metrics 必须全是正数（x + glue + + + glue + y 的宽度肯定大于零）。
@@ -32,20 +28,13 @@ fn simple_formula_produces_nonzero_metrics() {
     assert!(result.metrics.depth >= vutex_types::math::Fixed::ZERO);
 
     // ink_bounds 必须至少能覆盖 width。
-    assert!(
-        result.metrics.ink_bounds.width >= result.metrics.width,
-        "ink_bounds.width must cover metrics.width"
-    );
+    assert!(result.metrics.ink_bounds.width >= result.metrics.width, "ink_bounds.width must cover metrics.width");
 }
 
 #[test]
 fn paint_tree_is_group_rooted() {
     let engine = make_test_engine();
-    let nodes = vec![
-        sym('a', SymbolRole::Ordinary),
-        sym('+', SymbolRole::Binary),
-        sym('b', SymbolRole::Ordinary),
-    ];
+    let nodes = vec![sym('a', SymbolRole::Ordinary), sym('+', SymbolRole::Binary), sym('b', SymbolRole::Ordinary)];
     let result = engine.layout_formula_result(&nodes, MathStyle::Text).unwrap();
 
     // 第一版的 paint 树根节点是 Group(HBox children lowered)。

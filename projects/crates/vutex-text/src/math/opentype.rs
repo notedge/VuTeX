@@ -500,7 +500,12 @@ fn glyph_outline(face: &mut FontFace, gid: u16, one_em: f64) -> Option<String> {
 /// corner to its lowest-height segment (kern_values[0], corresponding to
 /// height ≤ correction_heights[0]) — the baseline kern the layout engine
 /// already uses via `get_math_kern`.
-fn extract_math_kerns(face: &mut FontFace, math_glyph_info: &acorn_ttf::tables::math::MathGlyphInfo, data: &mut FontMetricsData, one_em: f64) {
+fn extract_math_kerns(
+    face: &mut FontFace,
+    math_glyph_info: &acorn_ttf::tables::math::MathGlyphInfo,
+    data: &mut FontMetricsData,
+    one_em: f64,
+) {
     let family = Some("latin-modern-math".to_string());
     let one_em_f64 = one_em;
 
@@ -521,22 +526,10 @@ fn extract_math_kerns(face: &mut FontFace, math_glyph_info: &acorn_ttf::tables::
         };
 
         // Collapse each corner to its lowest-height kern value (font units → em).
-        let bottom_right = kern_to_em(
-            math_glyph_info.math_kern_bottom_right.get(&gid),
-            one_em_f64,
-        );
-        let top_right = kern_to_em(
-            math_glyph_info.math_kern_top_right.get(&gid),
-            one_em_f64,
-        );
-        let bottom_left = kern_to_em(
-            math_glyph_info.math_kern_bottom_left.get(&gid),
-            one_em_f64,
-        );
-        let top_left = kern_to_em(
-            math_glyph_info.math_kern_top_left.get(&gid),
-            one_em_f64,
-        );
+        let bottom_right = kern_to_em(math_glyph_info.math_kern_bottom_right.get(&gid), one_em_f64);
+        let top_right = kern_to_em(math_glyph_info.math_kern_top_right.get(&gid), one_em_f64);
+        let bottom_left = kern_to_em(math_glyph_info.math_kern_bottom_left.get(&gid), one_em_f64);
+        let top_left = kern_to_em(math_glyph_info.math_kern_top_left.get(&gid), one_em_f64);
 
         if bottom_right == Fixed::ZERO && top_right == Fixed::ZERO && bottom_left == Fixed::ZERO && top_left == Fixed::ZERO {
             continue; // no kern data worth storing
@@ -560,9 +553,7 @@ fn extract_math_kerns(face: &mut FontFace, math_glyph_info: &acorn_ttf::tables::
 /// data for that corner.
 fn kern_to_em(table: Option<&acorn_ttf::tables::math::MathKernTable>, one_em: f64) -> Fixed {
     match table {
-        Some(t) if !t.kern_values.is_empty() => {
-            Fixed::from_f64(t.kern_values[0] as f64 / one_em)
-        }
+        Some(t) if !t.kern_values.is_empty() => Fixed::from_f64(t.kern_values[0] as f64 / one_em),
         _ => Fixed::ZERO,
     }
 }

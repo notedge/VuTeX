@@ -28,8 +28,10 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::operator::LimitsPolicy;
-use super::semantic::{MathStyle, SemanticNode, SymbolRole};
+use super::{
+    operator::LimitsPolicy,
+    semantic::{MathStyle, SemanticNode, SymbolRole},
+};
 
 /// TeX Appendix G spacing classes + structural extensions.
 ///
@@ -94,12 +96,7 @@ impl NoadKind {
     /// purposes.  Table cells are flattened away before spacing is applied
     /// so they also resolve to Inner.
     pub fn spacing_class(self) -> NoadKind {
-        if self.is_table_class() {
-            self
-        }
-        else {
-            NoadKind::Inner
-        }
+        if self.is_table_class() { self } else { NoadKind::Inner }
     }
 
     /// Map from [`SymbolRole`] to the base spacing kind.
@@ -154,14 +151,7 @@ pub struct Scripts {
 impl Noad {
     /// Constructor for the most common case: a plain atom of the given kind.
     pub fn new(kind: NoadKind, style: MathStyle, cramped: bool) -> Self {
-        Self {
-            kind,
-            nucleus: None,
-            scripts: None,
-            limits: None,
-            style,
-            cramped,
-        }
+        Self { kind, nucleus: None, scripts: None, limits: None, style, cramped }
     }
 
     /// True when this noad should participate in Appendix G spacing glue.
@@ -399,10 +389,7 @@ fn project_one(
             let mut noad = Noad::new(kind, state.style, state.cramped);
             noad.nucleus = Some(base.clone());
             let sub_state = state.sub();
-            noad.scripts = Some(Scripts {
-                sub: Some(Box::new(with_style(sub, sub_state.style))),
-                sup: None,
-            });
+            noad.scripts = Some(Scripts { sub: Some(Box::new(with_style(sub, sub_state.style))), sup: None });
             push_noad(list, noad, pending_limits);
         }
         SemanticNode::Superscript { base, sup } => {
@@ -410,10 +397,7 @@ fn project_one(
             let mut noad = Noad::new(kind, state.style, state.cramped);
             noad.nucleus = Some(base.clone());
             let sup_state = state.sup();
-            noad.scripts = Some(Scripts {
-                sub: None,
-                sup: Some(Box::new(with_style(sup, sup_state.style))),
-            });
+            noad.scripts = Some(Scripts { sub: None, sup: Some(Box::new(with_style(sup, sup_state.style))) });
             push_noad(list, noad, pending_limits);
         }
         SemanticNode::SubSuperscript { base, sub, sup } => {
@@ -456,10 +440,7 @@ fn project_one(
             // so the spacing engine can read its glyph for metrics.
             if let Some(gk) = left {
                 let mut open = Noad::new(NoadKind::Open, state.style, state.cramped);
-                open.nucleus = Some(Box::new(SemanticNode::Symbol {
-                    glyph_key: gk.clone(),
-                    role: SymbolRole::Opening,
-                }));
+                open.nucleus = Some(Box::new(SemanticNode::Symbol { glyph_key: gk.clone(), role: SymbolRole::Opening }));
                 push_noad(list, open, pending_limits);
             }
 
@@ -476,10 +457,7 @@ fn project_one(
             // Right delimiter → Close noad.
             if let Some(gk) = right {
                 let mut close = Noad::new(NoadKind::Close, state.style, state.cramped);
-                close.nucleus = Some(Box::new(SemanticNode::Symbol {
-                    glyph_key: gk.clone(),
-                    role: SymbolRole::Closing,
-                }));
+                close.nucleus = Some(Box::new(SemanticNode::Symbol { glyph_key: gk.clone(), role: SymbolRole::Closing }));
                 push_noad(list, close, pending_limits);
             }
         }
@@ -591,21 +569,21 @@ pub fn normalize_math_list(mut list: MathList) -> MathList {
 fn trim_boundary(list: &mut MathList) {
     // Trim leading.
     while let Some(first) = list.0.first() {
-        let can_drop = first.nucleus.is_none()
-            && matches!(first.kind, NoadKind::Open | NoadKind::Close | NoadKind::Punct);
+        let can_drop = first.nucleus.is_none() && matches!(first.kind, NoadKind::Open | NoadKind::Close | NoadKind::Punct);
         if can_drop {
             list.0.remove(0);
-        } else {
+        }
+        else {
             break;
         }
     }
     // Trim trailing.
     while let Some(last) = list.0.last() {
-        let can_drop = last.nucleus.is_none()
-            && matches!(last.kind, NoadKind::Open | NoadKind::Close | NoadKind::Punct);
+        let can_drop = last.nucleus.is_none() && matches!(last.kind, NoadKind::Open | NoadKind::Close | NoadKind::Punct);
         if can_drop {
             list.0.pop();
-        } else {
+        }
+        else {
             break;
         }
     }
@@ -731,10 +709,7 @@ fn merge_atoms_pass(input: Vec<Noad>) -> Vec<Noad> {
                 && last.scripts.is_none()
                 && noad.scripts.is_none()
             {
-                last.nucleus = Some(merge_text_nodes(
-                    last.nucleus.as_ref(),
-                    noad.nucleus.as_ref(),
-                ));
+                last.nucleus = Some(merge_text_nodes(last.nucleus.as_ref(), noad.nucleus.as_ref()));
                 continue;
             }
         }
@@ -751,10 +726,7 @@ fn merge_atoms_pass(input: Vec<Noad>) -> Vec<Noad> {
 /// paths).  `font_style` is taken from `a` — in practice consecutive Text
 /// fragments always share the same style (checked by `merge_atoms_pass`),
 /// so this keeps the first fragment's face.
-fn merge_text_nodes(
-    a: Option<&Box<SemanticNode>>,
-    b: Option<&Box<SemanticNode>>,
-) -> Box<SemanticNode> {
+fn merge_text_nodes(a: Option<&Box<SemanticNode>>, b: Option<&Box<SemanticNode>>) -> Box<SemanticNode> {
     let a_text = a.and_then(|x| match x.as_ref() {
         SemanticNode::Text { text, font_style } => Some((text.clone(), *font_style)),
         _ => None,
@@ -764,17 +736,11 @@ fn merge_text_nodes(
         _ => None,
     });
     match (a_text, b_text) {
-        (Some((ta, fa)), Some(tb)) => Box::new(SemanticNode::Text {
-            text: format!("{ta}{tb}"),
-            font_style: fa,
-        }),
+        (Some((ta, fa)), Some(tb)) => Box::new(SemanticNode::Text { text: format!("{ta}{tb}"), font_style: fa }),
         // Defensive fallback: keep b (caller already filtered).
         (_, Some(_)) => b.unwrap().clone(),
         (Some(_), None) => a.unwrap().clone(),
-        (None, None) => Box::new(SemanticNode::Text {
-            text: String::new(),
-            font_style: crate::math::FontStyle::Math,
-        }),
+        (None, None) => Box::new(SemanticNode::Text { text: String::new(), font_style: crate::math::FontStyle::Math }),
     }
 }
 
@@ -800,10 +766,7 @@ mod tests {
     use crate::math::{GlyphKey, LineStyle, SemanticNode, SymbolRole};
 
     fn sym(c: char, role: SymbolRole) -> SemanticNode {
-        SemanticNode::Symbol {
-            glyph_key: GlyphKey::from_char(c, None, crate::math::FontStyle::Math),
-            role,
-        }
+        SemanticNode::Symbol { glyph_key: GlyphKey::from_char(c, None, crate::math::FontStyle::Math), role }
     }
 
     /// Style a projected nucleus/script fragment was stamped with, when the
@@ -1026,10 +989,7 @@ mod tests {
         // must not reach the sibling after the group.
         let nodes = vec![
             sym('a', SymbolRole::Ordinary),
-            SemanticNode::Sequence(vec![
-                SemanticNode::SetMathStyle(MathStyle::Script),
-                sym('b', SymbolRole::Ordinary),
-            ]),
+            SemanticNode::Sequence(vec![SemanticNode::SetMathStyle(MathStyle::Script), sym('b', SymbolRole::Ordinary)]),
             sym('c', SymbolRole::Ordinary),
         ];
         let list = MathList::from(nodes.as_slice());
@@ -1042,11 +1002,7 @@ mod tests {
     #[test]
     fn bin_stays_between_atoms() {
         // a + b → Bin between two Atoms must NOT demote.
-        let nodes = vec![
-            sym('a', SymbolRole::Ordinary),
-            sym('+', SymbolRole::Binary),
-            sym('b', SymbolRole::Ordinary),
-        ];
+        let nodes = vec![sym('a', SymbolRole::Ordinary), sym('+', SymbolRole::Binary), sym('b', SymbolRole::Ordinary)];
         let projected = MathList::from(nodes.as_slice());
         let normalized = normalize_math_list(projected);
         assert_eq!(normalized.len(), 3);
@@ -1058,10 +1014,7 @@ mod tests {
     #[test]
     fn bin_demotes_before_open() {
         // ( + → Open + Atom — Bin after Open (left ∈ Open) demotes.
-        let nodes = vec![
-            sym('(', SymbolRole::Opening),
-            sym('+', SymbolRole::Binary),
-        ];
+        let nodes = vec![sym('(', SymbolRole::Opening), sym('+', SymbolRole::Binary)];
         let projected = MathList::from(nodes.as_slice());
         let normalized = normalize_math_list(projected);
         assert_eq!(normalized.len(), 2);
@@ -1072,10 +1025,7 @@ mod tests {
     #[test]
     fn bin_demotes_after_close() {
         // ) + → Close + Atom — Bin at the end (no right neighbour) demotes.
-        let nodes = vec![
-            sym(')', SymbolRole::Closing),
-            sym('+', SymbolRole::Binary),
-        ];
+        let nodes = vec![sym(')', SymbolRole::Closing), sym('+', SymbolRole::Binary)];
         let projected = MathList::from(nodes.as_slice());
         let normalized = normalize_math_list(projected);
         assert_eq!(normalized.len(), 2);
@@ -1086,10 +1036,7 @@ mod tests {
     #[test]
     fn rel_demotes_after_open() {
         // ( = → Open + Bin — Rel after Open demotes to Bin.
-        let nodes = vec![
-            sym('(', SymbolRole::Opening),
-            sym('=', SymbolRole::Relation),
-        ];
+        let nodes = vec![sym('(', SymbolRole::Opening), sym('=', SymbolRole::Relation)];
         let projected = MathList::from(nodes.as_slice());
         let normalized = normalize_math_list(projected);
         assert_eq!(normalized.len(), 2);
@@ -1100,10 +1047,7 @@ mod tests {
     #[test]
     fn op_demotes_before_close() {
         // ∑ ) → Atom + Close — LargeOp (Op) before Close demotes.
-        let nodes = vec![
-            sym('∑', SymbolRole::LargeOperator),
-            sym(')', SymbolRole::Closing),
-        ];
+        let nodes = vec![sym('∑', SymbolRole::LargeOperator), sym(')', SymbolRole::Closing)];
         let projected = MathList::from(nodes.as_slice());
         let normalized = normalize_math_list(projected);
         assert_eq!(normalized.len(), 2);
@@ -1122,10 +1066,7 @@ mod tests {
         // scenario so Op stays: put an Atom on the right instead.
         // Actually let me just test what the demote engine *should* do and
         // pick a scenario where Op genuinely stays.
-        let nodes = vec![
-            sym('∑', SymbolRole::LargeOperator),
-            sym('x', SymbolRole::Ordinary),
-        ];
+        let nodes = vec![sym('∑', SymbolRole::LargeOperator), sym('x', SymbolRole::Ordinary)];
         let projected = MathList::from(nodes.as_slice());
         let normalized = normalize_math_list(projected);
         // first (no left) → left_strong false; right=Atom → right_strong false.
@@ -1140,18 +1081,10 @@ mod tests {
         // Three Ordinary Symbol atoms must remain 3 distinct atoms — TeX
         // keeps each Symbol-derived glyph separate even when both sides
         // happen to be Ordinary.
-        let nodes = vec![
-            sym('a', SymbolRole::Ordinary),
-            sym('b', SymbolRole::Ordinary),
-            sym('c', SymbolRole::Ordinary),
-        ];
+        let nodes = vec![sym('a', SymbolRole::Ordinary), sym('b', SymbolRole::Ordinary), sym('c', SymbolRole::Ordinary)];
         let projected = MathList::from(nodes.as_slice());
         let normalized = normalize_math_list(projected);
-        assert_eq!(
-            normalized.len(),
-            3,
-            "Symbol atoms must never merge (TeX semantics)"
-        );
+        assert_eq!(normalized.len(), 3, "Symbol atoms must never merge (TeX semantics)");
         assert!(normalized.0.iter().all(|n| !n.is_text_atom()));
     }
 
@@ -1190,11 +1123,7 @@ mod tests {
         ];
         let projected = MathList::from(nodes.as_slice());
         let normalized = normalize_math_list(projected);
-        assert_eq!(
-            normalized.len(),
-            3,
-            "Symbol/Text/Symbol mix must stay 3 (only consecutive Text merges)"
-        );
+        assert_eq!(normalized.len(), 3, "Symbol/Text/Symbol mix must stay 3 (only consecutive Text merges)");
     }
 
     #[test]

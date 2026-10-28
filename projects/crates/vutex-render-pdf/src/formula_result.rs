@@ -18,8 +18,10 @@
 
 use std::fmt::{self, Write};
 
-use vutex_types::{Diagnostic, Severity};
-use vutex_types::math::{Fixed, FormulaLayoutResult, PaintNode};
+use vutex_types::{
+    Diagnostic, Severity,
+    math::{Fixed, FormulaLayoutResult, PaintNode},
+};
 
 /// Render a fully laid-out formula as a minimal single-page PDF document.
 ///
@@ -34,20 +36,12 @@ use vutex_types::math::{Fixed, FormulaLayoutResult, PaintNode};
 pub fn render_formula_result(result: &FormulaLayoutResult) -> Result<Vec<u8>, Diagnostic> {
     let metrics = &result.metrics;
     // Page dimensions in PDF points (≈ CSS px).
-    let (page_w, page_h) = if metrics.ink_bounds.width.to_f64() > 0.0
-        || metrics.ink_bounds.height.to_f64() > 0.0
-    {
+    let (page_w, page_h) = if metrics.ink_bounds.width.to_f64() > 0.0 || metrics.ink_bounds.height.to_f64() > 0.0 {
         let ib = &metrics.ink_bounds;
-        (
-            ib.x.to_f64() + ib.width.to_f64() + 8.0,
-            ib.y.to_f64() + ib.height.to_f64() + metrics.depth.to_f64() + 8.0,
-        )
+        (ib.x.to_f64() + ib.width.to_f64() + 8.0, ib.y.to_f64() + ib.height.to_f64() + metrics.depth.to_f64() + 8.0)
     }
     else {
-        (
-            metrics.width.to_f64().max(1.0) + 8.0,
-            (metrics.height.to_f64() + metrics.depth.to_f64()).max(1.0) + 8.0,
-        )
+        (metrics.width.to_f64().max(1.0) + 8.0, (metrics.height.to_f64() + metrics.depth.to_f64()).max(1.0) + 8.0)
     };
 
     // Page-space y origin for the formula baseline.  PDF origin is bottom-left,
@@ -111,7 +105,10 @@ fn render_paint_pdf(out: &mut String, node: &PaintNode, origin_x: f64, origin_y:
                         let _ = write!(
                             out,
                             "q\n0.0 f\n{:.4} 0 0 {:.4} {:.4} {:.4} cm\n{ops}f\nQ\n",
-                            scale, scale, ox.to_f64(), oy.to_f64()
+                            scale,
+                            scale,
+                            ox.to_f64(),
+                            oy.to_f64()
                         );
                     }
                 }
@@ -138,20 +135,16 @@ fn svg_path_to_pdf_ops(raw: &str, origin_x: f64, origin_y: f64) -> String {
         i += 1;
         match op {
             "M" => {
-                if let (Some(x), Some(y)) = (
-                    tokens.get(i).and_then(|t| t.parse::<f64>().ok()),
-                    tokens.get(i + 1).and_then(|t| t.parse::<f64>().ok()),
-                ) {
+                if let (Some(x), Some(y)) =
+                    (tokens.get(i).and_then(|t| t.parse::<f64>().ok()), tokens.get(i + 1).and_then(|t| t.parse::<f64>().ok()))
+                {
                     i += 2;
                     let px = x + origin_x;
                     let py = y + origin_y;
                     start_pt = (px, py);
                     let _ = write!(out, "{} {} m\n", num(px), num(py));
                     // Implicit L for extra coordinate pairs after M
-                    while i + 1 < tokens.len()
-                        && tokens[i].parse::<f64>().is_ok()
-                        && tokens[i + 1].parse::<f64>().is_ok()
-                    {
+                    while i + 1 < tokens.len() && tokens[i].parse::<f64>().is_ok() && tokens[i + 1].parse::<f64>().is_ok() {
                         let ax = tokens[i].parse::<f64>().unwrap();
                         let ay = tokens[i + 1].parse::<f64>().unwrap();
                         i += 2;
@@ -160,10 +153,9 @@ fn svg_path_to_pdf_ops(raw: &str, origin_x: f64, origin_y: f64) -> String {
                 }
             }
             "L" => {
-                if let (Some(x), Some(y)) = (
-                    tokens.get(i).and_then(|t| t.parse::<f64>().ok()),
-                    tokens.get(i + 1).and_then(|t| t.parse::<f64>().ok()),
-                ) {
+                if let (Some(x), Some(y)) =
+                    (tokens.get(i).and_then(|t| t.parse::<f64>().ok()), tokens.get(i + 1).and_then(|t| t.parse::<f64>().ok()))
+                {
                     i += 2;
                     let _ = write!(out, "{} {} l\n", num(x + origin_x), num(y + origin_y));
                 }
@@ -253,8 +245,7 @@ fn tokenize_svg_path(raw: &str) -> Vec<String> {
             }
             while i < chars.len() {
                 let n = chars[i];
-                let exponent_sign = matches!(token.chars().last(), Some('e' | 'E'))
-                    && matches!(n, '-' | '+');
+                let exponent_sign = matches!(token.chars().last(), Some('e' | 'E')) && matches!(n, '-' | '+');
                 if n.is_ascii_digit() || n == '.' || n == 'e' || n == 'E' || exponent_sign {
                     token.push(n);
                     i += 1;
@@ -300,11 +291,7 @@ fn build_minimal_pdf(page_w: f64, page_h: f64, content: &str) -> Vec<u8> {
     // Object 2: Pages
     push_object("<< /Type /Pages /Kids [3 0 R] /Count 1 >>", &mut offsets, &mut out);
     // Object 3: Page
-    let page_body = format!(
-        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {} {}] /Contents 4 0 R >>",
-        num(page_w),
-        num(page_h),
-    );
+    let page_body = format!("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {} {}] /Contents 4 0 R >>", num(page_w), num(page_h),);
     push_object(&page_body, &mut offsets, &mut out);
     // Object 4: Content stream
     offsets.push(out.len());
@@ -321,9 +308,7 @@ fn build_minimal_pdf(page_w: f64, page_h: f64, content: &str) -> Vec<u8> {
     for offset in &offsets {
         out.extend_from_slice(format!("{offset:010} 00000 n \n").as_bytes());
     }
-    out.extend_from_slice(
-        format!("trailer\n<< /Size {size} /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n").as_bytes(),
-    );
+    out.extend_from_slice(format!("trailer\n<< /Size {size} /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n").as_bytes());
     out
 }
 
@@ -377,12 +362,7 @@ mod tests {
         let mut res = rect_result();
         res.paint = PaintNode::Group(vec![PaintNode::VectorPath {
             d: "M 0 0 L 10 0 L 5 10 Z".to_string(),
-            bbox: BBox {
-                x: Fixed::ZERO,
-                y: Fixed::ZERO,
-                width: Fixed::from_f64(10.0),
-                height: Fixed::from_f64(10.0),
-            },
+            bbox: BBox { x: Fixed::ZERO, y: Fixed::ZERO, width: Fixed::from_f64(10.0), height: Fixed::from_f64(10.0) },
         }]);
         let pdf = render_formula_result(&res).expect("render");
         let text = String::from_utf8_lossy(&pdf);
