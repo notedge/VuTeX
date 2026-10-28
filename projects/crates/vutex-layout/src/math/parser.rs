@@ -148,8 +148,19 @@ impl Parser {
             // the layout pass applies it to that operator, and rebind any scripts
             // that follow the flag to the operator instead of to the flag.
             if let SemanticNode::LimitsSpec(flag) = atom {
-                let base =
-                    items.pop().ok_or_else(|| self.error("`\\limits` must follow an operator"))?;
+                let base = items.pop().ok_or_else(|| self.error("`\\limits` must follow an operator"))?;
+                // `\limits` only takes effect on a large operator.  Any other
+                // atom keeps its scripts beside the base, so report the misuse
+                // instead of accepting it silently.
+                if !matches!(base, SemanticNode::Symbol { role: SymbolRole::LargeOperator, .. }) {
+                    let command = if flag { "\\limits" } else { "\\nolimits" };
+                    self.warn(
+                        "vutex.layout.math.limits_misuse",
+                        format!(
+                            "`{command}` applies only to a large operator such as `\\sum`, so this atom keeps its scripts beside the base"
+                        ),
+                    );
+                }
                 let scripted = self.parse_scripts(base)?;
                 items.push(SemanticNode::LimitsSpec(flag));
                 items.push(scripted);

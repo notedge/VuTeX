@@ -130,6 +130,18 @@ fn alignedat_column_mismatch_reaches_the_host_diagnostics() {
     assert_eq!(diagnostics[0]["severity"].as_str(), Some("warning"));
 }
 
+/// `\limits` after a plain atom is a misuse the host must see, and the shells
+/// still render.
+#[test]
+fn limits_misuse_reaches_the_host_diagnostics() {
+    let value = parse(&render_svg_wasm("x\\limits_1", None));
+    assert!(value["svg"].as_str().unwrap_or_default().contains("<path"), "the script must still paint: {value}");
+    let diagnostics = value["diagnostics"].as_array().expect("diagnostics");
+    assert_eq!(diagnostics.len(), 1, "one misuse, one warning: {value}");
+    assert_eq!(diagnostics[0]["code"].as_str(), Some("vutex.layout.math.limits_misuse"));
+    assert_eq!(diagnostics[0]["severity"].as_str(), Some("warning"));
+}
+
 #[test]
 fn render_svg_with_outline_option_successfully_returns_svg() {
     // With outline=true, the deterministic SvgBackend is wired in.

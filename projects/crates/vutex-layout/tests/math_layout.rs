@@ -1160,6 +1160,56 @@ fn align_ignores_an_enclosing_script_style() {
     );
 }
 
+/// `\limits` after a plain atom is a misuse: the scripts stay beside the base,
+/// the geometry stays `x_1`, and the warning says so.
+#[test]
+fn limits_after_a_plain_atom_warns_and_keeps_the_scripts_beside_it() {
+    let (plain_tree, plain_metrics, plain_diagnostics) =
+        layout_formula_with_diagnostics("x_1", false, 14.0).expect("plain `x_1` should lay out");
+    assert!(plain_diagnostics.is_empty(), "plain `x_1` must not warn: {plain_diagnostics:?}");
+    assert!((plain_metrics.width - 12.5159).abs() < 0.01, "`x_1` is 12.5159 px wide: {}", plain_metrics.width);
+    let plain: Vec<(char, f64, f64)> =
+        glyphs(&plain_tree).into_iter().map(|(x, y, glyph)| (glyph.char.unwrap_or('?'), x, y)).collect();
+
+    for source in ["x\\limits_1", "x\\nolimits_1"] {
+        let (tree, metrics, diagnostics) = layout_formula_with_diagnostics(source, false, 14.0).expect(source);
+        assert_eq!(diagnostics.len(), 1, "`{source}` must report the misuse once: {diagnostics:?}");
+        assert_eq!(diagnostics[0].code, "vutex.layout.math.limits_misuse");
+        assert_eq!(diagnostics[0].severity, Severity::Warning);
+
+        assert!(
+            (metrics.width - plain_metrics.width).abs() < 0.01,
+            "`{source}` must keep the `x_1` width: {} vs {}",
+            metrics.width,
+            plain_metrics.width
+        );
+        let laid_out: Vec<(char, f64, f64)> =
+            glyphs(&tree).into_iter().map(|(x, y, glyph)| (glyph.char.unwrap_or('?'), x, y)).collect();
+        assert_eq!(laid_out.len(), plain.len(), "`{source}` must not drop a glyph: {laid_out:?}");
+        for (left, right) in laid_out.iter().zip(&plain) {
+            assert_eq!(left.0, right.0, "`{source}` changed the glyph order: {laid_out:?}");
+            assert!(
+                (left.1 - right.1).abs() < 0.01 && (left.2 - right.2).abs() < 0.01,
+                "`{source}` moved `{}` from ({}, {}) to ({}, {})",
+                left.0,
+                right.1,
+                right.2,
+                left.1,
+                left.2
+            );
+        }
+    }
+}
+
+/// `\limits` on a real large operator is valid and stays silent.
+#[test]
+fn limits_on_a_large_operator_does_not_warn() {
+    for source in ["\\sum\\limits_1", "\\sum\\nolimits_1"] {
+        let (_, _, diagnostics) = layout_formula_with_diagnostics(source, false, 14.0).expect(source);
+        assert!(diagnostics.is_empty(), "`{source}` is a valid use and must not warn: {diagnostics:?}");
+    }
+}
+
 /// The starred `alignedat*` shares the grid of `alignedat`: the star only drops
 /// equation numbering, which belongs to the document layer.
 #[test]
