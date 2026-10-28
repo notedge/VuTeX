@@ -1072,6 +1072,94 @@ fn alignedat_pads_missing_columns_and_reports_the_mismatch() {
     }
 }
 
+/// `align` is the display-level `rl` grid: each `&` separates a column and
+/// every relation lands on one x, matching what `aligned` produces.
+#[test]
+fn align_lays_out_the_display_rl_grid() {
+    let source = "\\begin{align} q &= a \\\\ xyz &= b \\end{align}";
+    let (tree, metrics, diagnostics) = layout_formula_with_diagnostics(source, false, 14.0).expect("align should lay out");
+    assert!(diagnostics.is_empty(), "a plain `align` body must not warn: {diagnostics:?}");
+
+    let relations = glyphs_of(&tree, '=');
+    assert_eq!(relations.len(), 2, "one relation per row");
+    assert!((relations[0].0 - 32.5354).abs() < 0.01, "the relation column starts at 32.5354: {}", relations[0].0);
+    assert!(
+        (relations[0].0 - relations[1].0).abs() < 0.01,
+        "the relations must line up across rows: {} vs {}",
+        relations[0].0,
+        relations[1].0
+    );
+
+    let (q_x, _, _) = glyph_at(&tree, 'q');
+    let (x_x, _, _) = glyph_at(&tree, 'x');
+    let expected_shift = layout("xyz").width - layout("q").width;
+    assert!(
+        ((q_x - x_x) - expected_shift).abs() < 0.02,
+        "column 0 must be right-aligned: shift {} vs {expected_shift}",
+        q_x - x_x
+    );
+
+    let (a_x, _, _) = glyph_at(&tree, 'a');
+    let (b_x, _, _) = glyph_at(&tree, 'b');
+    assert!((a_x - 47.3162).abs() < 0.01, "column 1 starts at 47.3162: {a_x}");
+    assert!((a_x - b_x).abs() < 0.01, "column 1 must start at one x: {a_x} vs {b_x}");
+
+    assert!((metrics.width - 55.1002).abs() < 0.01, "two `rl` columns are 55.1002 px wide: {}", metrics.width);
+}
+
+/// `align` and `align*` share one geometry with `aligned`: the star only drops
+/// equation numbering, which belongs to the document layer.
+#[test]
+fn align_and_aligned_share_the_grid() {
+    let sources = [
+        "\\begin{align} q &= a \\\\ xyz &= b \\end{align}",
+        "\\begin{align*} q &= a \\\\ xyz &= b \\end{align*}",
+        "\\begin{aligned} q &= a \\\\ xyz &= b \\end{aligned}",
+    ];
+    let mut reference: Option<(f64, Vec<f64>)> = None;
+    for source in sources {
+        let (tree, metrics, diagnostics) = layout_formula_with_diagnostics(source, false, 14.0).expect(source);
+        assert!(diagnostics.is_empty(), "`{source}` must not warn: {diagnostics:?}");
+        let xs: Vec<f64> = glyphs(&tree).into_iter().map(|(x, _, _)| x).collect();
+        match &reference {
+            None => reference = Some((metrics.width, xs)),
+            Some((width, xs_ref)) => {
+                assert!((metrics.width - width).abs() < 0.01, "`{source}` width {} vs {width}", metrics.width);
+                assert_eq!(xs.len(), xs_ref.len(), "`{source}` must hold the same glyphs");
+                for (left, right) in xs.iter().zip(xs_ref) {
+                    assert!((left - right).abs() < 0.01, "`{source}` puts a glyph at {left} instead of {right}");
+                }
+            }
+        }
+    }
+}
+
+/// `align` is a display-level environment, so an enclosing `\scriptstyle` must
+/// not demote its cells. `aligned` follows the enclosing style instead.
+#[test]
+fn align_ignores_an_enclosing_script_style() {
+    let (align_tree, align_metrics, _) =
+        layout_formula_with_diagnostics("\\scriptstyle \\begin{align} q &= a \\end{align}", false, 14.0).expect("align");
+    let (aligned_tree, aligned_metrics, _) =
+        layout_formula_with_diagnostics("\\scriptstyle \\begin{aligned} q &= a \\end{aligned}", false, 14.0).expect("aligned");
+
+    let (_, _, align_q) = glyph_at(&align_tree, 'q');
+    assert!((align_q.size.to_f64() - 14.0).abs() < 0.01, "`align` keeps the 14 px display size: {}", align_q.size.to_f64());
+    let (_, _, aligned_q) = glyph_at(&aligned_tree, 'q');
+    assert!(
+        (aligned_q.size.to_f64() - 9.8).abs() < 0.01,
+        "`aligned` follows `\\scriptstyle` down to 9.8 px: {}",
+        aligned_q.size.to_f64()
+    );
+
+    assert!((align_metrics.width - 40.9043).abs() < 0.01, "the undemoted `align` grid is 40.9043 px: {}", align_metrics.width);
+    assert!(
+        (aligned_metrics.width - 28.6329).abs() < 0.01,
+        "the demoted `aligned` grid is 28.6329 px: {}",
+        aligned_metrics.width
+    );
+}
+
 /// The starred `alignedat*` shares the grid of `alignedat`: the star only drops
 /// equation numbering, which belongs to the document layer.
 #[test]

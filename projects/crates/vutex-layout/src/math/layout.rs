@@ -487,7 +487,10 @@ impl LayoutEngine {
                 SemanticNode::Subscript { base, sub } => self.layout_subsup(base, Some(sub), None, style),
                 SemanticNode::Superscript { base, sup } => self.layout_subsup(base, None, Some(sup), style),
                 SemanticNode::SubSuperscript { base, sub, sup } => self.layout_subsup(base, Some(sub), Some(sup), style),
-                SemanticNode::Matrix { rows, row_spacing, col_spacing, column_alignment } => {
+                SemanticNode::Matrix { rows, row_spacing, col_spacing, display_style, column_alignment } => {
+                    // `align` / `align*` pin their cells to display style so an
+                    // enclosing `\scriptstyle` cannot demote the grid.
+                    let style = if *display_style { MathStyle::Display } else { style };
                     self.layout_matrix(rows, *row_spacing, *col_spacing, column_alignment, style)
                 }
                 SemanticNode::Delimited { left, right, content } => {
