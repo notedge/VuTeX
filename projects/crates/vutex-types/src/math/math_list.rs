@@ -30,7 +30,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     operator::LimitsPolicy,
-    semantic::{MathStyle, SemanticNode, SymbolRole},
+    semantic::{FontStyle, MathStyle, SemanticNode, SymbolRole},
 };
 
 /// TeX Appendix G spacing classes + structural extensions.
@@ -174,6 +174,18 @@ impl Noad {
     /// demoted `Bin→Atom` as its own spacing entity.
     pub fn is_text_atom(&self) -> bool {
         matches!(self.nucleus.as_deref(), Some(SemanticNode::Text { .. }))
+    }
+
+    /// The font face of this noad's nucleus when it is a
+    /// [`SemanticNode::Text`], and `None` for every other nucleus.
+    ///
+    /// The face is part of a Text atom's identity: `\text{a}` and `\textbf{b}`
+    /// are two atoms, not one, because the bold run must keep its own face.
+    pub fn text_font_style(&self) -> Option<FontStyle> {
+        match self.nucleus.as_deref() {
+            Some(SemanticNode::Text { font_style, .. }) => Some(*font_style),
+            _ => None,
+        }
     }
 }
 
@@ -694,6 +706,8 @@ fn op_demotes(left: Option<NoadKind>, right: Option<NoadKind>) -> bool {
 /// Two Text atoms are merged only when:
 /// * both are `NoadKind::Atom`,
 /// * both carry a `SemanticNode::Text` nucleus (never Symbol),
+/// * they carry the same `FontStyle` face (a bold run never folds into the
+///   plain run before it),
 /// * they share the same `MathStyle` and `cramped` flag,
 /// * neither carries sub/superscripts (scripts break the run).
 fn merge_atoms_pass(input: Vec<Noad>) -> Vec<Noad> {
@@ -704,6 +718,7 @@ fn merge_atoms_pass(input: Vec<Noad>) -> Vec<Noad> {
                 && noad.kind == NoadKind::Atom
                 && last.is_text_atom()
                 && noad.is_text_atom()
+                && last.text_font_style() == noad.text_font_style()
                 && last.style == noad.style
                 && last.cramped == noad.cramped
                 && last.scripts.is_none()
@@ -723,9 +738,8 @@ fn merge_atoms_pass(input: Vec<Noad>) -> Vec<Noad> {
 /// Only succeeds when **both** are `SemanticNode::Text`; otherwise returns
 /// `b` verbatim as a safe fallback (the caller gate keeps Symbol/other
 /// nuclei out of this branch, so we only hit the fallback in defensive
-/// paths).  `font_style` is taken from `a` — in practice consecutive Text
-/// fragments always share the same style (checked by `merge_atoms_pass`),
-/// so this keeps the first fragment's face.
+/// paths).  `font_style` is taken from `a` — the merge gate already requires
+/// both fragments to share the face, so the concatenation keeps it.
 fn merge_text_nodes(a: Option<&Box<SemanticNode>>, b: Option<&Box<SemanticNode>>) -> Box<SemanticNode> {
     let a_text = a.and_then(|x| match x.as_ref() {
         SemanticNode::Text { text, font_style } => Some((text.clone(), *font_style)),
@@ -1107,6 +1121,53 @@ mod tests {
             Some(SemanticNode::Text { text, .. }) => {
                 assert_eq!(text, "abc");
             }
+            other => panic!("expected Text nucleus, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn text_atoms_with_a_different_face_stay_separate() {
+        // `\text{a}\textbf{b}`: the bold run must not fold into the plain run
+        // before it, otherwise the merged atom would be set entirely in the
+        // first fragment's face and the bold would disappear.
+        use crate::math::FontStyle;
+        let nodes = vec![
+            SemanticNode::Text { text: "a".into(), font_style: FontStyle::Normal },
+            SemanticNode::Text { text: "b".into(), font_style: FontStyle::Bold },
+        ];
+        let projected = project_semantic(&nodes, MathStyle::Text);
+        let normalized = normalize_math_list(projected);
+        assert_eq!(normalized.len(), 2, "a face change must break the Text run");
+        assert_eq!(normalized.0[0].text_font_style(), Some(FontStyle::Normal));
+        assert_eq!(normalized.0[1].text_font_style(), Some(FontStyle::Bold), "the bold fragment keeps its face");
+        match normalized.0[1].nucleus.as_deref() {
+            Some(SemanticNode::Text { text, font_style }) => {
+                assert_eq!(text, "b");
+                assert_eq!(*font_style, FontStyle::Bold);
+            }
+            other => panic!("expected Text nucleus, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn same_face_runs_around_a_face_change_still_merge() {
+        // `\text{a}\text{b}\textbf{c}\text{d}` folds into three atoms: the
+        // normal run, the bold fragment and the trailing normal fragment.
+        use crate::math::FontStyle;
+        let nodes = vec![
+            SemanticNode::Text { text: "a".into(), font_style: FontStyle::Normal },
+            SemanticNode::Text { text: "b".into(), font_style: FontStyle::Normal },
+            SemanticNode::Text { text: "c".into(), font_style: FontStyle::Bold },
+            SemanticNode::Text { text: "d".into(), font_style: FontStyle::Normal },
+        ];
+        let projected = project_semantic(&nodes, MathStyle::Text);
+        let normalized = normalize_math_list(projected);
+        assert_eq!(normalized.len(), 3);
+        assert_eq!(normalized.0[0].text_font_style(), Some(FontStyle::Normal));
+        assert_eq!(normalized.0[1].text_font_style(), Some(FontStyle::Bold));
+        assert_eq!(normalized.0[2].text_font_style(), Some(FontStyle::Normal));
+        match normalized.0[0].nucleus.as_deref() {
+            Some(SemanticNode::Text { text, .. }) => assert_eq!(text, "ab"),
             other => panic!("expected Text nucleus, got {other:?}"),
         }
     }
