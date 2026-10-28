@@ -112,26 +112,20 @@ impl FontMetricsSystem {
         MathKern::ZERO
     }
 
-    /// Return the four-corner MathKern scaled from mu to em units.
+    /// Return the four-corner MathKern in em units (identity wrapper).
     ///
-    /// TeX stores MathKern values in **mu** (1 mu = 1/18 em, the unit Appendix G
-    /// spacing is expressed in). Layout-side glue and pen advances are in **em**
-    /// units, so callers that add kern on top of `MathKern::combined` results
-    /// must first convert to em. This method applies the fixed 1/18 scaling.
+    /// Raw kern values stored by `get_math_kern` are already in **em** units —
+    /// `opentype::kern_to_em` converts font design units to em at ingest time —
+    /// so no additional scaling is needed. This method exists for API symmetry
+    /// with the layout layer, which accepts an `em_size` parameter; it would
+    /// allow font-size-dependent kern tweaks in the future.
     ///
-    /// The `em_size` parameter is accepted for API symmetry with other
-    /// font-metric lookups and for future font-size-dependent scaling; the
-    /// current mu→em ratio is purely geometric so it is not used here.
+    /// `em_size` is intentionally unused because the underlying kern is stored
+    /// as a fixed fraction of 1 em and scales linearly with font size at the
+    /// layout boundary.
     #[allow(unused_variables)]
     pub fn get_math_kern_em(&self, key: &GlyphKey, em_size: Fixed) -> MathKern {
-        let raw = self.get_math_kern(key);
-        let scale = Fixed::from_f64(1.0 / 18.0);
-        MathKern {
-            bottom_right: raw.bottom_right * scale,
-            top_right: raw.top_right * scale,
-            bottom_left: raw.bottom_left * scale,
-            top_left: raw.top_left * scale,
-        }
+        self.get_math_kern(key)
     }
 }
 
