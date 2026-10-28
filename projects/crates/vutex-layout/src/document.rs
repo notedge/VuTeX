@@ -36,6 +36,37 @@ const MONOSPACE: &str = "monospace";
 /// Fixed advance width of every monospace glyph, in em units.
 const MONOSPACE_ADVANCE: f64 = 0.6;
 
+// ---- TeX display-math skips ----
+//
+// LaTeX's `size10.clo` defaults, the numbers every class inherits when the body
+// is 10 pt, are `\abovedisplayskip` and `\belowdisplayskip` = `10pt plus 2pt
+// minus 5pt`, `\abovedisplayshortskip` = `0pt plus 3pt`, and
+// `\belowdisplayshortskip` = `6pt plus 3pt minus 3pt`. They are expressed in
+// em of the body size so an 11 pt body keeps the ratio `size11.clo` derives
+// from them instead of inheriting a 10 pt absolute value.
+//
+// Only the natural width and the `minus` shrink are consumed: this page builder
+// fills pages top-down and never justifies them to the bottom margin, so the
+// `plus` stretch component would be invented vertical padding rather than TeX's
+// flush-bottom behaviour.
+
+/// Natural space above a display formula, in em of the body size.
+const ABOVE_DISPLAY_SKIP_EM: f64 = 1.0;
+/// How far the space above a display may shrink, in em of the body size.
+const ABOVE_DISPLAY_SKIP_SHRINK_EM: f64 = 0.5;
+/// Natural space below a display formula, in em of the body size.
+const BELOW_DISPLAY_SKIP_EM: f64 = 1.0;
+/// How far the space below a display may shrink, in em of the body size.
+const BELOW_DISPLAY_SKIP_SHRINK_EM: f64 = 0.5;
+/// Natural space above a display that follows a short line, in em.
+const ABOVE_DISPLAY_SHORT_SKIP_EM: f64 = 0.0;
+/// Natural space below a display that follows a short line, in em.
+const BELOW_DISPLAY_SHORT_SKIP_EM: f64 = 0.6;
+/// How far the space below a short display may shrink, in em.
+const BELOW_DISPLAY_SHORT_SKIP_SHRINK_EM: f64 = 0.3;
+/// TeX compares the display against the preceding line plus two quads.
+const SHORT_DISPLAY_MARGIN_EM: f64 = 2.0;
+
 /// Family and face style shared by consecutive inline text atoms.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct TextFace {
@@ -290,6 +321,42 @@ struct MathAtom {
     depth: f64,
 }
 
+/// One TeX display skip resolved to points.
+///
+/// `natural` is the glue width the page places; `shrink` is how far TeX lets
+/// that glue contract so a display that lands near the bottom margin stays on
+/// its page instead of moving to the next one.
+#[derive(Debug, Clone, Copy)]
+struct DisplaySkip {
+    /// Natural glue width in points.
+    natural: f64,
+    /// Shrink allowance in points, at most this much shorter than `natural`.
+    shrink: f64,
+}
+
+/// The pair of skips TeX puts around a display formula.
+///
+/// The short form applies when the display starts at least two quads to the
+/// right of where the preceding line ends, which is TeX's test for a display
+/// that does not collide with the line above it.
+fn display_skips(size: f64, short: bool) -> (DisplaySkip, DisplaySkip) {
+    if short {
+        (
+            DisplaySkip { natural: ABOVE_DISPLAY_SHORT_SKIP_EM * size, shrink: 0.0 },
+            DisplaySkip {
+                natural: BELOW_DISPLAY_SHORT_SKIP_EM * size,
+                shrink: BELOW_DISPLAY_SHORT_SKIP_SHRINK_EM * size,
+            },
+        )
+    }
+    else {
+        (
+            DisplaySkip { natural: ABOVE_DISPLAY_SKIP_EM * size, shrink: ABOVE_DISPLAY_SKIP_SHRINK_EM * size },
+            DisplaySkip { natural: BELOW_DISPLAY_SKIP_EM * size, shrink: BELOW_DISPLAY_SKIP_SHRINK_EM * size },
+        )
+    }
+}
+
 /// Page-filling state for one layout pass.
 struct PageBuilder<'a> {
     hint: LayoutHint,
@@ -299,6 +366,8 @@ struct PageBuilder<'a> {
     diagrams: &'a Diagrams,
     /// Top edge of the next line box, in page coordinates.
     cursor: f64,
+    /// Right edge of the last painted line, used by TeX's short-display test.
+    last_line_right: Option<f64>,
     /// Degradations the pass applied, such as a math glyph without an outline.
     diagnostics: Vec<Diagnostic>,
 }
@@ -311,6 +380,7 @@ impl<'a> PageBuilder<'a> {
             pages: vec![blank_page(&hint)],
             diagrams,
             cursor: hint.margin.top,
+            last_line_right: None,
             diagnostics: Vec::new(),
         }
     }
@@ -424,11 +494,17 @@ impl<'a> PageBuilder<'a> {
     /// real formula box that flows on the text baseline and is never split.
     /// When the math engine rejects a formula, its raw source joins the text
     /// flow, matching the display-math fallback.
-    fn emit_paragraph(&mut self, content: &[Inline], indent: f64) {
+    ///
+    /// `before_display` suppresses the paragraph separation, because a display
+    /// formula supplies its own `\abovedisplayskip` and article's `\parskip`
+    /// contributes nothing in front of a display.
+    fn emit_paragraph(&mut self, content: &[Inline], indent: f64, before_display: bool) {
         let size = self.body_size();
         let atoms = self.compose_atoms(content, size, indent, BODY_FACE, ImageMode::Placeholder);
         self.emit_inline_lines(atoms, size, indent);
-        self.pad(size * 0.6);
+        if !before_display {
+            self.pad(size * 0.6);
+        }
     }
 
     /// Compose inline content into break atoms under `face`.
@@ -531,7 +607,8 @@ impl<'a> PageBuilder<'a> {
         self.ensure_space(line_metrics.raise + line_metrics.height);
         let top = self.cursor + line_metrics.raise;
         let baseline = top + ASCENT * size;
-        self.paint_line(line, size, self.left(indent), baseline, self.content_width(indent));
+        let right = self.paint_line(line, size, self.left(indent), baseline, self.content_width(indent));
+        self.last_line_right = Some(right);
         self.cursor = top + line_metrics.height;
     }
 
@@ -554,12 +631,13 @@ impl<'a> PageBuilder<'a> {
         LineMetrics { raise, height: self.line_box(size).max(raise + ASCENT * size + formula_depth) }
     }
 
-    /// Paint the atoms of one composed line from `x` on one baseline.
+    /// Paint the atoms of one composed line from `x` on one baseline, and return
+    /// the right edge the line reached.
     ///
     /// Consecutive atoms sharing a face, a destination, and a hover text stay
     /// one run, and a change of any key starts a new run so emphasis and link
     /// metadata survive into every renderer.
-    fn paint_line(&mut self, line: &[InlineAtom], size: f64, x: f64, baseline: f64, max_width: f64) {
+    fn paint_line(&mut self, line: &[InlineAtom], size: f64, x: f64, baseline: f64, max_width: f64) -> f64 {
         let mut x = x;
         let mut run = PendingText::body();
         let mut run_x = x;
@@ -594,6 +672,7 @@ impl<'a> PageBuilder<'a> {
             }
         }
         self.paint_inline_run(&mut run, run_x, baseline, size);
+        x
     }
 
     /// Paint the buffered paragraph text as one run and clear the buffer.
@@ -830,29 +909,60 @@ impl<'a> PageBuilder<'a> {
     /// Lay out display math and paint its positioned primitives.
     ///
     /// The formula is centred inside the content column like TeX display math
-    /// and follows the document body size. When the math engine cannot parse or
-    /// lay out the source, the raw TeX is rendered as text: a documented
-    /// degradation that keeps the formula visible instead of dropping it.
-    fn emit_math(&mut self, content: &str, indent: f64) {
+    /// and follows the document body size. Its vertical space comes from TeX's
+    /// display skips: `\abovedisplayskip` above and `\belowdisplayskip` below,
+    /// or the short forms when the preceding line ends at least two quads before
+    /// the centred formula starts. When the math engine cannot parse or lay out
+    /// the source, the raw TeX is rendered as text: a documented degradation that
+    /// keeps the formula visible instead of dropping it.
+    fn emit_math(&mut self, content: &str, indent: f64, preceding_line_right: Option<f64>) {
         let size = self.body_size();
-        let padding = size * 0.8;
         match layout_formula_with_diagnostics(content, true, size) {
             Ok((node, formula, math_diagnostics)) => {
                 self.diagnostics.extend(math_diagnostics);
-                self.pad(padding);
-                self.ensure_space(formula.height + formula.depth + padding * 2.0);
                 let left = self.left(indent);
                 let offset = ((self.content_width(indent) - formula.width) / 2.0).max(0.0);
-                let baseline = self.cursor + padding + formula.height;
+                let short = preceding_line_right
+                    .is_some_and(|right| right + SHORT_DISPLAY_MARGIN_EM * size <= left + offset);
+                let (above, below) = display_skips(size, short);
+                let (above_space, below_space) = self.fit_display(formula.height + formula.depth, above, below);
+                self.ensure_space(above_space + formula.height + formula.depth + below_space);
+                self.pad(above_space);
+                let baseline = self.cursor + formula.height;
                 let items = collect_layout_with_diagnostics(&node, left + offset, baseline, &mut self.diagnostics);
                 for item in items {
                     self.push(item);
                 }
-                self.cursor = baseline + formula.depth + padding;
-                self.pad(padding);
+                self.cursor = baseline + formula.depth;
+                self.pad(below_space);
             }
             Err(_) => self.emit_math_text_fallback(content, indent),
         }
+    }
+
+    /// Resolve the display skips against the space left on the current page.
+    ///
+    /// TeX decides page breaks on the glue's natural width but lets the glue
+    /// shrink by its `minus` component before the display moves to another page.
+    /// The stretch component is never used here: pages are filled top-down, so
+    /// stretching would fabricate vertical padding rather than fill a justified
+    /// page. [`PageBuilder::ensure_space`] still moves the display when even the
+    /// fully shrunk glue does not fit.
+    fn fit_display(&self, ink: f64, above: DisplaySkip, below: DisplaySkip) -> (f64, f64) {
+        if !self.page_has_items() {
+            return (above.natural, below.natural);
+        }
+        let available = self.hint.content_bottom() - self.cursor - ink;
+        let natural = above.natural + below.natural;
+        if available >= natural {
+            return (above.natural, below.natural);
+        }
+        let capacity = above.shrink + below.shrink;
+        if capacity <= 0.0 || available < natural - capacity {
+            return (above.natural, below.natural);
+        }
+        let ratio = ((natural - available) / capacity).min(1.0).max(0.0);
+        (above.natural - above.shrink * ratio, below.natural - below.shrink * ratio)
     }
 
     /// Plain-text rendering used when the math engine rejects the source.
@@ -875,17 +985,30 @@ impl<'a> PageBuilder<'a> {
     }
 
     fn render_blocks(&mut self, graph: &DocumentGraph, ids: &[NodeId], indent: f64) {
-        for id in ids {
+        // Right edge of the paragraph line directly above a display formula.
+        // TeX only considers a display short when the line in front of it ends
+        // well before the formula begins, so anything that is not a paragraph
+        // clears it.
+        let mut preceding_line_right = None;
+        for (index, id) in ids.iter().enumerate() {
             let Some(node) = graph.block(*id)
             else {
                 continue;
             };
+            let line_right = preceding_line_right.take();
             match &node.block {
                 Block::Section { level, title, children } => {
                     self.emit_heading(*level, title, indent);
                     self.render_blocks(graph, children, indent);
                 }
-                Block::Paragraph { content } => self.emit_paragraph(content, indent),
+                Block::Paragraph { content } => {
+                    let before_display = ids
+                        .get(index + 1)
+                        .and_then(|next| graph.block(*next))
+                        .is_some_and(|next| matches!(next.block, Block::Math { .. }));
+                    self.emit_paragraph(content, indent, before_display);
+                    preceding_line_right = self.last_line_right;
+                }
                 Block::List { ordered, items } => {
                     self.emit_list(*ordered, items, indent, graph);
                     self.pad(self.body_size() * 0.4);
@@ -907,7 +1030,7 @@ impl<'a> PageBuilder<'a> {
                         self.emit_code(source, indent);
                     }
                 }
-                Block::Math { content, language: _ } => self.emit_math(content, indent),
+                Block::Math { content, language: _ } => self.emit_math(content, indent, line_right),
                 Block::Table { caption, rows } => self.emit_table(caption.as_deref(), rows, indent),
                 Block::Opaque { kind, .. } if kind == "thematic_break" => self.emit_thematic_break(indent),
                 // An imported TeX picture environment carries no geometry

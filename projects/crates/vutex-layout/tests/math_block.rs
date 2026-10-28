@@ -1,6 +1,6 @@
 //! Document layout integration tests for display math blocks.
 
-use notedown_ir::{Block, DocumentGraph, DocumentId};
+use notedown_ir::{Block, DocumentGraph, DocumentId, Inline};
 use vutex_layout::{
     LayoutHint, layout,
     math::layout_formula_with_size,
@@ -189,4 +189,99 @@ fn math_blocks_paginate_without_leaving_the_page() {
     // Every math block contributes a fraction bar, none was dropped.
     let bars: usize = plan.pages.iter().map(|page| rules(page).len()).sum();
     assert_eq!(bars, 80, "expected one fraction bar per block, got {bars}");
+}
+
+/// Text baseline height as a fraction of the font size, mirroring layout.
+const ASCENT: f64 = 0.8;
+
+/// One-line paragraph followed by a display formula and another paragraph.
+fn paragraph_display_graph(content: &str) -> DocumentGraph {
+    let mut graph = DocumentGraph::new(DocumentId(9));
+    graph.push_block(Block::Paragraph { content: vec![Inline::Text { text: "Lead in.".to_string() }] });
+    graph.push_block(Block::Math { content: content.to_string(), language: None });
+    graph.push_block(Block::Paragraph { content: vec![Inline::Text { text: "Tail.".to_string() }] });
+    graph
+}
+
+/// Vertical ink extent `(top, bottom)` of the formula primitives on a page.
+fn formula_ink(page: &LayoutPage) -> (f64, f64) {
+    let mut top = f64::INFINITY;
+    let mut bottom = f64::NEG_INFINITY;
+    for item in &page.items {
+        match item {
+            LayoutItem::Path(p) => {
+                top = top.min(p.y - p.height);
+                bottom = bottom.max(p.y + p.depth);
+            }
+            LayoutItem::Rule(rule) => {
+                top = top.min(rule.y1 - rule.thickness / 2.0);
+                bottom = bottom.max(rule.y2 + rule.thickness / 2.0);
+            }
+            _ => {}
+        }
+    }
+    assert!(top.is_finite() && bottom.is_finite(), "the formula must paint primitives: {page:#?}");
+    (top, bottom)
+}
+
+/// Space above and below a display formula, measured from the surrounding
+/// paragraph line boxes to the formula's painted ink.
+fn display_gaps(page: &LayoutPage, hint: &LayoutHint) -> (f64, f64) {
+    let runs = text_runs(page);
+    assert_eq!(runs.len(), 2, "one paragraph line above and below the display: {runs:#?}");
+    let size = hint.base_font_size;
+    let (ink_top, ink_bottom) = formula_ink(page);
+    let above = ink_top - (runs[0].y + (hint.line_height - ASCENT) * size);
+    let below = (runs[1].y - ASCENT * size) - ink_bottom;
+    (above, below)
+}
+
+#[test]
+fn display_math_uses_tex_display_skips_above_and_below() {
+    let hint = LayoutHint::a4();
+    // A formula wider than the column is centred at the left margin, so the
+    // short line above it cannot make the display short.
+    let wide = vec!["\\frac{a}{b}"; 24].join("+");
+    let (_, formula) = layout_formula_with_size(&wide, true, hint.base_font_size).expect("formula layout");
+    assert!(formula.width > hint.content_width(), "the display must span the column, got {}", formula.width);
+
+    let plan = layout(&paragraph_display_graph(&wide));
+    assert_eq!(plan.pages.len(), 1, "the sample fits one page");
+    let (above, below) = display_gaps(&plan.pages[0], &hint);
+
+    // TeX's `\abovedisplayskip` / `\belowdisplayskip` are 10 pt plus 2 minus 5
+    // at a 10 pt body, scaled to the 11 pt body here.
+    let skip = hint.base_font_size;
+    assert!(
+        (above - skip).abs() <= 2.0,
+        "display above skip {above} pt must follow `\\abovedisplayskip` ({skip} pt +2 -5): {:?}",
+        text_runs(&plan.pages[0])
+    );
+    assert!(
+        (below - skip).abs() <= 2.0,
+        "display below skip {below} pt must follow `\\belowdisplayskip` ({skip} pt +2 -5): {:?}",
+        text_runs(&plan.pages[0])
+    );
+}
+
+#[test]
+fn display_math_after_a_short_line_uses_the_short_skips() {
+    let hint = LayoutHint::a4();
+    let plan = layout(&paragraph_display_graph("x+y"));
+    assert_eq!(plan.pages.len(), 1, "the sample fits one page");
+    let (above, below) = display_gaps(&plan.pages[0], &hint);
+
+    // `\abovedisplayshortskip` is 0 pt and `\belowdisplayshortskip` is 6 pt
+    // plus 3 minus 3, both scaled to the body size.
+    assert!(above.abs() < 1.0, "short display above skip {above} pt must collapse to `\\abovedisplayshortskip`: {:?}", text_runs(&plan.pages[0]));
+    let short_below = 0.6 * hint.base_font_size;
+    assert!(
+        (below - short_below).abs() <= 1.0,
+        "short display below skip {below} pt must follow `\\belowdisplayshortskip` ({short_below} pt): {:?}",
+        text_runs(&plan.pages[0])
+    );
+    // The short form must be tighter than the full display skips in both
+    // directions, which is the whole point of the TeX distinction.
+    assert!(above < hint.base_font_size - 2.0, "short above skip {above} pt is not tighter than the full skip");
+    assert!(below < hint.base_font_size - 2.0, "short below skip {below} pt is not tighter than the full skip");
 }
