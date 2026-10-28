@@ -186,6 +186,161 @@ pub enum MathStyle {
     ScriptScript,
 }
 
+/// Immutable structured math semantics consumed by structured backends.
+///
+/// This is the backend-facing shape of a formula, not the parser's source
+/// tree: every [`MathSemNode`] maps one-to-one onto a Presentation MathML
+/// element (`mfrac`, `msqrt` / `mroot`, `msub` / `msup` / `msubsup`, `mtable`,
+/// `mover` / `munder`, `mrow`, `mi` / `mn` / `mo`, `mtext`, `mspace`), and no
+/// layout geometry is involved.  Structured backends render this tree directly
+/// instead of reconstructing structure from painted glyph runs.
+///
+/// The imperative nodes of [`SemanticNode`] (`SetMathStyle`, `LimitsSpec`)
+/// carry no structure and are dropped during construction.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct MathSemantics {
+    /// Top-level siblings of the formula, in source order.
+    pub nodes: Vec<MathSemNode>,
+}
+
+impl MathSemantics {
+    /// Build from a parsed [`MathSemanticTree`].
+    ///
+    /// A sequence root is unwrapped so the result is a flat list of siblings
+    /// rather than a redundant nested row.
+    pub fn from_semantic_tree(tree: &MathSemanticTree) -> Self {
+        match &tree.root {
+            SemanticNode::Sequence(items) => Self::from_nodes(items),
+            other => Self { nodes: MathSemNode::from_semantic(other).into_iter().collect() },
+        }
+    }
+
+    /// Build from one semantic node sequence.
+    pub fn from_nodes(nodes: &[SemanticNode]) -> Self {
+        Self { nodes: nodes.iter().filter_map(MathSemNode::from_semantic).collect() }
+    }
+}
+
+/// One node of the structured math semantics tree.
+///
+/// Each variant corresponds to exactly one Presentation MathML element; the
+/// nested boxes of the source formula (numerator, radicand, scripts, cells)
+/// stay nested here instead of being flattened into a painted glyph stream.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum MathSemNode {
+    /// Group of siblings — `mrow`.
+    Row(Vec<MathSemNode>),
+    /// Alphabetic atom — `mi`.
+    Identifier(String),
+    /// Numeric atom — `mn`.
+    Number(String),
+    /// Operator or fence atom — `mo`.
+    Operator(String),
+    /// Authored text atom — `mtext`.
+    Text(String),
+    /// `mfrac`; `line` is kept so a line-less fraction (a binomial) can be
+    /// emitted with `linethickness="0"`.
+    Fraction { numerator: Box<MathSemNode>, denominator: Box<MathSemNode>, line: LineStyle },
+    /// `msqrt` when `degree` is `None`, `mroot` otherwise.
+    Radical { radicand: Box<MathSemNode>, degree: Option<Box<MathSemNode>> },
+    /// `msub`.
+    Sub { base: Box<MathSemNode>, sub: Box<MathSemNode> },
+    /// `msup`.
+    Sup { base: Box<MathSemNode>, sup: Box<MathSemNode> },
+    /// `msubsup`.
+    SubSup { base: Box<MathSemNode>, sub: Box<MathSemNode>, sup: Box<MathSemNode> },
+    /// `mtable` — rows of cells, each cell rendered inside its own `mtd`.
+    Table { rows: Vec<Vec<MathSemNode>> },
+    /// `mover` / `munder` depending on [`AccentPosition`].
+    Accent { base: Box<MathSemNode>, accent: String, position: AccentPosition },
+    /// Fence pair around a body — `mrow` wrapping `mo` fences.
+    ///
+    /// `None` marks a missing delimiter (`.`, as in `\left(…\right.`).
+    Delimited { left: Option<String>, right: Option<String>, body: Box<MathSemNode> },
+    /// Explicit math space — `mspace`, width in em of the current math size.
+    Space { width_em: f64 },
+    /// Placeholder for a glyph that carries neither a character nor structure.
+    Empty,
+}
+
+/// Whether an accent is drawn above or below its base.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub enum AccentPosition {
+    /// Accent above the base — MathML `mover`.
+    Above,
+    /// Accent below the base — MathML `munder`.
+    Below,
+}
+
+impl MathSemNode {
+    /// Lower one [`SemanticNode`] into its structured form.
+    ///
+    /// Returns `None` for the imperative nodes that carry no structure.
+    fn from_semantic(node: &SemanticNode) -> Option<Self> {
+        let child = |node: &SemanticNode| Box::new(Self::from_semantic(node).unwrap_or(MathSemNode::Empty));
+
+        Some(match node {
+            SemanticNode::Sequence(items) => MathSemNode::Row(MathSemantics::from_nodes(items).nodes).into_row(),
+            SemanticNode::HorizontalBox { content, .. }
+            | SemanticNode::Paragraph { content, .. }
+            | SemanticNode::VerticalBox { content, .. } => {
+                MathSemNode::Row(MathSemantics::from_nodes(content).nodes).into_row()
+            }
+            SemanticNode::Fraction { num, den, line } => {
+                MathSemNode::Fraction { numerator: child(num), denominator: child(den), line: *line }
+            }
+            SemanticNode::Radical { degree, radicand } => {
+                MathSemNode::Radical { radicand: child(radicand), degree: degree.as_ref().map(|degree| child(degree)) }
+            }
+            SemanticNode::Symbol { glyph_key, .. } => match glyph_key.char {
+                Some(c) if c.is_numeric() => MathSemNode::Number(c.to_string()),
+                Some(c) if c.is_alphabetic() => MathSemNode::Identifier(c.to_string()),
+                Some(c) => MathSemNode::Operator(c.to_string()),
+                None => MathSemNode::Empty,
+            },
+            SemanticNode::Text { text, .. } => MathSemNode::Text(text.clone()),
+            SemanticNode::Space { width } => MathSemNode::Space { width_em: width.to_f64() },
+            SemanticNode::Subscript { base, sub } => MathSemNode::Sub { base: child(base), sub: child(sub) },
+            SemanticNode::Superscript { base, sup } => MathSemNode::Sup { base: child(base), sup: child(sup) },
+            SemanticNode::SubSuperscript { base, sub, sup } => {
+                MathSemNode::SubSup { base: child(base), sub: child(sub), sup: child(sup) }
+            }
+            SemanticNode::Matrix { rows, .. } => MathSemNode::Table {
+                rows: rows
+                    .iter()
+                    .map(|row| row.iter().map(|cell| Self::from_semantic(cell).unwrap_or(MathSemNode::Empty)).collect())
+                    .collect(),
+            },
+            SemanticNode::Delimited { left, right, content } => MathSemNode::Delimited {
+                left: left.as_ref().and_then(delimiter_text),
+                right: right.as_ref().and_then(delimiter_text),
+                body: child(content),
+            },
+            // The parser only lowers over-accents (`\hat`, `\bar`, …), so every
+            // authored accent sits above its base.
+            SemanticNode::Accent { base, accent } => MathSemNode::Accent {
+                base: child(base),
+                accent: accent.char.map(|c| c.to_string()).unwrap_or_default(),
+                position: AccentPosition::Above,
+            },
+            SemanticNode::SetMathStyle(_) | SemanticNode::LimitsSpec(_) => return None,
+        })
+    }
+
+    /// Wrap a node list into a [`MathSemNode::Row`], keeping a lone node bare.
+    fn into_row(self) -> Self {
+        match self {
+            MathSemNode::Row(items) if items.len() == 1 => items.into_iter().next().unwrap_or(MathSemNode::Empty),
+            _ => self,
+        }
+    }
+}
+
+/// Character text of a delimiter glyph, when it has one.
+fn delimiter_text(glyph_key: &GlyphKey) -> Option<String> {
+    glyph_key.char.map(|c| c.to_string())
+}
+
 /// Fixed-point number for precise layout calculations.
 /// Using I28F4 as suggested in roadmap (or adaptable to TeX's 16.16).
 /// Here we use i32 with 16 bits for fractional part (TeX style) for better compatibility.
@@ -250,5 +405,189 @@ impl std::ops::Div<f64> for Fixed {
     type Output = Self;
     fn div(self, rhs: f64) -> Self {
         Fixed((self.0 as f64 / rhs) as i32)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sym(c: char, role: SymbolRole) -> SemanticNode {
+        SemanticNode::Symbol { glyph_key: GlyphKey::from_char(c, None, FontStyle::Math), role }
+    }
+
+    fn lower(node: &SemanticNode) -> MathSemNode {
+        MathSemNode::from_semantic(node).expect("structural node")
+    }
+
+    #[test]
+    fn fraction_keeps_numerator_and_denominator_nested() {
+        let frac = SemanticNode::Fraction {
+            num: Box::new(sym('a', SymbolRole::Ordinary)),
+            den: Box::new(sym('b', SymbolRole::Ordinary)),
+            line: LineStyle::Solid,
+        };
+        match lower(&frac) {
+            MathSemNode::Fraction { numerator, denominator, line } => {
+                assert_eq!(*numerator, MathSemNode::Identifier("a".into()));
+                assert_eq!(*denominator, MathSemNode::Identifier("b".into()));
+                assert_eq!(line, LineStyle::Solid);
+            }
+            other => panic!("expected Fraction, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn radical_degree_stays_nested() {
+        let rad = SemanticNode::Radical {
+            degree: Some(Box::new(sym('3', SymbolRole::Ordinary))),
+            radicand: Box::new(sym('x', SymbolRole::Ordinary)),
+        };
+        match lower(&rad) {
+            MathSemNode::Radical { radicand, degree } => {
+                assert_eq!(*radicand, MathSemNode::Identifier("x".into()));
+                assert_eq!(degree.as_deref(), Some(&MathSemNode::Number("3".into())));
+            }
+            other => panic!("expected Radical, got {other:?}"),
+        }
+
+        let plain = SemanticNode::Radical { degree: None, radicand: Box::new(sym('x', SymbolRole::Ordinary)) };
+        match lower(&plain) {
+            MathSemNode::Radical { degree, .. } => assert!(degree.is_none()),
+            other => panic!("expected Radical, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn scripts_keep_their_nesting() {
+        // `x^{a_b}`: a superscript whose body holds its own subscript.
+        let sup = SemanticNode::Superscript {
+            base: Box::new(sym('x', SymbolRole::Ordinary)),
+            sup: Box::new(SemanticNode::Subscript {
+                base: Box::new(sym('a', SymbolRole::Ordinary)),
+                sub: Box::new(sym('b', SymbolRole::Ordinary)),
+            }),
+        };
+        match lower(&sup) {
+            MathSemNode::Sup { base, sup } => {
+                assert_eq!(*base, MathSemNode::Identifier("x".into()));
+                match *sup {
+                    MathSemNode::Sub { base, sub } => {
+                        assert_eq!(*base, MathSemNode::Identifier("a".into()));
+                        assert_eq!(*sub, MathSemNode::Identifier("b".into()));
+                    }
+                    other => panic!("expected nested Sub, got {other:?}"),
+                }
+            }
+            other => panic!("expected Sup, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn sub_superscript_lowers_to_a_single_sub_sup_node() {
+        let node = SemanticNode::SubSuperscript {
+            base: Box::new(sym('x', SymbolRole::Ordinary)),
+            sub: Box::new(sym('a', SymbolRole::Ordinary)),
+            sup: Box::new(sym('b', SymbolRole::Ordinary)),
+        };
+        match lower(&node) {
+            MathSemNode::SubSup { base, sub, sup } => {
+                assert_eq!(*base, MathSemNode::Identifier("x".into()));
+                assert_eq!(*sub, MathSemNode::Identifier("a".into()));
+                assert_eq!(*sup, MathSemNode::Identifier("b".into()));
+            }
+            other => panic!("expected SubSup, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn matrix_lowers_to_table_rows() {
+        let matrix = SemanticNode::Matrix {
+            rows: vec![
+                vec![sym('a', SymbolRole::Ordinary), sym('b', SymbolRole::Ordinary)],
+                vec![sym('c', SymbolRole::Ordinary), sym('d', SymbolRole::Ordinary)],
+            ],
+            row_spacing: Fixed::ZERO,
+            col_spacing: Fixed::ZERO,
+            display_style: true,
+            column_alignment: vec![Alignment::Center; 2],
+        };
+        match lower(&matrix) {
+            MathSemNode::Table { rows } => {
+                assert_eq!(rows.len(), 2);
+                assert_eq!(rows[0][0], MathSemNode::Identifier("a".into()));
+                assert_eq!(rows[0][1], MathSemNode::Identifier("b".into()));
+                assert_eq!(rows[1][0], MathSemNode::Identifier("c".into()));
+                assert_eq!(rows[1][1], MathSemNode::Identifier("d".into()));
+            }
+            other => panic!("expected Table, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn accent_keeps_base_and_accent_glyph() {
+        let accent = SemanticNode::Accent {
+            base: Box::new(sym('f', SymbolRole::Ordinary)),
+            accent: GlyphKey::from_char('ˆ', None, FontStyle::Normal),
+        };
+        match lower(&accent) {
+            MathSemNode::Accent { base, accent, position } => {
+                assert_eq!(*base, MathSemNode::Identifier("f".into()));
+                assert_eq!(accent, "ˆ");
+                assert_eq!(position, AccentPosition::Above);
+            }
+            other => panic!("expected Accent, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn delimited_wraps_its_body_with_both_fences() {
+        let delim = SemanticNode::Delimited {
+            left: Some(GlyphKey::from_char('(', None, FontStyle::Normal)),
+            right: Some(GlyphKey::from_char(')', None, FontStyle::Normal)),
+            content: Box::new(sym('x', SymbolRole::Ordinary)),
+        };
+        match lower(&delim) {
+            MathSemNode::Delimited { left, right, body } => {
+                assert_eq!(left.as_deref(), Some("("));
+                assert_eq!(right.as_deref(), Some(")"));
+                assert_eq!(*body, MathSemNode::Identifier("x".into()));
+            }
+            other => panic!("expected Delimited, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn atoms_split_by_character_class() {
+        assert_eq!(lower(&sym('x', SymbolRole::Ordinary)), MathSemNode::Identifier("x".into()));
+        assert_eq!(lower(&sym('7', SymbolRole::Ordinary)), MathSemNode::Number("7".into()));
+        assert_eq!(lower(&sym('+', SymbolRole::Binary)), MathSemNode::Operator("+".into()));
+        assert_eq!(
+            lower(&SemanticNode::Text { text: "sin".into(), font_style: FontStyle::Normal }),
+            MathSemNode::Text("sin".into())
+        );
+    }
+
+    #[test]
+    fn imperative_nodes_are_dropped() {
+        let nodes = vec![
+            SemanticNode::SetMathStyle(MathStyle::Script),
+            sym('x', SymbolRole::Ordinary),
+            SemanticNode::LimitsSpec(LimitsPolicy::Limits),
+        ];
+        let semantics = MathSemantics::from_nodes(&nodes);
+        assert_eq!(semantics.nodes, vec![MathSemNode::Identifier("x".into())]);
+    }
+
+    #[test]
+    fn sequence_root_is_unwrapped_and_single_children_stay_bare() {
+        let tree = MathSemanticTree {
+            root: SemanticNode::Sequence(vec![
+                sym('x', SymbolRole::Ordinary),
+                SemanticNode::Sequence(vec![sym('+', SymbolRole::Binary)]),
+            ]),
+        };
+        let semantics = MathSemantics::from_semantic_tree(&tree);
+        assert_eq!(semantics.nodes, vec![MathSemNode::Identifier("x".into()), MathSemNode::Operator("+".into())]);
     }
 }
