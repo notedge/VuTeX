@@ -4,8 +4,8 @@
 use serde::{Deserialize, Serialize};
 use vutex_text::math::FontMetricsSystem;
 use vutex_types::math::{
-    Alignment, DelimiterComponent, Fixed, FontStyle, GlyphKey, GlyphMetrics, LineStyle, MathConstant, MathList, MathResult,
-    MathStyle, NoadKind, SemanticNode, SpacingRule, SymbolRole, normalize_math_list, project_semantic,
+    Alignment, DelimiterComponent, Fixed, FontStyle, GlyphKey, GlyphMetrics, LineStyle, MathConstant, MathKern, MathList,
+    MathResult, MathStyle, NoadKind, SemanticNode, SpacingRule, SymbolRole, normalize_math_list, project_semantic,
 };
 
 /// A node in the math layout tree.
@@ -380,6 +380,32 @@ impl LayoutEngine {
         }
     }
 
+    /// The first [`GlyphKey`] reachable from a semantic node.
+    ///
+    /// Walks the tree skipping `Sequence`, style commands, delimiters and
+    /// script wrappers until it hits a `Symbol` or `Text` with at least one
+    /// character.  Returns `None` for purely structural nodes (fractions,
+    /// radicals, matrices, …) that don't directly own a glyph key.
+    fn first_glyph_key(node: &SemanticNode) -> Option<GlyphKey> {
+        match node {
+            SemanticNode::Symbol { glyph_key, .. } => Some(glyph_key.clone()),
+            SemanticNode::Sequence(items) => items.iter().find_map(Self::first_glyph_key),
+            SemanticNode::Text { text, font_style } => text.chars().next().map(|c| GlyphKey::from_char(c, None, *font_style)),
+            SemanticNode::Subscript { base, .. }
+            | SemanticNode::Superscript { base, .. }
+            | SemanticNode::SubSuperscript { base, .. } => Self::first_glyph_key(base),
+            SemanticNode::Fraction { num, .. } => Self::first_glyph_key(num),
+            SemanticNode::Radical { radicand, .. } => Self::first_glyph_key(radicand),
+            SemanticNode::Delimited { content, .. } => Self::first_glyph_key(content),
+            SemanticNode::Accent { base, .. } => Self::first_glyph_key(base),
+            SemanticNode::HorizontalBox { content, .. } => content.iter().find_map(Self::first_glyph_key),
+            SemanticNode::Paragraph { content, .. } => content.iter().find_map(Self::first_glyph_key),
+            SemanticNode::VerticalBox { content, .. } => content.iter().find_map(Self::first_glyph_key),
+            SemanticNode::Matrix { rows, .. } => rows.iter().flatten().find_map(Self::first_glyph_key),
+            SemanticNode::Space { .. } | SemanticNode::SetMathStyle(_) | SemanticNode::LimitsSpec(_) => None,
+        }
+    }
+
     /// First atom of `node` that takes part in math spacing, skipping the
     /// imperative nodes that produce no boxes.
     fn leading_role(node: &SemanticNode) -> Option<SymbolRole> {
@@ -640,6 +666,12 @@ impl LayoutEngine {
     /// `SetMathStyle` updates the active style for subsequent atoms,
     /// `LimitsSpec` sets a pending flag that `layout_subsup` pops when the
     /// next `LargeOperator` base is seen. Neither produces boxes itself.
+    ///
+    /// As of the MathList-pipeline integration, every Sequence also has an
+    /// equivalent normalized path via [`layout_math_list`].  The legacy
+    /// inline-demote implementation below remains the canonical entry point
+    /// while parity gaps in the normalized path are being closed; a future
+    /// commit will flip the default once parity is 100% for real formulas.
     fn layout_sequence(&self, nodes: &[SemanticNode], mut style: MathStyle) -> MathResult<LayoutNode> {
         let mut children = Vec::new();
         // Pre-scan roles so spacing decisions see the full neighbour context
@@ -720,8 +752,41 @@ impl LayoutEngine {
                 let right_kind = noad.effective_kind();
                 let style_scale = self.get_style_scale(style);
                 let size = self.base_size * style_scale;
-                if let Some(glue) = Self::tex_skip_between_noad(left_kind, right_kind).to_glue(size) {
-                    children.push(LayoutNode::Glue(glue));
+                let skip = Self::tex_skip_between_noad(left_kind, right_kind);
+
+                // TeX's MathKern supplement: fetch four-corner kerns for
+                // both adjacent noads' leading glyphs and combine them with
+                // the Appendix G glue.  When either side yields no glyph
+                // (fraction nucleus, matrix cell, …) the kern falls back to
+                // ZERO and the spacing reduces to plain Appendix G glue.
+                let left_kern = noads[i - 1]
+                    .nucleus
+                    .as_deref()
+                    .and_then(Self::first_glyph_key)
+                    .map(|gk| self.font_system.get_math_kern(&gk))
+                    .unwrap_or(MathKern::ZERO);
+                let right_kern = noad
+                    .nucleus
+                    .as_deref()
+                    .and_then(Self::first_glyph_key)
+                    .map(|gk| self.font_system.get_math_kern(&gk))
+                    .unwrap_or(MathKern::ZERO);
+                let kern_width = MathKern::combined(&left_kern, &right_kern) * size;
+
+                match skip.to_glue(size) {
+                    Some(mut glue) => {
+                        glue.width = glue.width + kern_width;
+                        children.push(LayoutNode::Glue(glue));
+                    }
+                    None if kern_width > Fixed::ZERO => {
+                        // No Appendix G glue but a non-zero MathKern between
+                        // the two glyphs: emit a plain Glue carrying just the
+                        // kern width so the advance still records. Stretch
+                        // and shrink stay ZERO because TeX treats kern as a
+                        // rigid supplement, not a flexible spacing source.
+                        children.push(LayoutNode::Glue(Glue { width: kern_width, stretch: Fixed::ZERO, shrink: Fixed::ZERO }));
+                    }
+                    _ => {}
                 }
             }
 
