@@ -701,7 +701,7 @@ impl LayoutEngine {
     ) -> MathResult<FormulaLayoutResult> {
         let layout_node = self.layout_math_list(nodes, style)?;
         let paint = lower_layout_to_paint(&layout_node, self.base_size);
-        let metrics = extract_metrics(&layout_node);
+        let metrics = extract_metrics(&layout_node, &self.font_system);
         let fonts = FontMetricsSnapshot::default();
         Ok(FormulaLayoutResult { metrics, paint, diagnostics: Vec::new(), fonts })
     }
@@ -1988,39 +1988,78 @@ fn lower_layout_to_paint(node: &LayoutNode, base_size: Fixed) -> PaintNode {
 
 /// 从 [`LayoutNode`] 树根节点收集 [`FormulaMetrics`]。
 ///
-/// 根节点通常是 `pack_hbox` / `pack_vbox` 出来的 HBox / VBox，它自己
-/// 已经把 width / height / depth 算好了；直接取这几个字段即可。
-/// 递归兜底处理某些场景下 root 是单个 Glyph 或 Rule 的情况。
+/// 递归累加整棵树的 extents，避免依赖根节点必须是 HBox / VBox。
+/// width 是所有节点 advance 的总和（或 root HBox 的 width），height 是
+/// 所有子树的上沿到 baseline 的最大值，depth 是 baseline 下沿的最大值
+/// （正数表示 descended below baseline）。
 ///
-/// `axis` 暂时留 ZERO（等 layout 引擎把 MATH 表 AxisHeight 传进来）；
-/// `ink_bounds` 用 width/height/depth 推导一个以 baseline 为 y=0 的矩形。
-fn extract_metrics(root: &LayoutNode) -> FormulaMetrics {
-    let width;
-    let height;
-    let depth;
-    match root {
-        LayoutNode::HBox(h) => {
-            width = h.width;
-            height = h.height - h.shift;
-            depth = h.depth + h.shift;
-        }
-        LayoutNode::VBox(v) => {
-            width = v.width;
-            height = v.height;
-            depth = v.depth;
-        }
-        _ => {
-            width = root.width();
-            height = root.height();
-            depth = root.depth();
-        }
-    }
+/// `font_system` 参数预留了未来查 `AxisHeight` / 字体快照的入口；当前
+/// 版本 `axis` 仍返回 ZERO，等 [`FontMetricsSnapshot`] 真正填充后再查。
+/// `ink_bounds` 用 width / height / depth 推导一个以 baseline 为 y=0
+/// 的矩形。
+fn extract_metrics(root: &LayoutNode, font_system: &FontMetricsSystem) -> FormulaMetrics {
+    let (width, height, depth) = compute_extents(root);
+
+    // axis 暂时留 ZERO — FontMetricsSnapshot 还是空的。等 snapshot 接入后：
+    // let family = "default";
+    // let axis = font_system.get_math_constant(family, MathConstant::AxisHeight)
+    //     .unwrap_or(Fixed::from_f64(0.25)) * /* base size */;
+    let _ = font_system;
+    let axis = Fixed::ZERO;
 
     FormulaMetrics {
         width,
         height,
         depth,
-        axis: Fixed::ZERO,
+        axis,
         ink_bounds: BBox { x: Fixed::ZERO, y: Fixed::ZERO - height, width, height: height + depth },
+    }
+}
+
+/// 递归计算一个 [`LayoutNode`] 子树的 (width, height, depth)。
+///
+/// * width: 水平 advance 总量（HBox 累加所有 children，VBox 取最宽的 child）
+/// * height: 子树上沿到 baseline 的最大距离（正数）
+/// * depth: 子树下沿到 baseline 的最大距离（正数）
+fn compute_extents(node: &LayoutNode) -> (Fixed, Fixed, Fixed) {
+    match node {
+        LayoutNode::HBox(h) => {
+            let mut width = Fixed::ZERO;
+            let mut max_height = Fixed::ZERO;
+            let mut max_depth = Fixed::ZERO;
+            for child in &h.children {
+                let (cw, ch, cd) = compute_extents(child);
+                width = width + cw;
+                max_height = max_height.max(ch);
+                max_depth = max_depth.max(cd);
+            }
+            // HBox 自带 shift：向上（负 shift）减小 height，增大 depth；
+            // 向下（正 shift）相反。与 HBox::height / HBox::depth 的语义
+            // 完全对齐，所以直接用打包好的值加上 shift 修正即可。
+            width = width.max(h.width); // 打包值已经考虑了 glue_set 拉伸
+            let height = h.height - h.shift;
+            let depth = h.depth + h.shift;
+            (width, height, depth.max(max_depth))
+        }
+        LayoutNode::VBox(v) => {
+            let mut max_width = Fixed::ZERO;
+            let mut total_height = Fixed::ZERO;
+            let mut total_depth = Fixed::ZERO;
+            for child in &v.children {
+                let (cw, ch, cd) = compute_extents(child);
+                max_width = max_width.max(cw);
+                total_height = total_height + ch;
+                total_depth = total_depth + cd;
+            }
+            // VBox 也可以直接用打包值，shift 只水平移动不影响 extents
+            max_width = max_width.max(v.width);
+            (max_width, v.height, v.depth)
+        }
+        LayoutNode::Glyph(g) => (g.metrics.width, g.metrics.height, g.metrics.depth),
+        LayoutNode::Glue(g) => (g.width, Fixed::ZERO, Fixed::ZERO),
+        LayoutNode::Kern(k) => (*k, Fixed::ZERO, Fixed::ZERO),
+        LayoutNode::Rule { width, height, depth } => (*width, *height, *depth),
+        LayoutNode::Path(p) => (p.width, p.height, p.depth),
+        LayoutNode::Penalty { width, .. } => (*width, Fixed::ZERO, Fixed::ZERO),
     }
 }
