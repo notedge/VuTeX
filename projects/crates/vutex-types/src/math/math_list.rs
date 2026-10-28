@@ -343,14 +343,24 @@ fn project_one(
             list.push(noad);
         }
         SemanticNode::Space { .. } => {
-            // TeX treats explicit spaces as inner atoms for spacing.
-            let mut noad = Noad::new(NoadKind::Inner, state.style, state.cramped);
+            // Explicit TeX math spaces (`\,`, `\:`, `\;`, `\ `, `\quad`,
+            // `\qquad`) are pure kerns — they must not participate in the
+            // Appendix G spacing table on either side, so we emit them as
+            // plain Atoms (Atom→Atom = NoGlue).  The kern advance is still
+            // carried by the nucleus for `layout_node` to lower.
+            let mut noad = Noad::new(NoadKind::Atom, state.style, state.cramped);
             noad.nucleus = Some(Box::new(node.clone()));
             list.push(noad);
         }
         SemanticNode::Subscript { base, sub } => {
-            let mut noad = Noad::new(NoadKind::Atom, state.style, state.cramped);
+            let kind = kind_of_node(base);
+            let mut noad = Noad::new(kind, state.style, state.cramped);
             noad.nucleus = Some(base.clone());
+            if kind == NoadKind::Op {
+                if let Some(b) = pending_limits.take() {
+                    noad.limits = Some(b);
+                }
+            }
             let sub_state = state.subscript();
             noad.scripts = Some(Scripts {
                 sub: Some(Box::new(with_style(sub, sub_state.style))),
@@ -359,8 +369,14 @@ fn project_one(
             list.push(noad);
         }
         SemanticNode::Superscript { base, sup } => {
-            let mut noad = Noad::new(NoadKind::Atom, state.style, state.cramped);
+            let kind = kind_of_node(base);
+            let mut noad = Noad::new(kind, state.style, state.cramped);
             noad.nucleus = Some(base.clone());
+            if kind == NoadKind::Op {
+                if let Some(b) = pending_limits.take() {
+                    noad.limits = Some(b);
+                }
+            }
             let sup_state = state.superscript();
             noad.scripts = Some(Scripts {
                 sub: None,
@@ -369,8 +385,14 @@ fn project_one(
             list.push(noad);
         }
         SemanticNode::SubSuperscript { base, sub, sup } => {
-            let mut noad = Noad::new(NoadKind::Atom, state.style, state.cramped);
+            let kind = kind_of_node(base);
+            let mut noad = Noad::new(kind, state.style, state.cramped);
             noad.nucleus = Some(base.clone());
+            if kind == NoadKind::Op {
+                if let Some(b) = pending_limits.take() {
+                    noad.limits = Some(b);
+                }
+            }
             let sub_state = state.subscript();
             let sup_state = state.superscript();
             noad.scripts = Some(Scripts {
@@ -449,6 +471,18 @@ fn project_one(
     }
 }
 
+/// Extract the [`NoadKind`] a semantic node contributes to the flat math
+/// list.  Mirrors [`LayoutEngine::role_of`] but only covers the projector's
+/// own needs: Symbols map through `NoadKind::from_role`, everything else
+/// defaults to Atom.  Fractions / radicals / delimiters are handled by
+/// their own `project_one` arms and never reach here.
+fn kind_of_node(node: &SemanticNode) -> NoadKind {
+    match node {
+        SemanticNode::Symbol { role, .. } => NoadKind::from_role(*role),
+        _ => NoadKind::Atom,
+    }
+}
+
 /// Wrap a node with a matching `SetMathStyle` when the target style differs
 /// from the node's natural style.  In the shallow projection the sub/sup
 /// nodes still live as raw `SemanticNode`s so we push the style imperatively
@@ -481,7 +515,12 @@ pub fn normalize_math_list(mut list: MathList) -> MathList {
     let v = demote_pass(&list.0);
 
     // ── Pass 3: consecutive Atom merge ────────────────────────────────
-    let v = merge_atoms_pass(v);
+    // Intentionally disabled — merging adjacent Atoms loses distinct glyphs
+    // that TeX keeps separate (a demoted Bin next to an Atom is still a
+    // distinct Ordinary atom).  Legacy layout_sequence never merges, so we
+    // keep the two pipelines in lock-step by returning the demote output
+    // unchanged here.
+    let v = v;
 
     MathList(v)
 }
@@ -527,8 +566,14 @@ fn trim_boundary(list: &mut MathList) {
 // Pass 2 — demote
 // ────────────────────────────────────────────────────────────────────────
 
-/// TeX Appendix G demote pass — one left-to-right sweep, every noad sees
-/// its original neighbours (no iteration over partially demoted results).
+/// TeX Appendix G demote pass — one left-to-right sweep.
+///
+/// Each noad's **left** neighbour is read from the already-demoted `out`
+/// array (so a Bin→Atom demotion immediately affects the Rel/Op that
+/// follows), while the **right** neighbour is still the raw `input`.  This
+/// matches how [`LayoutEngine::spacing_between`] chains its two
+/// [`demote_role`] calls: the second atom always sees the first's resolved
+/// kind, not its original role.
 ///
 /// Neighbours are read via [`Noad::effective_kind`] so structural kinds
 /// (`Fence`, `Radical`, `Vcent`, `TableCell`) collapse to `Inner` before
@@ -538,7 +583,10 @@ fn demote_pass(input: &[Noad]) -> Vec<Noad> {
     let n = input.len();
     let mut out = Vec::with_capacity(n);
     for i in 0..n {
-        let left = (i > 0).then(|| input[i - 1].effective_kind());
+        // left = demote result (already in out), or None at the leading edge.
+        let left = out.last().map(|n: &Noad| n.effective_kind());
+        // right = still the original input; TeX evaluates demotion rules
+        // before any neighbour has changed.
         let right = (i + 1 < n).then(|| input[i + 1].effective_kind());
         let mut noad = input[i].clone();
         match noad.kind {
