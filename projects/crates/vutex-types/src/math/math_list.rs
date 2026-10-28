@@ -377,17 +377,12 @@ fn project_one(
             let kind = NoadKind::from_role(*role);
             let mut noad = Noad::new(kind, state.style, state.cramped);
             noad.nucleus = Some(Box::new(node.clone()));
-            if kind == NoadKind::Op {
-                if let Some(b) = pending_limits.take() {
-                    noad.limits = Some(b);
-                }
-            }
-            list.push(noad);
+            push_noad(list, noad, pending_limits);
         }
         SemanticNode::Text { .. } => {
             let mut noad = Noad::new(NoadKind::Atom, state.style, state.cramped);
             noad.nucleus = Some(Box::new(node.clone()));
-            list.push(noad);
+            push_noad(list, noad, pending_limits);
         }
         SemanticNode::Space { .. } => {
             // Explicit TeX math spaces (`\,`, `\:`, `\;`, `\ `, `\quad`,
@@ -397,56 +392,41 @@ fn project_one(
             // carried by the nucleus for `layout_node` to lower.
             let mut noad = Noad::new(NoadKind::Atom, state.style, state.cramped);
             noad.nucleus = Some(Box::new(node.clone()));
-            list.push(noad);
+            push_noad(list, noad, pending_limits);
         }
         SemanticNode::Subscript { base, sub } => {
             let kind = kind_of_node(base);
             let mut noad = Noad::new(kind, state.style, state.cramped);
             noad.nucleus = Some(base.clone());
-            if kind == NoadKind::Op {
-                if let Some(b) = pending_limits.take() {
-                    noad.limits = Some(b);
-                }
-            }
             let sub_state = state.sub();
             noad.scripts = Some(Scripts {
                 sub: Some(Box::new(with_style(sub, sub_state.style))),
                 sup: None,
             });
-            list.push(noad);
+            push_noad(list, noad, pending_limits);
         }
         SemanticNode::Superscript { base, sup } => {
             let kind = kind_of_node(base);
             let mut noad = Noad::new(kind, state.style, state.cramped);
             noad.nucleus = Some(base.clone());
-            if kind == NoadKind::Op {
-                if let Some(b) = pending_limits.take() {
-                    noad.limits = Some(b);
-                }
-            }
             let sup_state = state.sup();
             noad.scripts = Some(Scripts {
                 sub: None,
                 sup: Some(Box::new(with_style(sup, sup_state.style))),
             });
-            list.push(noad);
+            push_noad(list, noad, pending_limits);
         }
         SemanticNode::SubSuperscript { base, sub, sup } => {
             let kind = kind_of_node(base);
             let mut noad = Noad::new(kind, state.style, state.cramped);
             noad.nucleus = Some(base.clone());
-            if kind == NoadKind::Op {
-                if let Some(b) = pending_limits.take() {
-                    noad.limits = Some(b);
-                }
-            }
             let sub_state = state.sub();
             let sup_state = state.sup();
             noad.scripts = Some(Scripts {
                 sub: Some(Box::new(with_style(sub, sub_state.style))),
                 sup: Some(Box::new(with_style(sup, sup_state.style))),
             });
-            list.push(noad);
+            push_noad(list, noad, pending_limits);
         }
         SemanticNode::Fraction { num, den, line } => {
             // The fraction itself is an Inner atom in the current style, but
@@ -462,14 +442,14 @@ fn project_one(
                 den: Box::new(with_style(den, den_state.style)),
                 line: *line,
             }));
-            list.push(noad);
+            push_noad(list, noad, pending_limits);
         }
         SemanticNode::Radical { .. } => {
             // A radical's argument is typeset cramped at the current style.
             let inner = state.cramp();
             let mut noad = Noad::new(NoadKind::Radical, inner.style, inner.cramped);
             noad.nucleus = Some(Box::new(node.clone()));
-            list.push(noad);
+            push_noad(list, noad, pending_limits);
         }
         SemanticNode::Delimited { left, right, content } => {
             // Left delimiter → Open noad with a synthetic Symbol nucleus
@@ -480,7 +460,7 @@ fn project_one(
                     glyph_key: gk.clone(),
                     role: SymbolRole::Opening,
                 }));
-                list.push(open);
+                push_noad(list, open, pending_limits);
             }
 
             // Content → recursive projection, preserving its internal spacing
@@ -490,7 +470,7 @@ fn project_one(
             let before = list.len();
             project_one(content, state, list, pending_limits);
             if list.len() == before {
-                list.push(Noad::new(NoadKind::Inner, state.style, state.cramped));
+                push_noad(list, Noad::new(NoadKind::Inner, state.style, state.cramped), pending_limits);
             }
 
             // Right delimiter → Close noad.
@@ -500,13 +480,13 @@ fn project_one(
                     glyph_key: gk.clone(),
                     role: SymbolRole::Closing,
                 }));
-                list.push(close);
+                push_noad(list, close, pending_limits);
             }
         }
         SemanticNode::Accent { .. } => {
             let mut noad = Noad::new(NoadKind::Atom, state.style, state.cramped);
             noad.nucleus = Some(Box::new(node.clone()));
-            list.push(noad);
+            push_noad(list, noad, pending_limits);
         }
         SemanticNode::HorizontalBox { content, .. } | SemanticNode::Paragraph { content, .. } => {
             // Flattened: descend and emit children as if they were in a Sequence.
@@ -518,15 +498,29 @@ fn project_one(
             // Vertical box is Inner.
             let mut noad = Noad::new(NoadKind::Inner, state.style, state.cramped);
             noad.nucleus = Some(Box::new(node.clone()));
-            list.push(noad);
+            push_noad(list, noad, pending_limits);
             let _ = content; // deeper decomposition deferred
         }
         SemanticNode::Matrix { .. } => {
             let mut noad = Noad::new(NoadKind::TableCell, state.style, state.cramped);
             noad.nucleus = Some(Box::new(node.clone()));
-            list.push(noad);
+            push_noad(list, noad, pending_limits);
         }
     }
+}
+
+/// Append `noad`, binding the `\limits` / `\nolimits` policy queued before it.
+///
+/// `\limits` describes the atom it follows, so the queued policy is consumed
+/// here whatever that atom is.  It is only stored when the atom is an
+/// operator: a policy authored after an ordinary atom is reported by the
+/// parser as a misuse and must not travel on to the next operator.
+fn push_noad(list: &mut MathList, mut noad: Noad, pending_limits: &mut Option<LimitsPolicy>) {
+    let policy = pending_limits.take();
+    if noad.kind == NoadKind::Op {
+        noad.limits = policy;
+    }
+    list.push(noad);
 }
 
 /// Extract the [`NoadKind`] a semantic node contributes to the flat math
