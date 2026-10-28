@@ -351,7 +351,16 @@ fn demote_text(s: MathStyle) -> MathStyle {
 /// Script / ScriptScript).  Imperative nodes still override `state.style`
 /// in place, so subsequent noads carry the correct per-node style.
 pub fn project_semantic(nodes: &[SemanticNode], base_style: MathStyle) -> MathList {
-    let mut state = MathStyleState::from_style(base_style);
+    project_semantic_with_state(nodes, MathStyleState::from_style(base_style))
+}
+
+/// Project from an already-known recursive style state.
+///
+/// Layout uses this entry point when it enters a structure that pins `cramped`
+/// (a fraction denominator, a radical radicand or a sequence body); the noads
+/// then carry the flag so their own scripts and nested structures inherit it.
+pub fn project_semantic_with_state(nodes: &[SemanticNode], initial: MathStyleState) -> MathList {
+    let mut state = initial;
     let mut list = MathList::new();
     let mut pending_limits: Option<LimitsPolicy> = None;
 
