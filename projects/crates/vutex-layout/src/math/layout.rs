@@ -349,6 +349,16 @@ impl LayoutEngine {
         }
     }
 
+    /// First atom of `node` that takes part in math spacing, skipping the
+    /// imperative nodes that produce no boxes.
+    fn leading_role(node: &SemanticNode) -> Option<SymbolRole> {
+        match node {
+            SemanticNode::Sequence(items) => items.iter().find_map(Self::leading_role),
+            SemanticNode::SetMathStyle(_) | SemanticNode::LimitsSpec(_) => None,
+            other => Some(Self::role_of(other)),
+        }
+    }
+
     /// TeX math spacing between two adjacent atoms, simplified to the common cases.
     ///
     /// Returns the glue to insert between `left` and `right` at the current em
@@ -1307,6 +1317,14 @@ impl LayoutEngine {
         }
 
         // 2. Pack cells into rows
+        //
+        // `aligned` / `align` grids alternate a right-aligned and a left-aligned
+        // column.  A relation such as `=` normally opens the left column, where
+        // it has no left neighbour inside its own cell, so the grid has to
+        // supply the thick muskip TeX puts on both sides of a relation.  Without
+        // it the relation keeps only its right-hand space and the equation reads
+        // lopsided.
+        let rl_grid = matches!(column_alignment.first(), Some(Alignment::Right));
         let mut packed_rows = Vec::new();
         for r in 0..num_rows {
             let mut row_children = Vec::new();
@@ -1325,6 +1343,9 @@ impl LayoutEngine {
                         }
                         Alignment::Right => self.pack_hbox(vec![LayoutNode::Kern(diff), cell], Some(col_widths[c])),
                     };
+                    if c > 0 && rl_grid && Self::leading_role(&rows[r][c]) == Some(SymbolRole::Relation) {
+                        row_children.push(LayoutNode::Kern(Fixed::from_f64(THICK_MUSIP_EM) * size));
+                    }
                     row_children.push(cell_node);
                 }
                 else {

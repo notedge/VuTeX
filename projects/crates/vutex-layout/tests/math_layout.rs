@@ -1163,6 +1163,35 @@ fn aligned_alternates_right_and_left_columns() {
     }
 }
 
+/// `aligned` and `align` rows are `r <relation> l`: TeX puts one thick muskip
+/// (`5mu` = `5/18 em`) on each side of the relation and the rl grid adds no
+/// column gutter, so the relation does not sit lopsided in its row.  The only
+/// legitimate asymmetry is the preceding glyph's italic correction, which the
+/// font appends to its advance.
+#[test]
+fn aligned_relation_takes_thick_muskip_on_both_sides() {
+    let em = default_base_size(false);
+    let tolerance = 2.0 * em / Fixed::SCALE as f64;
+    let thick = 5.0 / 18.0 * em;
+
+    for source in ["\\begin{aligned}q&=a\\end{aligned}", "\\begin{align}q&=a\\end{align}"] {
+        let (tree, _) = layout_formula(source, false).expect(source);
+        let (q_x, _, q) = glyph_at(&tree, 'q');
+        let (eq_x, _, eq) = glyph_at(&tree, '=');
+        let (a_x, _, _) = glyph_at(&tree, 'a');
+
+        let after = a_x - (eq_x + eq.metrics.width.to_f64());
+        assert!((after - thick).abs() < tolerance, "`{source}` must leave {thick} px after the relation, found {after}");
+
+        let italic_correction = q.metrics.italic_correction.to_f64();
+        let before = eq_x - (q_x + q.metrics.width.to_f64());
+        assert!(
+            (before - thick - italic_correction).abs() < tolerance,
+            "`{source}` must leave {thick} px before the relation plus the {italic_correction} px italic correction, found {before}"
+        );
+    }
+}
+
 /// `gathered` puts every row on the same horizontal centre instead of aligning
 /// columns.
 #[test]
@@ -1249,12 +1278,26 @@ fn alignedat_fixes_the_grid_to_the_declared_column_pairs() {
     );
 
     // Column x coordinates: column 1 and column 3 are left-aligned, columns 0
-    // and 2 are right-aligned, so their right edges are what coincide.
-    assert!((relations[0].0 - 32.5354).abs() < 0.01, "column 1 starts at 32.5354: {}", relations[0].0);
+    // and 2 are right-aligned, so their right edges are what coincide.  An `rl`
+    // grid adds no column gutter: the only space between a right-aligned column
+    // and the relation that opens the next one is the thick muskip TeX puts
+    // before every relation.
+    let thick = 5.0 / 18.0 * 14.0;
+    let first_column = layout("xyz").width;
+    let first_relation_x = first_column + thick;
+    assert!(
+        (relations[0].0 - first_relation_x).abs() < 0.02,
+        "the first relation must start one thick muskip after its column: {} vs {first_relation_x}",
+        relations[0].0
+    );
     let (b_x, _, _) = glyph_at(&tree, 'b');
     let (d_x, _, _) = glyph_at(&tree, 'd');
-    assert!((b_x - 97.1664).abs() < 0.01, "column 3 starts at 97.1664: {b_x}");
     assert!((b_x - d_x).abs() < 0.01, "column 3 must start at one x: {b_x} vs {d_x}");
+    assert!(
+        (b_x - (relations[1].0 + layout("=").width + thick)).abs() < 0.02,
+        "column 3 must follow its relation by one thick muskip: {b_x} vs {}",
+        relations[1].0 + layout("=").width + thick
+    );
 
     let (q_x, _, _) = glyph_at(&tree, 'q');
     let (x_x, _, _) = glyph_at(&tree, 'x');
@@ -1276,7 +1319,11 @@ fn alignedat_fixes_the_grid_to_the_declared_column_pairs() {
         r_x - s_x
     );
 
-    assert!((metrics.width - 104.9504).abs() < 0.01, "four columns are 104.9504 px wide: {}", metrics.width);
+    let second_column = widths[0].max(widths[1]);
+    let first_pair = layout("=a").width.max(layout("=c").width);
+    let second_pair = layout("=b").width.max(layout("=d").width);
+    let expected_width = first_column + thick + first_pair + second_column + thick + second_pair;
+    assert!((metrics.width - expected_width).abs() < 0.02, "four columns must be {expected_width} px wide: {}", metrics.width);
 }
 
 /// A body that types fewer columns than `alignedat{n}` declares pads the missing
@@ -1296,10 +1343,11 @@ fn alignedat_pads_missing_columns_and_reports_the_mismatch() {
         layout_formula_with_diagnostics(one_pair, false, 14.0).expect("alignedat should lay out");
     assert!(clean.is_empty(), "a body that fills its pair must not warn: {clean:?}");
 
-    // Two empty trailing columns add their inter-column spacing and nothing
-    // else: `0.8 em` at the 14 px base em.
+    // `rl` grids carry no inter-column gutter, so two empty padded columns add
+    // neither width nor spacing: only the cells the author typed can move the
+    // row, and they must not move at all.
     let extra = padded_metrics.width - one_pair_metrics.width;
-    assert!((extra - 22.4).abs() < 0.02, "two padded columns add 22.4 px, found {extra}");
+    assert!(extra.abs() < 0.02, "two padded columns add no width, found {extra}");
 
     // Padding must not move the cells the author typed.
     for glyph in ['q', '=', 'a'] {
@@ -1322,7 +1370,16 @@ fn align_lays_out_the_display_rl_grid() {
 
     let relations = glyphs_of(&tree, '=');
     assert_eq!(relations.len(), 2, "one relation per row");
-    assert!((relations[0].0 - 32.5354).abs() < 0.01, "the relation column starts at 32.5354: {}", relations[0].0);
+    // An `rl` grid has no column gutter: the relation opens the second column
+    // and the grid supplies the thick muskip TeX puts before it.
+    let thick = 5.0 / 18.0 * 14.0;
+    let first_column = layout("xyz").width;
+    let relation_x = first_column + thick;
+    assert!(
+        (relations[0].0 - relation_x).abs() < 0.02,
+        "the relation column must start one thick muskip after the first column: {} vs {relation_x}",
+        relations[0].0
+    );
     assert!(
         (relations[0].0 - relations[1].0).abs() < 0.01,
         "the relations must line up across rows: {} vs {}",
@@ -1341,10 +1398,17 @@ fn align_lays_out_the_display_rl_grid() {
 
     let (a_x, _, _) = glyph_at(&tree, 'a');
     let (b_x, _, _) = glyph_at(&tree, 'b');
-    assert!((a_x - 47.3162).abs() < 0.01, "column 1 starts at 47.3162: {a_x}");
+    let after_relation = relations[0].0 + layout("=").width + thick;
+    assert!((a_x - after_relation).abs() < 0.02, "column 1 starts at {after_relation}: {a_x}");
     assert!((a_x - b_x).abs() < 0.01, "column 1 must start at one x: {a_x} vs {b_x}");
 
-    assert!((metrics.width - 55.1002).abs() < 0.01, "two `rl` columns are 55.1002 px wide: {}", metrics.width);
+    let second_column = layout("=a").width.max(layout("=b").width);
+    let expected_width = first_column + thick + second_column;
+    assert!(
+        (metrics.width - expected_width).abs() < 0.02,
+        "two `rl` columns must be {expected_width} px wide: {}",
+        metrics.width
+    );
 }
 
 /// `align` and `align*` share one geometry with `aligned`: the star only drops
@@ -1392,10 +1456,20 @@ fn align_ignores_an_enclosing_script_style() {
         aligned_q.size.to_f64()
     );
 
-    assert!((align_metrics.width - 40.9043).abs() < 0.01, "the undemoted `align` grid is 40.9043 px: {}", align_metrics.width);
+    // A single `q &= a` row is one thick muskip plus the two cells, so the width
+    // is a direct readout of the em each grid actually used.
+    let display_thick = 5.0 / 18.0 * 14.0;
+    let expected_align = layout("q").width + display_thick + layout("=a").width;
     assert!(
-        (aligned_metrics.width - 28.6329).abs() < 0.01,
-        "the demoted `aligned` grid is 28.6329 px: {}",
+        (align_metrics.width - expected_align).abs() < 0.02,
+        "the undemoted `align` grid must be {expected_align} px: {}",
+        align_metrics.width
+    );
+    let script_thick = 5.0 / 18.0 * 9.8;
+    let expected_aligned = layout("\\scriptstyle q").width + script_thick + layout("\\scriptstyle =a").width;
+    assert!(
+        (aligned_metrics.width - expected_aligned).abs() < 0.02,
+        "the demoted `aligned` grid must be {expected_aligned} px: {}",
         aligned_metrics.width
     );
 }
