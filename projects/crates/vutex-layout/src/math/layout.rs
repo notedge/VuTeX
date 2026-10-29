@@ -4,14 +4,14 @@
 use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
-use vutex_text::math::{FontMetricsSystem, GlyphId, MathFontFacts, StretchAxis, StretchPlan};
+use vutex_text::math::{FontMetricsSystem, GlyphId, KernCorner, MathFontFacts, StretchAxis, StretchPlan};
 use vutex_types::{
     Diagnostic, Severity,
     math::{
         Alignment, BBox, DelimiterComponent, DelimiterVariant, Fixed, FontMetricsSnapshot, FontStyle, FormulaLayoutResult,
-        FormulaMetrics, GlyphKey, GlyphMetrics, LimitsPolicy, LineStyle, MathConstant, MathEnvironment, MathItem, MathKern,
-        MathList, MathResult, MathStyle, MathStyleState, Noad, NoadKind, OperatorClass, PaintNode, SemanticNode, SpacingRule,
-        SymbolRole, normalize_math_list, project_semantic_with_state,
+        FormulaMetrics, GlyphKey, GlyphMetrics, LimitsPolicy, LineStyle, MathConstant, MathEnvironment, MathItem, MathList,
+        MathResult, MathStyle, MathStyleState, Noad, NoadKind, OperatorClass, PaintNode, SemanticNode, SpacingRule, SymbolRole,
+        normalize_math_list, project_semantic_with_state,
     },
 };
 
@@ -484,6 +484,44 @@ impl LayoutEngine {
         }
     }
 
+    /// The `MathKernInfo` kern at one corner of `key`, in absolute units.
+    ///
+    /// `correction_height` is how far the other glyph's ink reaches away from the
+    /// base baseline, in the same units. Returns `None` when the font publishes no
+    /// kern at that corner, which is different from a published zero.
+    fn math_kern(&self, key: &GlyphKey, corner: KernCorner, correction_height: Fixed, size: Fixed) -> Option<Fixed> {
+        let facts = font_facts()?;
+        let glyph = font_facts_glyph(key)?;
+        let kerns = facts.kerns();
+        kerns.corner(glyph, corner).is_some().then(|| kerns.math_kern(glyph, corner, correction_height / size) * size)
+    }
+
+    /// The `MathKernInfo` kern between two adjacent atoms, in absolute units.
+    ///
+    /// TeX kerns the facing corners: the left glyph's bottom-right at the
+    /// following glyph's depth, and the following glyph's top-left at the left
+    /// glyph's height. `None` when the font publishes neither corner.
+    fn math_kern_between(&self, left: &GlyphKey, right: &GlyphKey, size: Fixed) -> Option<Fixed> {
+        let left_metrics = self.font_system.get_metrics(left).ok()?;
+        let right_metrics = self.font_system.get_metrics(right).ok()?;
+        let left_corner = self.math_kern(left, KernCorner::BottomRight, right_metrics.depth, size);
+        let right_corner = self.math_kern(right, KernCorner::TopLeft, left_metrics.height, size);
+        match (left_corner, right_corner) {
+            (None, None) => None,
+            (left_kern, right_kern) => Some(left_kern.unwrap_or(Fixed::ZERO) + right_kern.unwrap_or(Fixed::ZERO)),
+        }
+    }
+
+    /// The font's `MathGlyphInfo` italic correction for `key`, in em.
+    ///
+    /// The metrics cache answers zero for a glyph it never extracted, so the
+    /// `MATH` table is the only place an italic correction can be taken from
+    /// without inventing one.
+    fn facts_italic_correction(&self, key: &GlyphKey) -> Option<Fixed> {
+        let facts = font_facts()?;
+        facts.italic_correction(font_facts_glyph(key)?)
+    }
+
     /// First atom of `node` that takes part in math spacing, skipping the
     /// imperative nodes that produce no boxes.
     fn leading_role(node: &SemanticNode) -> Option<SymbolRole> {
@@ -803,21 +841,22 @@ impl LayoutEngine {
                     children.push(LayoutNode::Glue(glue));
                 }
 
-                // MathKern four-corner supplement on top of Appendix G glue.
-                // TeX sums the preceding glyph's bottom-right kern and the
-                // following glyph's top-left kern in mu, then scales by the
-                // current em.  Glyphs without kern data contribute zero.
+                // MathKern supplement on top of Appendix G glue. TeX reads the
+                // corner that faces the neighbour: the left glyph's bottom-right
+                // at the following glyph's depth, and the following glyph's
+                // top-left at the left glyph's height, each through the font's
+                // correction-height step function. A font that publishes neither
+                // corner adds no kern at all.
                 let left_nucleus = left.nucleus.as_deref();
                 let right_nucleus = noad.nucleus.as_deref();
                 if let (Some(left_node), Some(right_node)) = (left_nucleus, right_nucleus) {
                     if let (Some(left_key), Some(right_key)) =
                         (Self::first_glyph_key(left_node), Self::first_glyph_key(right_node))
                     {
-                        let left_kern = self.font_system.get_math_kern(&left_key);
-                        let right_kern = self.font_system.get_math_kern(&right_key);
-                        let kern = MathKern::combined(&left_kern, &right_kern);
-                        if kern != Fixed::ZERO {
-                            children.push(LayoutNode::Kern(kern * size));
+                        if let Some(kern) = self.math_kern_between(&left_key, &right_key, size) {
+                            if kern != Fixed::ZERO {
+                                children.push(LayoutNode::Kern(kern));
+                            }
                         }
                     }
                 }
@@ -1582,6 +1621,11 @@ impl LayoutEngine {
         let mut script_vbox_children = Vec::new();
         let mut calculated_sub_shift = Fixed::ZERO;
         let mut sup_depth = Fixed::ZERO;
+        // How far each script's ink reaches away from the base baseline. TeX
+        // feeds that extent to the base glyph's corner kern, so it is recorded
+        // while the shifts are being decided.
+        let mut sup_correction_height = Fixed::ZERO;
+        let mut sub_correction_depth = Fixed::ZERO;
 
         if let Some(sup_node) = sup {
             let sup_layout = self.layout_node_state(sup_node, state.sup())?;
@@ -1598,6 +1642,7 @@ impl LayoutEngine {
             let calculated_sup_shift = sup_shift.max(base_layout.height() + sup_bottom_min);
 
             sup_depth = sup_layout.depth();
+            sup_correction_height = calculated_sup_shift + sup_layout.height();
             script_vbox_children.push(sup_layout);
             // This kern will be between Sup and the baseline (or Sub)
             script_vbox_children.push(LayoutNode::Kern(calculated_sup_shift));
@@ -1613,6 +1658,7 @@ impl LayoutEngine {
                     * size;
 
             calculated_sub_shift = sub_shift.max(sub_layout.height() - sub_top_max);
+            sub_correction_depth = calculated_sub_shift + sub_layout.depth();
 
             // If we already have a superscript, we need to adjust the kern between them
             if script_vbox_children.len() == 2 {
@@ -1709,6 +1755,8 @@ impl LayoutEngine {
             node => node,
         };
 
+        let base_key = Self::first_glyph_key(base);
+
         let mut children = Vec::new();
         children.push(base_layout);
         // A large operator keeps TeX's `\nolimits` placement when its scripts
@@ -1722,8 +1770,36 @@ impl LayoutEngine {
             let script_space =
                 self.font_system.get_math_constant(family, MathConstant::SpaceAfterScript).unwrap_or(Fixed::from_f64(0.05))
                     * size;
-            children.push(LayoutNode::Kern(script_space - children[0].italic_correction()));
+            // The `MATH` table publishes the italic correction the operator
+            // actually carries. The metrics cache answers zero for a glyph whose
+            // extents came from a lookup that never saw it.
+            let italic_correction = base_key
+                .as_ref()
+                .and_then(|key| self.facts_italic_correction(key))
+                .map(|em| em * size)
+                .unwrap_or_else(|| children[0].italic_correction());
+            children.push(LayoutNode::Kern(script_space - italic_correction));
         }
+
+        // TeX kerns the script against the base glyph's facing corner: a
+        // superscript reads the top-right corner at its own extent above the
+        // baseline, a lone subscript the bottom-right corner at its depth. A
+        // font that publishes no such corner attaches the script at the advance
+        // with no kern.
+        let script_kern = base_key.as_ref().and_then(|key| {
+            let (corner, correction_height) = match (sup.is_some(), sub.is_some()) {
+                (true, _) => (KernCorner::TopRight, sup_correction_height),
+                (false, true) => (KernCorner::BottomRight, sub_correction_depth),
+                (false, false) => return None,
+            };
+            self.math_kern(key, corner, correction_height, size)
+        });
+        if let Some(kern) = script_kern {
+            if kern != Fixed::ZERO {
+                children.push(LayoutNode::Kern(kern));
+            }
+        }
+
         children.push(final_scripts);
 
         Ok(self.pack_hbox(children, None))
