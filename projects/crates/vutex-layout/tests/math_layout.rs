@@ -498,6 +498,64 @@ fn stacked_limits_keep_the_math_table_gap_minima() {
     }
 }
 
+/// Integral limits use the same stacked-gap MATH constants as `\sum`, even
+/// though the `intop` class keeps scripts beside the operator by default.
+/// Authoring `\int\limits_0^1` must stack the scripts above and below the
+/// integral sign with `UpperLimitGapMin` / `LowerLimitGapMin` clearance, not
+/// hang them beside via `SpaceAfterScript`.
+#[test]
+fn integral_limits_use_the_stacked_math_constants() {
+    let system = builtin_font_metrics();
+    let constant = |name: MathConstant| system.get_math_constant("default", name).expect("font constant").to_f64();
+
+    let (tree, _) = layout_formula("\\int\\limits_{0}^{1}", true).expect("display integral with limits");
+    let (_, op_y, op) = glyph_at(&tree, '∫');
+    let em = op.size.to_f64();
+    let base_height = op.metrics.height.to_f64();
+    let base_depth = op.metrics.depth.to_f64();
+
+    // Both limits demote one level from display → script.
+    let script = em * constant(MathConstant::ScriptPercentScaleDown);
+    for c in ['1', '0'] {
+        let (_, _, glyph) = glyph_at(&tree, c);
+        assert!(
+            (glyph.size.to_f64() - script).abs() < 1e-3,
+            "`{c}` must be set at the script size {script}, not {}",
+            glyph.size.to_f64()
+        );
+    }
+
+    // Upper limit clearance follows `UpperLimitGapMin` / `UpperLimitBaselineRiseMin`.
+    let (_, sup_y, sup) = glyph_at(&tree, '1');
+    let sup_bottom = sup_y + sup.metrics.depth.to_f64();
+    let op_top = op_y - base_height;
+    let gap_min_upper = constant(MathConstant::UpperLimitGapMin) * em;
+    let rise_min = constant(MathConstant::UpperLimitBaselineRiseMin) * em;
+    let expected_upper = gap_min_upper.max(rise_min - base_height - sup.metrics.depth.to_f64());
+    assert!(
+        (op_top - sup_bottom - expected_upper).abs() < 1e-3,
+        "integral upper limit must clear the operator by {expected_upper}, not {}",
+        op_top - sup_bottom
+    );
+
+    // Lower limit clearance follows `LowerLimitGapMin` / `LowerLimitBaselineDropMin`.
+    let (_, sub_y, sub) = glyph_at(&tree, '0');
+    let sub_height = sub.metrics.height.to_f64();
+    let gap_min = constant(MathConstant::LowerLimitGapMin) * em;
+    let drop_min = constant(MathConstant::LowerLimitBaselineDropMin) * em;
+    let sub_drop = sub_y - op_y;
+    let expected_drop = (base_depth + gap_min + sub_height).max(drop_min);
+    assert!(
+        (sub_drop - expected_drop).abs() < 1e-3,
+        "integral lower limit baseline must sit {expected_drop} below the operator, not {sub_drop}"
+    );
+    let clearance = sub_y - sub_height - (op_y + base_depth);
+    assert!(
+        clearance + 1e-3 >= gap_min,
+        "integral lower limit must keep `LowerLimitGapMin` {gap_min} below the operator, not {clearance}"
+    );
+}
+
 /// Scripts beside an operator land on the `sup1`/`sup2` and `sub1`/`sub2`
 /// minima measured from the operator's own baseline, so a subscript's height
 /// never lifts the superscript.
