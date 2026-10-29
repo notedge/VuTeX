@@ -39,10 +39,10 @@ use super::{
 /// The 8 classes control which glue TeX inserts between two adjacent atoms
 /// (Ordinary, Binary, Relation, Large Operator, Closing, Opening,
 /// Punctuation, Inner).  [`NoadKind::Fence`], [`NoadKind::Radical`],
-/// [`NoadKind::Vcent`] and [`NoadKind::TableCell`] carry additional
-/// structural information that the spacing table does not need to know
-/// about; they sit alongside the 8 base classes because every noad has
-/// exactly one kind.
+/// [`NoadKind::Vcent`], [`NoadKind::TableCell`] and
+/// [`NoadKind::Environment`] carry additional structural information that the
+/// spacing table does not need to know about; they sit alongside the 8 base
+/// classes because every noad has exactly one kind.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum NoadKind {
     /// Ordinary atom (the default for most symbols and text).
@@ -69,6 +69,13 @@ pub enum NoadKind {
     Vcent,
     /// Structural kind: matrix cell.
     TableCell,
+    /// Structural kind: an AMS environment block (`aligned`, `align`,
+    /// `gather`, `multline`, `split`, `equation`).
+    ///
+    /// The block is one atom of the surrounding list — its rows, anchors and
+    /// numbering stay inside the nucleus — and takes Inner spacing like the
+    /// other structural containers.
+    Environment,
 }
 
 impl NoadKind {
@@ -577,6 +584,14 @@ fn project_one(
         }
         SemanticNode::Matrix { .. } => {
             let mut noad = Noad::new(NoadKind::TableCell, state.style, state.cramped);
+            noad.nucleus = Some(Box::new(node.clone()));
+            push_noad(list, noad, pending_limits);
+        }
+        SemanticNode::Environment(_) => {
+            // An AMS environment is one Inner atom of the surrounding list: its
+            // rows, alignment anchors and numbering intent stay inside the
+            // nucleus so the block still knows what kind of environment it is.
+            let mut noad = Noad::new(NoadKind::Environment, state.style, state.cramped);
             noad.nucleus = Some(Box::new(node.clone()));
             push_noad(list, noad, pending_limits);
         }
@@ -1564,5 +1579,32 @@ mod tests {
         assert_eq!(noad(&normalized, 0).kind, NoadKind::Open);
         // Bin is at position 1, left=Open → demotes to Atom.
         assert_eq!(noad(&normalized, 1).kind, NoadKind::Atom);
+    }
+
+    // ── AMS environment → one atom ───────────────────────────────────
+
+    #[test]
+    fn environment_projects_to_one_inner_atom() {
+        // An AMS environment block is one atom of the surrounding list: it takes
+        // Inner spacing like the other structural containers, and its kind stays
+        // inside the nucleus so the pipeline still knows which environment it is.
+        use crate::math::{EnvironmentKind, EnvironmentRow, MathEnvironment, Numbering};
+        let environment = MathEnvironment {
+            kind: EnvironmentKind::Gather,
+            starred: true,
+            rows: vec![EnvironmentRow { cells: vec![sym('x', SymbolRole::Ordinary)], numbering: Numbering::Default }],
+            row_spacing: Fixed::from_f64(0.35),
+            col_spacing: Fixed::ZERO,
+        };
+        let nodes =
+            vec![sym('a', SymbolRole::Ordinary), SemanticNode::Environment(environment), sym('b', SymbolRole::Ordinary)];
+        let normalized = normalize_math_list(MathList::from(nodes.as_slice()));
+        assert_eq!(normalized.noad_count(), 3, "the block is one atom, not one atom per row");
+        assert_eq!(noad(&normalized, 1).kind, NoadKind::Environment);
+        assert_eq!(noad(&normalized, 1).effective_kind(), NoadKind::Inner);
+        match noad(&normalized, 1).nucleus.as_deref() {
+            Some(SemanticNode::Environment(environment)) => assert_eq!(environment.kind, EnvironmentKind::Gather),
+            other => panic!("expected the environment nucleus, got {other:?}"),
+        }
     }
 }

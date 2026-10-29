@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::operator::LimitsPolicy;
+use crate::{Diagnostic, Severity};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct MathSemanticTree {
@@ -95,6 +96,15 @@ pub enum SemanticNode {
         base: Box<SemanticNode>,
         accent: GlyphKey,
     },
+    /// One AMS math environment block.
+    ///
+    /// The environment keeps its own kind, alignment anchors and per-row
+    /// numbering intent instead of being lowered into a flagged
+    /// [`SemanticNode::Matrix`]: `aligned`, `alignedat{n}`, `split`, `align`,
+    /// `equation`, `gather` and `multline` differ in how many `&` anchors a row
+    /// has, whether the rows are one equation or several, and whether the block
+    /// is display level.
+    Environment(MathEnvironment),
     /// Imperative: switch the enclosing layout scope to a different [`MathStyle`].
     ///
     /// Emitted by `\displaystyle`, `\textstyle`, `\scriptstyle`, `\scriptscriptstyle`.
@@ -108,6 +118,228 @@ pub enum SemanticNode {
     /// it).  The layout engine pops the policy when it reaches the next large
     /// operator so it does not bleed past one operator.
     LimitsSpec(LimitsPolicy),
+}
+
+/// One AMS math environment, with the structure its name implies.
+///
+/// The environment is not a matrix with an alignment flag.  Its
+/// [`kind`](Self::kind) decides how many `&` anchors a row carries, whether the
+/// rows form one equation or several independent ones, and whether the block
+/// pins display style.  Rows keep their cells split at the anchors so layout,
+/// diagnostics and structured backends can all read the authored structure.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct MathEnvironment {
+    /// Which AMS environment this block is.
+    pub kind: EnvironmentKind,
+    /// True for the starred form (`align*`, `gather*`, …), which carries no
+    /// automatic numbering.
+    pub starred: bool,
+    /// Rows in source order.
+    pub rows: Vec<EnvironmentRow>,
+    /// Vertical gap between adjacent rows, in em of the current math size.
+    pub row_spacing: Fixed,
+    /// Horizontal gap between adjacent alignment columns, in em.
+    pub col_spacing: Fixed,
+}
+
+/// One row of a [`MathEnvironment`].
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct EnvironmentRow {
+    /// Cells in source order — one per `&`-separated segment.
+    pub cells: Vec<SemanticNode>,
+    /// Numbering intent authored on this row.
+    pub numbering: Numbering,
+}
+
+/// Numbering intent an author wrote on one row.
+///
+/// VuTeX keeps the intent as data and assigns no numbers of its own: equation
+/// numbering belongs to the document that embeds the formula, so a `\tag`
+/// travels verbatim instead of being resolved here.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum Numbering {
+    /// No `\tag` / `\notag`: the row takes part in whatever numbering the
+    /// document applies to the environment.
+    Default,
+    /// `\notag` / `\nonumber`: the row is not numbered even when its
+    /// environment normally numbers every row.
+    Suppressed,
+    /// `\tag{…}`: the author's label for this row, verbatim.
+    Tag(String),
+}
+
+/// The AMS environments the math IR distinguishes.
+///
+/// The variants differ by structure, not by presentation options: they carry
+/// different numbers of alignment anchors, different row relationships and
+/// different levels, which is why they are modelled as distinct kinds.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum EnvironmentKind {
+    /// `aligned`: `&`-separated column pairs, width fitted to the block.
+    Aligned,
+    /// `alignedat{n}`: the `aligned` grid pinned to exactly `n` column pairs.
+    AlignedAt {
+        /// Number of right/left column pairs the environment declares.
+        pairs: u32,
+    },
+    /// `split`: one equation broken over its rows.  A split may have any
+    /// number of rows.
+    Split,
+    /// `align`: display-level rows, each set as `&`-separated column pairs.
+    Align,
+    /// `equation`: one display-level equation with no alignment anchors.
+    Equation,
+    /// `gather`: independent display-level rows, centred over each other.
+    Gather,
+    /// `multline`: one display-level equation whose first row is flush left,
+    /// last row flush right and middle rows centred.
+    Multline,
+}
+
+/// Where the `&` alignment anchors of an environment's rows sit.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum AlignmentAnchors {
+    /// Every `&` closes a right-aligned cell and opens a left-aligned one, so a
+    /// row of `2n` cells is `n` column pairs.  `aligned`, `alignedat` and
+    /// `align` use this form.
+    ColumnPairs,
+    /// No anchors: every row is one centred cell (`gather`, `equation`).
+    Centered,
+    /// `split`: the rows are fragments of one equation and meet at a single
+    /// alignment point rather than being independent column grids.
+    SingleEquation,
+    /// `multline`: no anchors, but the first row is flush left, the last row
+    /// flush right and the rows between are centred.
+    Spread,
+}
+
+impl EnvironmentKind {
+    /// Where this environment's `&` anchors sit.
+    pub fn anchors(self) -> AlignmentAnchors {
+        match self {
+            EnvironmentKind::Aligned | EnvironmentKind::AlignedAt { .. } | EnvironmentKind::Align => {
+                AlignmentAnchors::ColumnPairs
+            }
+            EnvironmentKind::Split => AlignmentAnchors::SingleEquation,
+            EnvironmentKind::Equation | EnvironmentKind::Gather => AlignmentAnchors::Centered,
+            EnvironmentKind::Multline => AlignmentAnchors::Spread,
+        }
+    }
+
+    /// Number of column pairs the environment pins, when it pins one.
+    ///
+    /// Only `alignedat{n}` declares a fixed count.  `aligned` and `align` take
+    /// however many pairs their widest row types.
+    pub fn fixed_pairs(self) -> Option<u32> {
+        match self {
+            EnvironmentKind::AlignedAt { pairs } => Some(pairs),
+            _ => None,
+        }
+    }
+
+    /// True when the environment is a display-level block of its own.
+    ///
+    /// `align`, `equation`, `gather` and `multline` pin display style, so an
+    /// enclosing `\scriptstyle` cannot demote their rows.  `aligned`,
+    /// `alignedat` and `split` are inline fragments and follow the surrounding
+    /// style.
+    pub fn is_display_level(self) -> bool {
+        matches!(self, EnvironmentKind::Align | EnvironmentKind::Equation | EnvironmentKind::Gather | EnvironmentKind::Multline)
+    }
+
+    /// The environment name as authors write it, starred forms included.
+    pub fn name(self, starred: bool) -> String {
+        let base = match self {
+            EnvironmentKind::Aligned => "aligned",
+            EnvironmentKind::AlignedAt { .. } => "alignedat",
+            EnvironmentKind::Split => "split",
+            EnvironmentKind::Align => "align",
+            EnvironmentKind::Equation => "equation",
+            EnvironmentKind::Gather => "gather",
+            EnvironmentKind::Multline => "multline",
+        };
+        if starred { format!("{base}*") } else { base.to_owned() }
+    }
+}
+
+/// Where an environment was found, which decides what the IR can report
+/// without guessing the author's intent.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum EnvironmentContext {
+    /// A display block of its own, e.g. `align` at the top level of a formula.
+    Display,
+    /// The body of an `equation` / `equation*`, where `split` belongs.
+    EquationBody,
+    /// Anywhere else: inside a group, a fraction numerator, a matrix cell.
+    Inline,
+}
+
+impl MathEnvironment {
+    /// Columns the environment presents.
+    ///
+    /// A fixed-pair environment presents exactly the declared pairs.  Every
+    /// other kind takes the widest row, because a shorter row simply leaves the
+    /// trailing columns empty.
+    pub fn columns(&self) -> usize {
+        let typed = self.rows.iter().map(|row| row.cells.len()).max().unwrap_or(0);
+        match self.kind.fixed_pairs() {
+            Some(pairs) => (pairs as usize) * 2,
+            None => typed,
+        }
+    }
+
+    /// Per-column alignment this environment's rows use.
+    ///
+    /// Derived from [`EnvironmentKind::anchors`], never from the author's row
+    /// contents.  `multline`'s per-row flush-left / flush-right placement is a
+    /// row rule rather than a column rule, so it reports a centred grid here
+    /// until layout consumes [`AlignmentAnchors::Spread`] directly.
+    pub fn column_alignment(&self) -> Vec<Alignment> {
+        let columns = self.columns();
+        match self.kind.anchors() {
+            // `split` rows meet at one alignment point, so the relation that
+            // opens a row sits in the right column and its tail in the left one,
+            // the same right/left alternation `aligned` and `align` use.
+            AlignmentAnchors::ColumnPairs | AlignmentAnchors::SingleEquation => {
+                (0..columns).map(|column| if column % 2 == 0 { Alignment::Right } else { Alignment::Left }).collect()
+            }
+            AlignmentAnchors::Centered | AlignmentAnchors::Spread => vec![Alignment::Center; columns],
+        }
+    }
+
+    /// Diagnostics the IR can raise from the environment alone.
+    ///
+    /// `context` says where the environment sits, because `split` is only
+    /// meaningful inside an equation.  A misplaced `split` is reported once and
+    /// left where the author put it: VuTeX does not guess that it belongs to
+    /// some other equation.
+    pub fn diagnostics(&self, context: EnvironmentContext) -> Vec<Diagnostic> {
+        let mut diagnostics = Vec::new();
+
+        if let EnvironmentKind::AlignedAt { pairs } = self.kind {
+            let declared = (pairs as usize) * 2;
+            let typed = self.rows.iter().map(|row| row.cells.len()).max().unwrap_or(0);
+            if declared != typed {
+                diagnostics.push(Diagnostic {
+                    code: "vutex.layout.math.alignedat_columns".to_owned(),
+                    severity: Severity::Warning,
+                    message: format!(
+                        "`\\begin{{alignedat}}` declares {pairs} column pairs ({declared} columns) but its body has {typed} columns, so the grid keeps {declared} columns"
+                    ),
+                });
+            }
+        }
+
+        if self.kind == EnvironmentKind::Split && context != EnvironmentContext::EquationBody {
+            diagnostics.push(Diagnostic {
+                code: "vutex.layout.math.split_outside_equation".to_owned(),
+                severity: Severity::Warning,
+                message: "`split` breaks one equation over its rows and belongs inside `equation`".to_owned(),
+            });
+        }
+
+        diagnostics
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
@@ -309,6 +541,17 @@ impl MathSemNode {
                 rows: rows
                     .iter()
                     .map(|row| row.iter().map(|cell| Self::from_semantic(cell).unwrap_or(MathSemNode::Empty)).collect())
+                    .collect(),
+            },
+            // Presentation MathML has exactly one `mtable` element and no field
+            // for an environment name, so the environment lowers to one table.
+            // Its kind, anchors and row numbering stay on the IR node
+            // ([`MathEnvironment`]), which is what layout and diagnostics read.
+            SemanticNode::Environment(environment) => MathSemNode::Table {
+                rows: environment
+                    .rows
+                    .iter()
+                    .map(|row| row.cells.iter().map(|cell| Self::from_semantic(cell).unwrap_or(MathSemNode::Empty)).collect())
                     .collect(),
             },
             SemanticNode::Delimited { left, right, content } => MathSemNode::Delimited {
@@ -589,5 +832,117 @@ mod tests {
         };
         let semantics = MathSemantics::from_semantic_tree(&tree);
         assert_eq!(semantics.nodes, vec![MathSemNode::Identifier("x".into()), MathSemNode::Operator("+".into())]);
+    }
+
+    // ── AMS environments ──────────────────────────────────────────────
+
+    fn env(kind: EnvironmentKind, rows: Vec<Vec<SemanticNode>>) -> MathEnvironment {
+        MathEnvironment {
+            kind,
+            starred: false,
+            rows: rows.into_iter().map(|cells| EnvironmentRow { cells, numbering: Numbering::Default }).collect(),
+            row_spacing: Fixed::from_f64(0.35),
+            col_spacing: Fixed::ZERO,
+        }
+    }
+
+    #[test]
+    fn environment_kinds_keep_their_own_anchors_and_level() {
+        // Each kind answers the anchor and level questions from its name, not
+        // from a matrix flag: `alignedat` pins a pair count, `split` is one
+        // equation over rows, `gather`/`equation` have no anchors, and only
+        // `align`/`equation`/`gather`/`multline` pin display style.
+        assert_eq!(EnvironmentKind::Aligned.anchors(), AlignmentAnchors::ColumnPairs);
+        assert_eq!(EnvironmentKind::AlignedAt { pairs: 2 }.anchors(), AlignmentAnchors::ColumnPairs);
+        assert_eq!(EnvironmentKind::Align.anchors(), AlignmentAnchors::ColumnPairs);
+        assert_eq!(EnvironmentKind::Split.anchors(), AlignmentAnchors::SingleEquation);
+        assert_eq!(EnvironmentKind::Equation.anchors(), AlignmentAnchors::Centered);
+        assert_eq!(EnvironmentKind::Gather.anchors(), AlignmentAnchors::Centered);
+        assert_eq!(EnvironmentKind::Multline.anchors(), AlignmentAnchors::Spread);
+
+        assert_eq!(EnvironmentKind::AlignedAt { pairs: 3 }.fixed_pairs(), Some(3));
+        assert_eq!(EnvironmentKind::Aligned.fixed_pairs(), None);
+
+        for kind in [EnvironmentKind::Align, EnvironmentKind::Equation, EnvironmentKind::Gather, EnvironmentKind::Multline] {
+            assert!(kind.is_display_level(), "{kind:?} is a display-level block");
+        }
+        for kind in [EnvironmentKind::Aligned, EnvironmentKind::AlignedAt { pairs: 1 }, EnvironmentKind::Split] {
+            assert!(!kind.is_display_level(), "{kind:?} follows the surrounding style");
+        }
+    }
+
+    #[test]
+    fn environment_flattens_to_one_table_and_the_ir_keeps_its_kind() {
+        // `\begin{split} … \tag{1} … \notag`: a split has no row limit.  The
+        // Presentation MathML shape has one `mtable` element and nowhere to put
+        // an environment name, so the structured projection lowers the block to
+        // one table.  The kind, anchors and per-row numbering survive on the IR
+        // node itself, which is what layout and diagnostics consume.
+        let mut environment =
+            env(EnvironmentKind::Split, vec![vec![sym('x', SymbolRole::Ordinary)], vec![sym('y', SymbolRole::Ordinary)]]);
+        environment.rows[0].numbering = Numbering::Tag("1".into());
+        environment.rows[1].numbering = Numbering::Suppressed;
+        let node = SemanticNode::Environment(environment);
+
+        match lower(&node) {
+            MathSemNode::Table { rows } => {
+                assert_eq!(rows.len(), 2, "a split has no two-row limit");
+                assert_eq!(rows[0], vec![MathSemNode::Identifier("x".into())]);
+                assert_eq!(rows[1], vec![MathSemNode::Identifier("y".into())]);
+            }
+            other => panic!("expected the block to lower to one table, got {other:?}"),
+        }
+
+        let SemanticNode::Environment(environment) = node
+        else {
+            panic!("expected an environment node")
+        };
+        assert_eq!(environment.kind, EnvironmentKind::Split);
+        assert_eq!(environment.rows[0].numbering, Numbering::Tag("1".into()));
+        assert_eq!(environment.rows[1].numbering, Numbering::Suppressed);
+    }
+
+    #[test]
+    fn alignedat_column_mismatch_is_reported() {
+        // `\begin{alignedat}{2}` declares two column pairs, so its rows carry
+        // four columns.  A body with three columns is reported, not silently
+        // widened or narrowed.
+        let matching = env(
+            EnvironmentKind::AlignedAt { pairs: 2 },
+            vec![vec![
+                sym('a', SymbolRole::Ordinary),
+                sym('=', SymbolRole::Relation),
+                sym('b', SymbolRole::Ordinary),
+                sym('c', SymbolRole::Ordinary),
+            ]],
+        );
+        assert!(matching.diagnostics(EnvironmentContext::Display).is_empty());
+        assert_eq!(matching.columns(), 4);
+
+        let short = env(
+            EnvironmentKind::AlignedAt { pairs: 2 },
+            vec![vec![sym('a', SymbolRole::Ordinary), sym('=', SymbolRole::Relation), sym('b', SymbolRole::Ordinary)]],
+        );
+        let diagnostics = short.diagnostics(EnvironmentContext::Display);
+        assert_eq!(diagnostics.len(), 1, "one mismatched declaration, one diagnostic: {diagnostics:?}");
+        assert_eq!(diagnostics[0].code, "vutex.layout.math.alignedat_columns");
+        assert_eq!(diagnostics[0].severity, Severity::Warning);
+        assert_eq!(short.columns(), 4, "the declared grid is what the environment presents");
+    }
+
+    #[test]
+    fn split_outside_an_equation_is_reported_but_stays_a_split() {
+        // `split` breaks one equation over its rows, so it only belongs in an
+        // equation body.  Anywhere else it is reported and left where the author
+        // put it — VuTeX never re-homes the rows into an equation of its own.
+        let split = env(EnvironmentKind::Split, vec![vec![sym('x', SymbolRole::Ordinary)]]);
+
+        assert!(split.diagnostics(EnvironmentContext::EquationBody).is_empty());
+        for context in [EnvironmentContext::Display, EnvironmentContext::Inline] {
+            let diagnostics = split.diagnostics(context);
+            assert_eq!(diagnostics.len(), 1, "{context:?}: {diagnostics:?}");
+            assert_eq!(diagnostics[0].code, "vutex.layout.math.split_outside_equation");
+        }
+        assert_eq!(split.kind, EnvironmentKind::Split, "the diagnostic does not guess the environment's home");
     }
 }
