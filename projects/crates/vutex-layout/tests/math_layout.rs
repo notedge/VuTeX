@@ -275,11 +275,9 @@ fn radical_index_uses_scriptscript_size_and_the_math_constants() {
     let rule_thickness = constant(MathConstant::RadicalRuleThickness);
 
     for display in [false, true] {
-        // Inline formulas clamp the MATH table's `RadicalVerticalGap` to at
-        // least 0.1 em so the rule stays visibly separated from the radicand.
-        let raw_gap = if display { display_gap } else { vertical_gap };
-        let min_clearance = 0.1;
-        let gap = raw_gap.max(min_clearance);
+        // The gap is the MATH table's own clearance for the style; the surd is
+        // never inflated to a hand-written minimum.
+        let gap = if display { display_gap } else { vertical_gap };
         let (tree, _) = layout_formula("\\sqrt[3]{x}", display).expect("radical should lay out");
         let (index_x, index_y, index) = glyph_at(&tree, '3');
         let (surd_x, _, surd) = glyph_at(&tree, '√');
@@ -2301,7 +2299,7 @@ fn cramped_leaves_the_insensitive_formulas_unchanged() {
     );
 
     for (source, width, height, depth) in
-        [("\\sqrt{\\frac{a}{b}}", 19.911, 11.866, 6.338), ("\\frac{a}{b}^2", 13.149, 17.945, 4.937)]
+        [("\\sqrt{\\frac{a}{b}}", 19.911, 11.166, 4.937), ("\\frac{a}{b}^2", 13.149, 17.945, 4.937)]
     {
         let metrics = layout(source);
         assert!(

@@ -1,15 +1,17 @@
 //! Layout tree (boxes, glue, kerns, glyphs) and the layout engine that lowers a
 //! `SemanticNode` tree into it.
 
+use std::sync::OnceLock;
+
 use serde::{Deserialize, Serialize};
-use vutex_text::math::FontMetricsSystem;
+use vutex_text::math::{FontMetricsSystem, GlyphId, MathFontFacts, StretchAxis, StretchPlan};
 use vutex_types::{
     Diagnostic, Severity,
     math::{
-        Alignment, BBox, DelimiterComponent, Fixed, FontMetricsSnapshot, FontStyle, FormulaLayoutResult, FormulaMetrics,
-        GlyphKey, GlyphMetrics, LimitsPolicy, LineStyle, MathConstant, MathEnvironment, MathItem, MathKern, MathList,
-        MathResult, MathStyle, MathStyleState, Noad, NoadKind, OperatorClass, PaintNode, SemanticNode, SpacingRule, SymbolRole,
-        normalize_math_list, project_semantic_with_state,
+        Alignment, BBox, DelimiterComponent, DelimiterVariant, Fixed, FontMetricsSnapshot, FontStyle, FormulaLayoutResult,
+        FormulaMetrics, GlyphKey, GlyphMetrics, LimitsPolicy, LineStyle, MathConstant, MathEnvironment, MathItem, MathKern,
+        MathList, MathResult, MathStyle, MathStyleState, Noad, NoadKind, OperatorClass, PaintNode, SemanticNode, SpacingRule,
+        SymbolRole, normalize_math_list, project_semantic_with_state,
     },
 };
 
@@ -369,11 +371,6 @@ pub fn render_layout_node(backend: &mut dyn LayoutBackend, node: &LayoutNode, x:
     Ok(())
 }
 
-/// Lower bound on how far the radical sign may be compressed vertically.
-const MIN_RADICAL_STRETCH: f64 = 0.4;
-/// Upper bound on how far the radical sign may be stretched vertically.
-const MAX_RADICAL_STRETCH: f64 = 3.0;
-
 /// The accent character `\bar` / `\overline` is built from.
 ///
 /// Unlike `\hat`, `\tilde`, `\dot`, `\ddot` and `\vec`, an overbar is a rule
@@ -384,6 +381,33 @@ const OVERBAR_ACCENT: char = '¯';
 const THICK_MUSIP_EM: f64 = 5.0 / 18.0;
 const MEDIUM_MUSIP_EM: f64 = 4.0 / 18.0;
 const THIN_MUSIP_EM: f64 = 3.0 / 18.0;
+
+/// The embedded math font's `MATH` facts, parsed once per process.
+///
+/// The facts answer the questions the metrics cache cannot: which prepared
+/// design covers a target size, how an assembly repeats its connectors, and
+/// what a `MathKernInfo` corner publishes at a correction height. Parsing the
+/// font is expensive enough that it must not happen per formula.
+fn font_facts() -> Option<&'static MathFontFacts> {
+    static FACTS: OnceLock<Option<MathFontFacts>> = OnceLock::new();
+    FACTS.get_or_init(MathFontFacts::embedded).as_ref()
+}
+
+/// The embedded font's glyph for a layout key.
+///
+/// `None` for a key that names another family or a character the font does not
+/// publish, so a caller can keep its metrics-cache route instead of guessing.
+fn font_facts_glyph(key: &GlyphKey) -> Option<GlyphId> {
+    let family = key.font_family.as_deref().unwrap_or("default");
+    if family != "default" {
+        return None;
+    }
+    match (key.glyph_id, key.char) {
+        (Some(glyph_id), _) => Some(GlyphId::new(glyph_id)),
+        (None, Some(c)) => font_facts()?.glyph_for_char(c),
+        (None, None) => None,
+    }
+}
 
 /// Lowers [`SemanticNode`] trees into [`LayoutNode`] boxes.
 #[derive(Debug)]
@@ -1317,14 +1341,9 @@ impl LayoutEngine {
         else {
             self.font_system.get_math_constant(family, MathConstant::RadicalVerticalGap).unwrap_or(Fixed::from_f64(0.05)) * size
         };
-        // TeX's `RadicalVerticalGap` for inline formulas is often tight. The
-        // clearance between the rule paint bottom and the radicand's ink top
-        // must stay at least 0.1 em so the surd reads visually separated from
-        // the radicand even when the font's own MATH constants are small. We
-        // clamp at that minimum without touching the rest of the surd geometry.
-        let min_clearance = Fixed::from_f64(0.1) * size;
-        let vertical_gap = vertical_gap.max(min_clearance);
-
+        // TeX's `RadicalVerticalGap` is the font's own clearance between the
+        // rule and the radicand's ink; do not inflate it, the MATH table already
+        // publishes the value that reads correctly with its own radical design.
         // Height of the radical bar above the radicand baseline. The sign is
         // raised so its own top bar lands exactly on this line and the two
         // strokes read as one continuous rule.
@@ -1332,33 +1351,12 @@ impl LayoutEngine {
         // The sign reaches this far below the baseline so it hugs the radicand.
         let sign_bottom = radicand_layout.depth() + vertical_gap;
 
-        // Resolve the real radical glyph from the font system; fall back to a
-        // layout_scaled_symbol which produces a Glyph node (works for both SVG
-        // and PDF backends — the Glyph has path_data when available, else text).
+        // The font grows the radical sign with `MathVariants`: a prepared design
+        // covering the bar, or a connector assembly beyond the tallest design. A
+        // sign drawn from the base outline is never scaled — that would be an
+        // invented design, not a font fact.
         let radical_key = GlyphKey::from_char('√', Some("default".to_string()), FontStyle::Normal);
-        let mut radical_symbol = self.layout_scaled_symbol(&radical_key, size)?;
-
-        // The embedded radical is designed for one em of radicand. Stretch it
-        // along y only so it spans the requested bar height and bottom extent
-        // without thickening its strokes sideways. The reported metrics then
-        // follow the stretched outline, so its descender stays inside the box.
-        if let LayoutNode::Glyph(glyph) = &mut radical_symbol {
-            if let Some(path) = glyph.path_data.clone() {
-                let height = glyph.metrics.height.to_f64();
-                let natural = height + glyph.metrics.depth.to_f64();
-                let mut stretched = path;
-                if natural > f64::EPSILON {
-                    let stretch = ((bar_top + sign_bottom).to_f64() / natural).clamp(MIN_RADICAL_STRETCH, MAX_RADICAL_STRETCH);
-                    if (stretch - 1.0).abs() > 0.01 {
-                        stretched = super::collect::scale_svg_path_d(&stretched, 1.0, stretch);
-                    }
-                }
-                let (outline_bottom, outline_top) = super::collect::path_vertical_extent(&stretched);
-                glyph.metrics.height = Fixed::from_f64(outline_top * size.to_f64());
-                glyph.metrics.depth = Fixed::from_f64(-outline_bottom.min(0.0) * size.to_f64());
-                glyph.path_data = Some(stretched);
-            }
-        }
+        let radical_symbol = self.radical_sign(&radical_key, bar_top + sign_bottom, size)?;
 
         // Raise the sign so its own top bar lands on the bar line. The shift is
         // an extra render offset that `LayoutNode::height` subtracts again, so
@@ -1412,6 +1410,29 @@ impl LayoutEngine {
         children.push(packed_radicand);
 
         Ok(self.pack_hbox(children, None))
+    }
+
+    /// The radical sign the font would draw for an extent of `target`.
+    ///
+    /// `MathVariants` publishes the radical as a construction, so the sign must
+    /// be the prepared design the font's own size search picks. The metrics
+    /// cache only carries the base sign's outline, so a prepared design without
+    /// an outline there is not paintable yet and the base sign is used as-is:
+    /// stretching the base outline would invent a design the font never drew.
+    fn radical_sign(&self, key: &GlyphKey, target: Fixed, size: Fixed) -> MathResult<LayoutNode> {
+        if let Some(facts) = font_facts() {
+            if let Some(glyph) = font_facts_glyph(key) {
+                if let Some(StretchPlan::Variant(variant)) =
+                    facts.variants().stretch(glyph, StretchAxis::Vertical, target / size)
+                {
+                    let variant_key = GlyphKey { glyph_id: Some(variant.glyph.get()), ..key.clone() };
+                    if self.font_system.get_glyph_path(&variant_key).is_ok() {
+                        return self.layout_scaled_symbol(&variant_key, size);
+                    }
+                }
+            }
+        }
+        self.layout_scaled_symbol(key, size)
     }
 
     fn layout_limits(
@@ -1914,25 +1935,91 @@ impl LayoutEngine {
     ) -> MathResult<LayoutNode> {
         let construction = self.font_system.get_delimiter_construction(key)?;
 
-        // 1. Try variants first
-        for variant in construction.variants {
-            let metrics = self.font_system.get_metrics(&variant.glyph)?;
-            let total_height = (metrics.height + metrics.depth) * size.to_f64();
-            if total_height >= target_height {
-                let glyph = self.layout_scaled_symbol(&variant.glyph, size)?;
-                return Ok(self.center_delimiter(glyph, axis_height));
+        // 1. The font's own size search. `MathVariants` decides which prepared
+        // design covers the target and how an assembly repeats its connectors,
+        // while the metrics cache supplies the outlines those pieces are drawn
+        // with. Never scale a delimiter: a font publishes larger designs instead.
+        if let Some(plan) = font_facts()
+            .and_then(|facts| font_facts_glyph(key).map(|glyph| (facts, glyph)))
+            .and_then(|(facts, glyph)| facts.variants().stretch(glyph, StretchAxis::Vertical, target_height / size))
+        {
+            if let Some(node) = self.draw_stretch_plan(&plan, &construction.variants, &construction.components, size)? {
+                return Ok(self.center_delimiter(node, axis_height));
             }
         }
 
-        // 2. If no variant is large enough, try assembly
-        if !construction.components.is_empty() {
-            return self.assemble_delimiter(&construction.components, target_height, size, axis_height);
+        // 2. Constructions a `MATH` table does not publish — the builtin bars are
+        // declared rectangle geometry — fall back to the sizes they declare.
+        let mut tallest: Option<&GlyphKey> = None;
+        let mut tallest_extent = Fixed::ZERO;
+        for variant in &construction.variants {
+            let metrics = self.font_system.get_metrics(&variant.glyph)?;
+            let extent = (metrics.height + metrics.depth) * size;
+            if extent >= target_height {
+                let glyph = self.layout_scaled_symbol(&variant.glyph, size)?;
+                return Ok(self.center_delimiter(glyph, axis_height));
+            }
+            if extent > tallest_extent {
+                tallest_extent = extent;
+                tallest = Some(&variant.glyph);
+            }
         }
 
-        // 3. Fallback: scale the original glyph
-        let scale_factor = target_height / (Fixed::from_f64(0.7) * size); // Approx 0.7em for normal char
-        let glyph = self.layout_scaled_symbol(key, size * scale_factor)?;
+        // 3. No declared design reaches the target; the tallest one still covers
+        // best and the base glyph is the last resort.
+        let glyph = self.layout_scaled_symbol(tallest.unwrap_or(key), size)?;
         Ok(self.center_delimiter(glyph, axis_height))
+    }
+
+    /// Draw a delimiter stretch plan with the outlines the metrics cache carries.
+    ///
+    /// Returns `Ok(None)` when the cache holds no outline for a piece the plan
+    /// needs, so the caller can fall back to a declared size instead of drawing
+    /// an invented design.
+    fn draw_stretch_plan(
+        &self,
+        plan: &StretchPlan<'_>,
+        variants: &[DelimiterVariant],
+        components: &[DelimiterComponent],
+        size: Fixed,
+    ) -> MathResult<Option<LayoutNode>> {
+        let find_variant =
+            |glyph: u16| variants.iter().map(|variant| &variant.glyph).find(|key| key.glyph_id == Some(glyph)).cloned();
+
+        match plan {
+            StretchPlan::Variant(variant) => {
+                let Some(key) = find_variant(variant.glyph.get())
+                else {
+                    return Ok(None);
+                };
+                if self.font_system.get_glyph_path(&key).is_err() {
+                    return Ok(None);
+                }
+                Ok(Some(self.layout_scaled_symbol(&key, size)?))
+            }
+            StretchPlan::Assembly(plan) => {
+                // Parts stack bottom-up: each piece sits on the previous one with
+                // the font's `MinConnectorOverlap` at the junction, so the stack
+                // spans `extent` rather than the sum of every part.
+                let mut parts = Vec::with_capacity(plan.instances.len() * 2);
+                for part in &plan.instances {
+                    let key =
+                        components.iter().map(|component| &component.glyph).find(|key| key.glyph_id == Some(part.glyph.get()));
+                    let Some(key) = key
+                    else {
+                        return Ok(None);
+                    };
+                    if self.font_system.get_glyph_path(key).is_err() {
+                        return Ok(None);
+                    }
+                    if !parts.is_empty() {
+                        parts.push(LayoutNode::Kern(Fixed::ZERO - plan.overlap * size));
+                    }
+                    parts.push(self.layout_scaled_symbol(key, size)?);
+                }
+                Ok(Some(self.pack_vbox(parts, Alignment::Center)))
+            }
+        }
     }
 
     fn center_delimiter(&self, node: LayoutNode, axis_height: Fixed) -> LayoutNode {
@@ -1943,45 +2030,6 @@ impl LayoutEngine {
             h.shift = (delim_h - delim_d) / Fixed::from_f64(2.0) - axis_height;
         }
         wrapper
-    }
-
-    fn assemble_delimiter(
-        &self,
-        components: &[DelimiterComponent],
-        target_height: Fixed,
-        size: Fixed,
-        axis_height: Fixed,
-    ) -> MathResult<LayoutNode> {
-        let mut parts = Vec::new();
-
-        // Calculate total height of non-extender parts
-        let mut fixed_height = Fixed::ZERO;
-        for comp in components {
-            if !comp.is_extender {
-                let metrics = self.font_system.get_metrics(&comp.glyph)?;
-                fixed_height = fixed_height + (metrics.height + metrics.depth) * size.to_f64();
-            }
-        }
-
-        // Simplified assembly: stack parts in order.
-        // For vertical delimiters, the components table is usually ordered top-to-bottom.
-        for comp in components {
-            if comp.is_extender {
-                let metrics = self.font_system.get_metrics(&comp.glyph)?;
-                let h = (metrics.height + metrics.depth) * size.to_f64();
-                let count =
-                    if h > Fixed::ZERO { ((target_height - fixed_height).to_f64() / h.to_f64()).ceil() as usize } else { 1 };
-                for _ in 0..count.max(1) {
-                    parts.push(self.layout_scaled_symbol(&comp.glyph, size)?);
-                }
-            }
-            else {
-                parts.push(self.layout_scaled_symbol(&comp.glyph, size)?);
-            }
-        }
-
-        let vbox = self.pack_vbox(parts, Alignment::Center);
-        Ok(self.center_delimiter(vbox, axis_height))
     }
 
     fn layout_accent(&self, accent: &GlyphKey, base: &SemanticNode, state: MathStyleState) -> MathResult<LayoutNode> {
