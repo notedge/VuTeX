@@ -3,20 +3,29 @@
   "source": {
     "engine": "latex",
     "version": null,
-    "command": "node scripts/oracle/probe-latex.mjs",
+    "command": "node scripts/oracle/emit-latex-boxes.mjs",
     "status": "blocked",
-    "status_reason": "no TeX engine is available: lualatex, kpsewhich, tlmgr, pdflatex are all missing from PATH (`lualatex` exited with `ENOENT`) so the corpus cannot be laid out by LaTeX and no box metric exists"
+    "status_reason": "no TeX engine is available: tectonic, lualatex, kpsewhich, pdflatex, tlmgr are all missing from PATH (tectonic exited with `ENOENT`; lualatex exited with `ENOENT`; kpsewhich exited with `ENOENT`; pdflatex exited with `ENOENT`; tlmgr exited with `ENOENT`), so the corpus cannot be laid out by LaTeX and no box metric exists"
   },
   "corpus_path": "projects/crates/vutex-layout/tests/fixtures/oracle/corpus.json",
   "procedure": [
-    "Install a TeX distribution that ships LuaLaTeX and `amsmath`, then re-run `node scripts/oracle/probe-latex.mjs`: `lualatex --version` must print a `This is LuaHBTeX, Version ...` line and `kpsewhich amsmath.sty` must return a path whose `\\ProvidesPackage{amsmath}[...]` line gives the amsmath version.",
-    "For every corpus formula, set it in a box in both styles: `\\setbox0=\\hbox{$<tex>$}` for inline and `\\setbox0=\\hbox{$\\displaystyle <tex>$}` for display.",
-    "Read `width`, `height` and `depth` from that box: `\\showbox0` writes a `. width X pt, height Y pt, depth Z pt` line into the run log, and `\\pdfsavepos` with `\\pdflastxpos`/`\\pdflastypos` gives the baseline origin of the same box when an absolute position is needed.",
-    "Convert TeX points to em with the font size actually used: `em = size_pt` (10pt for `\\normalsize`), so `value_em = value_pt / size_pt`. Record `font` with the family name, the `sha256` of the `.otf` file TeX loaded and its `units_per_em`.",
-    "Fields the TeX box model cannot report stay `null`: `ink_bounds` (a box dimension includes side bearings and italic correction but no glyph ink), `script_positions` (only derivable by measuring the script boxes separately), and `delimiter_size` for delimiters TeX assembles internally unless the harness prints that box too.",
-    "Emit one record per formula and style into `tests/fixtures/oracle/latex-status.json` with `source.status` `available`, the probed engine version and the amsmath version, and leave every field the harness did not measure as `null`."
+    "Install a TeX distribution (TeX Live / MacTeX) that ships LuaLaTeX and amsmath, or fetch `tectonic` which is self-contained. Re-run `node scripts/oracle/emit-latex-boxes.mjs`.",
+    "For every corpus formula, set it in a box in both styles: inline via `\\setbox0=\\hbox{$<tex>$}`, display via `\\setbox0=\\hbox{\\displaystyle $<tex>$}`.",
+    "Emit box dimensions to the log with explicit markers: `\\typeout{BOXMETRIC: <inline|display> <corpus_id> \\the\\wd0 \\the\\ht0 \\the\\dp0}`.",
+    "Parse the log, convert TeX points to em: `em = pt / 10.0` (normalsize = 10pt, so 1em == 10pt).",
+    "Only `width`, `height`, `depth` are reliable: `ink_bounds`, `script_positions`, `delimiter_size` stay null."
   ],
   "probes": [
+    {
+      "name": "tectonic",
+      "argv": [
+        "--version"
+      ],
+      "found": false,
+      "exit_code": null,
+      "version_line": null,
+      "error": "ENOENT"
+    },
     {
       "name": "lualatex",
       "argv": [
@@ -25,8 +34,7 @@
       "found": false,
       "exit_code": null,
       "version_line": null,
-      "error": "ENOENT",
-      "note": "required: LuaLaTeX sets the corpus and prints the box metrics the oracle needs"
+      "error": "ENOENT"
     },
     {
       "name": "kpsewhich",
@@ -37,18 +45,7 @@
       "exit_code": null,
       "version_line": null,
       "error": "ENOENT",
-      "note": "required: locates `amsmath.sty` so its version can be recorded"
-    },
-    {
-      "name": "tlmgr",
-      "argv": [
-        "--version"
-      ],
-      "found": false,
-      "exit_code": null,
-      "version_line": null,
-      "error": "ENOENT",
-      "note": "informative: identifies the TeX Live installation the engine comes from"
+      "note": "locates amsmath.sty for version recording"
     },
     {
       "name": "pdflatex",
@@ -59,7 +56,18 @@
       "exit_code": null,
       "version_line": null,
       "error": "ENOENT",
-      "note": "informative: a classic pdfTeX install would prove a TeX tree exists even without Lua"
+      "note": "classic pdfTeX signals a full TeX tree"
+    },
+    {
+      "name": "tlmgr",
+      "argv": [
+        "--version"
+      ],
+      "found": false,
+      "exit_code": null,
+      "version_line": null,
+      "error": "ENOENT",
+      "note": "identifies TeX Live distribution"
     }
   ],
   "amsmath": {
@@ -67,7 +75,7 @@
     "found": false,
     "path": null,
     "version": null,
-    "reason": "`kpsewhich` is not on PATH, so `amsmath.sty` cannot be located and its version cannot be read"
+    "reason": "`kpsewhich` not on PATH — cannot locate amsmath.sty"
   },
   "records": [
     {
@@ -78,9 +86,9 @@
       "source": {
         "engine": "latex",
         "version": null,
-        "command": "node scripts/oracle/probe-latex.mjs",
+        "command": "node scripts/oracle/emit-latex-boxes.mjs",
         "status": "blocked",
-        "status_reason": "no TeX engine is available: lualatex, kpsewhich, tlmgr, pdflatex are all missing from PATH (`lualatex` exited with `ENOENT`) so the corpus cannot be laid out by LaTeX and no box metric exists"
+        "status_reason": "no TeX engine is available: tectonic, lualatex, kpsewhich, pdflatex, tlmgr are all missing from PATH (tectonic exited with `ENOENT`; lualatex exited with `ENOENT`; kpsewhich exited with `ENOENT`; pdflatex exited with `ENOENT`; tlmgr exited with `ENOENT`), so the corpus cannot be laid out by LaTeX and no box metric exists"
       },
       "font": null,
       "size": null,
@@ -104,9 +112,9 @@
       "source": {
         "engine": "latex",
         "version": null,
-        "command": "node scripts/oracle/probe-latex.mjs",
+        "command": "node scripts/oracle/emit-latex-boxes.mjs",
         "status": "blocked",
-        "status_reason": "no TeX engine is available: lualatex, kpsewhich, tlmgr, pdflatex are all missing from PATH (`lualatex` exited with `ENOENT`) so the corpus cannot be laid out by LaTeX and no box metric exists"
+        "status_reason": "no TeX engine is available: tectonic, lualatex, kpsewhich, pdflatex, tlmgr are all missing from PATH (tectonic exited with `ENOENT`; lualatex exited with `ENOENT`; kpsewhich exited with `ENOENT`; pdflatex exited with `ENOENT`; tlmgr exited with `ENOENT`), so the corpus cannot be laid out by LaTeX and no box metric exists"
       },
       "font": null,
       "size": null,
@@ -130,9 +138,9 @@
       "source": {
         "engine": "latex",
         "version": null,
-        "command": "node scripts/oracle/probe-latex.mjs",
+        "command": "node scripts/oracle/emit-latex-boxes.mjs",
         "status": "blocked",
-        "status_reason": "no TeX engine is available: lualatex, kpsewhich, tlmgr, pdflatex are all missing from PATH (`lualatex` exited with `ENOENT`) so the corpus cannot be laid out by LaTeX and no box metric exists"
+        "status_reason": "no TeX engine is available: tectonic, lualatex, kpsewhich, pdflatex, tlmgr are all missing from PATH (tectonic exited with `ENOENT`; lualatex exited with `ENOENT`; kpsewhich exited with `ENOENT`; pdflatex exited with `ENOENT`; tlmgr exited with `ENOENT`), so the corpus cannot be laid out by LaTeX and no box metric exists"
       },
       "font": null,
       "size": null,
@@ -156,9 +164,9 @@
       "source": {
         "engine": "latex",
         "version": null,
-        "command": "node scripts/oracle/probe-latex.mjs",
+        "command": "node scripts/oracle/emit-latex-boxes.mjs",
         "status": "blocked",
-        "status_reason": "no TeX engine is available: lualatex, kpsewhich, tlmgr, pdflatex are all missing from PATH (`lualatex` exited with `ENOENT`) so the corpus cannot be laid out by LaTeX and no box metric exists"
+        "status_reason": "no TeX engine is available: tectonic, lualatex, kpsewhich, pdflatex, tlmgr are all missing from PATH (tectonic exited with `ENOENT`; lualatex exited with `ENOENT`; kpsewhich exited with `ENOENT`; pdflatex exited with `ENOENT`; tlmgr exited with `ENOENT`), so the corpus cannot be laid out by LaTeX and no box metric exists"
       },
       "font": null,
       "size": null,
@@ -182,9 +190,9 @@
       "source": {
         "engine": "latex",
         "version": null,
-        "command": "node scripts/oracle/probe-latex.mjs",
+        "command": "node scripts/oracle/emit-latex-boxes.mjs",
         "status": "blocked",
-        "status_reason": "no TeX engine is available: lualatex, kpsewhich, tlmgr, pdflatex are all missing from PATH (`lualatex` exited with `ENOENT`) so the corpus cannot be laid out by LaTeX and no box metric exists"
+        "status_reason": "no TeX engine is available: tectonic, lualatex, kpsewhich, pdflatex, tlmgr are all missing from PATH (tectonic exited with `ENOENT`; lualatex exited with `ENOENT`; kpsewhich exited with `ENOENT`; pdflatex exited with `ENOENT`; tlmgr exited with `ENOENT`), so the corpus cannot be laid out by LaTeX and no box metric exists"
       },
       "font": null,
       "size": null,
@@ -208,9 +216,9 @@
       "source": {
         "engine": "latex",
         "version": null,
-        "command": "node scripts/oracle/probe-latex.mjs",
+        "command": "node scripts/oracle/emit-latex-boxes.mjs",
         "status": "blocked",
-        "status_reason": "no TeX engine is available: lualatex, kpsewhich, tlmgr, pdflatex are all missing from PATH (`lualatex` exited with `ENOENT`) so the corpus cannot be laid out by LaTeX and no box metric exists"
+        "status_reason": "no TeX engine is available: tectonic, lualatex, kpsewhich, pdflatex, tlmgr are all missing from PATH (tectonic exited with `ENOENT`; lualatex exited with `ENOENT`; kpsewhich exited with `ENOENT`; pdflatex exited with `ENOENT`; tlmgr exited with `ENOENT`), so the corpus cannot be laid out by LaTeX and no box metric exists"
       },
       "font": null,
       "size": null,
@@ -234,9 +242,9 @@
       "source": {
         "engine": "latex",
         "version": null,
-        "command": "node scripts/oracle/probe-latex.mjs",
+        "command": "node scripts/oracle/emit-latex-boxes.mjs",
         "status": "blocked",
-        "status_reason": "no TeX engine is available: lualatex, kpsewhich, tlmgr, pdflatex are all missing from PATH (`lualatex` exited with `ENOENT`) so the corpus cannot be laid out by LaTeX and no box metric exists"
+        "status_reason": "no TeX engine is available: tectonic, lualatex, kpsewhich, pdflatex, tlmgr are all missing from PATH (tectonic exited with `ENOENT`; lualatex exited with `ENOENT`; kpsewhich exited with `ENOENT`; pdflatex exited with `ENOENT`; tlmgr exited with `ENOENT`), so the corpus cannot be laid out by LaTeX and no box metric exists"
       },
       "font": null,
       "size": null,
@@ -260,9 +268,9 @@
       "source": {
         "engine": "latex",
         "version": null,
-        "command": "node scripts/oracle/probe-latex.mjs",
+        "command": "node scripts/oracle/emit-latex-boxes.mjs",
         "status": "blocked",
-        "status_reason": "no TeX engine is available: lualatex, kpsewhich, tlmgr, pdflatex are all missing from PATH (`lualatex` exited with `ENOENT`) so the corpus cannot be laid out by LaTeX and no box metric exists"
+        "status_reason": "no TeX engine is available: tectonic, lualatex, kpsewhich, pdflatex, tlmgr are all missing from PATH (tectonic exited with `ENOENT`; lualatex exited with `ENOENT`; kpsewhich exited with `ENOENT`; pdflatex exited with `ENOENT`; tlmgr exited with `ENOENT`), so the corpus cannot be laid out by LaTeX and no box metric exists"
       },
       "font": null,
       "size": null,
@@ -286,9 +294,9 @@
       "source": {
         "engine": "latex",
         "version": null,
-        "command": "node scripts/oracle/probe-latex.mjs",
+        "command": "node scripts/oracle/emit-latex-boxes.mjs",
         "status": "blocked",
-        "status_reason": "no TeX engine is available: lualatex, kpsewhich, tlmgr, pdflatex are all missing from PATH (`lualatex` exited with `ENOENT`) so the corpus cannot be laid out by LaTeX and no box metric exists"
+        "status_reason": "no TeX engine is available: tectonic, lualatex, kpsewhich, pdflatex, tlmgr are all missing from PATH (tectonic exited with `ENOENT`; lualatex exited with `ENOENT`; kpsewhich exited with `ENOENT`; pdflatex exited with `ENOENT`; tlmgr exited with `ENOENT`), so the corpus cannot be laid out by LaTeX and no box metric exists"
       },
       "font": null,
       "size": null,
@@ -312,9 +320,9 @@
       "source": {
         "engine": "latex",
         "version": null,
-        "command": "node scripts/oracle/probe-latex.mjs",
+        "command": "node scripts/oracle/emit-latex-boxes.mjs",
         "status": "blocked",
-        "status_reason": "no TeX engine is available: lualatex, kpsewhich, tlmgr, pdflatex are all missing from PATH (`lualatex` exited with `ENOENT`) so the corpus cannot be laid out by LaTeX and no box metric exists"
+        "status_reason": "no TeX engine is available: tectonic, lualatex, kpsewhich, pdflatex, tlmgr are all missing from PATH (tectonic exited with `ENOENT`; lualatex exited with `ENOENT`; kpsewhich exited with `ENOENT`; pdflatex exited with `ENOENT`; tlmgr exited with `ENOENT`), so the corpus cannot be laid out by LaTeX and no box metric exists"
       },
       "font": null,
       "size": null,
@@ -338,9 +346,9 @@
       "source": {
         "engine": "latex",
         "version": null,
-        "command": "node scripts/oracle/probe-latex.mjs",
+        "command": "node scripts/oracle/emit-latex-boxes.mjs",
         "status": "blocked",
-        "status_reason": "no TeX engine is available: lualatex, kpsewhich, tlmgr, pdflatex are all missing from PATH (`lualatex` exited with `ENOENT`) so the corpus cannot be laid out by LaTeX and no box metric exists"
+        "status_reason": "no TeX engine is available: tectonic, lualatex, kpsewhich, pdflatex, tlmgr are all missing from PATH (tectonic exited with `ENOENT`; lualatex exited with `ENOENT`; kpsewhich exited with `ENOENT`; pdflatex exited with `ENOENT`; tlmgr exited with `ENOENT`), so the corpus cannot be laid out by LaTeX and no box metric exists"
       },
       "font": null,
       "size": null,
@@ -364,9 +372,9 @@
       "source": {
         "engine": "latex",
         "version": null,
-        "command": "node scripts/oracle/probe-latex.mjs",
+        "command": "node scripts/oracle/emit-latex-boxes.mjs",
         "status": "blocked",
-        "status_reason": "no TeX engine is available: lualatex, kpsewhich, tlmgr, pdflatex are all missing from PATH (`lualatex` exited with `ENOENT`) so the corpus cannot be laid out by LaTeX and no box metric exists"
+        "status_reason": "no TeX engine is available: tectonic, lualatex, kpsewhich, pdflatex, tlmgr are all missing from PATH (tectonic exited with `ENOENT`; lualatex exited with `ENOENT`; kpsewhich exited with `ENOENT`; pdflatex exited with `ENOENT`; tlmgr exited with `ENOENT`), so the corpus cannot be laid out by LaTeX and no box metric exists"
       },
       "font": null,
       "size": null,
@@ -390,9 +398,9 @@
       "source": {
         "engine": "latex",
         "version": null,
-        "command": "node scripts/oracle/probe-latex.mjs",
+        "command": "node scripts/oracle/emit-latex-boxes.mjs",
         "status": "blocked",
-        "status_reason": "no TeX engine is available: lualatex, kpsewhich, tlmgr, pdflatex are all missing from PATH (`lualatex` exited with `ENOENT`) so the corpus cannot be laid out by LaTeX and no box metric exists"
+        "status_reason": "no TeX engine is available: tectonic, lualatex, kpsewhich, pdflatex, tlmgr are all missing from PATH (tectonic exited with `ENOENT`; lualatex exited with `ENOENT`; kpsewhich exited with `ENOENT`; pdflatex exited with `ENOENT`; tlmgr exited with `ENOENT`), so the corpus cannot be laid out by LaTeX and no box metric exists"
       },
       "font": null,
       "size": null,
@@ -416,9 +424,9 @@
       "source": {
         "engine": "latex",
         "version": null,
-        "command": "node scripts/oracle/probe-latex.mjs",
+        "command": "node scripts/oracle/emit-latex-boxes.mjs",
         "status": "blocked",
-        "status_reason": "no TeX engine is available: lualatex, kpsewhich, tlmgr, pdflatex are all missing from PATH (`lualatex` exited with `ENOENT`) so the corpus cannot be laid out by LaTeX and no box metric exists"
+        "status_reason": "no TeX engine is available: tectonic, lualatex, kpsewhich, pdflatex, tlmgr are all missing from PATH (tectonic exited with `ENOENT`; lualatex exited with `ENOENT`; kpsewhich exited with `ENOENT`; pdflatex exited with `ENOENT`; tlmgr exited with `ENOENT`), so the corpus cannot be laid out by LaTeX and no box metric exists"
       },
       "font": null,
       "size": null,
@@ -442,9 +450,9 @@
       "source": {
         "engine": "latex",
         "version": null,
-        "command": "node scripts/oracle/probe-latex.mjs",
+        "command": "node scripts/oracle/emit-latex-boxes.mjs",
         "status": "blocked",
-        "status_reason": "no TeX engine is available: lualatex, kpsewhich, tlmgr, pdflatex are all missing from PATH (`lualatex` exited with `ENOENT`) so the corpus cannot be laid out by LaTeX and no box metric exists"
+        "status_reason": "no TeX engine is available: tectonic, lualatex, kpsewhich, pdflatex, tlmgr are all missing from PATH (tectonic exited with `ENOENT`; lualatex exited with `ENOENT`; kpsewhich exited with `ENOENT`; pdflatex exited with `ENOENT`; tlmgr exited with `ENOENT`), so the corpus cannot be laid out by LaTeX and no box metric exists"
       },
       "font": null,
       "size": null,
@@ -468,9 +476,9 @@
       "source": {
         "engine": "latex",
         "version": null,
-        "command": "node scripts/oracle/probe-latex.mjs",
+        "command": "node scripts/oracle/emit-latex-boxes.mjs",
         "status": "blocked",
-        "status_reason": "no TeX engine is available: lualatex, kpsewhich, tlmgr, pdflatex are all missing from PATH (`lualatex` exited with `ENOENT`) so the corpus cannot be laid out by LaTeX and no box metric exists"
+        "status_reason": "no TeX engine is available: tectonic, lualatex, kpsewhich, pdflatex, tlmgr are all missing from PATH (tectonic exited with `ENOENT`; lualatex exited with `ENOENT`; kpsewhich exited with `ENOENT`; pdflatex exited with `ENOENT`; tlmgr exited with `ENOENT`), so the corpus cannot be laid out by LaTeX and no box metric exists"
       },
       "font": null,
       "size": null,
@@ -494,9 +502,9 @@
       "source": {
         "engine": "latex",
         "version": null,
-        "command": "node scripts/oracle/probe-latex.mjs",
+        "command": "node scripts/oracle/emit-latex-boxes.mjs",
         "status": "blocked",
-        "status_reason": "no TeX engine is available: lualatex, kpsewhich, tlmgr, pdflatex are all missing from PATH (`lualatex` exited with `ENOENT`) so the corpus cannot be laid out by LaTeX and no box metric exists"
+        "status_reason": "no TeX engine is available: tectonic, lualatex, kpsewhich, pdflatex, tlmgr are all missing from PATH (tectonic exited with `ENOENT`; lualatex exited with `ENOENT`; kpsewhich exited with `ENOENT`; pdflatex exited with `ENOENT`; tlmgr exited with `ENOENT`), so the corpus cannot be laid out by LaTeX and no box metric exists"
       },
       "font": null,
       "size": null,
@@ -520,9 +528,9 @@
       "source": {
         "engine": "latex",
         "version": null,
-        "command": "node scripts/oracle/probe-latex.mjs",
+        "command": "node scripts/oracle/emit-latex-boxes.mjs",
         "status": "blocked",
-        "status_reason": "no TeX engine is available: lualatex, kpsewhich, tlmgr, pdflatex are all missing from PATH (`lualatex` exited with `ENOENT`) so the corpus cannot be laid out by LaTeX and no box metric exists"
+        "status_reason": "no TeX engine is available: tectonic, lualatex, kpsewhich, pdflatex, tlmgr are all missing from PATH (tectonic exited with `ENOENT`; lualatex exited with `ENOENT`; kpsewhich exited with `ENOENT`; pdflatex exited with `ENOENT`; tlmgr exited with `ENOENT`), so the corpus cannot be laid out by LaTeX and no box metric exists"
       },
       "font": null,
       "size": null,
@@ -546,9 +554,9 @@
       "source": {
         "engine": "latex",
         "version": null,
-        "command": "node scripts/oracle/probe-latex.mjs",
+        "command": "node scripts/oracle/emit-latex-boxes.mjs",
         "status": "blocked",
-        "status_reason": "no TeX engine is available: lualatex, kpsewhich, tlmgr, pdflatex are all missing from PATH (`lualatex` exited with `ENOENT`) so the corpus cannot be laid out by LaTeX and no box metric exists"
+        "status_reason": "no TeX engine is available: tectonic, lualatex, kpsewhich, pdflatex, tlmgr are all missing from PATH (tectonic exited with `ENOENT`; lualatex exited with `ENOENT`; kpsewhich exited with `ENOENT`; pdflatex exited with `ENOENT`; tlmgr exited with `ENOENT`), so the corpus cannot be laid out by LaTeX and no box metric exists"
       },
       "font": null,
       "size": null,
@@ -572,9 +580,9 @@
       "source": {
         "engine": "latex",
         "version": null,
-        "command": "node scripts/oracle/probe-latex.mjs",
+        "command": "node scripts/oracle/emit-latex-boxes.mjs",
         "status": "blocked",
-        "status_reason": "no TeX engine is available: lualatex, kpsewhich, tlmgr, pdflatex are all missing from PATH (`lualatex` exited with `ENOENT`) so the corpus cannot be laid out by LaTeX and no box metric exists"
+        "status_reason": "no TeX engine is available: tectonic, lualatex, kpsewhich, pdflatex, tlmgr are all missing from PATH (tectonic exited with `ENOENT`; lualatex exited with `ENOENT`; kpsewhich exited with `ENOENT`; pdflatex exited with `ENOENT`; tlmgr exited with `ENOENT`), so the corpus cannot be laid out by LaTeX and no box metric exists"
       },
       "font": null,
       "size": null,
@@ -598,9 +606,9 @@
       "source": {
         "engine": "latex",
         "version": null,
-        "command": "node scripts/oracle/probe-latex.mjs",
+        "command": "node scripts/oracle/emit-latex-boxes.mjs",
         "status": "blocked",
-        "status_reason": "no TeX engine is available: lualatex, kpsewhich, tlmgr, pdflatex are all missing from PATH (`lualatex` exited with `ENOENT`) so the corpus cannot be laid out by LaTeX and no box metric exists"
+        "status_reason": "no TeX engine is available: tectonic, lualatex, kpsewhich, pdflatex, tlmgr are all missing from PATH (tectonic exited with `ENOENT`; lualatex exited with `ENOENT`; kpsewhich exited with `ENOENT`; pdflatex exited with `ENOENT`; tlmgr exited with `ENOENT`), so the corpus cannot be laid out by LaTeX and no box metric exists"
       },
       "font": null,
       "size": null,
@@ -624,9 +632,9 @@
       "source": {
         "engine": "latex",
         "version": null,
-        "command": "node scripts/oracle/probe-latex.mjs",
+        "command": "node scripts/oracle/emit-latex-boxes.mjs",
         "status": "blocked",
-        "status_reason": "no TeX engine is available: lualatex, kpsewhich, tlmgr, pdflatex are all missing from PATH (`lualatex` exited with `ENOENT`) so the corpus cannot be laid out by LaTeX and no box metric exists"
+        "status_reason": "no TeX engine is available: tectonic, lualatex, kpsewhich, pdflatex, tlmgr are all missing from PATH (tectonic exited with `ENOENT`; lualatex exited with `ENOENT`; kpsewhich exited with `ENOENT`; pdflatex exited with `ENOENT`; tlmgr exited with `ENOENT`), so the corpus cannot be laid out by LaTeX and no box metric exists"
       },
       "font": null,
       "size": null,
@@ -650,9 +658,9 @@
       "source": {
         "engine": "latex",
         "version": null,
-        "command": "node scripts/oracle/probe-latex.mjs",
+        "command": "node scripts/oracle/emit-latex-boxes.mjs",
         "status": "blocked",
-        "status_reason": "no TeX engine is available: lualatex, kpsewhich, tlmgr, pdflatex are all missing from PATH (`lualatex` exited with `ENOENT`) so the corpus cannot be laid out by LaTeX and no box metric exists"
+        "status_reason": "no TeX engine is available: tectonic, lualatex, kpsewhich, pdflatex, tlmgr are all missing from PATH (tectonic exited with `ENOENT`; lualatex exited with `ENOENT`; kpsewhich exited with `ENOENT`; pdflatex exited with `ENOENT`; tlmgr exited with `ENOENT`), so the corpus cannot be laid out by LaTeX and no box metric exists"
       },
       "font": null,
       "size": null,
@@ -676,9 +684,9 @@
       "source": {
         "engine": "latex",
         "version": null,
-        "command": "node scripts/oracle/probe-latex.mjs",
+        "command": "node scripts/oracle/emit-latex-boxes.mjs",
         "status": "blocked",
-        "status_reason": "no TeX engine is available: lualatex, kpsewhich, tlmgr, pdflatex are all missing from PATH (`lualatex` exited with `ENOENT`) so the corpus cannot be laid out by LaTeX and no box metric exists"
+        "status_reason": "no TeX engine is available: tectonic, lualatex, kpsewhich, pdflatex, tlmgr are all missing from PATH (tectonic exited with `ENOENT`; lualatex exited with `ENOENT`; kpsewhich exited with `ENOENT`; pdflatex exited with `ENOENT`; tlmgr exited with `ENOENT`), so the corpus cannot be laid out by LaTeX and no box metric exists"
       },
       "font": null,
       "size": null,
@@ -702,9 +710,9 @@
       "source": {
         "engine": "latex",
         "version": null,
-        "command": "node scripts/oracle/probe-latex.mjs",
+        "command": "node scripts/oracle/emit-latex-boxes.mjs",
         "status": "blocked",
-        "status_reason": "no TeX engine is available: lualatex, kpsewhich, tlmgr, pdflatex are all missing from PATH (`lualatex` exited with `ENOENT`) so the corpus cannot be laid out by LaTeX and no box metric exists"
+        "status_reason": "no TeX engine is available: tectonic, lualatex, kpsewhich, pdflatex, tlmgr are all missing from PATH (tectonic exited with `ENOENT`; lualatex exited with `ENOENT`; kpsewhich exited with `ENOENT`; pdflatex exited with `ENOENT`; tlmgr exited with `ENOENT`), so the corpus cannot be laid out by LaTeX and no box metric exists"
       },
       "font": null,
       "size": null,
@@ -728,9 +736,9 @@
       "source": {
         "engine": "latex",
         "version": null,
-        "command": "node scripts/oracle/probe-latex.mjs",
+        "command": "node scripts/oracle/emit-latex-boxes.mjs",
         "status": "blocked",
-        "status_reason": "no TeX engine is available: lualatex, kpsewhich, tlmgr, pdflatex are all missing from PATH (`lualatex` exited with `ENOENT`) so the corpus cannot be laid out by LaTeX and no box metric exists"
+        "status_reason": "no TeX engine is available: tectonic, lualatex, kpsewhich, pdflatex, tlmgr are all missing from PATH (tectonic exited with `ENOENT`; lualatex exited with `ENOENT`; kpsewhich exited with `ENOENT`; pdflatex exited with `ENOENT`; tlmgr exited with `ENOENT`), so the corpus cannot be laid out by LaTeX and no box metric exists"
       },
       "font": null,
       "size": null,
@@ -754,9 +762,9 @@
       "source": {
         "engine": "latex",
         "version": null,
-        "command": "node scripts/oracle/probe-latex.mjs",
+        "command": "node scripts/oracle/emit-latex-boxes.mjs",
         "status": "blocked",
-        "status_reason": "no TeX engine is available: lualatex, kpsewhich, tlmgr, pdflatex are all missing from PATH (`lualatex` exited with `ENOENT`) so the corpus cannot be laid out by LaTeX and no box metric exists"
+        "status_reason": "no TeX engine is available: tectonic, lualatex, kpsewhich, pdflatex, tlmgr are all missing from PATH (tectonic exited with `ENOENT`; lualatex exited with `ENOENT`; kpsewhich exited with `ENOENT`; pdflatex exited with `ENOENT`; tlmgr exited with `ENOENT`), so the corpus cannot be laid out by LaTeX and no box metric exists"
       },
       "font": null,
       "size": null,
@@ -780,9 +788,9 @@
       "source": {
         "engine": "latex",
         "version": null,
-        "command": "node scripts/oracle/probe-latex.mjs",
+        "command": "node scripts/oracle/emit-latex-boxes.mjs",
         "status": "blocked",
-        "status_reason": "no TeX engine is available: lualatex, kpsewhich, tlmgr, pdflatex are all missing from PATH (`lualatex` exited with `ENOENT`) so the corpus cannot be laid out by LaTeX and no box metric exists"
+        "status_reason": "no TeX engine is available: tectonic, lualatex, kpsewhich, pdflatex, tlmgr are all missing from PATH (tectonic exited with `ENOENT`; lualatex exited with `ENOENT`; kpsewhich exited with `ENOENT`; pdflatex exited with `ENOENT`; tlmgr exited with `ENOENT`), so the corpus cannot be laid out by LaTeX and no box metric exists"
       },
       "font": null,
       "size": null,
@@ -806,9 +814,9 @@
       "source": {
         "engine": "latex",
         "version": null,
-        "command": "node scripts/oracle/probe-latex.mjs",
+        "command": "node scripts/oracle/emit-latex-boxes.mjs",
         "status": "blocked",
-        "status_reason": "no TeX engine is available: lualatex, kpsewhich, tlmgr, pdflatex are all missing from PATH (`lualatex` exited with `ENOENT`) so the corpus cannot be laid out by LaTeX and no box metric exists"
+        "status_reason": "no TeX engine is available: tectonic, lualatex, kpsewhich, pdflatex, tlmgr are all missing from PATH (tectonic exited with `ENOENT`; lualatex exited with `ENOENT`; kpsewhich exited with `ENOENT`; pdflatex exited with `ENOENT`; tlmgr exited with `ENOENT`), so the corpus cannot be laid out by LaTeX and no box metric exists"
       },
       "font": null,
       "size": null,
@@ -832,9 +840,9 @@
       "source": {
         "engine": "latex",
         "version": null,
-        "command": "node scripts/oracle/probe-latex.mjs",
+        "command": "node scripts/oracle/emit-latex-boxes.mjs",
         "status": "blocked",
-        "status_reason": "no TeX engine is available: lualatex, kpsewhich, tlmgr, pdflatex are all missing from PATH (`lualatex` exited with `ENOENT`) so the corpus cannot be laid out by LaTeX and no box metric exists"
+        "status_reason": "no TeX engine is available: tectonic, lualatex, kpsewhich, pdflatex, tlmgr are all missing from PATH (tectonic exited with `ENOENT`; lualatex exited with `ENOENT`; kpsewhich exited with `ENOENT`; pdflatex exited with `ENOENT`; tlmgr exited with `ENOENT`), so the corpus cannot be laid out by LaTeX and no box metric exists"
       },
       "font": null,
       "size": null,
@@ -858,9 +866,9 @@
       "source": {
         "engine": "latex",
         "version": null,
-        "command": "node scripts/oracle/probe-latex.mjs",
+        "command": "node scripts/oracle/emit-latex-boxes.mjs",
         "status": "blocked",
-        "status_reason": "no TeX engine is available: lualatex, kpsewhich, tlmgr, pdflatex are all missing from PATH (`lualatex` exited with `ENOENT`) so the corpus cannot be laid out by LaTeX and no box metric exists"
+        "status_reason": "no TeX engine is available: tectonic, lualatex, kpsewhich, pdflatex, tlmgr are all missing from PATH (tectonic exited with `ENOENT`; lualatex exited with `ENOENT`; kpsewhich exited with `ENOENT`; pdflatex exited with `ENOENT`; tlmgr exited with `ENOENT`), so the corpus cannot be laid out by LaTeX and no box metric exists"
       },
       "font": null,
       "size": null,
@@ -884,9 +892,9 @@
       "source": {
         "engine": "latex",
         "version": null,
-        "command": "node scripts/oracle/probe-latex.mjs",
+        "command": "node scripts/oracle/emit-latex-boxes.mjs",
         "status": "blocked",
-        "status_reason": "no TeX engine is available: lualatex, kpsewhich, tlmgr, pdflatex are all missing from PATH (`lualatex` exited with `ENOENT`) so the corpus cannot be laid out by LaTeX and no box metric exists"
+        "status_reason": "no TeX engine is available: tectonic, lualatex, kpsewhich, pdflatex, tlmgr are all missing from PATH (tectonic exited with `ENOENT`; lualatex exited with `ENOENT`; kpsewhich exited with `ENOENT`; pdflatex exited with `ENOENT`; tlmgr exited with `ENOENT`), so the corpus cannot be laid out by LaTeX and no box metric exists"
       },
       "font": null,
       "size": null,
@@ -910,9 +918,9 @@
       "source": {
         "engine": "latex",
         "version": null,
-        "command": "node scripts/oracle/probe-latex.mjs",
+        "command": "node scripts/oracle/emit-latex-boxes.mjs",
         "status": "blocked",
-        "status_reason": "no TeX engine is available: lualatex, kpsewhich, tlmgr, pdflatex are all missing from PATH (`lualatex` exited with `ENOENT`) so the corpus cannot be laid out by LaTeX and no box metric exists"
+        "status_reason": "no TeX engine is available: tectonic, lualatex, kpsewhich, pdflatex, tlmgr are all missing from PATH (tectonic exited with `ENOENT`; lualatex exited with `ENOENT`; kpsewhich exited with `ENOENT`; pdflatex exited with `ENOENT`; tlmgr exited with `ENOENT`), so the corpus cannot be laid out by LaTeX and no box metric exists"
       },
       "font": null,
       "size": null,
@@ -936,9 +944,9 @@
       "source": {
         "engine": "latex",
         "version": null,
-        "command": "node scripts/oracle/probe-latex.mjs",
+        "command": "node scripts/oracle/emit-latex-boxes.mjs",
         "status": "blocked",
-        "status_reason": "no TeX engine is available: lualatex, kpsewhich, tlmgr, pdflatex are all missing from PATH (`lualatex` exited with `ENOENT`) so the corpus cannot be laid out by LaTeX and no box metric exists"
+        "status_reason": "no TeX engine is available: tectonic, lualatex, kpsewhich, pdflatex, tlmgr are all missing from PATH (tectonic exited with `ENOENT`; lualatex exited with `ENOENT`; kpsewhich exited with `ENOENT`; pdflatex exited with `ENOENT`; tlmgr exited with `ENOENT`), so the corpus cannot be laid out by LaTeX and no box metric exists"
       },
       "font": null,
       "size": null,
