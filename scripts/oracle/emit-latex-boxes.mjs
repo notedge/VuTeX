@@ -218,13 +218,19 @@ function buildTexDocument(corpus) {
   const lines = [
     "\\documentclass[10pt]{article}",
     "\\usepackage{amsmath}",
-    "\\usepackage[margin=1in]{geometry}",
     "\\pagestyle{empty}",
     "\\begin{document}",
     "",
   ];
 
   for (const formula of corpus.formulas) {
+    // Skip environments (matrix/cases/aligned/...) — they cannot be placed
+    // inside `\hbox{$...$}` because their internal alignment separators (`&`,
+    // `\\`) need the alignment context TeX provides only inside display math.
+    // These are still covered by VuTeX's own layout tests; the box-metrics
+    // oracle focuses on inline-expressible forms.
+    if (/\\begin\{/.test(formula.tex)) continue;
+
     const texEscaped = escapeTexForHbox(formula.tex);
     // Inline
     lines.push(`% --- inline ${formula.id} ---`);
@@ -232,7 +238,7 @@ function buildTexDocument(corpus) {
     lines.push(`\\typeout{BOXMETRIC: inline ${formula.id} \\the\\wd0 \\the\\ht0 \\the\\dp0}`);
     // Display
     lines.push(`% --- display ${formula.id} ---`);
-    lines.push(`\\setbox0=\\hbox{\\displaystyle $${texEscaped}$}`);
+    lines.push(`\\setbox0=\\hbox{$\\displaystyle ${texEscaped}$}`);
     lines.push(`\\typeout{BOXMETRIC: display ${formula.id} \\the\\wd0 \\the\\ht0 \\the\\dp0}`);
     lines.push("");
   }
@@ -257,13 +263,22 @@ function escapeTexForHbox(tex) {
 
 /** Compile .tex with the selected engine; returns full log content. */
 function compile(engineName, texPath, workDir) {
-  const args = ["-interaction=nonstopmode", "-halt-on-error", "-no-shell-escape", texPath];
+  // Tectonic is a Rust-native engine with its own CLI — it does NOT accept
+  // the traditional `-interaction=nonstopmode -halt-on-error` flags.
+  let args;
+  if (engineName === "tectonic") {
+    args = [texPath];
+  } else {
+    args = ["-interaction=nonstopmode", "-halt-on-error", "-no-shell-escape", texPath];
+  }
   const result = spawnSync(engineName, args, {
     cwd: workDir,
     encoding: "utf8",
     timeout: 300_000,
     windowsHide: true,
   });
+  // Tectonic writes log as `<texbasename>.log`, lualatex as `emit_boxes.log`.
+  // The harness writes the tex file as `emit_boxes.tex`, so both converge here.
   const logPath = resolve(workDir, "emit_boxes.log");
   let logContent = "";
   if (existsSync(logPath)) {
@@ -291,7 +306,7 @@ function compile(engineName, texPath, workDir) {
  * We parse with a regex that handles optional sign and fractional seconds.
  */
 const BOXMETRIC_RE =
-  /BOXMETRIC:\s+(inline|display)\s+(\S+)\s+([\d.]+)pt\s+([\d.]+)pt\s+([\d.]+)pt/gu;
+  /BOXMETRIC:\s+(inline|display)\s+(\S+)\s+([\d.]+)pt\s*([\d.]+)pt\s*([\d.]+)pt/gu;
 
 function parseBoxMetrics(log) {
   const out = new Map(); // key = "<corpus_id>|<inline|display>"
@@ -423,13 +438,23 @@ function main() {
 
     const { exit_code, stderr, log } = compile(primary.name, texPath, workDir);
 
-    if (exit_code !== 0) {
+    // Tectonic (and sometimes lualatex) exits non-zero on *any* TeX error, even
+    // if BOXMETRIC was successfully emitted for formulas before the error.
+    // We parse whatever we can find — partial success is still useful — and
+    // only fall back to blocked when *zero* BOXMETRIC lines exist.
+    // Tectonic's `\typeout` goes to stderr (terminal), lualatex's goes to the
+    // .log file — so we parse both.
+    const metrics = parseBoxMetrics(log + "\n" + stderr);
+    const anyMetrics = metrics.size > 0;
+
+    if (!anyMetrics) {
       const reason = [
-        `\`${primary.name}\` ran but exited ${exit_code}.`,
-        "First 20 lines of stderr:",
-        stderr.split(/\r?\n/).slice(0, 20).join("\n"),
-      ].join("\n");
-      // emit blocked with the engine-failed reason
+        `\`${primary.name}\` ran${exit_code !== 0 ? ` but exited ${exit_code}` : " successfully"},`,
+        "but the log contained zero BOXMETRIC lines.",
+        exit_code !== 0
+          ? `First 15 lines of stderr: ${stderr.split(/\r?\n/).slice(0, 15).join(" | ")}`
+          : "The harness .tex template may need adjustment for this engine.",
+      ].join(" ");
       const records = [];
       for (const formula of corpus.formulas) {
         for (const displayMode of [false, true]) {
@@ -454,12 +479,10 @@ function main() {
       mkdirSync(dirname(OUT_PATH), { recursive: true });
       writeFileSync(OUT_PATH, `${JSON.stringify(doc, null, 2)}\n`, "utf8");
       console.log(`wrote ${OUT_PATH}`);
-      console.log(`latex oracle status: blocked (engine exited ${exit_code})`);
+      console.log(`latex oracle status: blocked (no metrics parsed)`);
       console.log(reason);
       return;
     }
-
-    const metrics = parseBoxMetrics(log);
     const fontInfo = defaultFontInfo(primary.family);
     const engineVersion = primary.version_line;
 

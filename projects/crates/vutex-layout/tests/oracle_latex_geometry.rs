@@ -93,16 +93,6 @@ struct RecordSource {
     status_reason: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
-struct Corpus {
-    formulas: Vec<CorpusFormula>,
-}
-
-#[derive(Debug, Deserialize)]
-struct CorpusFormula {
-    id: String,
-}
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -124,11 +114,37 @@ fn load_document() -> Document {
 }
 
 fn corpus_ids() -> Vec<String> {
+    corpus_formulas()
+        .into_iter()
+        .map(|f| f.id)
+        .collect()
+}
+
+/// Load corpus formulas — environment bodies (`\begin{...}`) are excluded
+/// because the harness cannot place them inside `\hbox{$...$}`.
+fn corpus_formulas() -> Vec<CorpusFormulaTex> {
     let path = fixture_dir().join("corpus.json");
     let text = fs::read_to_string(&path).unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
-    let corpus: Corpus =
+    let raw: RawCorpus =
         serde_json::from_str(&text).unwrap_or_else(|e| panic!("{} must be valid JSON: {e}", path.display()));
-    corpus.formulas.into_iter().map(|f| f.id).collect()
+    raw.formulas
+        .into_iter()
+        .filter(|f| !f.tex.contains("\\begin{"))
+        .collect()
+}
+
+/// Corpus formula with its `tex` source — needed to decide which entries
+/// the harness can actually measure.
+#[derive(Debug, Deserialize)]
+struct RawCorpus {
+    formulas: Vec<CorpusFormulaTex>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CorpusFormulaTex {
+    id: String,
+    #[serde(default)]
+    tex: String,
 }
 
 /// Whether the oracle fixture is blocked (no TeX engine).
@@ -322,16 +338,20 @@ const GEOMETRY_SUBSET: &[&str] = &[
     "script-nested",
 ];
 
-/// Base size (em) used for the TeX reference — matches normalsize=10pt, 1em=10pt.
-/// VuTeX must lay out at the same base size for the comparison to mean anything.
-const REFERENCE_BASE_SIZE_EM: f64 = 10.0;
+/// Base size in pixels used for the TeX reference — matches normalsize=10pt.
+/// VuTeX's `base_size` parameter is a pixel value; we lay out at 10.0px so that
+/// dividing the resulting pixel dimensions by 10.0 gives us em — exactly the
+/// same unit the TeX harness emits (`pt / 10.0 = em`).
+const REFERENCE_BASE_SIZE_PX: f64 = 10.0;
 
 /// Layout the given TeX source with VuTeX and return (width, height, depth) in em.
 fn vutex_measure(tex: &str, display: bool) -> MathResult<(f64, f64, f64)> {
-    let (_node, layout) = layout_formula_with_size(tex, display, REFERENCE_BASE_SIZE_EM)?;
+    let (_node, layout) = layout_formula_with_size(tex, display, REFERENCE_BASE_SIZE_PX)?;
     let FormulaLayout { width, height, depth, .. } = layout;
-    // VuTeX returns Fixed::to_f64() which is em at the base size we gave it.
-    Ok((width, height, depth))
+    // VuTeX returns pixel dimensions.  Dividing by base_size converts to em
+    // because we laid out at 10px and TeX normalsize = 10pt → 1em = 10pt.
+    let em = REFERENCE_BASE_SIZE_PX;
+    Ok((width / em, height / em, depth / em))
 }
 
 /// When TeX measurements exist, VuTeX layout must land within the agreed
