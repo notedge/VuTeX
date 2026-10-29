@@ -10,8 +10,8 @@ use vutex_types::{
     math::{
         Alignment, AlignmentAnchors, BBox, DelimiterComponent, DelimiterVariant, Fixed, FontMetricsSnapshot, FontStyle,
         FormulaLayoutResult, FormulaMetrics, GlyphKey, GlyphMetrics, LimitsPolicy, LineStyle, MathConstant, MathEnvironment,
-        MathItem, MathList, MathResult, MathStyle, MathStyleState, Noad, NoadKind, Numbering, OperatorClass, PaintNode, SemanticNode,
-        SpacingRule, SymbolRole, normalize_math_list, project_semantic_with_state,
+        MathItem, MathList, MathResult, MathStyle, MathStyleState, Noad, NoadKind, Numbering, OperatorClass, PaintNode,
+        SemanticNode, SpacingRule, SymbolRole, normalize_math_list, project_semantic_with_state,
     },
 };
 
@@ -2050,10 +2050,7 @@ impl LayoutEngine {
             // Anchor metadata travels with each row so downstream render
             // layers can hang equation numbers, \tag labels or \notag markers
             // without layout having to paint anything itself.
-            stacked.push(LayoutNode::Anchor {
-                row_index: index,
-                numbering: environment.rows[index].numbering.clone(),
-            });
+            stacked.push(LayoutNode::Anchor { row_index: index, numbering: environment.rows[index].numbering.clone() });
             stacked.push(row);
         }
 
