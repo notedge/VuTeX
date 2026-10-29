@@ -165,3 +165,39 @@ fn render_svg_with_outline_option_successfully_returns_svg() {
     // Deterministic path-only render must NOT emit any <text> nodes.
     assert!(!svg.contains("<text"), "deterministic SVG must be path-only, got text in: {svg}");
 }
+
+/// The JSON payload carries the semantic tree the layout consumed, and the
+/// MathML in the same payload is rendered from that very tree — the host never
+/// has to re-parse the source to see the authored structure.
+#[test]
+fn json_semantics_match_the_mathml_structure() {
+    let cases: &[(&str, &str, &str)] = &[
+        ("\\frac{a}{b}", "fraction", "<mfrac"),
+        ("\\sqrt[3]{x}", "radical", "<mroot"),
+        ("x_a^b", "sub-sup", "<msubsup"),
+        ("\\hat{f}", "accent", "<mover"),
+        ("\\begin{aligned}a&=b\\\\c&=d\\end{aligned}", "table", "<mtable"),
+    ];
+
+    for (source, kind, element) in cases {
+        let value = parse(&render_formula(source, Some("{\"displayMode\":\"block\"}".to_string())));
+        let nodes = value["semantics"]["nodes"].as_array().unwrap_or_else(|| panic!("{source}: no semantics: {value}"));
+        let first = nodes.first().and_then(Value::as_object).unwrap_or_else(|| panic!("{source}: no top node: {value}"));
+        assert!(first.contains_key(*kind), "{source}: expected a `{kind}` node, got {value}");
+
+        let mathml = value["mathml"].as_str().unwrap_or_else(|| panic!("{source}: no mathml: {value}"));
+        assert!(mathml.contains(element), "{source}: mathml is missing {element}: {mathml}");
+    }
+}
+
+/// A formula that never reached layout reports no semantics instead of an empty
+/// tree, so an absent result is distinguishable from an empty formula.
+#[test]
+fn semantics_are_absent_when_the_formula_fails() {
+    let value = parse(&render_mathml_wasm("   ", None));
+    assert!(value["semantics"].is_null(), "empty source: {value}");
+
+    let value = parse(&render_svg_wasm("\\text{字}", Some("{\"outline\":true}".to_string())));
+    assert!(value["semantics"].is_null(), "failed render: {value}");
+    assert!(value["diagnostics"].as_array().map(|items| !items.is_empty()).unwrap_or(false), "{value}");
+}
