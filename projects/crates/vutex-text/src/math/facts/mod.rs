@@ -19,13 +19,15 @@ use std::collections::BTreeMap;
 
 use acorn_ttf::{
     FontFace,
-    tables::math::{MathGlyphConstruction, MathTable, PartRecord},
+    tables::math::{MathGlyphConstruction, MathGlyphInfo, MathTable, PartRecord},
 };
 
 use vutex_types::math::{Fixed, FontStyle, GlyphKey};
 
+mod kern;
 mod variants;
 
+pub use kern::{CornerKern, GlyphKerns, KernCorner, KernStep, MathKernInfo};
 pub use variants::{
     AssemblyPart, AssemblyPlan, GlyphAssembly, GlyphConstruction, MathVariant, MathVariants, StretchAxis, StretchPlan,
 };
@@ -57,12 +59,43 @@ impl GlyphId {
     }
 }
 
+/// The per-glyph attachment metrics of one glyph.
+///
+/// Both values are optional because `MathGlyphInfo` covers only the glyphs the
+/// font chose to publish: `None` means the font carries no value for this glyph,
+/// which callers must treat as "unmeasured" rather than as zero.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct MathGlyphFacts {
+    italic_correction: Option<Fixed>,
+    top_accent_attachment: Option<Fixed>,
+}
+
+impl MathGlyphFacts {
+    /// The glyph's italic correction, if the font publishes one.
+    pub fn italic_correction(self) -> Option<Fixed> {
+        self.italic_correction
+    }
+
+    /// The horizontal point a top accent attaches at, if the font publishes one.
+    pub fn top_accent_attachment(self) -> Option<Fixed> {
+        self.top_accent_attachment
+    }
+
+    /// Whether the font publishes anything at all for this glyph.
+    pub fn is_empty(self) -> bool {
+        self.italic_correction.is_none() && self.top_accent_attachment.is_none()
+    }
+}
+
 /// The `MATH` facts of one font.
 #[derive(Debug, Clone)]
 pub struct MathFontFacts {
     units_per_em: u16,
     char_glyphs: BTreeMap<char, GlyphId>,
     variants: MathVariants,
+    kerns: MathKernInfo,
+    glyph_math: BTreeMap<GlyphId, MathGlyphFacts>,
+    extended_shapes: Vec<GlyphId>,
 }
 
 impl MathFontFacts {
@@ -87,8 +120,11 @@ impl MathFontFacts {
             .collect();
 
         let variants = extract_variants(&mut face, &math, one_em);
+        let kerns = MathKernInfo::from_glyph_info(&math.glyph_info, one_em);
+        let glyph_math = extract_glyph_math(&math.glyph_info, one_em);
+        let extended_shapes = extract_extended_shapes(&math.glyph_info);
 
-        Some(Self { units_per_em, char_glyphs, variants })
+        Some(Self { units_per_em, char_glyphs, variants, kerns, glyph_math, extended_shapes })
     }
 
     /// Read the `MATH` facts of the font embedded with this crate.
@@ -109,6 +145,43 @@ impl MathFontFacts {
     /// The size variants and assemblies of this font.
     pub fn variants(&self) -> &MathVariants {
         &self.variants
+    }
+
+    /// The four-corner kerns of this font.
+    pub fn kerns(&self) -> &MathKernInfo {
+        &self.kerns
+    }
+
+    /// The attachment metrics the font publishes for `glyph`.
+    ///
+    /// Answers `None` when the font publishes neither an italic correction nor
+    /// a top accent attachment for the glyph.
+    pub fn glyph_math(&self, glyph: GlyphId) -> Option<MathGlyphFacts> {
+        self.glyph_math.get(&glyph).copied()
+    }
+
+    /// The italic correction of `glyph`, if the font publishes one.
+    pub fn italic_correction(&self, glyph: GlyphId) -> Option<Fixed> {
+        self.glyph_math(glyph)?.italic_correction()
+    }
+
+    /// The top accent attachment point of `glyph`, if the font publishes one.
+    pub fn top_accent_attachment(&self, glyph: GlyphId) -> Option<Fixed> {
+        self.glyph_math(glyph)?.top_accent_attachment()
+    }
+
+    /// Whether the font lists `glyph` in its extended shape coverage.
+    ///
+    /// Extended shapes are the glyphs whose height and depth an accent must not
+    /// be raised past; the font publishes the set, so a glyph absent from it is
+    /// simply not marked, not "unknown".
+    pub fn is_extended_shape(&self, glyph: GlyphId) -> bool {
+        self.extended_shapes.binary_search(&glyph).is_ok()
+    }
+
+    /// Every glyph the font marks as an extended shape, in glyph order.
+    pub fn extended_shapes(&self) -> &[GlyphId] {
+        &self.extended_shapes
     }
 }
 
@@ -195,6 +268,30 @@ fn glyph_construction(
     });
 
     GlyphConstruction { variants, assembly }
+}
+
+/// Read the per-glyph attachment metrics out of the font's `MathGlyphInfo`.
+///
+/// Both sub-info tables are glyph-indexed, so a glyph keeps its value only when
+/// the corresponding table covers it. Glyphs covered by neither are left out.
+fn extract_glyph_math(info: &MathGlyphInfo, one_em: f64) -> BTreeMap<GlyphId, MathGlyphFacts> {
+    let mut glyphs: BTreeMap<GlyphId, MathGlyphFacts> = BTreeMap::new();
+    for (&glyph, &correction) in &info.italic_correction {
+        glyphs.entry(GlyphId::new(glyph)).or_default().italic_correction = Some(Fixed::from_f64(correction as f64 / one_em));
+    }
+    for (&glyph, &attachment) in &info.top_accent_attachment {
+        glyphs.entry(GlyphId::new(glyph)).or_default().top_accent_attachment =
+            Some(Fixed::from_f64(attachment as f64 / one_em));
+    }
+    glyphs
+}
+
+/// The glyph order used by [`MathFontFacts::is_extended_shape`]'s binary search.
+fn extract_extended_shapes(info: &MathGlyphInfo) -> Vec<GlyphId> {
+    let mut shapes: Vec<GlyphId> = info.extended_shapes.iter().map(|&glyph| GlyphId::new(glyph)).collect();
+    shapes.sort_unstable();
+    shapes.dedup();
+    shapes
 }
 
 #[cfg(test)]
