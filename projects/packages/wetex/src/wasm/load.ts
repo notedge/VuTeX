@@ -1,7 +1,5 @@
 import type { FormulaRender, RenderOptions, WeTeXBindings, WeTeXWasmOptions } from "../types.js";
 
-const ARTIFACT_PACKAGE = "@vutex/vutex-unknown-wasm32";
-
 type WasmBinding = {
     default: (input?: { module_or_path?: string | URL }) => Promise<unknown>;
     wetexVersion: () => string;
@@ -38,7 +36,7 @@ function wrap(binding: WasmBinding): WeTeXBindings {
 
 /** Load the WASM artifact from `@vutex/vutex-unknown-wasm32`. */
 export async function loadWeTeX(options: WeTeXWasmOptions = {}): Promise<WeTeXBindings> {
-    const binding = (await import(ARTIFACT_PACKAGE)) as WasmBinding;
+    const binding = (await import("@vutex/vutex-unknown-wasm32")) as WasmBinding;
     if (options.url) {
         await binding.default({ module_or_path: options.url });
     } else {

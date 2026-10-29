@@ -13,17 +13,18 @@
         "access": "public"
     },
     "exports": {
-        ".": "./src/index.ts",
-        "./wasm": "./src/wasm/index.ts"
+        ".": "./dist/index.js",
+        "./wasm": "./dist/wasm/index.js"
     },
     "files": [
         "readme.md",
-        "src"
+        "dist"
     ],
     "engines": {
         "node": ">=20"
     },
     "scripts": {
+        "build": "tsc -p tsconfig.build.json",
         "typecheck": "tsc --noEmit",
         "test": "tsx --test tests/smoke.test.ts"
     },
