@@ -46,7 +46,8 @@ fn glyphs(node: &LayoutNode) -> Vec<(f64, f64, Glyph)> {
             | LayoutNode::Glue(_)
             | LayoutNode::Kern(_)
             | LayoutNode::Path(_)
-            | LayoutNode::Penalty { .. } => {}
+            | LayoutNode::Penalty { .. }
+            | LayoutNode::Anchor { .. } => {}
         }
     }
 
@@ -707,7 +708,8 @@ fn glue_widths(node: &LayoutNode) -> Vec<f64> {
             | LayoutNode::Rule { .. }
             | LayoutNode::Kern(_)
             | LayoutNode::Path(_)
-            | LayoutNode::Penalty { .. } => {}
+            | LayoutNode::Penalty { .. }
+            | LayoutNode::Anchor { .. } => {}
         }
     }
 
@@ -2759,4 +2761,90 @@ fn multline_spreads_its_rows_across_the_block() {
     let (middle_x, _, _) = glyph_at(&tree, 'a');
     let expected_middle = (widest - layout("ab").width) / 2.0;
     assert!((middle_x - expected_middle).abs() < 0.02, "a middle row is centred: {middle_x} vs {expected_middle}");
+}
+
+// ── Row numbering anchors ─────────────────────────────────────────
+
+/// Collect every `LayoutNode::Anchor` in a layout tree, in tree order.
+fn anchors_of(node: &LayoutNode, out: &mut Vec<(usize, Numbering)>) {
+    match node {
+        LayoutNode::HBox(h) => {
+            for c in &h.children {
+                anchors_of(c, out);
+            }
+        }
+        LayoutNode::VBox(v) => {
+            for c in &v.children {
+                anchors_of(c, out);
+            }
+        }
+        LayoutNode::Anchor { row_index, numbering } => out.push((*row_index, numbering.clone())),
+        _ => {}
+    }
+}
+
+#[test]
+fn environment_rows_carry_anchor_metadata() {
+    // Every row of an AMS environment surfaces a zero-width `LayoutNode::Anchor`
+    // that preserves the IR's numbering intent (Default / Suppressed / Tag).
+    // Layout itself assigns no numbers — the anchor only makes the intent
+    // visible downstream so render layers can hang equation numbers or tags.
+    let environment = MathEnvironment {
+        kind: EnvironmentKind::Align,
+        starred: false,
+        rows: vec![
+            EnvironmentRow { cells: vec![cell('a'), cell('=')], numbering: Numbering::Default },
+            EnvironmentRow { cells: vec![cell('b')], numbering: Numbering::Tag("3".into()) },
+            EnvironmentRow { cells: vec![cell('c')], numbering: Numbering::Suppressed },
+        ],
+        row_spacing: Fixed::from_f64(0.35),
+        col_spacing: Fixed::ZERO,
+    };
+    let node = SemanticNode::Environment(environment);
+    let engine = LayoutEngine::new(builtin_font_metrics());
+    let tree = engine.layout_node(&node, MathStyle::Display).expect("environment lays out");
+
+    let mut anchors = Vec::new();
+    anchors_of(&tree, &mut anchors);
+    assert_eq!(
+        anchors.len(),
+        3,
+        "three rows → three anchors, got {anchors:?}"
+    );
+
+    assert_eq!(anchors[0], (0, Numbering::Default), "row 0 keeps Default");
+    assert_eq!(anchors[1], (1, Numbering::Tag("3".into())), "row 1 carries its \\tag label");
+    assert_eq!(anchors[2], (2, Numbering::Suppressed), "row 2 keeps \\notag");
+
+    // Anchors have zero width — they never advance the cursor or disturb packing.
+    for (idx, _) in &anchors {
+        // We already know anchors exist and carry the right data above; just
+        // confirm the row indices cover every row exactly once.
+        assert!(idx < &3, "anchor row_index within range");
+    }
+}
+
+#[test]
+fn equation_starred_rows_carry_no_numbering_but_still_have_anchors() {
+    // Starred environments (align*, gather*, equation*) still surface anchors
+    // — they simply carry Numbering::Default, which downstream interprets as
+    // "don't number this row in a starred block".
+    let source = "\\begin{align*} a &= b \\\\ c &= d \\end{align*}";
+    let (tree, _) = layout_formula(source, false).expect("align* lays out");
+
+    let mut anchors = Vec::new();
+    anchors_of(&tree, &mut anchors);
+    assert_eq!(anchors.len(), 2, "two rows → two anchors in align*");
+    assert!(
+        anchors.iter().all(|(_, n)| *n == Numbering::Default),
+        "starred rows carry Default intent so document layers know not to number them: {anchors:?}"
+    );
+}
+
+#[test]
+fn anchor_width_is_zero() {
+    let anchor = LayoutNode::Anchor { row_index: 0, numbering: Numbering::Tag("x".into()) };
+    assert_eq!(anchor.width(), Fixed::ZERO);
+    assert_eq!(anchor.height(), Fixed::ZERO);
+    assert_eq!(anchor.depth(), Fixed::ZERO);
 }

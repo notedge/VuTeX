@@ -126,9 +126,9 @@ fn push_layout(node: &LayoutNode, x: f64, y: f64, items: &mut Vec<LayoutItem>, d
                 depth: p.depth.to_f64(),
             }));
         }
-        // Kerns, glue, and penalties paint nothing; the parent boxes already
-        // advanced past their extents.
-        LayoutNode::Kern(_) | LayoutNode::Glue(_) | LayoutNode::Penalty { .. } => {}
+        // Kerns, glue, penalties, and anchors paint nothing; the parent
+        // boxes already advanced past their extents.
+        LayoutNode::Kern(_) | LayoutNode::Glue(_) | LayoutNode::Penalty { .. } | LayoutNode::Anchor { .. } => {}
     }
 }
 
