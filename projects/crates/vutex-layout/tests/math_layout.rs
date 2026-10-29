@@ -2481,6 +2481,29 @@ fn row_numbering_commands_become_row_metadata() {
     assert_eq!(environment.rows[1].numbering, Numbering::Suppressed);
 }
 
+/// A `\tag` label travels verbatim: the document that numbers the equation
+/// re-reads it, so a command, its backslash and nested braces all survive
+/// instead of being flattened into plain text.
+#[test]
+fn tag_label_keeps_its_source_text_verbatim() {
+    let source = "\\begin{align} a &= b \\tag{\\ref{eq:x}} \\\\ c &= d \\end{align}";
+    let tree = parse_formula(source).unwrap_or_else(|error| panic!("`{source}`: {error}"));
+    let environment = first_environment(&tree.root).expect("an align environment");
+    assert_eq!(
+        environment.rows[0].numbering,
+        Numbering::Tag("\\ref{eq:x}".into()),
+        "the label keeps its backslash and command name"
+    );
+    assert_eq!(environment.rows[1].numbering, Numbering::Default, "the untagged row stays unnumbered");
+
+    // The starred form keeps its label the same way, and a nested group inside
+    // the label does not end it early.
+    let source = "\\begin{align} a &= b \\tag*{a{b}c} \\\\ c &= d \\end{align}";
+    let tree = parse_formula(source).unwrap_or_else(|error| panic!("`{source}`: {error}"));
+    let environment = first_environment(&tree.root).expect("an align environment");
+    assert_eq!(environment.rows[0].numbering, Numbering::Tag("a{b}c".into()), "nested braces stay in the label");
+}
+
 /// `\tag` decides a row that also carries `\notag`: the explicit label wins and
 /// the contradiction is reported rather than silently resolved either way.
 #[test]

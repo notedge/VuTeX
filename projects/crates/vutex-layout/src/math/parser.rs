@@ -637,7 +637,7 @@ impl Parser {
         if self.peek() == Some('*') {
             self.bump();
         }
-        let label = self.read_text_group()?;
+        let label = self.read_verbatim_group()?;
         self.row_numbering.tag = Some(label);
         Ok(SemanticNode::Sequence(Vec::new()))
     }
@@ -716,6 +716,50 @@ impl Parser {
                     out.push(c);
                 }
                 '\\' => {
+                    if let Some(escaped) = self.peek() {
+                        out.push(escaped);
+                        self.bump();
+                    }
+                }
+                _ => out.push(c),
+            }
+        }
+        Err(self.error("unterminated braced group"))
+    }
+
+    /// Read `{...}` exactly as authored, for metadata that travels verbatim.
+    ///
+    /// [`Self::read_text_group`] resolves a backslash down to the character it
+    /// escapes, which is what an atom of visible text needs.  A row label such
+    /// as `\tag{\ref{eq:x}}` is instead re-read by the embedding document, so
+    /// every source character — backslashes, command names, braces and spaces —
+    /// is kept.  Nested braces adjust the nesting depth, and an escaped brace
+    /// (`\{`, `\}`) stays literal without closing the group.
+    fn read_verbatim_group(&mut self) -> MathResult<String> {
+        self.skip_whitespace();
+        if self.peek() != Some('{') {
+            return Err(self.error("expected `{` after `\\tag`"));
+        }
+        self.bump();
+
+        let mut depth = 1usize;
+        let mut out = String::new();
+        while let Some(c) = self.peek() {
+            self.bump();
+            match c {
+                '{' => {
+                    depth += 1;
+                    out.push(c);
+                }
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return Ok(out);
+                    }
+                    out.push(c);
+                }
+                '\\' => {
+                    out.push(c);
                     if let Some(escaped) = self.peek() {
                         out.push(escaped);
                         self.bump();
