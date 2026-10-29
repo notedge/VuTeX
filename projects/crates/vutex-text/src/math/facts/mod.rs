@@ -108,6 +108,19 @@ impl MathFontFacts {
     /// table: a font without the table has no math facts to answer with.
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
         let mut face = FontFace::load(bytes).ok()?;
+        Self::from_face(&mut face)
+    }
+
+    /// Read the `MATH` facts of an already parsed font face.
+    ///
+    /// This is the entry point for a caller that owns a [`FontFace`] for other
+    /// reasons — outlines, `hmtx`, glyph bounds — and must not pay for a second
+    /// parse. The face is taken by `&mut` because its tables are decoded
+    /// lazily, and the facts are returned as a value the caller owns: nothing
+    /// is cached behind the face or shared between callers.
+    ///
+    /// Returns `None` when the face carries no `MATH` table.
+    pub fn from_face(face: &mut FontFace) -> Option<Self> {
         let units_per_em = face.units_per_em();
         let math = face.math().cloned()?;
         let one_em = units_per_em as f64;
@@ -122,7 +135,7 @@ impl MathFontFacts {
             .filter_map(|(codepoint, glyph)| char::from_u32(codepoint).map(|ch| (ch, GlyphId::new(glyph))))
             .collect();
 
-        let variants = extract_variants(&mut face, &math, one_em);
+        let variants = extract_variants(face, &math, one_em);
         let constants = MathConstants::from_table(&math.constants, one_em);
         let kerns = MathKernInfo::from_glyph_info(&math.glyph_info, one_em);
         let glyph_math = extract_glyph_math(&math.glyph_info, one_em);
@@ -320,5 +333,23 @@ mod tests {
     fn font_without_a_math_table_reports_nothing() {
         assert!(MathFontFacts::from_bytes(b"not a font").is_none(), "unparsable bytes must not answer with facts");
         assert!(MathFontFacts::from_bytes(&[]).is_none(), "empty input must not answer with facts");
+    }
+
+    #[test]
+    fn a_face_that_is_already_parsed_answers_the_same_facts() {
+        let from_bytes = MathFontFacts::from_bytes(MATH_FONT_BYTES).expect("the embedded font carries a MATH table");
+        let mut face = FontFace::load(MATH_FONT_BYTES).expect("the embedded font must load");
+        let from_face = MathFontFacts::from_face(&mut face).expect("the parsed face carries a MATH table");
+
+        assert_eq!(from_face.units_per_em(), from_bytes.units_per_em());
+        assert_eq!(
+            from_face.variants().vertical_constructions().count(),
+            from_bytes.variants().vertical_constructions().count(),
+            "both entry points must read the same coverage"
+        );
+        assert_eq!(from_face.glyph_for_char('('), from_bytes.glyph_for_char('('), "the character maps agree");
+        let f = from_face.glyph_for_char('f').expect("the font maps 'f'");
+        assert!(from_face.italic_correction(f).is_some(), "this font publishes 'f''s italic correction");
+        assert_eq!(from_face.italic_correction(f), from_bytes.italic_correction(f), "the glyph facts agree");
     }
 }
