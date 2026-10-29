@@ -569,6 +569,20 @@ fn project_one(
             noad.nucleus = Some(Box::new(node.clone()));
             push_noad(list, noad, pending_limits);
         }
+        SemanticNode::OverSet { .. } | SemanticNode::UnderSet { .. } => {
+            // A stacked expression is one Inner atom: TeX treats composed
+            // atoms like `\overset` / `\underset` as Inner for Appendix G
+            // spacing purposes, so spacing flows around the whole block.
+            let mut noad = Noad::new(NoadKind::Inner, state.style, state.cramped);
+            noad.nucleus = Some(Box::new(node.clone()));
+            push_noad(list, noad, pending_limits);
+        }
+        SemanticNode::Relation(inner) => {
+            // `\mathrel` / `\stackrel` — force Relation spacing on the body.
+            let mut noad = Noad::new(NoadKind::Rel, state.style, state.cramped);
+            noad.nucleus = Some(inner.clone());
+            push_noad(list, noad, pending_limits);
+        }
         SemanticNode::HorizontalBox { content, .. } | SemanticNode::Paragraph { content, .. } => {
             // Flattened: descend and emit children as if they were in a Sequence.
             for c in content {

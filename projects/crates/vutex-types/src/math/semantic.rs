@@ -96,6 +96,29 @@ pub enum SemanticNode {
         base: Box<SemanticNode>,
         accent: GlyphKey,
     },
+    /// TeX's `\overset{top}{base}` — stack `top` above `base`.
+    ///
+    /// `top` is rendered in script style (uncramped, unlike subscripts).  The
+    /// geometric layout mirrors a single upper limit on a large operator but
+    /// carries no spacing class of its own — spacing follows the base.
+    OverSet {
+        top: Box<SemanticNode>,
+        base: Box<SemanticNode>,
+    },
+    /// TeX's `\underset{bot}{base}` — stack `bot` below `base`.
+    ///
+    /// `bot` is rendered in script style (cramped).  Like [`SemanticNode::OverSet`],
+    /// the spacing class follows the base.
+    UnderSet {
+        bot: Box<SemanticNode>,
+        base: Box<SemanticNode>,
+    },
+    /// TeX's `\mathrel{…}` — force the wrapped node to behave as a Relation
+    /// atom for Appendix G spacing purposes.
+    ///
+    /// `\stackrel` expands to `Relation(OverSet { top, base })` so the stacked
+    /// expression takes relation spacing on both sides (thick space from Rel).
+    Relation(Box<SemanticNode>),
     /// One AMS math environment block.
     ///
     /// The environment keeps its own kind, alignment anchors and per-row
@@ -497,6 +520,13 @@ pub enum MathSemNode {
     Table { rows: Vec<Vec<MathSemNode>>, columnalign: Vec<Alignment> },
     /// `mover` / `munder` depending on [`AccentPosition`].
     Accent { base: Box<MathSemNode>, accent: String, position: AccentPosition },
+    /// `mover` — an arbitrary node stacked above its base (`\overset`).
+    ///
+    /// Differs from [`MathSemNode::Accent`] in that the overscript is a full
+    /// node subtree, not a single character glyph.
+    StackAbove { base: Box<MathSemNode>, over: Box<MathSemNode> },
+    /// `munder` — an arbitrary node stacked below its base (`\underset`).
+    StackBelow { base: Box<MathSemNode>, under: Box<MathSemNode> },
     /// Fence pair around a body — `mrow` wrapping `mo` fences.
     ///
     /// `None` marks a missing delimiter (`.`, as in `\left(…\right.`).
@@ -585,6 +615,11 @@ impl MathSemNode {
                 accent: accent.char.map(|c| c.to_string()).unwrap_or_default(),
                 position: AccentPosition::Above,
             },
+            SemanticNode::OverSet { top, base } => MathSemNode::StackAbove { base: child(base), over: child(top) },
+            SemanticNode::UnderSet { bot, base } => MathSemNode::StackBelow { base: child(base), under: child(bot) },
+            // `\mathrel` / `\stackrel` — the spacing role is layout-layer
+            // concern, so the semantic layer just lowers the body it wraps.
+            SemanticNode::Relation(inner) => return Self::from_semantic(inner),
             SemanticNode::SetMathStyle(_) | SemanticNode::LimitsSpec(_) => return None,
         })
     }
