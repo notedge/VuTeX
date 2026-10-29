@@ -41,11 +41,11 @@ categories = ["text-processing", "rendering"]
 publish = false
 
 [workspace.dependencies]
-notedown-ir = { git = "https://github.com/notedge/notedown.git", rev = "0a2f60078a6777b26ccf03025784076d9328d7fb" }
-notedown-formats = { git = "https://github.com/notedge/notedown.git", rev = "0a2f60078a6777b26ccf03025784076d9328d7fb", default-features = false, features = ["markdown", "notedown", "html", "tex", "typst"] }
-davinci-types = { git = "https://github.com/notedge/notedown.git", rev = "0a2f60078a6777b26ccf03025784076d9328d7fb" }
-davinci-scene = { git = "https://github.com/notedge/notedown.git", rev = "0a2f60078a6777b26ccf03025784076d9328d7fb" }
-davinci-diagram = { git = "https://github.com/notedge/notedown.git", rev = "0a2f60078a6777b26ccf03025784076d9328d7fb", default-features = false, features = ["mermaid"] }
+notedown-ir = { git = "https://github.com/notedge/notedown.git", rev = "78ccd43f9c20d11e74d1169e36ccb3a22fd69ffe" }
+notedown-formats = { git = "https://github.com/notedge/notedown.git", rev = "78ccd43f9c20d11e74d1169e36ccb3a22fd69ffe", default-features = false, features = ["markdown", "notedown", "html", "tex", "typst"] }
+davinci-types = { git = "https://github.com/notedge/notedown.git", rev = "78ccd43f9c20d11e74d1169e36ccb3a22fd69ffe" }
+davinci-scene = { git = "https://github.com/notedge/notedown.git", rev = "78ccd43f9c20d11e74d1169e36ccb3a22fd69ffe" }
+davinci-diagram = { git = "https://github.com/notedge/notedown.git", rev = "78ccd43f9c20d11e74d1169e36ccb3a22fd69ffe", default-features = false, features = ["mermaid"] }
 boost-diagnostic = { git = "https://github.com/oovm/rust-boost", rev = "9aa52745d6eae2d7748c76e4e3e6555e1f6e4b86", default-features = false, features = ["std", "serde"] }
 acorn-ttf = { git = "https://github.com/yggdrasil-language/acorn.rs.git", rev = "6798c29abede61043893796b8191aa9acdb8f4fa", default-features = false, features = ["outline-cff"] }
 
