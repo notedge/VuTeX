@@ -12,7 +12,8 @@
 //! * [`NoadKind`] — the 8 Appendix G classes plus a few structural kinds.
 //! * [`Noad`] — a single normalized atom with nucleus, scripts, style and
 //!   a `cramped` flag that TeX uses for radicals and denominators.
-//! * [`MathList`] — a newtype over `Vec<Noad>`.
+//! * [`MathItem`] — one slot of the list: an atom or an explicit glue item.
+//! * [`MathList`] — a newtype over `Vec<MathItem>`.
 //! * [`MathStyleState`] — the recursive `(MathStyle, cramped)` pair that
 //!   descends into subtrees.
 //! * [`normalize_math_list`] — flatten transparent groups, demote `Bin` atoms
@@ -30,7 +31,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     operator::LimitsPolicy,
-    semantic::{FontStyle, MathStyle, SemanticNode, SymbolRole},
+    semantic::{Fixed, FontStyle, MathStyle, SemanticNode, SymbolRole},
 };
 
 /// TeX Appendix G spacing classes + structural extensions.
@@ -198,14 +199,53 @@ impl Noad {
     }
 }
 
-/// A flat, normalized list of [`Noad`]s — TeX's equivalent of a "math list".
+/// One slot of a [`MathList`]: an atom, or explicit glue between atoms.
 ///
-/// The newtype exists so downstream crates can depend on a named type
-/// rather than `Vec<Noad>` everywhere, and so we can attach helper methods
-/// and trait implementations to it without polluting `Vec`.
+/// TeX's math list is not a pure atom sequence.  `\,`, `\:`, `\;`, `\ `,
+/// `\quad` and `\qquad` are `\mskip` glue items: they advance the line without
+/// joining the atom sequence, so they neither occupy a slot of the Appendix G
+/// spacing table nor change which atoms are neighbours.  Keeping them out of
+/// [`Noad`] is what makes the two contributions independent — the spacing
+/// table reads the atoms on either side, the glue adds only its own width.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum MathItem {
+    /// A spacing atom.
+    Noad(Noad),
+    /// Explicit glue inserted between atoms.
+    Glue(MathGlue),
+}
+
+impl MathItem {
+    /// The atom this item carries, if it is one.
+    pub fn as_noad(&self) -> Option<&Noad> {
+        match self {
+            MathItem::Noad(noad) => Some(noad),
+            MathItem::Glue(_) => None,
+        }
+    }
+}
+
+/// Explicit glue `\,` and friends insert into a math list.
+///
+/// The width is stored in em of the math style that wrote it (`\,` = 3mu =
+/// 3/18 em), so layout scales it by that style's em exactly the way a kern in
+/// the same style would be scaled.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub struct MathGlue {
+    /// Width in em of [`style`](Self::style).
+    pub width: Fixed,
+    /// Math style whose em the width is measured in.
+    pub style: MathStyle,
+}
+
+/// A flat, normalized math list: atoms interleaved with explicit glue.
+///
+/// The newtype exists so downstream crates can depend on a named type rather
+/// than `Vec<MathItem>` everywhere, and so we can attach helper methods and
+/// trait implementations to it without polluting `Vec`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(transparent)]
-pub struct MathList(pub Vec<Noad>);
+pub struct MathList(pub Vec<MathItem>);
 
 impl MathList {
     /// Create an empty list.
@@ -213,36 +253,56 @@ impl MathList {
         Self(Vec::new())
     }
 
-    /// Number of noads currently in the list.
+    /// Number of items in the list, explicit glue included.
     pub fn len(&self) -> usize {
         self.0.len()
     }
 
-    /// True when the list contains no noads.
+    /// True when the list holds neither atoms nor glue.
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
 
-    /// Iterate over the noads.
-    pub fn iter(&self) -> std::slice::Iter<'_, Noad> {
+    /// Iterate over every item, explicit glue included.
+    pub fn iter(&self) -> std::slice::Iter<'_, MathItem> {
         self.0.iter()
     }
 
-    /// Append a noad to the end.
-    pub fn push(&mut self, noad: Noad) {
-        self.0.push(noad);
+    /// Iterate over the atoms, skipping the glue between them.
+    pub fn noads(&self) -> impl Iterator<Item = &Noad> {
+        self.0.iter().filter_map(MathItem::as_noad)
+    }
+
+    /// Number of atoms in the list, explicit glue excluded.
+    pub fn noad_count(&self) -> usize {
+        self.noads().count()
+    }
+
+    /// Append an item to the end.
+    pub fn push(&mut self, item: MathItem) {
+        self.0.push(item);
+    }
+
+    /// Append an atom to the end.
+    pub fn push_noad(&mut self, noad: Noad) {
+        self.0.push(MathItem::Noad(noad));
+    }
+
+    /// Append explicit glue to the end.
+    pub fn push_glue(&mut self, glue: MathGlue) {
+        self.0.push(MathItem::Glue(glue));
     }
 }
 
-impl FromIterator<Noad> for MathList {
-    fn from_iter<T: IntoIterator<Item = Noad>>(iter: T) -> Self {
+impl FromIterator<MathItem> for MathList {
+    fn from_iter<T: IntoIterator<Item = MathItem>>(iter: T) -> Self {
         Self(iter.into_iter().collect())
     }
 }
 
 impl IntoIterator for MathList {
-    type Item = Noad;
-    type IntoIter = std::vec::IntoIter<Noad>;
+    type Item = MathItem;
+    type IntoIter = std::vec::IntoIter<MathItem>;
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter()
     }
@@ -404,15 +464,14 @@ fn project_one(
             noad.nucleus = Some(Box::new(node.clone()));
             push_noad(list, noad, pending_limits);
         }
-        SemanticNode::Space { .. } => {
+        SemanticNode::Space { width } => {
             // Explicit TeX math spaces (`\,`, `\:`, `\;`, `\ `, `\quad`,
-            // `\qquad`) are pure kerns — they must not participate in the
-            // Appendix G spacing table on either side, so we emit them as
-            // plain Atoms (Atom→Atom = NoGlue).  The kern advance is still
-            // carried by the nucleus for `layout_node` to lower.
-            let mut noad = Noad::new(NoadKind::Atom, state.style, state.cramped);
-            noad.nucleus = Some(Box::new(node.clone()));
-            push_noad(list, noad, pending_limits);
+            // `\qquad`) are `\mskip` glue, not atoms: they advance the line by
+            // their own width and leave the Appendix G table to the atoms on
+            // either side.  `\limits` describes an atom, so a queued policy
+            // cannot attach to glue and must not survive it either.
+            *pending_limits = None;
+            list.push_glue(MathGlue { width: *width, style: state.style });
         }
         SemanticNode::Subscript { base, sub } => {
             let kind = kind_of_node(base);
@@ -535,7 +594,7 @@ fn push_noad(list: &mut MathList, mut noad: Noad, pending_limits: &mut Option<Li
     if noad.kind == NoadKind::Op {
         noad.limits = policy;
     }
-    list.push(noad);
+    list.push_noad(noad);
 }
 
 /// Extract the [`NoadKind`] a semantic node contributes to the flat math
@@ -562,21 +621,29 @@ fn with_style(node: &SemanticNode, target: MathStyle) -> SemanticNode {
 
 /// Normalize a projected [`MathList`] with TeX Appendix G passes.
 ///
-/// 1. **Boundary trim** — strip leading `Open`/`Close`/`Punct` noads
+/// The list interleaves atoms with explicit glue.  Every pass below reads atoms
+/// as the neighbours of atoms and leaves glue where the author wrote it:
+///
+/// 1. **Boundary trim** — strip leading `Open`/`Close`/`Punct` atoms
 ///    that have no nucleus (bare grouping atoms with no glyph of their
 ///    own).  Fence pairs emitted by the `Delimited` projector carry a
 ///    proper `Symbol` nucleus for their delimiters and are therefore
 ///    preserved; the trim only catches artifact atoms from future
-///    sources that have neither a glyph nor a sub/superscript.
+///    sources that have neither a glyph nor a sub/superscript.  Glue at
+///    either end is authored spacing and stays.
 /// 2. **`Bin` demotion** — downgrade binary-operator atoms per TeXbook
 ///    Chapter 17 / Appendix G, evaluated in one left-to-right pass (each noad
-///    sees its original neighbours; TeX does not re-resolve).  `Bin` is the
+///    sees its original neighbours; TeX does not re-resolve).  Glue in between
+///    two atoms does not hide them from each other: TeX resolves the class from
+///    the surrounding atoms, so `a=\,\;+b` demotes `+` exactly like `a=+b`
+///    does rather than treating the space as an atom neighbour.  `Bin` is the
 ///    only class TeX converts: relations keep their `Rel` class and operators
 ///    keep their `Op` class whatever surrounds them, so a relation never turns
 ///    into a binary operator and a large operator is never downgraded to
 ///    `Ord`.
-/// 3. **Consecutive Atom merge** — fold adjacent `Atom` noads into a
-///    single one; later scripts override earlier ones.
+/// 3. **Consecutive Atom merge** — fold adjacent `Atom` atoms into a
+///    single one; later scripts override earlier ones.  Glue breaks the run:
+///    `\text{a}\,\text{b}` stays two words.
 pub fn normalize_math_list(mut list: MathList) -> MathList {
     // ── Pass 1: boundary trim ────────────────────────────────────────
     trim_boundary(&mut list);
@@ -596,32 +663,36 @@ pub fn normalize_math_list(mut list: MathList) -> MathList {
 // Pass 1 — boundary trim
 // ────────────────────────────────────────────────────────────────────────
 
-/// Strip leading and trailing `Open`/`Close`/`Punct` noads that have no
+/// Strip leading and trailing `Open`/`Close`/`Punct` atoms that have no
 /// nucleus.
 ///
 /// Open/Close atoms at the boundaries never have a useful neighbour on
 /// the outer side, so their spacing contribution is zero.  Bare atoms of
 /// those kinds that carry no glyph (no nucleus) are pure artifacts and
-/// can be dropped safely.  Delimiter noads emitted by the
+/// can be dropped safely.  Delimiter atoms emitted by the
 /// [`SemanticNode::Delimited`] projector always carry a synthetic
-/// `Symbol` nucleus, so they survive this pass — only placeholder noads
-/// from other sources are trimmed.
+/// `Symbol` nucleus, so they survive this pass — only placeholder atoms
+/// from other sources are trimmed.  Explicit glue is never a placeholder:
+/// `\,x` really is spaced, so the glue at either end stays.
 fn trim_boundary(list: &mut MathList) {
+    /// True when the atom is a bare grouping artifact with nothing to set.
+    fn droppable(noad: &Noad) -> bool {
+        noad.nucleus.is_none() && matches!(noad.kind, NoadKind::Open | NoadKind::Close | NoadKind::Punct)
+    }
+
     // Trim leading.
-    while let Some(first) = list.0.first() {
-        let can_drop = first.nucleus.is_none() && matches!(first.kind, NoadKind::Open | NoadKind::Close | NoadKind::Punct);
-        if can_drop {
-            list.0.remove(0);
+    while let Some(index) = list.0.iter().position(|item| item.as_noad().is_some()) {
+        if list.0[index].as_noad().is_some_and(droppable) {
+            list.0.remove(index);
         }
         else {
             break;
         }
     }
     // Trim trailing.
-    while let Some(last) = list.0.last() {
-        let can_drop = last.nucleus.is_none() && matches!(last.kind, NoadKind::Open | NoadKind::Close | NoadKind::Punct);
-        if can_drop {
-            list.0.pop();
+    while let Some(index) = list.0.iter().rposition(|item| item.as_noad().is_some()) {
+        if list.0[index].as_noad().is_some_and(droppable) {
+            list.0.remove(index);
         }
         else {
             break;
@@ -635,11 +706,16 @@ fn trim_boundary(list: &mut MathList) {
 
 /// TeXbook Chapter 17 demote pass — one left-to-right sweep.
 ///
-/// Each noad's **left** neighbour is read from the already-demoted `out`
-/// array (so a `Bin→Atom` demotion is what the next atom sees), while the
+/// Each atom's **left** neighbour is read from the already-demoted `out`
+/// list (so a `Bin→Atom` demotion is what the next atom sees), while the
 /// **right** neighbour is still the raw `input`.  This is the single place
 /// where atom classes are resolved: downstream spacing reads the resulting
 /// [`NoadKind`] and never re-applies these rules.
+///
+/// Both neighbours are read through [`adjacent_kind`], which skips the glue
+/// items: TeX's math list holds `\mskip` items, and `mlist_to_hlist` walks past
+/// them to find the next atom, so an explicit space can neither shield a `Bin`
+/// from a cancelling neighbour nor create one.
 ///
 /// Only `Bin` is converted.  TeX leaves `Rel` and `Op` alone: `(` followed by
 /// `=` keeps a relation (it never becomes a binary operator) and `∑` followed
@@ -650,22 +726,32 @@ fn trim_boundary(list: &mut MathList) {
 /// (`Fence`, `Radical`, `Vcent`, `TableCell`) collapse to `Inner` before
 /// the demote rules fire — they participate as an Inner neighbour exactly
 /// the way TeX treats fences and radicals for spacing.
-fn demote_pass(input: &[Noad]) -> Vec<Noad> {
-    let n = input.len();
-    let mut out = Vec::with_capacity(n);
-    for i in 0..n {
-        // left = demote result (already in out), or None at the leading edge.
-        let left = out.last().map(|n: &Noad| n.effective_kind());
+fn demote_pass(input: &[MathItem]) -> Vec<MathItem> {
+    let mut out: Vec<MathItem> = Vec::with_capacity(input.len());
+    let mut left: Option<NoadKind> = None;
+    for (i, item) in input.iter().enumerate() {
+        let MathItem::Noad(noad) = item
+        else {
+            // Glue keeps its place; it is not an atom and never a neighbour.
+            out.push(item.clone());
+            continue;
+        };
         // right = still the original input; TeX evaluates demotion rules
         // before any neighbour has changed.
-        let right = (i + 1 < n).then(|| input[i + 1].effective_kind());
-        let mut noad = input[i].clone();
+        let right = adjacent_kind(input, i + 1);
+        let mut noad = noad.clone();
         if noad.kind == NoadKind::Bin && bin_demotes(left, right) {
             noad.kind = NoadKind::Atom;
         }
-        out.push(noad);
+        left = Some(noad.effective_kind());
+        out.push(MathItem::Noad(noad));
     }
     out
+}
+
+/// Effective spacing class of the first atom at or after `from`, skipping glue.
+fn adjacent_kind(items: &[MathItem], from: usize) -> Option<NoadKind> {
+    items[from..].iter().find_map(|item| item.as_noad().map(Noad::effective_kind))
 }
 
 /// TeXbook Chapter 17 — a `Bin` that cannot bind becomes `Ord`.
@@ -694,7 +780,7 @@ fn bin_demotes(left: Option<NoadKind>, right: Option<NoadKind>) -> bool {
 // Pass 3 — merge consecutive Text atoms only
 // ────────────────────────────────────────────────────────────────────────
 
-/// Fold adjacent **Text-derived** Atom noads into a single Atom.
+/// Fold adjacent **Text-derived** Atom atoms into a single Atom.
 ///
 /// TeX does **not** merge Symbol atoms even if both sides happen to be
 /// Ordinary — each remains a distinct atom with its own glyph and spacing
@@ -705,18 +791,29 @@ fn bin_demotes(left: Option<NoadKind>, right: Option<NoadKind>) -> bool {
 /// sees one "word" instead of N single-letter atoms with zero glue between
 /// them.
 ///
+/// Explicit glue breaks the run: `\text{a}\,\text{b}` is two words separated by
+/// authored space, not one word whose letters happen to be spaced.
+///
 /// Two Text atoms are merged only when:
 /// * both are `NoadKind::Atom`,
 /// * both carry a `SemanticNode::Text` nucleus (never Symbol),
 /// * they carry the same `FontStyle` face (a bold run never folds into the
 ///   plain run before it),
 /// * they share the same `MathStyle` and `cramped` flag,
-/// * neither carries sub/superscripts (scripts break the run).
-fn merge_atoms_pass(input: Vec<Noad>) -> Vec<Noad> {
-    let mut out: Vec<Noad> = Vec::with_capacity(input.len());
-    for noad in input {
-        if let Some(last) = out.last_mut() {
-            if last.kind == NoadKind::Atom
+/// * neither carries sub/superscripts (scripts break the run),
+/// * nothing — in particular no glue — sits between them.
+fn merge_atoms_pass(input: Vec<MathItem>) -> Vec<MathItem> {
+    let mut out: Vec<MathItem> = Vec::with_capacity(input.len());
+    for item in input {
+        let noad = match item {
+            MathItem::Glue(glue) => {
+                out.push(MathItem::Glue(glue));
+                continue;
+            }
+            MathItem::Noad(noad) => noad,
+        };
+        let mergeable = |last: &Noad| {
+            last.kind == NoadKind::Atom
                 && noad.kind == NoadKind::Atom
                 && last.is_text_atom()
                 && noad.is_text_atom()
@@ -725,12 +822,13 @@ fn merge_atoms_pass(input: Vec<Noad>) -> Vec<Noad> {
                 && last.cramped == noad.cramped
                 && last.scripts.is_none()
                 && noad.scripts.is_none()
-            {
+        };
+        match out.last_mut() {
+            Some(MathItem::Noad(last)) if mergeable(last) => {
                 last.nucleus = Some(merge_text_nodes(last.nucleus.as_ref(), noad.nucleus.as_ref()));
-                continue;
             }
+            _ => out.push(MathItem::Noad(noad)),
         }
-        out.push(noad);
     }
     out
 }
@@ -785,6 +883,17 @@ mod tests {
         SemanticNode::Symbol { glyph_key: GlyphKey::from_char(c, None, crate::math::FontStyle::Math), role }
     }
 
+    /// An explicit math space of `mu` math units (1mu = em/18), the shape the
+    /// parser hands the projector for `\,`, `\:` and friends.
+    fn space(mu: f64) -> SemanticNode {
+        SemanticNode::Space { width: Fixed::from_f64(mu / 18.0) }
+    }
+
+    /// The `index`-th atom of `list`, skipping the glue between atoms.
+    fn noad(list: &MathList, index: usize) -> &Noad {
+        list.noads().nth(index).unwrap_or_else(|| panic!("no atom at {index} in {list:?}"))
+    }
+
     /// Style a projected nucleus/script fragment was stamped with, when the
     /// projection prefixed it with `SetMathStyle`.
     fn stamped_style(node: &SemanticNode) -> Option<MathStyle> {
@@ -802,9 +911,9 @@ mod tests {
         let nodes = vec![sym('x', SymbolRole::Ordinary)];
         let list = MathList::from(nodes.as_slice());
         assert_eq!(list.len(), 1);
-        assert_eq!(list.0[0].kind, NoadKind::Atom);
-        assert_eq!(list.0[0].style, MathStyle::Display);
-        assert!(!list.0[0].cramped);
+        assert_eq!(noad(&list, 0).kind, NoadKind::Atom);
+        assert_eq!(noad(&list, 0).style, MathStyle::Display);
+        assert!(!noad(&list, 0).cramped);
     }
 
     #[test]
@@ -816,9 +925,9 @@ mod tests {
         let list = MathList::from(nodes.as_slice());
         // Sequence flattens so we get three noads total.
         assert_eq!(list.len(), 3);
-        assert_eq!(list.0[0].kind, NoadKind::Atom);
-        assert_eq!(list.0[1].kind, NoadKind::Atom);
-        assert_eq!(list.0[2].kind, NoadKind::Bin);
+        assert_eq!(noad(&list, 0).kind, NoadKind::Atom);
+        assert_eq!(noad(&list, 1).kind, NoadKind::Atom);
+        assert_eq!(noad(&list, 2).kind, NoadKind::Bin);
     }
 
     #[test]
@@ -831,8 +940,8 @@ mod tests {
         ];
         let list = MathList::from(nodes.as_slice());
         assert_eq!(list.len(), 2);
-        assert_eq!(list.0[0].style, MathStyle::Script);
-        assert_eq!(list.0[1].style, MathStyle::Display);
+        assert_eq!(noad(&list, 0).style, MathStyle::Script);
+        assert_eq!(noad(&list, 1).style, MathStyle::Display);
     }
 
     #[test]
@@ -861,7 +970,7 @@ mod tests {
         }];
         let list = MathList::from(nodes.as_slice());
         assert_eq!(list.len(), 1);
-        let n = &list.0[0];
+        let n = noad(&list, 0);
         assert!(n.scripts.is_some());
         assert!(n.scripts.as_ref().unwrap().sub.is_some());
         assert!(n.scripts.as_ref().unwrap().sup.is_none());
@@ -929,7 +1038,7 @@ mod tests {
         };
         let list = MathList::from(std::slice::from_ref(&frac));
         assert_eq!(list.len(), 1);
-        let n = &list.0[0];
+        let n = noad(&list, 0);
         assert_eq!(n.kind, NoadKind::Inner);
         // The fraction atom itself stays in the outer style, crampedness
         // travels into the numerator/denominator only.
@@ -963,7 +1072,7 @@ mod tests {
             }),
         }];
         let list = MathList::from(nodes.as_slice());
-        let n = &list.0[0];
+        let n = noad(&list, 0);
         assert_eq!(n.style, MathStyle::Display, "the base keeps the outer style");
         assert!(!n.cramped);
         let sup_node = n.scripts.as_ref().and_then(|s| s.sup.as_deref()).expect("superscript");
@@ -974,9 +1083,9 @@ mod tests {
     fn radical_argument_is_cramped() {
         let rad = SemanticNode::Radical { degree: None, radicand: Box::new(sym('x', SymbolRole::Ordinary)) };
         let list = MathList::from(std::slice::from_ref(&rad));
-        assert_eq!(list.0[0].kind, NoadKind::Radical);
-        assert_eq!(list.0[0].style, MathStyle::Display);
-        assert!(list.0[0].cramped, "a radical's argument is cramped");
+        assert_eq!(noad(&list, 0).kind, NoadKind::Radical);
+        assert_eq!(noad(&list, 0).style, MathStyle::Display);
+        assert!(noad(&list, 0).cramped, "a radical's argument is cramped");
     }
 
     #[test]
@@ -991,7 +1100,7 @@ mod tests {
         };
         let rad = SemanticNode::Radical { degree: None, radicand: Box::new(frac) };
         let list = MathList::from(std::slice::from_ref(&rad));
-        assert!(list.0[0].cramped);
+        assert!(noad(&list, 0).cramped);
 
         let cramped = MathStyleState::DISPLAY.cramp();
         assert_eq!(cramped.frac_num().style, MathStyle::Text);
@@ -1010,9 +1119,9 @@ mod tests {
         ];
         let list = MathList::from(nodes.as_slice());
         assert_eq!(list.len(), 3);
-        assert_eq!(list.0[0].style, MathStyle::Display);
-        assert_eq!(list.0[1].style, MathStyle::Script);
-        assert_eq!(list.0[2].style, MathStyle::Display, "style must not leak past the group");
+        assert_eq!(noad(&list, 0).style, MathStyle::Display);
+        assert_eq!(noad(&list, 1).style, MathStyle::Script);
+        assert_eq!(noad(&list, 2).style, MathStyle::Display, "style must not leak past the group");
     }
 
     #[test]
@@ -1022,9 +1131,9 @@ mod tests {
         let projected = MathList::from(nodes.as_slice());
         let normalized = normalize_math_list(projected);
         assert_eq!(normalized.len(), 3);
-        assert_eq!(normalized.0[0].kind, NoadKind::Atom);
-        assert_eq!(normalized.0[1].kind, NoadKind::Bin);
-        assert_eq!(normalized.0[2].kind, NoadKind::Atom);
+        assert_eq!(noad(&normalized, 0).kind, NoadKind::Atom);
+        assert_eq!(noad(&normalized, 1).kind, NoadKind::Bin);
+        assert_eq!(noad(&normalized, 2).kind, NoadKind::Atom);
     }
 
     #[test]
@@ -1034,8 +1143,8 @@ mod tests {
         let projected = MathList::from(nodes.as_slice());
         let normalized = normalize_math_list(projected);
         assert_eq!(normalized.len(), 2);
-        assert_eq!(normalized.0[0].kind, NoadKind::Open);
-        assert_eq!(normalized.0[1].kind, NoadKind::Atom);
+        assert_eq!(noad(&normalized, 0).kind, NoadKind::Open);
+        assert_eq!(noad(&normalized, 1).kind, NoadKind::Atom);
     }
 
     #[test]
@@ -1045,8 +1154,8 @@ mod tests {
         let projected = MathList::from(nodes.as_slice());
         let normalized = normalize_math_list(projected);
         assert_eq!(normalized.len(), 2);
-        assert_eq!(normalized.0[0].kind, NoadKind::Close);
-        assert_eq!(normalized.0[1].kind, NoadKind::Atom);
+        assert_eq!(noad(&normalized, 0).kind, NoadKind::Close);
+        assert_eq!(noad(&normalized, 1).kind, NoadKind::Atom);
     }
 
     #[test]
@@ -1056,8 +1165,8 @@ mod tests {
         let projected = MathList::from(nodes.as_slice());
         let normalized = normalize_math_list(projected);
         assert_eq!(normalized.len(), 2);
-        assert_eq!(normalized.0[0].kind, NoadKind::Atom);
-        assert_eq!(normalized.0[1].kind, NoadKind::Atom);
+        assert_eq!(noad(&normalized, 0).kind, NoadKind::Atom);
+        assert_eq!(noad(&normalized, 1).kind, NoadKind::Atom);
     }
 
     #[test]
@@ -1072,10 +1181,10 @@ mod tests {
         let projected = MathList::from(nodes.as_slice());
         let normalized = normalize_math_list(projected);
         assert_eq!(normalized.len(), 4);
-        assert_eq!(normalized.0[0].kind, NoadKind::Atom);
-        assert_eq!(normalized.0[1].kind, NoadKind::Rel, "the relation keeps its class");
-        assert_eq!(normalized.0[2].kind, NoadKind::Atom, "the Bin after a Rel demotes");
-        assert_eq!(normalized.0[3].kind, NoadKind::Atom);
+        assert_eq!(noad(&normalized, 0).kind, NoadKind::Atom);
+        assert_eq!(noad(&normalized, 1).kind, NoadKind::Rel, "the relation keeps its class");
+        assert_eq!(noad(&normalized, 2).kind, NoadKind::Atom, "the Bin after a Rel demotes");
+        assert_eq!(noad(&normalized, 3).kind, NoadKind::Atom);
     }
 
     #[test]
@@ -1086,8 +1195,8 @@ mod tests {
         let projected = MathList::from(nodes.as_slice());
         let normalized = normalize_math_list(projected);
         assert_eq!(normalized.len(), 2);
-        assert_eq!(normalized.0[0].kind, NoadKind::Open);
-        assert_eq!(normalized.0[1].kind, NoadKind::Rel);
+        assert_eq!(noad(&normalized, 0).kind, NoadKind::Open);
+        assert_eq!(noad(&normalized, 1).kind, NoadKind::Rel);
     }
 
     #[test]
@@ -1097,9 +1206,9 @@ mod tests {
         let projected = MathList::from(nodes.as_slice());
         let normalized = normalize_math_list(projected);
         assert_eq!(normalized.len(), 3);
-        assert_eq!(normalized.0[0].kind, NoadKind::Atom);
-        assert_eq!(normalized.0[1].kind, NoadKind::Rel);
-        assert_eq!(normalized.0[2].kind, NoadKind::Atom);
+        assert_eq!(noad(&normalized, 0).kind, NoadKind::Atom);
+        assert_eq!(noad(&normalized, 1).kind, NoadKind::Rel);
+        assert_eq!(noad(&normalized, 2).kind, NoadKind::Atom);
     }
 
     #[test]
@@ -1110,8 +1219,8 @@ mod tests {
         let projected = MathList::from(nodes.as_slice());
         let normalized = normalize_math_list(projected);
         assert_eq!(normalized.len(), 2);
-        assert_eq!(normalized.0[0].kind, NoadKind::Op);
-        assert_eq!(normalized.0[1].kind, NoadKind::Close);
+        assert_eq!(noad(&normalized, 0).kind, NoadKind::Op);
+        assert_eq!(noad(&normalized, 1).kind, NoadKind::Close);
     }
 
     #[test]
@@ -1122,8 +1231,8 @@ mod tests {
         let projected = MathList::from(nodes.as_slice());
         let normalized = normalize_math_list(projected);
         assert_eq!(normalized.len(), 2);
-        assert_eq!(normalized.0[0].kind, NoadKind::Op);
-        assert_eq!(normalized.0[1].kind, NoadKind::Atom);
+        assert_eq!(noad(&normalized, 0).kind, NoadKind::Op);
+        assert_eq!(noad(&normalized, 1).kind, NoadKind::Atom);
     }
 
     #[test]
@@ -1135,7 +1244,7 @@ mod tests {
         let projected = MathList::from(nodes.as_slice());
         let normalized = normalize_math_list(projected);
         assert_eq!(normalized.len(), 3, "Symbol atoms must never merge (TeX semantics)");
-        assert!(normalized.0.iter().all(|n| !n.is_text_atom()));
+        assert!(normalized.noads().all(|n| !n.is_text_atom()));
     }
 
     #[test]
@@ -1151,7 +1260,7 @@ mod tests {
         let projected = MathList::from(nodes.as_slice());
         let normalized = normalize_math_list(projected);
         assert_eq!(normalized.len(), 1, "three Text atoms must fold into one");
-        let n = &normalized.0[0];
+        let n = noad(&normalized, 0);
         assert!(n.is_text_atom());
         match n.nucleus.as_deref() {
             Some(SemanticNode::Text { text, .. }) => {
@@ -1174,9 +1283,9 @@ mod tests {
         let projected = project_semantic(&nodes, MathStyle::Text);
         let normalized = normalize_math_list(projected);
         assert_eq!(normalized.len(), 2, "a face change must break the Text run");
-        assert_eq!(normalized.0[0].text_font_style(), Some(FontStyle::Normal));
-        assert_eq!(normalized.0[1].text_font_style(), Some(FontStyle::Bold), "the bold fragment keeps its face");
-        match normalized.0[1].nucleus.as_deref() {
+        assert_eq!(noad(&normalized, 0).text_font_style(), Some(FontStyle::Normal));
+        assert_eq!(noad(&normalized, 1).text_font_style(), Some(FontStyle::Bold), "the bold fragment keeps its face");
+        match noad(&normalized, 1).nucleus.as_deref() {
             Some(SemanticNode::Text { text, font_style }) => {
                 assert_eq!(text, "b");
                 assert_eq!(*font_style, FontStyle::Bold);
@@ -1199,10 +1308,10 @@ mod tests {
         let projected = project_semantic(&nodes, MathStyle::Text);
         let normalized = normalize_math_list(projected);
         assert_eq!(normalized.len(), 3);
-        assert_eq!(normalized.0[0].text_font_style(), Some(FontStyle::Normal));
-        assert_eq!(normalized.0[1].text_font_style(), Some(FontStyle::Bold));
-        assert_eq!(normalized.0[2].text_font_style(), Some(FontStyle::Normal));
-        match normalized.0[0].nucleus.as_deref() {
+        assert_eq!(noad(&normalized, 0).text_font_style(), Some(FontStyle::Normal));
+        assert_eq!(noad(&normalized, 1).text_font_style(), Some(FontStyle::Bold));
+        assert_eq!(noad(&normalized, 2).text_font_style(), Some(FontStyle::Normal));
+        match noad(&normalized, 0).nucleus.as_deref() {
             Some(SemanticNode::Text { text, .. }) => assert_eq!(text, "ab"),
             other => panic!("expected Text nucleus, got {other:?}"),
         }
@@ -1242,9 +1351,112 @@ mod tests {
         ];
         let list = MathList::from(nodes.as_slice());
         assert_eq!(list.len(), 2);
-        assert_eq!(list.0[0].kind, NoadKind::Op);
-        assert_eq!(list.0[0].limits, Some(LimitsPolicy::Limits));
-        assert_eq!(list.0[1].kind, NoadKind::Atom);
+        assert_eq!(noad(&list, 0).kind, NoadKind::Op);
+        assert_eq!(noad(&list, 0).limits, Some(LimitsPolicy::Limits));
+        assert_eq!(noad(&list, 1).kind, NoadKind::Atom);
+    }
+
+    // ── Explicit glue is not an atom ──────────────────────────────────
+
+    #[test]
+    fn explicit_space_projects_to_glue() {
+        // `a \, b` → Atom · Glue · Atom.  The space owns no slot in the atom
+        // sequence, which is what keeps the Appendix G table reading `a` and
+        // `b` as neighbours.
+        let nodes = vec![sym('a', SymbolRole::Ordinary), space(3.0), sym('b', SymbolRole::Ordinary)];
+        let list = MathList::from(nodes.as_slice());
+        assert_eq!(list.len(), 3, "the glue is a list item");
+        assert_eq!(list.noad_count(), 2, "but it is not an atom");
+        match &list.0[1] {
+            MathItem::Glue(glue) => {
+                assert_eq!(glue.width, Fixed::from_f64(3.0 / 18.0), "`\\,` is 3mu = em/6");
+                assert_eq!(glue.style, MathStyle::Display);
+            }
+            other => panic!("expected glue between the atoms, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn glue_carries_the_style_in_force() {
+        // `{\scriptstyle a\,b}`: the space is measured in the em of the style
+        // that wrote it, so the glue records script style rather than display.
+        let nodes = vec![SemanticNode::Sequence(vec![
+            SemanticNode::SetMathStyle(MathStyle::Script),
+            sym('a', SymbolRole::Ordinary),
+            space(3.0),
+            sym('b', SymbolRole::Ordinary),
+        ])];
+        let list = MathList::from(nodes.as_slice());
+        match &list.0[1] {
+            MathItem::Glue(glue) => assert_eq!(glue.style, MathStyle::Script),
+            other => panic!("expected glue, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn glue_does_not_shield_bin_demotion() {
+        // `a = \, \; + b`: TeX walks past `\mskip` items when it looks for the
+        // neighbours of an atom, so `+` still sees the Rel on its left and
+        // demotes exactly as it does without the spaces.
+        let nodes = vec![
+            sym('a', SymbolRole::Ordinary),
+            sym('=', SymbolRole::Relation),
+            space(3.0),
+            space(5.0),
+            sym('+', SymbolRole::Binary),
+            sym('b', SymbolRole::Ordinary),
+        ];
+        let normalized = normalize_math_list(MathList::from(nodes.as_slice()));
+        assert_eq!(normalized.len(), 6, "both glue items stay where the author wrote them");
+        assert_eq!(normalized.noad_count(), 4);
+        assert_eq!(noad(&normalized, 0).kind, NoadKind::Atom);
+        assert_eq!(noad(&normalized, 1).kind, NoadKind::Rel);
+        assert_eq!(noad(&normalized, 2).kind, NoadKind::Atom, "the Bin after a Rel demotes across glue");
+        assert_eq!(noad(&normalized, 3).kind, NoadKind::Atom);
+    }
+
+    #[test]
+    fn glue_between_atoms_keeps_a_binding_bin() {
+        // `a \, + \, b`: the spaces do not strip the operator's neighbours, so
+        // the Bin keeps its class and its Medium glue on both sides.
+        let nodes = vec![
+            sym('a', SymbolRole::Ordinary),
+            space(3.0),
+            sym('+', SymbolRole::Binary),
+            space(3.0),
+            sym('b', SymbolRole::Ordinary),
+        ];
+        let normalized = normalize_math_list(MathList::from(nodes.as_slice()));
+        assert_eq!(noad(&normalized, 1).kind, NoadKind::Bin);
+    }
+
+    #[test]
+    fn glue_breaks_a_text_run() {
+        // `\text{a}\,\text{b}` stays two words: authored space is not letter
+        // spacing inside one word.
+        use crate::math::FontStyle;
+        let nodes = vec![
+            SemanticNode::Text { text: "a".into(), font_style: FontStyle::Math },
+            space(3.0),
+            SemanticNode::Text { text: "b".into(), font_style: FontStyle::Math },
+        ];
+        let normalized = normalize_math_list(MathList::from(nodes.as_slice()));
+        assert_eq!(normalized.len(), 3);
+        assert_eq!(normalized.noad_count(), 2, "the glue must stop the Text merge");
+        match noad(&normalized, 0).nucleus.as_deref() {
+            Some(SemanticNode::Text { text, .. }) => assert_eq!(text, "a"),
+            other => panic!("expected Text nucleus, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn boundary_trim_keeps_authored_glue() {
+        // `\, x`: the trim only drops bare Open/Close/Punct atoms, never the
+        // authored spacing at either end of the list.
+        let nodes = vec![space(3.0), sym('x', SymbolRole::Ordinary), space(3.0)];
+        let normalized = normalize_math_list(MathList::from(nodes.as_slice()));
+        assert_eq!(normalized.len(), 3);
+        assert_eq!(normalized.noad_count(), 1);
     }
 
     // ── Delimited → Open · content · Close expansion ──────────────────
@@ -1263,13 +1475,13 @@ mod tests {
         };
         let list = MathList::from(std::slice::from_ref(&delim));
         assert_eq!(list.len(), 5);
-        assert_eq!(list.0[0].kind, NoadKind::Open);
-        assert!(list.0[0].nucleus.is_some(), "Open must carry delimiter glyph");
-        assert_eq!(list.0[1].kind, NoadKind::Atom);
-        assert_eq!(list.0[2].kind, NoadKind::Bin);
-        assert_eq!(list.0[3].kind, NoadKind::Atom);
-        assert_eq!(list.0[4].kind, NoadKind::Close);
-        assert!(list.0[4].nucleus.is_some(), "Close must carry delimiter glyph");
+        assert_eq!(noad(&list, 0).kind, NoadKind::Open);
+        assert!(noad(&list, 0).nucleus.is_some(), "Open must carry delimiter glyph");
+        assert_eq!(noad(&list, 1).kind, NoadKind::Atom);
+        assert_eq!(noad(&list, 2).kind, NoadKind::Bin);
+        assert_eq!(noad(&list, 3).kind, NoadKind::Atom);
+        assert_eq!(noad(&list, 4).kind, NoadKind::Close);
+        assert!(noad(&list, 4).nucleus.is_some(), "Close must carry delimiter glyph");
     }
 
     #[test]
@@ -1282,9 +1494,9 @@ mod tests {
         };
         let list = MathList::from(std::slice::from_ref(&delim));
         assert_eq!(list.len(), 3);
-        assert_eq!(list.0[0].kind, NoadKind::Open);
-        assert_eq!(list.0[1].kind, NoadKind::Inner);
-        assert_eq!(list.0[2].kind, NoadKind::Close);
+        assert_eq!(noad(&list, 0).kind, NoadKind::Open);
+        assert_eq!(noad(&list, 1).kind, NoadKind::Inner);
+        assert_eq!(noad(&list, 2).kind, NoadKind::Close);
     }
 
     #[test]
@@ -1300,10 +1512,10 @@ mod tests {
         };
         let list = MathList::from(std::slice::from_ref(&delim));
         assert_eq!(list.len(), 3);
-        assert_eq!(list.0[0].kind, NoadKind::Open);
-        assert_eq!(list.0[1].kind, NoadKind::Atom);
-        assert_eq!(list.0[1].style, crate::math::MathStyle::Script);
-        assert_eq!(list.0[2].kind, NoadKind::Close);
+        assert_eq!(noad(&list, 0).kind, NoadKind::Open);
+        assert_eq!(noad(&list, 1).kind, NoadKind::Atom);
+        assert_eq!(noad(&list, 1).style, crate::math::MathStyle::Script);
+        assert_eq!(noad(&list, 2).kind, NoadKind::Close);
     }
 
     // ── Boundary trim ────────────────────────────────────────────────
@@ -1312,14 +1524,14 @@ mod tests {
     fn boundary_trim_drops_bare_open_without_nucleus() {
         // A bare Open noad with no nucleus at the leading edge is trimmed.
         let mut list = MathList::new();
-        list.push(Noad::new(NoadKind::Open, crate::math::MathStyle::Display, false));
-        list.push(Noad::new(NoadKind::Atom, crate::math::MathStyle::Display, false));
+        list.push_noad(Noad::new(NoadKind::Open, crate::math::MathStyle::Display, false));
+        list.push_noad(Noad::new(NoadKind::Atom, crate::math::MathStyle::Display, false));
         // Add a trailing Close with no nucleus too.
-        list.push(Noad::new(NoadKind::Close, crate::math::MathStyle::Display, false));
+        list.push_noad(Noad::new(NoadKind::Close, crate::math::MathStyle::Display, false));
 
         let normalized = normalize_math_list(list);
         assert_eq!(normalized.len(), 1, "bare Open+Close at boundaries must be trimmed");
-        assert_eq!(normalized.0[0].kind, NoadKind::Atom);
+        assert_eq!(noad(&normalized, 0).kind, NoadKind::Atom);
     }
 
     #[test]
@@ -1333,9 +1545,9 @@ mod tests {
         let projected = MathList::from(std::slice::from_ref(&delim));
         let normalized = normalize_math_list(projected);
         assert_eq!(normalized.len(), 3);
-        assert_eq!(normalized.0[0].kind, NoadKind::Open);
-        assert_eq!(normalized.0[1].kind, NoadKind::Inner);
-        assert_eq!(normalized.0[2].kind, NoadKind::Close);
+        assert_eq!(noad(&normalized, 0).kind, NoadKind::Open);
+        assert_eq!(noad(&normalized, 1).kind, NoadKind::Inner);
+        assert_eq!(noad(&normalized, 2).kind, NoadKind::Close);
     }
 
     #[test]
@@ -1349,8 +1561,8 @@ mod tests {
         };
         let projected = MathList::from(std::slice::from_ref(&delim));
         let normalized = normalize_math_list(projected);
-        assert_eq!(normalized.0[0].kind, NoadKind::Open);
+        assert_eq!(noad(&normalized, 0).kind, NoadKind::Open);
         // Bin is at position 1, left=Open → demotes to Atom.
-        assert_eq!(normalized.0[1].kind, NoadKind::Atom);
+        assert_eq!(noad(&normalized, 1).kind, NoadKind::Atom);
     }
 }

@@ -7,7 +7,7 @@ use vutex_types::{
     Diagnostic, Severity,
     math::{
         Alignment, BBox, DelimiterComponent, Fixed, FontMetricsSnapshot, FontStyle, FormulaLayoutResult, FormulaMetrics,
-        GlyphKey, GlyphMetrics, LimitsPolicy, LineStyle, MathConstant, MathKern, MathList, MathResult, MathStyle,
+        GlyphKey, GlyphMetrics, LimitsPolicy, LineStyle, MathConstant, MathItem, MathKern, MathList, MathResult, MathStyle,
         MathStyleState, Noad, NoadKind, OperatorClass, PaintNode, SemanticNode, SpacingRule, SymbolRole, normalize_math_list,
         project_semantic_with_state,
     },
@@ -711,36 +711,53 @@ impl LayoutEngine {
 
     /// Lay out a flat, normalized [`MathList`].
     ///
-    /// Spacing glue uses [`tex_skip_between_noad`] keyed by the already-
-    /// resolved [`NoadKind`].  Each nucleus is lowered via [`layout_node`]
-    /// or [`layout_subsup`] depending on whether scripts are attached.
+    /// The list interleaves atoms with explicit glue.  Appendix G spacing is
+    /// keyed on the atoms on either side of a gap — glue in between does not
+    /// break that adjacency — and an explicit space only adds its own width.
+    /// Each nucleus is lowered via [`layout_node`](Self::layout_node) or
+    /// [`layout_subsup`](Self::layout_subsup) depending on whether scripts are
+    /// attached.
     fn layout_noads(&self, list: &MathList) -> MathResult<LayoutNode> {
         Ok(self.pack_hbox(self.layout_noad_run(&list.0)?, None))
     }
 
-    /// Lower one run of noads into the horizontal children between two boxes,
-    /// with the inter-atom glue already inserted.
+    /// Lower one run of math-list items into the horizontal children between
+    /// two boxes, with the inter-atom glue already inserted.
     ///
-    /// A `\left…\right` pair reaches this list as `Open` · body · `Close` noads
+    /// A `\left…\right` pair reaches this list as `Open` · body · `Close` atoms
     /// so the Appendix G columns keep seeing a fence as an Open / Close atom.
     /// The delimiters themselves, though, have to be sized against the whole
     /// body between them, so the pair is laid out through [`Self::layout_fence`]
     /// and the body is lowered as a run of its own.
-    fn layout_noad_run(&self, noads: &[Noad]) -> MathResult<Vec<LayoutNode>> {
+    fn layout_noad_run(&self, items: &[MathItem]) -> MathResult<Vec<LayoutNode>> {
         let mut children = Vec::new();
-        let n = noads.len();
+        let n = items.len();
         let mut i = 0;
+        // Previous atom, not previous item: explicit glue sits between atoms
+        // without becoming one of them, exactly as `\mskip` glue does in TeX.
+        let mut previous: Option<&Noad> = None;
 
         while i < n {
-            let noad = &noads[i];
+            let noad = match &items[i] {
+                MathItem::Glue(glue) => {
+                    // The glue carries only its own advance.  It has no
+                    // stretch/shrink in the IR, so it lowers as a fixed kern in
+                    // the em of the style that authored it.
+                    let size = self.base_size * self.get_style_scale(glue.style);
+                    children.push(LayoutNode::Kern(glue.width * size));
+                    i += 1;
+                    continue;
+                }
+                MathItem::Noad(noad) => noad,
+            };
             let state = MathStyleState { style: noad.style, cramped: noad.cramped };
             let style = state.style;
 
-            // spacing glue between the previous noad and this one.
+            // spacing glue between the previous atom and this one.
             // Effective kind already collapses structural kinds (Fence → Inner
             // etc.) and is the spacing class the table expects.
-            if i > 0 {
-                let left_kind = noads[i - 1].effective_kind();
+            if let Some(left) = previous {
+                let left_kind = left.effective_kind();
                 let right_kind = noad.effective_kind();
                 let style_scale = self.get_style_scale(style);
                 let size = self.base_size * style_scale;
@@ -755,7 +772,7 @@ impl LayoutEngine {
                 // TeX sums the preceding glyph's bottom-right kern and the
                 // following glyph's top-left kern in mu, then scales by the
                 // current em.  Glyphs without kern data contribute zero.
-                let left_nucleus = noads[i - 1].nucleus.as_deref();
+                let left_nucleus = left.nucleus.as_deref();
                 let right_nucleus = noad.nucleus.as_deref();
                 if let (Some(left_node), Some(right_node)) = (left_nucleus, right_nucleus) {
                     if let (Some(left_key), Some(right_key)) =
@@ -775,11 +792,14 @@ impl LayoutEngine {
             // from the body's extents, so neither depends on what precedes or
             // follows the pair in this formula.
             if noad.fence && noad.kind == NoadKind::Open {
-                if let Some(close) = Self::fence_close(noads, i) {
-                    let left = Self::delimiter_key(noads[i].nucleus.as_deref());
-                    let right = Self::delimiter_key(noads[close].nucleus.as_deref());
-                    let body = self.pack_hbox(self.layout_noad_run(&noads[i + 1..close])?, None);
+                if let Some(close) = Self::fence_close(items, i) {
+                    let left = Self::delimiter_key(items[i].as_noad().and_then(|noad| noad.nucleus.as_deref()));
+                    let right = Self::delimiter_key(items[close].as_noad().and_then(|noad| noad.nucleus.as_deref()));
+                    let body = self.pack_hbox(self.layout_noad_run(&items[i + 1..close])?, None);
                     children.push(self.layout_fence(left.as_ref(), right.as_ref(), body, state)?);
+                    // The pair ends on its `Close` atom, which is the left
+                    // neighbour of whatever follows the fence.
+                    previous = items[close].as_noad();
                     i = close + 1;
                     continue;
                 }
@@ -822,19 +842,25 @@ impl LayoutEngine {
                 (None, None) => LayoutNode::Kern(Fixed::ZERO),
             };
             children.push(node);
+            previous = Some(noad);
             i += 1;
         }
 
         Ok(children)
     }
 
-    /// Index of the `Close` noad that shuts the fence opened at `open`.
+    /// Index of the `Close` atom that shuts the fence opened at `open`.
     ///
     /// Nested pairs are paired innermost-first, exactly like the source `\left`
-    /// … `\right` nesting they came from.
-    fn fence_close(noads: &[Noad], open: usize) -> Option<usize> {
+    /// … `\right` nesting they came from.  Glue items are skipped: only atoms
+    /// open and close a fence.
+    fn fence_close(items: &[MathItem], open: usize) -> Option<usize> {
         let mut depth = 0usize;
-        for (offset, noad) in noads[open + 1..].iter().enumerate() {
+        for (offset, item) in items[open + 1..].iter().enumerate() {
+            let Some(noad) = item.as_noad()
+            else {
+                continue;
+            };
             if !noad.fence {
                 continue;
             }

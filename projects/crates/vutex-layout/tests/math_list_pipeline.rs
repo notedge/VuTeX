@@ -15,12 +15,19 @@
 use vutex_layout::math::{LayoutEngine, LayoutNode};
 use vutex_text::math::builtin_font_metrics;
 use vutex_types::math::{
-    FontStyle, GlyphKey, LimitsPolicy, LineStyle, MathStyle, SemanticNode, SymbolRole, normalize_math_list, project_semantic,
+    FontStyle, GlyphKey, LimitsPolicy, LineStyle, MathList, MathStyle, Noad, SemanticNode, SymbolRole, normalize_math_list,
+    project_semantic,
 };
 
 /// Build a symbol atom for a single char.
 fn sym(c: char, role: SymbolRole) -> SemanticNode {
     SemanticNode::Symbol { glyph_key: GlyphKey::from_char(c, None, FontStyle::Math), role }
+}
+
+/// The `index`-th atom of `list`, skipping the explicit glue items that sit
+/// between atoms.
+fn noad(list: &MathList, index: usize) -> &Noad {
+    list.noads().nth(index).unwrap_or_else(|| panic!("no atom at {index} in {list:?}"))
 }
 
 /// Glue widths extracted from every HBox leaf in layout order.
@@ -163,10 +170,10 @@ fn limits_after_an_ordinary_atom_do_not_reach_a_later_operator() {
         sym('y', SymbolRole::Ordinary),
     ];
     let list = text_noads(&nodes);
-    assert_eq!(list.len(), 3);
-    assert_eq!(list.0[0].limits, None, "`x` is not an operator and must not carry the policy");
-    assert_eq!(list.0[1].limits, None, "a policy authored after `x` must not be attached to the following `∑`");
-    assert_eq!(list.0[1].kind, vutex_types::math::NoadKind::Op);
+    assert_eq!(list.noad_count(), 3);
+    assert_eq!(noad(&list, 0).limits, None, "`x` is not an operator and must not carry the policy");
+    assert_eq!(noad(&list, 1).limits, None, "a policy authored after `x` must not be attached to the following `∑`");
+    assert_eq!(noad(&list, 1).kind, vutex_types::math::NoadKind::Op);
 }
 
 /// Consecutive `\limits` then `\nolimits` on one operator: the last policy
@@ -184,9 +191,13 @@ fn consecutive_limits_keep_the_last_policy() {
         sym('y', SymbolRole::Ordinary),
     ];
     let list = text_noads(&nodes);
-    assert_eq!(list.len(), 2);
-    assert_eq!(list.0[0].limits, Some(LimitsPolicy::NoLimits), "the last `\\limits` / `\\nolimits` before the operator wins");
-    assert_eq!(list.0[1].limits, None, "the policy must not reach the next atom");
+    assert_eq!(list.noad_count(), 2);
+    assert_eq!(
+        noad(&list, 0).limits,
+        Some(LimitsPolicy::NoLimits),
+        "the last `\\limits` / `\\nolimits` before the operator wins"
+    );
+    assert_eq!(noad(&list, 1).limits, None, "the policy must not reach the next atom");
 }
 
 /// A policy authored inside a group stays inside it: the operator after the
@@ -208,9 +219,9 @@ fn limits_inside_a_group_stay_with_that_operator() {
         },
     ];
     let list = text_noads(&nodes);
-    assert_eq!(list.len(), 2);
-    assert_eq!(list.0[0].limits, Some(LimitsPolicy::Limits), "the grouped `∑` keeps its own `\\limits`");
-    assert_eq!(list.0[1].limits, None, "the grouped policy must not escape to `∫`");
+    assert_eq!(list.noad_count(), 2);
+    assert_eq!(noad(&list, 0).limits, Some(LimitsPolicy::Limits), "the grouped `∑` keeps its own `\\limits`");
+    assert_eq!(noad(&list, 1).limits, None, "the grouped policy must not escape to `∫`");
 }
 
 /// Layout is a pure function of its arguments: the same math list laid out
