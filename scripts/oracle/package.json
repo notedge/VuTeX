@@ -1,0 +1,14 @@
+{
+  "name": "vutex-oracle-tools",
+  "version": "0.0.0",
+  "private": true,
+  "description": "External-oracle generators for the VuTeX layout corpus. Not part of the pnpm workspace.",
+  "type": "module",
+  "scripts": {
+    "katex:mathml": "node emit-katex-mathml.mjs",
+    "latex:probe": "node probe-latex.mjs"
+  },
+  "devDependencies": {
+    "katex": "0.16.22"
+  }
+}
