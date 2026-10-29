@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::Diagnostic;
 
-use super::Fixed;
+use super::{Fixed, MathSemantics};
 
 /// Ink bounding box (minimal axis-aligned rectangle).
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
@@ -123,6 +123,14 @@ pub struct FormulaLayoutResult {
     /// Font state captured at layout time.  Renderers consume this snapshot
     /// even when the original font source is gone.
     pub fonts: FontMetricsSnapshot,
+    /// The structured math semantics this layout consumed.
+    ///
+    /// This is the IR snapshot the layout pass read, lowered to the
+    /// backend-facing [`MathSemantics`] shape.  Structured backends (MathML)
+    /// render it directly instead of parsing the source again, and every
+    /// backend can prove its output describes the same formula as
+    /// [`FormulaLayoutResult::paint`] because both live on this one result.
+    pub semantics: MathSemantics,
 }
 
 /// Layout-time snapshot of all font faces referenced by [`FormulaLayoutResult::paint`].

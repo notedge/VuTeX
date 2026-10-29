@@ -359,6 +359,7 @@ pub enum Alignment {
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "kebab-case")]
 pub enum LineStyle {
     Solid,
     None,
@@ -430,6 +431,7 @@ pub enum MathStyle {
 /// The imperative nodes of [`SemanticNode`] (`SetMathStyle`, `LimitsSpec`)
 /// carry no structure and are dropped during construction.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct MathSemantics {
     /// Top-level siblings of the formula, in source order.
     pub nodes: Vec<MathSemNode>,
@@ -459,6 +461,7 @@ impl MathSemantics {
 /// nested boxes of the source formula (numerator, radicand, scripts, cells)
 /// stay nested here instead of being flattened into a painted glyph stream.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "kebab-case", rename_all_fields = "camelCase")]
 pub enum MathSemNode {
     /// Group of siblings — `mrow`.
     Row(Vec<MathSemNode>),
@@ -497,6 +500,7 @@ pub enum MathSemNode {
 
 /// Whether an accent is drawn above or below its base.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "kebab-case")]
 pub enum AccentPosition {
     /// Accent above the base — MathML `mover`.
     Above,

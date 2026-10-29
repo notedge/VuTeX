@@ -779,7 +779,13 @@ impl LayoutEngine {
         let mut glyph_paths = Vec::new();
         collect_glyph_paths(&layout_node, &mut glyph_paths);
         let fonts = FontMetricsSnapshot { faces: Vec::new(), glyph_paths };
-        Ok(FormulaLayoutResult { metrics, paint, diagnostics: self.script_scale_diagnostics(), fonts })
+        Ok(FormulaLayoutResult {
+            metrics,
+            paint,
+            diagnostics: self.script_scale_diagnostics(),
+            fonts,
+            semantics: vutex_types::math::MathSemantics::from_nodes(nodes),
+        })
     }
 
     /// Lay out a flat, normalized [`MathList`].
