@@ -2,6 +2,7 @@
 
 use vutex_layout::math::{
     FormulaLayout, Glyph, LayoutEngine, LayoutNode, default_base_size, layout_formula, layout_formula_with_diagnostics,
+    parse_formula,
 };
 use vutex_text::math::{FontMetricsSystem, builtin_font_metrics};
 use vutex_types::{
@@ -2420,4 +2421,90 @@ fn display_level_environments_pin_display_style() {
         aligned_script < aligned_display,
         "`aligned` must follow the surrounding style: {aligned_display} vs {aligned_script}"
     );
+}
+
+/// The first environment in a parsed semantic tree.
+fn first_environment(node: &SemanticNode) -> Option<&MathEnvironment> {
+    match node {
+        SemanticNode::Environment(environment) => Some(environment),
+        SemanticNode::Sequence(items) => items.iter().find_map(first_environment),
+        SemanticNode::Delimited { content, .. } => first_environment(content),
+        _ => None,
+    }
+}
+
+/// The parser lowers every AMS environment to `SemanticNode::Environment` with
+/// its own kind, and only the matrix-like bodies stay `SemanticNode::Matrix`.
+#[test]
+fn ams_environments_parse_to_their_own_ir_nodes() {
+    let cases = [
+        ("\\begin{aligned} q &= a \\\\ xyz &= b \\end{aligned}", EnvironmentKind::Aligned, false),
+        ("\\begin{alignedat}{1} q &= a \\\\ xyz &= b \\end{alignedat}", EnvironmentKind::AlignedAt { pairs: 1 }, false),
+        ("\\begin{alignedat*}{2} q &= a \\\\ xyz &= b \\end{alignedat*}", EnvironmentKind::AlignedAt { pairs: 2 }, true),
+        ("\\begin{split} q &= a \\\\ xyz &= b \\end{split}", EnvironmentKind::Split, false),
+        ("\\begin{align} q &= a \\\\ xyz &= b \\end{align}", EnvironmentKind::Align, false),
+        ("\\begin{align*} q &= a \\\\ xyz &= b \\end{align*}", EnvironmentKind::Align, true),
+        ("\\begin{equation} q \\\\ xyz \\end{equation}", EnvironmentKind::Equation, false),
+        ("\\begin{gather} q \\\\ xyz \\end{gather}", EnvironmentKind::Gather, false),
+        ("\\begin{gathered} q \\\\ xyz \\end{gathered}", EnvironmentKind::Gather, false),
+        ("\\begin{multline} q \\\\ xyz \\end{multline}", EnvironmentKind::Multline, false),
+    ];
+    for (source, kind, starred) in cases {
+        let tree = parse_formula(source).unwrap_or_else(|error| panic!("`{source}`: {error}"));
+        let environment = first_environment(&tree.root).unwrap_or_else(|| panic!("`{source}` must parse to an environment"));
+        assert_eq!(environment.kind, kind, "`{source}`");
+        assert_eq!(environment.starred, starred, "`{source}`");
+        assert_eq!(environment.rows.len(), 2, "`{source}` keeps both rows");
+        assert!(
+            environment.rows.iter().all(|row| row.numbering == Numbering::Default),
+            "`{source}` keeps numbering as an intent until the document assigns it"
+        );
+    }
+
+    for source in ["\\begin{matrix} q & a \\end{matrix}", "\\begin{cases} q & a \\end{cases}"] {
+        let tree = parse_formula(source).unwrap_or_else(|error| panic!("`{source}`: {error}"));
+        assert!(first_environment(&tree.root).is_none(), "`{source}` is a matrix-like grid, not an AMS environment");
+    }
+}
+
+/// `split` breaks one equation over any number of rows.  Every row meets at the
+/// same alignment point, so three rows line up exactly like two.
+#[test]
+fn split_has_no_two_row_cap() {
+    let source = "\\begin{split} q &= a \\\\ xyz &= b \\\\ c &= d \\end{split}";
+    let (tree, _) = layout_formula(source, false).expect("a three-row split should lay out");
+
+    let relations = glyphs_of(&tree, '=');
+    assert_eq!(relations.len(), 3, "three rows carry three relations");
+    for relation in &relations[1..] {
+        assert!(
+            (relation.0 - relations[0].0).abs() < 0.01,
+            "every split row must meet at one alignment point: {} vs {}",
+            relation.0,
+            relations[0].0
+        );
+    }
+}
+
+/// `multline` flushes its first row left, its last row right and centres the
+/// rows between.
+#[test]
+fn multline_spreads_its_rows_across_the_block() {
+    let source = "\\begin{multline} q \\\\ xyz \\\\ ab \\\\ c \\end{multline}";
+    let (tree, metrics, diagnostics) = layout_formula_with_diagnostics(source, false, 14.0).expect(source);
+    assert!(diagnostics.is_empty(), "a multline body must not warn: {diagnostics:?}");
+
+    let widest = layout("xyz").width;
+    assert!((metrics.width - widest).abs() < 0.02, "the block is as wide as its widest row: {} vs {widest}", metrics.width);
+
+    let (first_x, _, _) = glyph_at(&tree, 'q');
+    assert!(first_x.abs() < 0.02, "the first row starts at the left edge: {first_x}");
+
+    let (last_x, _, _) = glyph_at(&tree, 'c');
+    let expected_last = widest - layout("c").width;
+    assert!((last_x - expected_last).abs() < 0.02, "the last row ends at the right edge: {last_x} vs {expected_last}");
+
+    let (middle_x, _, _) = glyph_at(&tree, 'a');
+    let expected_middle = (widest - layout("ab").width) / 2.0;
+    assert!((middle_x - expected_middle).abs() < 0.02, "a middle row is centred: {middle_x} vs {expected_middle}");
 }
