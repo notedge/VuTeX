@@ -1943,6 +1943,21 @@ impl LayoutEngine {
             // cell, so the grid supplies the thick muskip TeX puts on both sides
             // of a relation.  These grids carry no intercolumn gutter, so
             // `col_spacing` is the environment's own value (zero for them).
+            //
+            // # split is NOT a real column-pair grid (deferred)
+            //
+            // TeX treats `split` as *one* equation broken over multiple rows —
+            // the rows are fragments of the same relation, each meeting at a
+            // single alignment point (the `=`).  `AlignmentAnchors::SingleEquation`
+            // exists to encode that intent, but layout currently lowers it
+            // through the same right/left column-packing path as
+            // `AlignmentAnchors::ColumnPairs`.  The right effect is preserved
+            // (all rows line up at the same alignment point; `split_has_no_two_row_cap`
+            // in tests locks this), but split-specific TeX semantics — the
+            // "pretend this is one equation for numbering purposes" rule and
+            // the restriction that split only lives inside `equation` (already
+            // a diagnostic) — are deferred to a later pass where layout learns
+            // about document-level equation numbering.
             AlignmentAnchors::ColumnPairs | AlignmentAnchors::SingleEquation => {
                 let mut col_widths = vec![Fixed::ZERO; columns];
                 for cells in &cell_layouts {
