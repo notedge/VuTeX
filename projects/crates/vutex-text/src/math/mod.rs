@@ -6,7 +6,8 @@ mod opentype;
 
 pub use facts::{
     AssemblyPart, AssemblyPlan, CornerKern, GlyphAssembly, GlyphConstruction, GlyphId, GlyphKerns, KernCorner, KernStep,
-    MathFontFacts, MathGlyphFacts, MathKernInfo, MathVariant, MathVariants, StretchAxis, StretchPlan,
+    MathConstantValue, MathConstants, MathFontFacts, MathGlyphFacts, MathKernInfo, MathVariant, MathVariants, StretchAxis,
+    StretchPlan,
 };
 pub use font_metrics::{FontMetricsSystem, builtin_font_metrics};
 pub use opentype::opentype_font_metrics;

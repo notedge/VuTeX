@@ -24,9 +24,11 @@ use acorn_ttf::{
 
 use vutex_types::math::{Fixed, FontStyle, GlyphKey};
 
+mod constants;
 mod kern;
 mod variants;
 
+pub use constants::{MathConstantValue, MathConstants};
 pub use kern::{CornerKern, GlyphKerns, KernCorner, KernStep, MathKernInfo};
 pub use variants::{
     AssemblyPart, AssemblyPlan, GlyphAssembly, GlyphConstruction, MathVariant, MathVariants, StretchAxis, StretchPlan,
@@ -93,6 +95,7 @@ pub struct MathFontFacts {
     units_per_em: u16,
     char_glyphs: BTreeMap<char, GlyphId>,
     variants: MathVariants,
+    constants: MathConstants,
     kerns: MathKernInfo,
     glyph_math: BTreeMap<GlyphId, MathGlyphFacts>,
     extended_shapes: Vec<GlyphId>,
@@ -120,11 +123,12 @@ impl MathFontFacts {
             .collect();
 
         let variants = extract_variants(&mut face, &math, one_em);
+        let constants = MathConstants::from_table(&math.constants, one_em);
         let kerns = MathKernInfo::from_glyph_info(&math.glyph_info, one_em);
         let glyph_math = extract_glyph_math(&math.glyph_info, one_em);
         let extended_shapes = extract_extended_shapes(&math.glyph_info);
 
-        Some(Self { units_per_em, char_glyphs, variants, kerns, glyph_math, extended_shapes })
+        Some(Self { units_per_em, char_glyphs, variants, constants, kerns, glyph_math, extended_shapes })
     }
 
     /// Read the `MATH` facts of the font embedded with this crate.
@@ -150,6 +154,11 @@ impl MathFontFacts {
     /// The four-corner kerns of this font.
     pub fn kerns(&self) -> &MathKernInfo {
         &self.kerns
+    }
+
+    /// The numeric layout constants of this font.
+    pub fn constants(&self) -> &MathConstants {
+        &self.constants
     }
 
     /// The attachment metrics the font publishes for `glyph`.

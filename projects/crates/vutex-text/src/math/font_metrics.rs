@@ -271,7 +271,7 @@ fn default_glyph_metrics(ch: Option<char>) -> GlyphMetrics {
     }
 }
 
-fn default_math_constant(constant: MathConstant) -> Fixed {
+pub(crate) fn default_math_constant(constant: MathConstant) -> Fixed {
     let v = match constant {
         MathConstant::ScriptPercentScaleDown => 0.7,
         MathConstant::ScriptScriptPercentScaleDown => 0.5,
@@ -342,7 +342,7 @@ fn default_math_constant(constant: MathConstant) -> Fixed {
 /// can tell a measured ratio from the synthetic one with
 /// [`FontMetricsSystem::font_math_constant`]. The synthetic ratio is still
 /// available through [`FontMetricsSystem::get_math_constant`].
-static ALL_SYNTHETIC_CONSTANTS: &[MathConstant] = &[
+pub(crate) static ALL_SYNTHETIC_CONSTANTS: &[MathConstant] = &[
     MathConstant::DelimitedSubFormulaMinHeight,
     MathConstant::DisplayOperatorMinHeight,
     MathConstant::MathLeading,
