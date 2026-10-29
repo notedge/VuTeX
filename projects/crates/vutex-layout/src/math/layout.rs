@@ -1866,8 +1866,8 @@ impl LayoutEngine {
     /// - `split` rows are fragments of one equation that meet at a single
     ///   alignment point, so they use the same right/left anchor grid with no
     ///   two-row cap.
-    /// - `equation` and `gather` have no anchors and centre every row over the
-    ///   widest one.
+    /// - `equation`, `gather` and `gathered` have no anchors and centre every
+    ///   row over the widest one.
     /// - `multline` flushes its first row left, its last row right and centres
     ///   the rows between.
     ///
@@ -1876,7 +1876,7 @@ impl LayoutEngine {
     fn layout_environment(&self, environment: &MathEnvironment, state: MathStyleState) -> MathResult<LayoutNode> {
         // `align`, `equation`, `gather` and `multline` pin display style so an
         // enclosing `\scriptstyle` cannot demote their rows.  `aligned`,
-        // `alignedat` and `split` follow the surrounding style.
+        // `alignedat`, `split` and `gathered` follow the surrounding style.
         let state =
             if environment.kind.is_display_level() { MathStyleState { style: MathStyle::Display, ..state } } else { state };
         if environment.rows.is_empty() {
