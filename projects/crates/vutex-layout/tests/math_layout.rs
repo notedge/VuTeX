@@ -152,6 +152,60 @@ fn delimited_radical_and_superscript_lay_out() {
     assert!(metrics.height > 0.0);
 }
 
+/// A `\mathit{}` run must carry a real italic correction — the same one the
+/// MATH table publishes for the font's math face — not a zero correction that
+/// would collapse the tail spacing in `\mathit{x}^2`.
+///
+/// Latin Modern Math ships only one design; its upright glyph already carries
+/// MATH italic correction. VuTeX derives FontStyle::Italic from that upright
+/// design by shearing the outline, but must preserve the original correction.
+/// This test pins that the derived italic face keeps a positive correction so
+/// the `x^2` spacing rule has something to subtract.
+#[test]
+fn math_italic_face_keeps_positive_italic_correction() {
+    let system = builtin_font_metrics();
+    let ch = 'f'; // Latin Modern Math 'f' carries 0.079 em of italic correction
+    let family = "default";
+
+    let math_correction = system
+        .get_metrics(&GlyphKey::from_char(ch, Some(family.to_string()), FontStyle::Math))
+        .expect("math face metrics")
+        .italic_correction
+        .to_f64();
+
+    let italic_correction = system
+        .get_metrics(&GlyphKey::from_char(ch, Some(family.to_string()), FontStyle::Italic))
+        .expect("italic face metrics")
+        .italic_correction
+        .to_f64();
+
+    let normal_correction = system
+        .get_metrics(&GlyphKey::from_char(ch, Some(family.to_string()), FontStyle::Normal))
+        .expect("normal face metrics")
+        .italic_correction
+        .to_f64();
+
+    assert!(math_correction > 0.0, "FontStyle::Math 'f' must carry MATH italic correction, got {math_correction} em");
+    assert!(
+        (italic_correction - math_correction).abs() < 1e-6,
+        "FontStyle::Italic must keep the same italic correction as FontStyle::Math \
+         (derived face preserves MATH correction): italic={italic_correction}, math={math_correction}"
+    );
+    assert!(
+        (normal_correction - math_correction).abs() < 1e-6,
+        "FontStyle::Normal must be identical to FontStyle::Math for this font (one design, two style labels)"
+    );
+
+    // Also check that `\mathit{x}` in a real layout uses the italic-corrected
+    // metrics — the superscript spacing `w + italic_correction` rule should apply.
+    let (tree, _) = layout_formula("\\mathit{x}^2", false).expect("mathit x^2");
+    let (_, _, italic_x) = glyph_at(&tree, 'x');
+    assert!(
+        italic_x.metrics.italic_correction.to_f64() > 0.0,
+        "\\mathit{{x}} glyph must carry positive italic correction in layout"
+    );
+}
+
 /// A delimiter stretched to cover its body must still advance horizontally by
 /// the advance of the glyph it paints, and nothing else.
 ///
@@ -253,20 +307,28 @@ fn fence_delimiters_ignore_the_preceding_atom() {
     }
 }
 
-/// The radical index is set at scriptscript size and placed with the MATH
-/// table's radical constants instead of fixed fractions of an em.
+/// The radical index follows the superscript demotion of its parent style and
+/// is placed with the MATH table's radical constants instead of fixed fractions
+/// of an em.
+///
+/// TeXbook rule 11 says the degree uses `sup()`: display/text → script,
+/// script/scriptscript → scriptscript.  This test covers both the outer
+/// demotion and the nested demotion (a radical inside a superscript drops one
+/// extra level).
 ///
 /// Every expected offset is derived from the embedded font: the index size
-/// from `ScriptScriptPercentScaleDown`, the horizontal position from
-/// `RadicalKernBeforeDegree` / `RadicalKernAfterDegree`, and the bottom raise
-/// from `RadicalDegreeBottomRaisePercent` applied to the surd's ascent over the
-/// radicand. That ascent comes back from `RadicalVerticalGap` plus
-/// `RadicalRuleThickness` over the radicand's own height.
+/// from `ScriptPercentScaleDown` / `ScriptScriptPercentScaleDown`, the
+/// horizontal position from `RadicalKernBeforeDegree` / `RadicalKernAfterDegree`,
+/// and the bottom raise from `RadicalDegreeBottomRaisePercent` applied to the
+/// surd's ascent over the radicand. That ascent comes back from
+/// `RadicalVerticalGap` plus `RadicalRuleThickness` over the radicand's own
+/// height.
 #[test]
-fn radical_index_uses_scriptscript_size_and_the_math_constants() {
+fn radical_index_follows_superscript_style_and_the_math_constants() {
     let system = builtin_font_metrics();
     let constant = |name: MathConstant| system.get_math_constant("default", name).expect("font constant").to_f64();
 
+    let script = constant(MathConstant::ScriptPercentScaleDown);
     let scriptscript = constant(MathConstant::ScriptScriptPercentScaleDown);
     let kern_before = constant(MathConstant::RadicalKernBeforeDegree);
     let kern_after = constant(MathConstant::RadicalKernAfterDegree);
@@ -275,42 +337,72 @@ fn radical_index_uses_scriptscript_size_and_the_math_constants() {
     let display_gap = constant(MathConstant::RadicalDisplayStyleVerticalGap);
     let rule_thickness = constant(MathConstant::RadicalRuleThickness);
 
-    for display in [false, true] {
-        // The gap is the MATH table's own clearance for the style; the surd is
-        // never inflated to a hand-written minimum.
-        let gap = if display { display_gap } else { vertical_gap };
-        let (tree, _) = layout_formula("\\sqrt[3]{x}", display).expect("radical should lay out");
+    // Outer style  → degree style : TeX demotion via MathStyleState::sup()
+    // display     → script       : demote_script(Display) = Script
+    // text        → script       : demote_script(Text)    = Script
+    // script      → scriptscript : demote_script(Script)  = ScriptScript
+    // scriptscript→ scriptscript : demote_script(ScriptScript) = ScriptScript
+
+    // Top-level radical: the surd size equals the outer display/text size, so
+    // the degree is directly `script * em`.
+    for (label, display, gap, src) in [
+        ("display radical degree", true, display_gap, "\\sqrt[3]{x}"),
+        ("text radical degree", false, vertical_gap, "\\sqrt[3]{x}"),
+    ] {
+        let (tree, _) = layout_formula(src, display).expect("{label}: radical should lay out");
         let (index_x, index_y, index) = glyph_at(&tree, '3');
         let (surd_x, _, surd) = glyph_at(&tree, '√');
         let (_, base_y, base) = glyph_at(&tree, 'x');
         let em = surd.size.to_f64();
 
-        let expected_index_size = scriptscript * em;
+        // Degree follows MathStyleState::sup() one level down → script size.
+        let expected_index_size = script * em;
         assert!(
             (index.size.to_f64() - expected_index_size).abs() < 1e-3,
-            "the index must be set at scriptscript size {expected_index_size}, not {}",
+            "{label}: index must be set at script size {expected_index_size}, not {}",
             index.size.to_f64()
         );
 
+        // Positional constants still come from the MATH table's radical entries.
         let before = kern_before * em;
         let after = kern_after * em;
-        assert!((index_x - before).abs() < 1e-3, "the index must start after the before-kern {before}: {index_x}");
+        assert!((index_x - before).abs() < 1e-3, "{label}: index must start after the before-kern {before}: {index_x}");
         let expected_surd_x = before + index.metrics.width.to_f64() + after;
         assert!(
             (surd_x - expected_surd_x).abs() < 1e-3,
-            "the surd must start after the negative after-kern, at {expected_surd_x}: {surd_x}"
+            "{label}: surd must start after the negative after-kern, at {expected_surd_x}: {surd_x}"
         );
-        assert!(surd_x >= -0.05 * em, "the after-kern must not push the surd off the box origin: {surd_x}");
+        assert!(surd_x >= -0.05 * em, "{label}: after-kern must not push the surd off the box origin: {surd_x}");
 
         let radicand_top = base.metrics.height.to_f64() + (gap + rule_thickness) * em;
         let raise = raise_percent * (radicand_top - base.metrics.depth.to_f64());
         let index_bottom = index_y + index.metrics.depth.to_f64();
         assert!(
             (index_bottom + raise).abs() < 1e-3,
-            "the index bottom must sit {raise} above the baseline, not {}",
+            "{label}: index bottom must sit {raise} above the baseline, not {}",
             -index_bottom
         );
-        assert!(base_y.abs() < 1e-6, "the radicand keeps its own baseline as the formula baseline");
+        assert!(base_y.abs() < 1e-6, "{label}: radicand keeps its own baseline");
+    }
+
+    // Nested radical inside a superscript: the radical's own style is Script,
+    // so the degree demotes one more level to ScriptScript.  Position is not
+    // asserted here because the whole radical box is subject to the superscript
+    // placement of the enclosing sub/sup layout.
+    {
+        let (tree, _) = layout_formula("y^{\\sqrt[3]{x}}", true).expect("nested radical should lay out");
+        let (_, _, index) = glyph_at(&tree, '3');
+        let (_, _, surd) = glyph_at(&tree, '√');
+        // surd size = base_size * ScriptPercentScaleDown,
+        // degree size = base_size * ScriptScriptPercentScaleDown.
+        // So degree/surd = ScriptScript / Script.
+        let expected_ratio = scriptscript / script;
+        let actual_ratio = index.size.to_f64() / surd.size.to_f64();
+        assert!(
+            (actual_ratio - expected_ratio).abs() < 1e-3,
+            "nested radical degree must be scriptscript relative to its enclosing script radical: \
+             ratio {actual_ratio}, expected {expected_ratio}"
+        );
     }
 }
 

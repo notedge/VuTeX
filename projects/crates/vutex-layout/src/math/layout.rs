@@ -1463,7 +1463,13 @@ impl LayoutEngine {
             // before the index, a (negative) kern after it that tucks the surd
             // under the index, and a bottom raise taken as a percentage of the
             // radical's own ascent above the radicand.
-            let deg_layout = self.layout_node(deg_node, MathStyle::ScriptScript)?;
+            //
+            // The degree follows the superscript style demotion from the parent:
+            // display/text → script, script/scriptscript → scriptscript.  Unlike
+            // the radicand, the degree is *not* cramped — it sits outside the
+            // radical, above and forward of the surd.
+            let deg_state = state.sup();
+            let deg_layout = self.layout_node_state(deg_node, deg_state)?;
             let kern_before = self
                 .font_system
                 .get_math_constant(family, MathConstant::RadicalKernBeforeDegree)
