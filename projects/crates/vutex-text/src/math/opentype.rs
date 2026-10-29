@@ -188,86 +188,11 @@ pub fn opentype_font_metrics() -> Option<FontMetricsData> {
 // ---------------------------------------------------------------------------
 
 fn extract_math_constants(constants: &acorn_ttf::tables::math::MathConstants, data: &mut FontMetricsData, one_em: f64) {
-    // Percentage constants → store as fraction (e.g. 70 → 0.7)
-    data.constants
-        .insert(MathConstant::ScriptPercentScaleDown, Fixed::from_f64(constants.script_percent_scale_down as f64 / 100.0));
-    data.constants.insert(
-        MathConstant::ScriptScriptPercentScaleDown,
-        Fixed::from_f64(constants.script_script_percent_scale_down as f64 / 100.0),
-    );
-    data.constants.insert(
-        MathConstant::DelimitedSubFormulaMinHeight,
-        Fixed::from_f64(constants.delimited_sub_formula_min_height as f64 / one_em),
-    );
-    data.constants
-        .insert(MathConstant::DisplayOperatorMinHeight, Fixed::from_f64(constants.display_operator_min_height as f64 / one_em));
-
-    // All the MathValue-based constants — acorn-ttf stores them as raw f32 font units.
-    let m = |v: f32| Fixed::from_f64(v as f64 / one_em);
-
-    data.constants.insert(MathConstant::MathLeading, m(constants.math_leading));
-    data.constants.insert(MathConstant::AxisHeight, m(constants.axis_height));
-    data.constants.insert(MathConstant::AccentBaseHeight, m(constants.accent_base_height));
-    data.constants.insert(MathConstant::FlattenedAccentBaseHeight, m(constants.flattened_accent_base_height));
-    data.constants.insert(MathConstant::SubscriptShiftDown, m(constants.subscript_shift_down));
-    data.constants.insert(MathConstant::SubscriptTopMax, m(constants.subscript_top_max));
-    data.constants.insert(MathConstant::SubscriptBaselineDropMin, m(constants.subscript_baseline_drop_min));
-    data.constants.insert(MathConstant::SuperscriptShiftUp, m(constants.superscript_shift_up));
-    data.constants.insert(MathConstant::SuperscriptShiftUpCramped, m(constants.superscript_shift_up_cramped));
-    data.constants.insert(MathConstant::SuperscriptBottomMin, m(constants.superscript_bottom_min));
-    data.constants.insert(MathConstant::SuperscriptBaselineDropMax, m(constants.superscript_baseline_drop_max));
-    data.constants.insert(MathConstant::SubSuperscriptGapMin, m(constants.sub_superscript_gap_min));
-    data.constants.insert(MathConstant::SuperscriptBottomMaxWithSubscript, m(constants.superscript_bottom_max_with_subscript));
-    data.constants.insert(MathConstant::SpaceAfterScript, m(constants.space_after_script));
-    data.constants.insert(MathConstant::UpperLimitGapMin, m(constants.upper_limit_gap_min));
-    data.constants.insert(MathConstant::UpperLimitBaselineRiseMin, m(constants.upper_limit_baseline_rise_min));
-    data.constants.insert(MathConstant::LowerLimitGapMin, m(constants.lower_limit_gap_min));
-    data.constants.insert(MathConstant::LowerLimitBaselineDropMin, m(constants.lower_limit_baseline_drop_min));
-    data.constants.insert(MathConstant::StackTopShiftUp, m(constants.stack_top_shift_up));
-    data.constants.insert(MathConstant::StackTopDisplayStyleShiftUp, m(constants.stack_top_display_style_shift_up));
-    data.constants.insert(MathConstant::StackBottomShiftDown, m(constants.stack_bottom_shift_down));
-    data.constants.insert(MathConstant::StackBottomDisplayStyleShiftDown, m(constants.stack_bottom_display_style_shift_down));
-    data.constants.insert(MathConstant::StackGapMin, m(constants.stack_gap_min));
-    data.constants.insert(MathConstant::StackDisplayStyleGapMin, m(constants.stack_display_style_gap_min));
-    data.constants.insert(MathConstant::StretchStackTopShiftUp, m(constants.stretch_stack_top_shift_up));
-    data.constants.insert(MathConstant::StretchStackBottomShiftDown, m(constants.stretch_stack_bottom_shift_down));
-    data.constants.insert(MathConstant::StretchStackGapAboveMin, m(constants.stretch_stack_gap_above_min));
-    data.constants.insert(MathConstant::StretchStackGapBelowMin, m(constants.stretch_stack_gap_below_min));
-    data.constants.insert(MathConstant::FractionNumeratorShiftUp, m(constants.fraction_numerator_shift_up));
-    data.constants
-        .insert(MathConstant::FractionNumeratorDisplayStyleShiftUp, m(constants.fraction_numerator_display_style_shift_up));
-    data.constants.insert(MathConstant::FractionDenominatorShiftDown, m(constants.fraction_denominator_shift_down));
-    data.constants.insert(
-        MathConstant::FractionDenominatorDisplayStyleShiftDown,
-        m(constants.fraction_denominator_display_style_shift_down),
-    );
-    data.constants.insert(MathConstant::FractionNumeratorGapMin, m(constants.fraction_numerator_gap_min));
-    data.constants.insert(MathConstant::FractionNumDisplayStyleGapMin, m(constants.fraction_num_display_style_gap_min));
-    data.constants.insert(MathConstant::FractionRuleThickness, m(constants.fraction_rule_thickness));
-    data.constants.insert(MathConstant::FractionDenominatorGapMin, m(constants.fraction_denominator_gap_min));
-    data.constants.insert(MathConstant::FractionDenomDisplayStyleGapMin, m(constants.fraction_denom_display_style_gap_min));
-    data.constants.insert(MathConstant::SkewedFractionHorizontalGap, m(constants.skewed_fraction_horizontal_gap));
-    data.constants.insert(MathConstant::SkewedFractionVerticalGap, m(constants.skewed_fraction_vertical_gap));
-    data.constants.insert(MathConstant::OverbarVerticalGap, m(constants.overbar_vertical_gap));
-    data.constants.insert(MathConstant::OverbarRuleThickness, m(constants.overbar_rule_thickness));
-    data.constants.insert(MathConstant::OverbarExtraAscender, m(constants.overbar_extra_ascender));
-    data.constants.insert(MathConstant::UnderbarVerticalGap, m(constants.underbar_vertical_gap));
-    data.constants.insert(MathConstant::UnderbarRuleThickness, m(constants.underbar_rule_thickness));
-    data.constants.insert(MathConstant::UnderbarExtraDescender, m(constants.underbar_extra_descender));
-    data.constants.insert(MathConstant::RadicalVerticalGap, m(constants.radical_vertical_gap));
-    data.constants.insert(MathConstant::RadicalDisplayStyleVerticalGap, m(constants.radical_display_style_vertical_gap));
-    data.constants.insert(MathConstant::RadicalRuleThickness, m(constants.radical_rule_thickness));
-    data.constants.insert(MathConstant::RadicalExtraAscender, m(constants.radical_extra_ascender));
-    data.constants.insert(MathConstant::RadicalKernBeforeDegree, m(constants.radical_kern_before_degree));
-    data.constants.insert(MathConstant::RadicalKernAfterDegree, m(constants.radical_kern_after_degree));
-
-    // This is the only MATH constant stored as a percentage rather than in
-    // design units: 60 means 60%. Normalize it to the 0–1 fraction the layout
-    // and `default_math_constant` use.
-    data.constants.insert(
-        MathConstant::RadicalDegreeBottomRaisePercent,
-        Fixed::from_f64(constants.radical_degree_bottom_raise_percent as f64 / 100.0),
-    );
+    // The table-to-constant mapping lives with the typed facts view, so this
+    // path and `MathFontFacts` cannot disagree about a value.
+    for (constant, value) in super::facts::MathConstants::from_table(constants, one_em).font_constants() {
+        data.constants.insert(constant, value);
+    }
 }
 
 // ---------------------------------------------------------------------------
