@@ -10,7 +10,7 @@ use vutex_types::{
     math::{
         Alignment, AlignmentAnchors, BBox, DelimiterComponent, DelimiterVariant, Fixed, FontMetricsSnapshot, FontStyle,
         FormulaLayoutResult, FormulaMetrics, GlyphKey, GlyphMetrics, LimitsPolicy, LineStyle, MathConstant, MathEnvironment,
-        MathItem, MathList, MathResult, MathStyle, MathStyleState, Noad, NoadKind, OperatorClass, PaintNode, SemanticNode,
+        MathItem, MathList, MathResult, MathStyle, MathStyleState, Noad, NoadKind, Numbering, OperatorClass, PaintNode, SemanticNode,
         SpacingRule, SymbolRole, normalize_math_list, project_semantic_with_state,
     },
 };
@@ -48,6 +48,19 @@ pub enum LayoutNode {
         /// Whether the break is flagged (hyphenation-like).
         flagged: bool,
     },
+    /// Non-painting anchor that carries metadata downstream.
+    ///
+    /// Layout itself assigns no equation numbers; it only preserves the intent
+    /// the IR authored on each environment row.  The render layer (SVG, PDF,
+    /// HTML) reads these anchors to decide where to hang a number or tag.
+    /// Width, height and depth are all zero so anchors never advance the
+    /// cursor, never paint and never disturb packing.
+    Anchor {
+        /// Row index within the environment that authored this anchor (0-based).
+        row_index: usize,
+        /// The numbering intent the IR put on this row.
+        numbering: Numbering,
+    },
 }
 
 impl LayoutNode {
@@ -62,6 +75,7 @@ impl LayoutNode {
             LayoutNode::Rule { width, .. } => *width,
             LayoutNode::Path(p) => p.width,
             LayoutNode::Penalty { width, .. } => *width,
+            LayoutNode::Anchor { .. } => Fixed::ZERO,
         }
     }
 
@@ -84,7 +98,7 @@ impl LayoutNode {
             LayoutNode::Glyph(g) => g.metrics.height,
             LayoutNode::Glue(g) => g.width, // Treat Glue width as height in VBox
             LayoutNode::Kern(k) => *k,      // Treat Kern width as height in VBox
-            LayoutNode::Penalty { .. } => Fixed::ZERO,
+            LayoutNode::Penalty { .. } | LayoutNode::Anchor { .. } => Fixed::ZERO,
             LayoutNode::Rule { height, .. } => *height,
             LayoutNode::Path(p) => p.height,
         }
@@ -96,7 +110,7 @@ impl LayoutNode {
             LayoutNode::HBox(h) => h.depth + h.shift,
             LayoutNode::VBox(v) => v.depth,
             LayoutNode::Glyph(g) => g.metrics.depth,
-            LayoutNode::Glue(_) | LayoutNode::Kern(_) | LayoutNode::Penalty { .. } => Fixed::ZERO,
+            LayoutNode::Glue(_) | LayoutNode::Kern(_) | LayoutNode::Penalty { .. } | LayoutNode::Anchor { .. } => Fixed::ZERO,
             LayoutNode::Rule { depth, .. } => *depth,
             LayoutNode::Path(p) => p.depth,
         }
@@ -114,6 +128,7 @@ impl LayoutNode {
             LayoutNode::Kern(k) => {
                 crate::math::knuth_plass::Item::Glue { width: *k, stretch: Fixed::ZERO, shrink: Fixed::ZERO }
             }
+            LayoutNode::Anchor { .. } => crate::math::knuth_plass::Item::Box { width: Fixed::ZERO, debug_info: None },
             _ => crate::math::knuth_plass::Item::Box { width: self.width(), debug_info: None },
         }
     }
@@ -307,7 +322,7 @@ fn paints(node: &LayoutNode) -> bool {
         LayoutNode::Rule { .. } | LayoutNode::Path(_) => true,
         LayoutNode::HBox(hbox) => hbox.children.iter().any(paints),
         LayoutNode::VBox(vbox) => vbox.children.iter().any(paints),
-        LayoutNode::Glue(_) | LayoutNode::Kern(_) | LayoutNode::Penalty { .. } => false,
+        LayoutNode::Glue(_) | LayoutNode::Kern(_) | LayoutNode::Penalty { .. } | LayoutNode::Anchor { .. } => false,
     }
 }
 
@@ -364,8 +379,9 @@ pub fn render_layout_node(backend: &mut dyn LayoutBackend, node: &LayoutNode, x:
         LayoutNode::Path(path) => {
             backend.render_path(&path.d, x, y, 1.0)?;
         }
-        LayoutNode::Kern(_) | LayoutNode::Glue(_) | LayoutNode::Penalty { .. } => {
-            // Kerns, Glue and Penalty don't render anything
+        LayoutNode::Kern(_) | LayoutNode::Glue(_) | LayoutNode::Penalty { .. } | LayoutNode::Anchor { .. } => {
+            // Kerns, Glue, Penalty and Anchor don't render anything —
+            // anchor metadata is consumed by the render layer before painting.
         }
     }
     Ok(())
@@ -2016,6 +2032,13 @@ impl LayoutEngine {
             if index > 0 && row_spacing > Fixed::ZERO {
                 stacked.push(LayoutNode::Kern(row_spacing));
             }
+            // Anchor metadata travels with each row so downstream render
+            // layers can hang equation numbers, \tag labels or \notag markers
+            // without layout having to paint anything itself.
+            stacked.push(LayoutNode::Anchor {
+                row_index: index,
+                numbering: environment.rows[index].numbering.clone(),
+            });
             stacked.push(row);
         }
 
@@ -2554,7 +2577,7 @@ fn lower_layout_to_paint(node: &LayoutNode, base_size: Fixed) -> PaintNode {
             d: path.d.clone(),
             bbox: BBox { x: Fixed::ZERO, y: Fixed::ZERO - path.height, width: path.width, height: path.height + path.depth },
         },
-        LayoutNode::Kern(_) | LayoutNode::Glue(_) | LayoutNode::Penalty { .. } => {
+        LayoutNode::Kern(_) | LayoutNode::Glue(_) | LayoutNode::Penalty { .. } | LayoutNode::Anchor { .. } => {
             // 只推进位置，不 paint。
             PaintNode::Group(Vec::new())
         }
@@ -2636,5 +2659,6 @@ fn compute_extents(node: &LayoutNode) -> (Fixed, Fixed, Fixed) {
         LayoutNode::Rule { width, height, depth } => (*width, *height, *depth),
         LayoutNode::Path(p) => (p.width, p.height, p.depth),
         LayoutNode::Penalty { width, .. } => (*width, Fixed::ZERO, Fixed::ZERO),
+        LayoutNode::Anchor { .. } => (Fixed::ZERO, Fixed::ZERO, Fixed::ZERO),
     }
 }
