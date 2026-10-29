@@ -1,0 +1,53 @@
+{
+  "schema_version": "v0",
+  "notes": [
+    "Shared formula corpus for every external oracle. One formula per `tex` string, authored in TeX math",
+    "mode without delimiters. Every oracle fixture in this directory selects records by `corpus_id`,",
+    "so a corpus change invalidates all of them at once instead of drifting per engine.",
+    "The corpus is input data only: it carries no measured values and never records VuTeX output."
+  ],
+  "formulas": [
+    { "id": "sum-of-atoms", "tex": "x+y", "group": "spacing", "notes": "binary operator spacing" },
+    { "id": "relation", "tex": "a+b=c", "group": "spacing", "notes": "relation spacing" },
+    { "id": "fraction-compound", "tex": "\\frac{a+b}{c+d}", "group": "fraction", "notes": "compound numerator and denominator" },
+    { "id": "script-nested", "tex": "x^{a_b}", "group": "script", "notes": "superscript whose body carries a subscript" },
+    { "id": "radical", "tex": "\\sqrt{x}", "group": "radical", "notes": "square root, no degree" },
+    { "id": "radical-degree", "tex": "\\sqrt[3]{x}", "group": "radical", "notes": "indexed root with a degree" },
+    { "id": "sum-limits", "tex": "\\sum_{i=1}^{n} i", "group": "large-operator", "notes": "summation with sub and superscript" },
+    { "id": "integral-limits", "tex": "\\int_0^1 x^2\\,dx", "group": "large-operator", "notes": "integral with limits and a thin space" },
+    { "id": "fenced-fraction", "tex": "\\left(\\frac{a}{b}\\right)", "group": "delimiter", "notes": "parenthesised fraction" },
+    { "id": "fenced-norm", "tex": "\\left\\lVert x \\right\\rVert", "group": "delimiter", "notes": "double-bar norm" },
+    { "id": "accent-hat", "tex": "\\hat{f}", "group": "accent", "notes": "combining circumflex over an identifier" },
+    { "id": "accent-bar", "tex": "\\bar{AB}", "group": "accent", "notes": "bar over a two-letter group" },
+    {
+      "id": "matrix",
+      "tex": "\\begin{matrix} a & b \\\\ c & d \\end{matrix}",
+      "group": "matrix",
+      "notes": "2x2 centred matrix"
+    },
+    {
+      "id": "cases",
+      "tex": "\\begin{cases} x & x > 0 \\\\ 0 & \\text{otherwise} \\end{cases}",
+      "group": "matrix",
+      "notes": "piecewise definition with a text cell"
+    },
+    {
+      "id": "aligned",
+      "tex": "\\begin{aligned} a &= b + c \\\\ d &= e \\end{aligned}",
+      "group": "matrix",
+      "notes": "right/left aligned relation pairs"
+    },
+    {
+      "id": "alignedat",
+      "tex": "\\begin{alignedat}{2} a &= b & c &= d \\end{alignedat}",
+      "group": "matrix",
+      "notes": "explicitly declared column pairs"
+    },
+    {
+      "id": "split",
+      "tex": "\\begin{split} a &= b \\\\ &= c \\end{split}",
+      "group": "matrix",
+      "notes": "split relation with an empty leading cell"
+    }
+  ]
+}
