@@ -490,7 +490,11 @@ pub enum MathSemNode {
     /// `msubsup`.
     SubSup { base: Box<MathSemNode>, sub: Box<MathSemNode>, sup: Box<MathSemNode> },
     /// `mtable` — rows of cells, each cell rendered inside its own `mtd`.
-    Table { rows: Vec<Vec<MathSemNode>> },
+    ///
+    /// `columnalign` is the per-column alignment the source authored, in column
+    /// order.  It is empty when nothing authored one — a matrix has no alignment
+    /// of its own — which leaves MathML's default centred columns in place.
+    Table { rows: Vec<Vec<MathSemNode>>, columnalign: Vec<Alignment> },
     /// `mover` / `munder` depending on [`AccentPosition`].
     Accent { base: Box<MathSemNode>, accent: String, position: AccentPosition },
     /// Fence pair around a body — `mrow` wrapping `mo` fences.
@@ -546,22 +550,28 @@ impl MathSemNode {
             SemanticNode::SubSuperscript { base, sub, sup } => {
                 MathSemNode::SubSup { base: child(base), sub: child(sub), sup: child(sup) }
             }
+            // A matrix has no authored column alignment beyond its own cell
+            // contents, so it carries none here and keeps MathML's default.
             SemanticNode::Matrix { rows, .. } => MathSemNode::Table {
                 rows: rows
                     .iter()
                     .map(|row| row.iter().map(|cell| Self::from_semantic(cell).unwrap_or(MathSemNode::Empty)).collect())
                     .collect(),
+                columnalign: Vec::new(),
             },
             // Presentation MathML has exactly one `mtable` element and no field
             // for an environment name, so the environment lowers to one table.
-            // Its kind, anchors and row numbering stay on the IR node
-            // ([`MathEnvironment`]), which is what layout and diagnostics read.
+            // Its kind, anchors, per-column alignment and row numbering stay on
+            // the IR node ([`MathEnvironment`]), which is what layout and
+            // diagnostics read.  The column alignment is also the table's own
+            // `columnalign`, because it is structure an `mtable` can express.
             SemanticNode::Environment(environment) => MathSemNode::Table {
                 rows: environment
                     .rows
                     .iter()
                     .map(|row| row.cells.iter().map(|cell| Self::from_semantic(cell).unwrap_or(MathSemNode::Empty)).collect())
                     .collect(),
+                columnalign: environment.column_alignment(),
             },
             SemanticNode::Delimited { left, right, content } => MathSemNode::Delimited {
                 left: left.as_ref().and_then(delimiter_text),
@@ -765,12 +775,13 @@ mod tests {
             column_alignment: vec![Alignment::Center; 2],
         };
         match lower(&matrix) {
-            MathSemNode::Table { rows } => {
+            MathSemNode::Table { rows, columnalign } => {
                 assert_eq!(rows.len(), 2);
                 assert_eq!(rows[0][0], MathSemNode::Identifier("a".into()));
                 assert_eq!(rows[0][1], MathSemNode::Identifier("b".into()));
                 assert_eq!(rows[1][0], MathSemNode::Identifier("c".into()));
                 assert_eq!(rows[1][1], MathSemNode::Identifier("d".into()));
+                assert!(columnalign.is_empty(), "a matrix authors no column alignment: {columnalign:?}");
             }
             other => panic!("expected Table, got {other:?}"),
         }
@@ -893,8 +904,9 @@ mod tests {
         // `\begin{split} … \tag{1} … \notag`: a split has no row limit.  The
         // Presentation MathML shape has one `mtable` element and nowhere to put
         // an environment name, so the structured projection lowers the block to
-        // one table.  The kind, anchors and per-row numbering survive on the IR
-        // node itself, which is what layout and diagnostics consume.
+        // one table.  The kind, anchors, per-column alignment and per-row
+        // numbering survive on the IR node itself, and the alignment also lands
+        // on the table because `mtable` can express it.
         let mut environment =
             env(EnvironmentKind::Split, vec![vec![sym('x', SymbolRole::Ordinary)], vec![sym('y', SymbolRole::Ordinary)]]);
         environment.rows[0].numbering = Numbering::Tag("1".into());
@@ -902,10 +914,13 @@ mod tests {
         let node = SemanticNode::Environment(environment);
 
         match lower(&node) {
-            MathSemNode::Table { rows } => {
+            MathSemNode::Table { rows, columnalign } => {
                 assert_eq!(rows.len(), 2, "a split has no two-row limit");
                 assert_eq!(rows[0], vec![MathSemNode::Identifier("x".into())]);
                 assert_eq!(rows[1], vec![MathSemNode::Identifier("y".into())]);
+                // A split meets at one alignment point, so its single column is
+                // the right-hand side of that point.
+                assert_eq!(columnalign, vec![Alignment::Right], "the table carries the environment's alignment");
             }
             other => panic!("expected the block to lower to one table, got {other:?}"),
         }
