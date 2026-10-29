@@ -18,7 +18,7 @@ use vutex_types::math::{
 ///
 /// Licensed under the GUST font license (analogous to OFL). Downloaded from
 /// `https://www.ctan.org/tex-archive/fonts/lm-math/opentype/latinmodern-math.otf`.
-const MATH_FONT_BYTES: &[u8] = include_bytes!("../../assets/LatinModernMath-Regular.otf");
+pub(crate) const MATH_FONT_BYTES: &[u8] = include_bytes!("../../assets/LatinModernMath-Regular.otf");
 
 // ---------------------------------------------------------------------------
 // SVG path OutlineBuilder
