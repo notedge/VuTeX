@@ -1064,14 +1064,32 @@ impl LayoutEngine {
         self.font_system.get_math_constant("default", constant).unwrap_or(Fixed::ONE)
     }
 
-    /// Report every script scale ratio the font does not publish.
+    /// A `MATH` constant in pixels, or `None` when nothing publishes it.
     ///
-    /// Script levels whose ratio is missing are still set, from the synthetic
-    /// MATH table, so a font that failed to parse keeps laying out. This warning
-    /// is the record of that substitution: a caller can tell a font-derived
-    /// ratio from a fallback instead of both looking measured.
+    /// The font's own `MathConstants` table is the truth source, and
+    /// [`MathConstants::resolve`](vutex_text::math::MathConstants::resolve) says
+    /// whether a number came from that table, from the crate's synthetic
+    /// stand-in, or from nowhere at all. A constant nobody publishes returns
+    /// `None`, so the caller drops the constraint instead of inventing a
+    /// measurement. [`Self::script_scale_diagnostics`] reports every such
+    /// substitution.
+    fn math_constant(&self, constant: MathConstant, size: Fixed) -> Option<Fixed> {
+        if let Some(em) = font_facts().and_then(|facts| facts.constants().resolve(constant).value()) {
+            return Some(em * size);
+        }
+        self.font_system.font_math_constant("default", constant).map(|em| em * size)
+    }
+
+    /// Report every `MATH` value the layout consumes that the font does not
+    /// publish.
+    ///
+    /// Script levels and the accent, limit and script gaps are still set, from
+    /// the synthetic MATH values, so a font that failed to parse keeps laying
+    /// out. This warning is the record of that substitution: a caller can tell a
+    /// font-derived number from a fallback instead of both looking measured.
     pub fn script_scale_diagnostics(&self) -> Vec<Diagnostic> {
-        let missing: Vec<&str> = [
+        let mut diagnostics = Vec::new();
+        let missing_ratios: Vec<&str> = [
             ("ScriptPercentScaleDown", MathConstant::ScriptPercentScaleDown),
             ("ScriptScriptPercentScaleDown", MathConstant::ScriptScriptPercentScaleDown),
         ]
@@ -1079,17 +1097,43 @@ impl LayoutEngine {
         .filter(|(_, constant)| self.font_system.font_math_constant("default", *constant).is_none())
         .map(|(name, _)| name)
         .collect();
-        if missing.is_empty() {
-            return Vec::new();
+        if !missing_ratios.is_empty() {
+            diagnostics.push(Diagnostic {
+                code: "vutex.layout.math.script_scale_fallback".into(),
+                severity: Severity::Warning,
+                message: format!(
+                    "the math font publishes no {} for family `default`, so script sizes use the synthetic MATH ratios",
+                    missing_ratios.join("` or `")
+                ),
+            });
         }
-        vec![Diagnostic {
-            code: "vutex.layout.math.script_scale_fallback".into(),
-            severity: Severity::Warning,
-            message: format!(
-                "the math font publishes no {} for family `default`, so script sizes use the synthetic MATH ratios",
-                missing.join("` or `")
-            ),
-        }]
+
+        let missing_constants: Vec<&str> = [
+            ("AccentBaseHeight", MathConstant::AccentBaseHeight),
+            ("FlattenedAccentBaseHeight", MathConstant::FlattenedAccentBaseHeight),
+            ("UpperLimitGapMin", MathConstant::UpperLimitGapMin),
+            ("UpperLimitBaselineRiseMin", MathConstant::UpperLimitBaselineRiseMin),
+            ("LowerLimitGapMin", MathConstant::LowerLimitGapMin),
+            ("LowerLimitBaselineDropMin", MathConstant::LowerLimitBaselineDropMin),
+            ("SuperscriptBaselineDropMax", MathConstant::SuperscriptBaselineDropMax),
+            ("SubscriptBaselineDropMin", MathConstant::SubscriptBaselineDropMin),
+        ]
+        .into_iter()
+        .filter(|(_, constant)| self.font_system.font_math_constant("default", *constant).is_none())
+        .map(|(name, _)| name)
+        .collect();
+        if !missing_constants.is_empty() {
+            diagnostics.push(Diagnostic {
+                code: "vutex.layout.math.constant_fallback".into(),
+                severity: Severity::Warning,
+                message: format!(
+                    "the math font publishes no {} for family `default`, so accent and limit gaps use the synthetic MATH values",
+                    missing_constants.join("`, `")
+                ),
+            });
+        }
+
+        diagnostics
     }
 
     fn get_spacing_glue(&self, spacing: SpacingRule) -> Option<Glue> {
@@ -1487,13 +1531,11 @@ impl LayoutEngine {
         // is forced cramped, exactly like the scripts they mirror.
         let style = state.style;
 
-        let family = "default";
         let style_scale = self.get_style_scale(style);
         let size = self.base_size * style_scale;
 
         let base_layout = self.layout_node_state(base, state)?;
-        let axis_height =
-            self.font_system.get_math_constant(family, MathConstant::AxisHeight).unwrap_or(Fixed::from_f64(0.25)) * size;
+        let axis_height = self.math_constant(MathConstant::AxisHeight, size).unwrap_or(Fixed::ZERO);
         let base_shift = axis_height - (base_layout.height() - base_layout.depth()) / Fixed::from_f64(2.0);
 
         let mut wrapper = self.pack_hbox(vec![base_layout], None);
@@ -1520,14 +1562,8 @@ impl LayoutEngine {
         let mut v_children = Vec::new();
 
         if let Some(sup_l) = sup_layout {
-            let gap =
-                self.font_system.get_math_constant(family, MathConstant::UpperLimitGapMin).unwrap_or(Fixed::from_f64(0.1))
-                    * size;
-            let rise = self
-                .font_system
-                .get_math_constant(family, MathConstant::UpperLimitBaselineRiseMin)
-                .unwrap_or(Fixed::from_f64(0.3))
-                * size;
+            let gap = self.math_constant(MathConstant::UpperLimitGapMin, size).unwrap_or(Fixed::ZERO);
+            let rise = self.math_constant(MathConstant::UpperLimitBaselineRiseMin, size).unwrap_or(Fixed::ZERO);
             let kern = gap.max(rise - base_layout.height() - sup_l.depth());
 
             let sup_hbox = self.pack_hbox(
@@ -1545,30 +1581,23 @@ impl LayoutEngine {
         );
         v_children.push(base_hbox);
 
-        let mut sub_height = Fixed::ZERO;
-        let mut actual_drop = Fixed::ZERO;
         let mut baseline_drop = Fixed::ZERO;
+        let mut has_sub = false;
 
         if let Some(sub_l) = sub_layout {
-            let gap =
-                self.font_system.get_math_constant(family, MathConstant::LowerLimitGapMin).unwrap_or(Fixed::from_f64(0.1))
-                    * size;
-            let drop = self
-                .font_system
-                .get_math_constant(family, MathConstant::LowerLimitBaselineDropMin)
-                .unwrap_or(Fixed::from_f64(0.6))
-                * size;
-            sub_height = sub_l.height();
+            let gap = self.math_constant(MathConstant::LowerLimitGapMin, size).unwrap_or(Fixed::ZERO);
+            let drop = self.math_constant(MathConstant::LowerLimitBaselineDropMin, size).unwrap_or(Fixed::ZERO);
+            let sub_height = sub_l.height();
+            has_sub = true;
 
             // `LowerLimitGapMin` is the clearance below the operator's own
             // bottom, while `LowerLimitBaselineDropMin` measures baseline to
             // baseline across the subscript's height. Taking the max of both
             // requirements keeps the gap rule from being applied on top of an
             // already sufficient baseline drop.
-            actual_drop = gap;
             baseline_drop = (base_depth + gap + sub_height).max(drop);
 
-            v_children.push(LayoutNode::Kern(actual_drop));
+            v_children.push(LayoutNode::Kern(gap));
             let sub_hbox = self.pack_hbox(
                 vec![LayoutNode::Kern((total_width - sub_l.width()) / Fixed::from_f64(2.0)), sub_l],
                 Some(total_width),
@@ -1578,7 +1607,7 @@ impl LayoutEngine {
 
         let vbox_node = self.pack_vbox(v_children, Alignment::Center);
 
-        if sub_height != Fixed::ZERO {
+        if has_sub {
             let shift = baseline_drop;
 
             let mut wrapper = self.pack_hbox(vec![vbox_node], None);
@@ -1614,7 +1643,6 @@ impl LayoutEngine {
 
         let base_layout = self.layout_node_state(base, state)?;
 
-        let family = "default";
         let style_scale = self.get_style_scale(style);
         let size = self.base_size * style_scale;
 
@@ -1627,6 +1655,24 @@ impl LayoutEngine {
         let mut sup_correction_height = Fixed::ZERO;
         let mut sub_correction_depth = Fixed::ZERO;
 
+        // Script minima depend on the kind of nucleus. The MATH table publishes
+        // baseline drop limits for a base that is a box or an extended shape,
+        // while a plain glyph keeps its own shift minima. A large operator
+        // instead follows the `op` atom rules `layout_limits` and the shift
+        // minima below already encode, so it is not treated as extended here.
+        let base_key = Self::first_glyph_key(base);
+        let extended_base = match base {
+            SemanticNode::Symbol { glyph_key, .. } => {
+                !class.is_large_operator()
+                    && match (font_facts(), font_facts_glyph(glyph_key)) {
+                        (Some(facts), Some(glyph)) => facts.is_extended_shape(glyph),
+                        _ => false,
+                    }
+            }
+            SemanticNode::Text { .. } => false,
+            _ => true,
+        };
+
         if let Some(sup_node) = sup {
             let sup_layout = self.layout_node_state(sup_node, state.sup())?;
             // A cramped base takes the font's cramped minimum instead of the
@@ -1634,12 +1680,16 @@ impl LayoutEngine {
             // nucleus is tall enough.
             let sup_constant =
                 if state.cramped { MathConstant::SuperscriptShiftUpCramped } else { MathConstant::SuperscriptShiftUp };
-            let sup_shift = self.font_system.get_math_constant(family, sup_constant).unwrap_or(Fixed::from_f64(0.4)) * size;
-            let sup_bottom_min =
-                self.font_system.get_math_constant(family, MathConstant::SuperscriptBottomMin).unwrap_or(Fixed::from_f64(0.1))
-                    * size;
+            let sup_shift = self.math_constant(sup_constant, size).unwrap_or(Fixed::ZERO);
+            let sup_bottom_min = self.math_constant(MathConstant::SuperscriptBottomMin, size).unwrap_or(Fixed::ZERO);
 
-            let calculated_sup_shift = sup_shift.max(base_layout.height() + sup_bottom_min);
+            let mut calculated_sup_shift = sup_shift.max(base_layout.height() + sup_bottom_min);
+            if extended_base {
+                // `SuperscriptBaselineDropMax` caps how far a superscript's
+                // baseline may drop below the top of a box nucleus.
+                let drop_max = self.math_constant(MathConstant::SuperscriptBaselineDropMax, size).unwrap_or(Fixed::ZERO);
+                calculated_sup_shift = calculated_sup_shift.max(base_layout.height() - drop_max);
+            }
 
             sup_depth = sup_layout.depth();
             sup_correction_height = calculated_sup_shift + sup_layout.height();
@@ -1650,24 +1700,22 @@ impl LayoutEngine {
 
         if let Some(sub_node) = sub {
             let sub_layout = self.layout_node_state(sub_node, state.sub())?;
-            let sub_shift =
-                self.font_system.get_math_constant(family, MathConstant::SubscriptShiftDown).unwrap_or(Fixed::from_f64(0.2))
-                    * size;
-            let sub_top_max =
-                self.font_system.get_math_constant(family, MathConstant::SubscriptTopMax).unwrap_or(Fixed::from_f64(0.4))
-                    * size;
+            let sub_shift = self.math_constant(MathConstant::SubscriptShiftDown, size).unwrap_or(Fixed::ZERO);
+            let sub_top_max = self.math_constant(MathConstant::SubscriptTopMax, size).unwrap_or(Fixed::ZERO);
 
             calculated_sub_shift = sub_shift.max(sub_layout.height() - sub_top_max);
+            if extended_base {
+                // `SubscriptBaselineDropMin` keeps a subscript below the ink
+                // bottom of a box nucleus instead of letting it lift into it.
+                let drop_min = self.math_constant(MathConstant::SubscriptBaselineDropMin, size).unwrap_or(Fixed::ZERO);
+                calculated_sub_shift = calculated_sub_shift.max(base_layout.depth() + drop_min);
+            }
             sub_correction_depth = calculated_sub_shift + sub_layout.depth();
 
             // If we already have a superscript, we need to adjust the kern between them
             if script_vbox_children.len() == 2 {
                 if let LayoutNode::Kern(sup_kern) = script_vbox_children.pop().unwrap() {
-                    let subsup_gap = self
-                        .font_system
-                        .get_math_constant(family, MathConstant::SubSuperscriptGapMin)
-                        .unwrap_or(Fixed::from_f64(0.1))
-                        * size;
+                    let subsup_gap = self.math_constant(MathConstant::SubSuperscriptGapMin, size).unwrap_or(Fixed::ZERO);
 
                     let sub_height = sub_layout.height();
                     let baseline_distance = (sup_kern + calculated_sub_shift).max(sup_depth + subsup_gap + sub_height);
@@ -1755,8 +1803,6 @@ impl LayoutEngine {
             node => node,
         };
 
-        let base_key = Self::first_glyph_key(base);
-
         let mut children = Vec::new();
         children.push(base_layout);
         // A large operator keeps TeX's `\nolimits` placement when its scripts
@@ -1767,9 +1813,7 @@ impl LayoutEngine {
         // gap is the font's own script spacing instead. Limits above and below
         // the operator are built by `layout_limits` and never reach this kern.
         if class.is_large_operator() {
-            let script_space =
-                self.font_system.get_math_constant(family, MathConstant::SpaceAfterScript).unwrap_or(Fixed::from_f64(0.05))
-                    * size;
+            let script_space = self.math_constant(MathConstant::SpaceAfterScript, size).unwrap_or(Fixed::ZERO);
             // The `MATH` table publishes the italic correction the operator
             // actually carries. The metrics cache answers zero for a glyph whose
             // extents came from a lookup that never saw it.
@@ -2129,7 +2173,7 @@ impl LayoutEngine {
         // centring.
         let centered_accent = (total_width - accent_layout.width()) / Fixed::from_f64(2.0);
         let base_offset = (total_width - base_layout.width()) / Fixed::from_f64(2.0);
-        let accent_layout = match Self::top_accent_offset(&base_layout) {
+        let accent_layout = match self.top_accent_offset(&base_layout) {
             Some(attachment) => {
                 let left = base_offset + attachment - accent_layout.width() / Fixed::from_f64(2.0);
                 self.pack_hbox(vec![LayoutNode::Kern(left), accent_layout], Some(total_width))
@@ -2137,24 +2181,42 @@ impl LayoutEngine {
             None => self.pack_hbox(vec![LayoutNode::Kern(centered_accent), accent_layout], Some(total_width)),
         };
 
-        let base_hbox = self.pack_hbox(vec![LayoutNode::Kern(base_offset), base_layout], Some(total_width));
-
         // The embedded font draws its modifier marks for text use, so their ink
         // sits high above their own baseline (`ˆ` starts at 0.516 em). Stacking
         // the mark's baseline on the base's ink top would therefore leave it
         // floating most of an em above the letter. Replace the accent box's
-        // extents with the ink it really paints, plus `clearance` underneath,
-        // so the VBox below lands the ink bottom just above the base's height.
+        // extents with the ink it really paints, plus the gap underneath, so the
+        // VBox below lands the ink bottom at that gap above the base's height.
         // TeX clears an accent glyph from the nucleus by the default rule
         // thickness, which the MATH table publishes as
         // `FractionRuleThickness`, while `\bar` keeps the overbar gap in
         // `layout_overbar`.
-        let clearance =
-            self.font_system.get_math_constant("default", MathConstant::FractionRuleThickness).unwrap_or(Fixed::from_f64(0.04))
-                * size;
-        let accent_layout = fit_accent_extents(accent_layout, clearance);
+        let clearance = self.math_constant(MathConstant::FractionRuleThickness, size).unwrap_or(Fixed::ZERO);
+        let flat_limit = self.math_constant(MathConstant::AccentBaseHeight, size);
+        let flattened_limit = self.math_constant(MathConstant::FlattenedAccentBaseHeight, size);
+        let gap = Self::accent_gap(base_layout.height(), clearance, flat_limit, flattened_limit);
+        let accent_layout = fit_accent_extents(accent_layout, gap);
+
+        let base_hbox = self.pack_hbox(vec![LayoutNode::Kern(base_offset), base_layout], Some(total_width));
 
         Ok(self.pack_vbox(vec![accent_layout, base_hbox], Alignment::Center))
+    }
+
+    /// Vertical gap between the base's ink top and the accent's ink bottom.
+    ///
+    /// `AccentBaseHeight` is the tallest base an accent may sit on flat, so a
+    /// taller nucleus is raised until the accent clears it by `clearance`.
+    /// `FlattenedAccentBaseHeight` is the height past which an accent must not
+    /// grow the formula any further: above it the accent stays at that height
+    /// and its ink overlaps the base's upper region instead of following the
+    /// base up. A font that publishes only the flat limit caps the accent there.
+    fn accent_gap(base_height: Fixed, clearance: Fixed, flat_limit: Option<Fixed>, flattened_limit: Option<Fixed>) -> Fixed {
+        let flattened = flattened_limit.or(flat_limit);
+        let rise = match flattened {
+            Some(flattened) if base_height > flattened => flattened,
+            _ => base_height,
+        };
+        rise + clearance - base_height
     }
 
     /// Lay out `\bar` / `\overline` as a rule over the base.
@@ -2164,12 +2226,8 @@ impl LayoutEngine {
     /// overbar as a rule spanning the nucleus, sized from the MATH table's
     /// overbar constants, which is what TeX's own `\bar` produces.
     fn layout_overbar(&self, base_layout: LayoutNode, size: Fixed) -> LayoutNode {
-        let thickness =
-            self.font_system.get_math_constant("default", MathConstant::OverbarRuleThickness).unwrap_or(Fixed::from_f64(0.06))
-                * size;
-        let gap =
-            self.font_system.get_math_constant("default", MathConstant::OverbarVerticalGap).unwrap_or(Fixed::from_f64(0.1))
-                * size;
+        let thickness = self.math_constant(MathConstant::OverbarRuleThickness, size).unwrap_or(Fixed::ZERO);
+        let gap = self.math_constant(MathConstant::OverbarVerticalGap, size).unwrap_or(Fixed::ZERO);
         let width = base_layout.width();
 
         // A `Rule`'s baseline is its bottom edge, so the bar paints from the
@@ -2191,17 +2249,24 @@ impl LayoutEngine {
     ///
     /// Walks left to right through horizontal material so a base made of
     /// several glyphs still reports the attachment of its leading glyph;
-    /// vertical boxes and rules carry no attachment.
-    fn top_accent_offset(node: &LayoutNode) -> Option<Fixed> {
+    /// vertical boxes and rules carry no attachment. The `MATH` table's
+    /// `MathGlyphInfo` is the truth source; a glyph it does not cover keeps the
+    /// attachment the metrics cache measured, which came from the same table.
+    fn top_accent_offset(&self, node: &LayoutNode) -> Option<Fixed> {
         match node {
             LayoutNode::Glyph(glyph) => {
-                let attachment = glyph.metrics.top_accent_attachment;
-                (attachment > Fixed::ZERO).then_some(attachment)
+                let facts_attachment = glyph
+                    .glyph_id
+                    .and_then(|glyph_id| font_facts()?.top_accent_attachment(GlyphId::new(glyph_id)))
+                    .map(|em| em * glyph.size);
+                facts_attachment.filter(|attachment| *attachment > Fixed::ZERO).or_else(|| {
+                    (glyph.metrics.top_accent_attachment > Fixed::ZERO).then_some(glyph.metrics.top_accent_attachment)
+                })
             }
             LayoutNode::HBox(hbox) => {
                 let mut offset = Fixed::ZERO;
                 for child in &hbox.children {
-                    if let Some(attachment) = Self::top_accent_offset(child) {
+                    if let Some(attachment) = self.top_accent_offset(child) {
                         return Some(offset + attachment);
                     }
                     offset = offset + child.width();
@@ -2218,13 +2283,17 @@ impl LayoutEngine {
 /// The box that carries an accent is a plain HBox, so its extents come from the
 /// mark's advance metrics. Those metrics describe the whole em box, not where
 /// the ink actually sits, and the embedded font draws its marks high above the
-/// baseline. Rewriting the extents to `ink top` and `clearance` below the ink
-/// bottom makes the enclosing VBox land the mark's ink just above the base
+/// baseline. Rewriting the extents to `ink top` and `gap` below the ink bottom
+/// makes the enclosing VBox land the mark's ink at that gap above the base
 /// instead of floating a baseline's worth above it.
+///
+/// `gap` is the clearance the MATH constants call for, and it is negative for an
+/// accent that has flattened against a tall base: then the VBox lets the mark's
+/// ink overlap the base by exactly that much.
 ///
 /// A glyph the font ships no outline for keeps its measured extents, so the
 /// synthetic mark still stacks predictably.
-fn fit_accent_extents(accent: LayoutNode, clearance: Fixed) -> LayoutNode {
+fn fit_accent_extents(accent: LayoutNode, gap: Fixed) -> LayoutNode {
     let LayoutNode::HBox(mut hbox) = accent
     else {
         return accent;
@@ -2235,9 +2304,9 @@ fn fit_accent_extents(accent: LayoutNode, clearance: Fixed) -> LayoutNode {
     };
     hbox.height = ink_top;
     // The ink starts above the accent's own baseline, so this depth is usually
-    // negative. The VBox still sees a positive line height — the ink's height
-    // plus the clearance — and the base follows it.
-    hbox.depth = clearance - ink_bottom;
+    // negative. The VBox still sees the ink's height plus the gap as the accent's
+    // line height, and the base follows it.
+    hbox.depth = gap - ink_bottom;
     LayoutNode::HBox(hbox)
 }
 

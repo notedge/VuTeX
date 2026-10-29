@@ -1002,10 +1002,17 @@ fn bar_accent_is_a_rule_covering_the_base() {
 /// `OverbarVerticalGap` is 0.12 em and belongs to `\bar`, so `\hat` and
 /// `\tilde` floated 1.68 px above the letter at 14 px. `FractionRuleThickness`
 /// is 0.039993 em, a 0.5599 px clearance.
+///
+/// The clearance only holds while the base stays under
+/// `FlattenedAccentBaseHeight` (0.664 em here).  A taller base such as `f`
+/// (0.705 em) flattens the accent onto it, so the ink overlaps by
+/// `base_height - FlattenedAccentBaseHeight` instead.
 #[test]
 fn glyph_accents_clear_the_base_ink_by_the_rule_thickness() {
     let system = builtin_font_metrics();
     let thickness = system.get_math_constant("default", MathConstant::FractionRuleThickness).expect("font constant").to_f64();
+    let flattened =
+        system.get_math_constant("default", MathConstant::FlattenedAccentBaseHeight).expect("font constant").to_f64();
 
     for (source, accent_char, base_char) in [("\\hat{f}", 'ˆ', 'f'), ("\\tilde{x}", '˜', 'x')] {
         let (tree, _) = layout_formula(source, false).expect(source);
@@ -1020,10 +1027,14 @@ fn glyph_accents_clear_the_base_ink_by_the_rule_thickness() {
         let ink_bottom = accent_y - accent_min_y * accent.size.to_f64();
         let ink_top = base_y - base_max_y * base.size.to_f64();
         let clearance = ink_top - ink_bottom;
-        let expected = thickness * accent.size.to_f64();
+        let size = accent.size.to_f64();
+        let base_height = base.metrics.height.to_f64();
+        let flattened_limit = flattened * size;
+        let expected =
+            if base_height > flattened_limit { (thickness + flattened) * size - base_height } else { thickness * size };
         assert!(
             (clearance - expected).abs() < 1e-3,
-            "`{source}` accent ink must clear the base ink by {expected}, not {clearance}"
+            "`{source}` accent ink must sit {expected} from the base ink at base height {base_height}, not {clearance}"
         );
     }
 
