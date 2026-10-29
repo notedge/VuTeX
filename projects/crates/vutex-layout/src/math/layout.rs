@@ -8,10 +8,10 @@ use vutex_text::math::{FontMetricsSystem, GlyphId, KernCorner, MathFontFacts, St
 use vutex_types::{
     Diagnostic, Severity,
     math::{
-        Alignment, BBox, DelimiterComponent, DelimiterVariant, Fixed, FontMetricsSnapshot, FontStyle, FormulaLayoutResult,
-        FormulaMetrics, GlyphKey, GlyphMetrics, LimitsPolicy, LineStyle, MathConstant, MathEnvironment, MathItem, MathList,
-        MathResult, MathStyle, MathStyleState, Noad, NoadKind, OperatorClass, PaintNode, SemanticNode, SpacingRule, SymbolRole,
-        normalize_math_list, project_semantic_with_state,
+        Alignment, AlignmentAnchors, BBox, DelimiterComponent, DelimiterVariant, Fixed, FontMetricsSnapshot, FontStyle,
+        FormulaLayoutResult, FormulaMetrics, GlyphKey, GlyphMetrics, LimitsPolicy, LineStyle, MathConstant, MathEnvironment,
+        MathItem, MathList, MathResult, MathStyle, MathStyleState, Noad, NoadKind, OperatorClass, PaintNode, SemanticNode,
+        SpacingRule, SymbolRole, normalize_math_list, project_semantic_with_state,
     },
 };
 
@@ -1851,26 +1851,188 @@ impl LayoutEngine {
 
     /// Lay out one AMS environment block.
     ///
-    /// **Transitional implementation.**  The environment keeps its own kind,
-    /// alignment anchors and per-row numbering in the IR
-    /// ([`MathEnvironment`]), but this round still hands its rows to the shared
-    /// grid path: the alignment comes from
-    /// [`MathEnvironment::column_alignment`], which reads the environment kind
-    /// and the anchor model rather than the author's row contents, and the grid
-    /// receives only that result and the row cells.  Two things therefore stay
-    /// unlaid-out and live on in the IR: `multline`'s per-row flush-left /
-    /// flush-right placement ([`AlignmentAnchors::Spread`]) and the row
-    /// numbering intent.  This is a staging point for the grid work, not a claim
-    /// that an environment is a matrix with a flag.
+    /// Each kind carries its own row rule, and the rule comes from the
+    /// environment rather than from the author's cells:
+    ///
+    /// - `aligned`, `alignedat` and `align` alternate a right-aligned and a
+    ///   left-aligned column at every `&` anchor, exactly like `alignedat{n}`
+    ///   pins its grid to `2n` columns.
+    /// - `split` rows are fragments of one equation that meet at a single
+    ///   alignment point, so they use the same right/left anchor grid with no
+    ///   two-row cap.
+    /// - `equation` and `gather` have no anchors and centre every row over the
+    ///   widest one.
+    /// - `multline` flushes its first row left, its last row right and centres
+    ///   the rows between.
+    ///
+    /// Row numbering stays an IR intent: VuTeX keeps the authored `Numbering`
+    /// and assigns no number itself.
     fn layout_environment(&self, environment: &MathEnvironment, state: MathStyleState) -> MathResult<LayoutNode> {
         // `align`, `equation`, `gather` and `multline` pin display style so an
         // enclosing `\scriptstyle` cannot demote their rows.  `aligned`,
         // `alignedat` and `split` follow the surrounding style.
         let state =
             if environment.kind.is_display_level() { MathStyleState { style: MathStyle::Display, ..state } } else { state };
-        let rows: Vec<&[SemanticNode]> = environment.rows.iter().map(|row| row.cells.as_slice()).collect();
-        let column_alignment = environment.column_alignment();
-        self.layout_matrix(&rows, environment.row_spacing, environment.col_spacing, &column_alignment, state)
+        if environment.rows.is_empty() {
+            return Ok(LayoutNode::Kern(Fixed::ZERO));
+        }
+
+        let style_scale = self.get_style_scale(state.style);
+        let size = self.base_size * style_scale;
+        let row_spacing = environment.row_spacing * size;
+        let col_spacing = environment.col_spacing * size;
+        let anchors = environment.kind.anchors();
+
+        // `alignedat{n}` presents exactly its `2n` declared columns, so a short
+        // row leaves the trailing columns empty instead of shrinking the grid.
+        // Every other kind takes the widest authored row.  A body that types
+        // more columns than it declares keeps them rather than dropping cells.
+        let columns = environment.columns().max(environment.rows.iter().map(|row| row.cells.len()).max().unwrap_or(0));
+        if columns == 0 {
+            return Ok(LayoutNode::Kern(Fixed::ZERO));
+        }
+
+        // Layout every cell once.  `alignedat` padding reaches layout as
+        // missing cells, so an absent cell is an empty kern rather than a
+        // narrower row.
+        let mut cell_layouts: Vec<Vec<LayoutNode>> = Vec::with_capacity(environment.rows.len());
+        for row in &environment.rows {
+            let mut cells = Vec::with_capacity(columns);
+            for column in 0..columns {
+                match row.cells.get(column) {
+                    Some(cell) => cells.push(self.layout_node_state(cell, state)?),
+                    None => cells.push(LayoutNode::Kern(Fixed::ZERO)),
+                }
+            }
+            cell_layouts.push(cells);
+        }
+
+        let mut row_boxes: Vec<LayoutNode> = Vec::with_capacity(environment.rows.len());
+        match anchors {
+            // `aligned`, `alignedat`, `align` and `split`: every `&` closes a
+            // right-aligned column and opens a left-aligned one.  A relation
+            // that opens the left column has no left neighbour inside its own
+            // cell, so the grid supplies the thick muskip TeX puts on both sides
+            // of a relation.  These grids carry no intercolumn gutter, so
+            // `col_spacing` is the environment's own value (zero for them).
+            AlignmentAnchors::ColumnPairs | AlignmentAnchors::SingleEquation => {
+                let mut col_widths = vec![Fixed::ZERO; columns];
+                for cells in &cell_layouts {
+                    for (column, cell) in cells.iter().enumerate() {
+                        col_widths[column] = col_widths[column].max(cell.width());
+                    }
+                }
+                for (row_index, cells) in cell_layouts.into_iter().enumerate() {
+                    let mut children = Vec::new();
+                    for (column, cell) in cells.into_iter().enumerate() {
+                        let diff = col_widths[column] - cell.width();
+                        let cell_box = if column % 2 == 0 {
+                            self.pack_hbox(vec![LayoutNode::Kern(diff), cell], Some(col_widths[column]))
+                        }
+                        else {
+                            self.pack_hbox(vec![cell, LayoutNode::Kern(diff)], Some(col_widths[column]))
+                        };
+                        if column > 0
+                            && environment.rows[row_index].cells.get(column).and_then(Self::leading_role)
+                                == Some(SymbolRole::Relation)
+                        {
+                            children.push(LayoutNode::Kern(Fixed::from_f64(THICK_MUSIP_EM) * size));
+                        }
+                        children.push(cell_box);
+                        if column + 1 < columns && col_spacing > Fixed::ZERO {
+                            children.push(LayoutNode::Kern(col_spacing));
+                        }
+                    }
+                    row_boxes.push(self.pack_hbox(children, None));
+                }
+            }
+            // `equation` and `gather`: no anchors, so every row is one centred
+            // line.  A stray `&` still separates cells, and the gutter is all
+            // that holds them together.
+            AlignmentAnchors::Centered => {
+                for cells in cell_layouts {
+                    let mut children = Vec::new();
+                    for (column, cell) in cells.into_iter().enumerate() {
+                        if column > 0 && col_spacing > Fixed::ZERO {
+                            children.push(LayoutNode::Kern(col_spacing));
+                        }
+                        children.push(cell);
+                    }
+                    row_boxes.push(self.pack_hbox(children, None));
+                }
+            }
+            // `multline`: the first row starts at the left edge, the last ends
+            // at the right edge and the rows between are centred.  A single row
+            // cannot be both edges, so it stays centred.
+            AlignmentAnchors::Spread => {
+                for cells in cell_layouts {
+                    let mut children = Vec::new();
+                    for (column, cell) in cells.into_iter().enumerate() {
+                        if column > 0 && col_spacing > Fixed::ZERO {
+                            children.push(LayoutNode::Kern(col_spacing));
+                        }
+                        children.push(cell);
+                    }
+                    row_boxes.push(self.pack_hbox(children, None));
+                }
+            }
+        }
+
+        // A `Centered` or `Spread` block pads each row to the widest one, so the
+        // rows share one box width and the `VBox` can stack them at one left
+        // edge.  Anchor grids already pad every cell to its column, so their
+        // rows are uniform without this pass.
+        if !matches!(anchors, AlignmentAnchors::ColumnPairs | AlignmentAnchors::SingleEquation) {
+            let widest = row_boxes.iter().map(LayoutNode::width).max().unwrap_or(Fixed::ZERO);
+            let row_count = row_boxes.len();
+            let last = row_count - 1;
+            for (index, row) in row_boxes.iter_mut().enumerate() {
+                let diff = widest - row.width();
+                let half = diff / Fixed::from_f64(2.0);
+                let (left, right) = match anchors {
+                    AlignmentAnchors::Spread if row_count > 1 && index == 0 => (Fixed::ZERO, diff),
+                    AlignmentAnchors::Spread if row_count > 1 && index == last => (diff, Fixed::ZERO),
+                    _ => (half, diff - half),
+                };
+                let padded = std::mem::replace(row, LayoutNode::Kern(Fixed::ZERO));
+                *row = self.pack_hbox(vec![LayoutNode::Kern(left), padded, LayoutNode::Kern(right)], None);
+            }
+        }
+
+        let mut stacked = Vec::new();
+        for (index, row) in row_boxes.into_iter().enumerate() {
+            if index > 0 && row_spacing > Fixed::ZERO {
+                stacked.push(LayoutNode::Kern(row_spacing));
+            }
+            stacked.push(row);
+        }
+
+        let block = self.pack_vbox(stacked, Alignment::Center);
+        Ok(self.centre_block_on_axis(block, size))
+    }
+
+    /// Centre a stacked block on the `MATH` axis.
+    ///
+    /// The `VBox` measures the block from its top edge down to its bottom edge,
+    /// so the baseline shift that puts the block's middle on the axis is
+    /// `(height - depth) / 2 - axis`.  A font that publishes no `AxisHeight`
+    /// leaves the block on its own baseline instead of inventing one.
+    fn centre_block_on_axis(&self, block: LayoutNode, size: Fixed) -> LayoutNode {
+        let axis_height = self.math_constant(MathConstant::AxisHeight, size).unwrap_or(Fixed::ZERO);
+        let (height, depth) = match &block {
+            LayoutNode::VBox(v) => (v.height, v.depth),
+            _ => (Fixed::ZERO, Fixed::ZERO),
+        };
+        let shift = (height - depth) / Fixed::from_f64(2.0) - axis_height;
+        let mut wrapper = self.pack_hbox(vec![block], None);
+        if let LayoutNode::HBox(ref mut h) = wrapper {
+            // `LayoutNode::height` / `depth` already fold `shift` back into the
+            // extents, exactly like `center_delimiter` relies on.  Writing the
+            // shifted values into `height` / `depth` as well would apply the
+            // shift twice and invert the box, so only the shift is stored.
+            h.shift = shift;
+        }
+        wrapper
     }
 
     fn layout_matrix(
@@ -1964,32 +2126,7 @@ impl LayoutEngine {
         }
 
         let matrix_vbox = self.pack_vbox(packed_rows, Alignment::Center);
-
-        // Center the matrix around the math axis
-        let family = "default";
-        let axis_height =
-            self.font_system.get_math_constant(family, MathConstant::AxisHeight).unwrap_or(Fixed::from_f64(0.25)) * size;
-
-        let (vbox_height, vbox_depth) = match &matrix_vbox {
-            LayoutNode::VBox(v) => (v.height, v.depth),
-            _ => (Fixed::ZERO, Fixed::ZERO),
-        };
-
-        // VBox extends from -height to +depth relative to its baseline.
-        // Center is at (depth - height) / 2.
-        // We want (depth - height) / 2 + shift = -axis_height.
-        // shift = (height - depth) / 2 - axis_height.
-        let shift = (vbox_height - vbox_depth) / Fixed::from_f64(2.0) - axis_height;
-
-        let mut wrapper = self.pack_hbox(vec![matrix_vbox], None);
-        if let LayoutNode::HBox(ref mut h) = wrapper {
-            // `LayoutNode::height` / `depth` already fold `shift` back into the
-            // extents, exactly like `center_delimiter` relies on.  Writing the
-            // shifted values into `height` / `depth` as well would apply the
-            // shift twice and invert the box, so only the shift is stored.
-            h.shift = shift;
-        }
-        Ok(wrapper)
+        Ok(self.centre_block_on_axis(matrix_vbox, size))
     }
 
     fn layout_delimited(

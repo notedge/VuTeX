@@ -7,8 +7,8 @@
 use vutex_types::{
     Diagnostic, Severity,
     math::{
-        Alignment, Fixed, FontStyle, GlyphKey, LimitsPolicy, LineStyle, MathError, MathResult, MathSemanticTree, MathStyle,
-        SemanticNode, SymbolRole,
+        Alignment, AlignmentAnchors, EnvironmentKind, EnvironmentRow, Fixed, FontStyle, GlyphKey, LimitsPolicy, LineStyle,
+        MathEnvironment, MathError, MathResult, MathSemanticTree, MathStyle, Numbering, SemanticNode, SymbolRole,
     },
 };
 
@@ -444,6 +444,12 @@ impl Parser {
             "smallmatrix",
             "gathered",
             "split",
+            "equation",
+            "equation*",
+            "gather",
+            "gather*",
+            "multline",
+            "multline*",
             "Bmatrix",
             "Vmatrix",
         ];
@@ -456,7 +462,31 @@ impl Parser {
             _ => None,
         };
 
-        let matrix = self.parse_matrix(&name, column_pairs)?;
+        let rows = self.read_environment_rows(&name)?;
+
+        // The AMS environments keep their own row rules in the IR instead of
+        // pretending to be a matrix.  Numbering stays an intent: `\tag` /
+        // `\notag` resolution belongs to the document, so every row starts as
+        // `Numbering::Default`.
+        if let Some(kind) = Self::environment_kind(&name, column_pairs) {
+            if let EnvironmentKind::AlignedAt { .. } = kind {
+                self.report_alignedat_columns(&name, kind, &rows);
+            }
+            let col_spacing = match kind.anchors() {
+                AlignmentAnchors::ColumnPairs | AlignmentAnchors::SingleEquation => Fixed::ZERO,
+                AlignmentAnchors::Centered | AlignmentAnchors::Spread => Fixed::from_f64(0.8),
+            };
+            let rows = rows.into_iter().map(|cells| EnvironmentRow { cells, numbering: Numbering::Default }).collect();
+            return Ok(SemanticNode::Environment(MathEnvironment {
+                kind,
+                starred: name.ends_with('*'),
+                rows,
+                row_spacing: Fixed::from_f64(0.35),
+                col_spacing,
+            }));
+        }
+
+        let matrix = self.pack_matrix(&name, rows);
         let (left, right) = match name.as_str() {
             "pmatrix" => (Some(delimiter('(')), Some(delimiter(')'))),
             "bmatrix" => (Some(delimiter('[')), Some(delimiter(']'))),
@@ -472,7 +502,29 @@ impl Parser {
         Ok(SemanticNode::Delimited { left, right, content: Box::new(matrix) })
     }
 
-    fn parse_matrix(&mut self, name: &str, column_pairs: Option<usize>) -> MathResult<SemanticNode> {
+    /// The IR kind an AMS environment name lowers to, or `None` for the
+    /// matrix-like environments that keep the generic grid.
+    ///
+    /// `gathered` is `gather`'s inline form.  Its rows are centred over each
+    /// other exactly like `gather`, and the surrounding style still applies.
+    fn environment_kind(name: &str, column_pairs: Option<usize>) -> Option<EnvironmentKind> {
+        match name {
+            "aligned" => Some(EnvironmentKind::Aligned),
+            "alignedat" | "alignedat*" => Some(EnvironmentKind::AlignedAt { pairs: column_pairs? as u32 }),
+            "split" => Some(EnvironmentKind::Split),
+            "align" | "align*" => Some(EnvironmentKind::Align),
+            "equation" | "equation*" => Some(EnvironmentKind::Equation),
+            "gather" | "gather*" | "gathered" => Some(EnvironmentKind::Gather),
+            "multline" | "multline*" => Some(EnvironmentKind::Multline),
+            _ => None,
+        }
+    }
+
+    /// Read the cells of one environment body up to its own `\end{name}`.
+    ///
+    /// A row is the run of `&`-separated cells between two `\\`, so the cells
+    /// keep the authored anchor split for the environment's own row rule.
+    fn read_environment_rows(&mut self, name: &str) -> MathResult<Vec<Vec<SemanticNode>>> {
         let mut rows = Vec::new();
         loop {
             let mut row = Vec::new();
@@ -503,70 +555,46 @@ impl Parser {
         if closing.trim() != name {
             return Err(self.error(format!("expected `\\end{{{name}}}` but found `\\end{{{}}}`", closing.trim())));
         }
+        Ok(rows)
+    }
 
+    /// Report a body whose column count does not match `alignedat{n}`'s
+    /// declared pairs.
+    ///
+    /// The grid keeps the wider of the two, so the warning never promises to
+    /// discard cells the author typed.
+    fn report_alignedat_columns(&mut self, name: &str, kind: EnvironmentKind, rows: &[Vec<SemanticNode>]) {
+        let Some(pairs) = kind.fixed_pairs()
+        else {
+            return;
+        };
+        let declared = (pairs as usize) * 2;
+        let typed = rows.iter().map(|row| row.len()).max().unwrap_or(0);
+        if declared == typed {
+            return;
+        }
+        self.warn(
+            "vutex.layout.math.alignedat_columns",
+            format!(
+                "`\\begin{{{name}}}` declares {pairs} column pairs ({declared} columns) but its body has {typed} columns, so the grid keeps {} columns",
+                declared.max(typed)
+            ),
+        );
+    }
+
+    fn pack_matrix(&self, name: &str, rows: Vec<Vec<SemanticNode>>) -> SemanticNode {
         let row_spacing = match name {
             "smallmatrix" => Fixed::from_f64(0.2),
             _ => Fixed::from_f64(0.35),
         };
-
-        // `alignedat{n}` fixes the grid to `n` right/left column pairs.  A body
-        // that types fewer cells than the declaration leaves the remaining
-        // columns empty, and one that types a different count is reported
-        // instead of silently keeping whatever the author happened to write.
-        let typed_columns = rows.iter().map(|row| row.len()).max().unwrap_or(0);
-        let declared_columns = column_pairs.map(|pairs| pairs * 2);
-        if let Some(declared) = declared_columns {
-            if declared != typed_columns {
-                self.warn(
-                    "vutex.layout.math.alignedat_columns",
-                    format!(
-                        "`\\begin{{{name}}}` declares {} column pairs ({} columns) but its body has {} columns, so the grid keeps {} columns",
-                        declared / 2,
-                        declared,
-                        typed_columns,
-                        declared.max(typed_columns)
-                    ),
-                );
-            }
-            for row in &mut rows {
-                while row.len() < declared {
-                    row.push(SemanticNode::Sequence(Vec::new()));
-                }
-            }
-        }
-        let columns = declared_columns.unwrap_or(typed_columns).max(typed_columns);
+        // `cases` is a left-aligned expression/condition pair.  Every other
+        // matrix-like environment centres its cells.
+        let columns = rows.iter().map(|row| row.len()).max().unwrap_or(0);
         let column_alignment = match name {
-            // `cases` is a left-aligned expression/condition pair.
             "cases" => vec![Alignment::Left; columns],
-            // `aligned`, `alignedat`, `split` and `align` alternate right/left
-            // at every `&`, so the relation column lines up across rows.
-            "aligned" | "alignedat" | "alignedat*" | "split" | "align" | "align*" => {
-                (0..columns).map(|column| if column % 2 == 0 { Alignment::Right } else { Alignment::Left }).collect()
-            }
-            // Everything else is the generic centred matrix, `gathered`
-            // included: its rows are centred over each other.
             _ => vec![Alignment::Center; columns],
         };
-
-        // `align` and `align*` are display-level environments: their cells stay
-        // at display style even when the formula around them is demoted. The
-        // starred and unstarred forms share this geometry, their numbering is a
-        // document-level concern.
-        // `aligned`, `alignedat`, `split`, `align` and `align*` are rl grids:
-        // TeX places each row as `r <relation> l` with a thick muskip on both
-        // sides of the relation, and the column gap is the ordinary intercolumn
-        // glue of the alignment, which these environments set to nothing.  A
-        // blanket `col_spacing` would double the space on one side of the
-        // relation, so these grids get zero while every other matrix keeps the
-        // `\quad`-ish gutter.
-        let col_spacing = if matches!(name, "aligned" | "alignedat" | "alignedat*" | "split" | "align" | "align*") {
-            Fixed::ZERO
-        }
-        else {
-            Fixed::from_f64(0.8)
-        };
-        let display_style = matches!(name, "align" | "align*");
-        Ok(SemanticNode::Matrix { rows, row_spacing, col_spacing, display_style, column_alignment })
+        SemanticNode::Matrix { rows, row_spacing, col_spacing: Fixed::from_f64(0.8), display_style: false, column_alignment }
     }
 
     /// Read the `{n}` column-pair argument of `alignedat`.
