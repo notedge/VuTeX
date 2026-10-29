@@ -2454,6 +2454,54 @@ fn gathered_follows_an_enclosing_script_style() {
     assert!((gather_q.size.to_f64() - 14.0).abs() < 0.01, "`gather` keeps the 14 px display size: {}", gather_q.size.to_f64());
 }
 
+/// `\tag` / `\notag` / `\nonumber` name the row they sit on: they become the
+/// row's `Numbering` intent, never an atom inside one of its cells.
+#[test]
+fn row_numbering_commands_become_row_metadata() {
+    let source = "\\begin{align} a &= b \\tag{1} \\\\ c &= d \\notag \\end{align}";
+    let tree = parse_formula(source).unwrap_or_else(|error| panic!("`{source}`: {error}"));
+    let environment = first_environment(&tree.root).expect("an align environment");
+    assert_eq!(environment.rows.len(), 2, "the tag and the notag stay on their own rows");
+    assert_eq!(environment.rows[0].numbering, Numbering::Tag("1".into()));
+    assert_eq!(environment.rows[1].numbering, Numbering::Suppressed);
+    // A tag in the middle of a cell does not split the cell or add an atom that
+    // layout would have to strip back out.
+    assert_eq!(environment.rows[0].cells.len(), 2, "`a` and `=&b` are the two authored cells");
+    assert_eq!(environment.rows[1].cells.len(), 2, "`c` and `=&d` are the two authored cells");
+
+    // The starred tag keeps its label and `\nonumber` is `\notag`'s other
+    // spelling: both stay numbering intent instead of becoming glyphs.
+    let source = "\\begin{gather} a \\tag*{2a} \\\\ b \\nonumber \\end{gather}";
+    let (_, _, diagnostics) =
+        layout_formula_with_diagnostics(source, false, 14.0).unwrap_or_else(|error| panic!("`{source}`: {error}"));
+    assert!(diagnostics.is_empty(), "`{source}` must not warn: {diagnostics:?}");
+    let tree = parse_formula(source).unwrap_or_else(|error| panic!("`{source}`: {error}"));
+    let environment = first_environment(&tree.root).expect("a gather environment");
+    assert_eq!(environment.rows[0].numbering, Numbering::Tag("2a".into()));
+    assert_eq!(environment.rows[1].numbering, Numbering::Suppressed);
+}
+
+/// `\tag` decides a row that also carries `\notag`: the explicit label wins and
+/// the contradiction is reported rather than silently resolved either way.
+#[test]
+fn tag_wins_over_notag_with_a_warning() {
+    let source = "\\begin{align} a &= b \\tag{1} \\notag \\end{align}";
+    let (_, _, diagnostics) =
+        layout_formula_with_diagnostics(source, false, 14.0).unwrap_or_else(|error| panic!("`{source}`: {error}"));
+    let tree = parse_formula(source).unwrap_or_else(|error| panic!("`{source}`: {error}"));
+    let environment = first_environment(&tree.root).expect("an align environment");
+    assert_eq!(environment.rows[0].numbering, Numbering::Tag("1".into()));
+    assert_eq!(diagnostics.len(), 1, "one contradictory row, one warning: {diagnostics:?}");
+    assert_eq!(diagnostics[0].code, "vutex.layout.math.tag_and_notag");
+}
+
+/// A bare formula has no row to number, so `\tag` stays an unknown command
+/// there instead of being silently swallowed.
+#[test]
+fn tag_outside_an_environment_is_still_rejected() {
+    assert!(parse_formula("x \\tag{1}").is_err(), "`\\tag` needs an environment row to describe");
+}
+
 /// The first environment in a parsed semantic tree.
 fn first_environment(node: &SemanticNode) -> Option<&MathEnvironment> {
     match node {
