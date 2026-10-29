@@ -2359,6 +2359,7 @@ fn every_environment_kind_lays_out_as_one_block() {
         (EnvironmentKind::Align, 2),
         (EnvironmentKind::Equation, 1),
         (EnvironmentKind::Gather, 2),
+        (EnvironmentKind::Gathered, 2),
         (EnvironmentKind::Multline, 2),
     ];
     for (kind, row_count) in cases {
@@ -2421,6 +2422,36 @@ fn display_level_environments_pin_display_style() {
         aligned_script < aligned_display,
         "`aligned` must follow the surrounding style: {aligned_display} vs {aligned_script}"
     );
+
+    // `gathered` is `gather`'s inner form, so it follows the surrounding style
+    // instead of pinning display style like `gather`.
+    let gathered_display = width(EnvironmentKind::Gathered, MathStyle::Display);
+    let gathered_script = width(EnvironmentKind::Gathered, MathStyle::Script);
+    assert!(
+        gathered_script < gathered_display,
+        "`gathered` must follow the surrounding style: {gathered_display} vs {gathered_script}"
+    );
+}
+
+/// `gathered` is `gather`'s inner form: an enclosing `\scriptstyle` demotes its
+/// rows, while `gather` pins display style at the top level.
+#[test]
+fn gathered_follows_an_enclosing_script_style() {
+    let (gathered_tree, _, _) =
+        layout_formula_with_diagnostics("\\scriptstyle \\begin{gathered} q \\\\ x \\end{gathered}", false, 14.0)
+            .expect("a `gathered` block should lay out");
+    let (_, _, gathered_q) = glyph_at(&gathered_tree, 'q');
+    assert!(
+        (gathered_q.size.to_f64() - 9.8).abs() < 0.01,
+        "`gathered` follows `\\scriptstyle` down to 9.8 px: {}",
+        gathered_q.size.to_f64()
+    );
+
+    let (gather_tree, _, _) =
+        layout_formula_with_diagnostics("\\scriptstyle \\begin{gather} q \\\\ x \\end{gather}", false, 14.0)
+            .expect("a `gather` block should lay out");
+    let (_, _, gather_q) = glyph_at(&gather_tree, 'q');
+    assert!((gather_q.size.to_f64() - 14.0).abs() < 0.01, "`gather` keeps the 14 px display size: {}", gather_q.size.to_f64());
 }
 
 /// The first environment in a parsed semantic tree.
@@ -2446,7 +2477,7 @@ fn ams_environments_parse_to_their_own_ir_nodes() {
         ("\\begin{align*} q &= a \\\\ xyz &= b \\end{align*}", EnvironmentKind::Align, true),
         ("\\begin{equation} q \\\\ xyz \\end{equation}", EnvironmentKind::Equation, false),
         ("\\begin{gather} q \\\\ xyz \\end{gather}", EnvironmentKind::Gather, false),
-        ("\\begin{gathered} q \\\\ xyz \\end{gathered}", EnvironmentKind::Gather, false),
+        ("\\begin{gathered} q \\\\ xyz \\end{gathered}", EnvironmentKind::Gathered, false),
         ("\\begin{multline} q \\\\ xyz \\end{multline}", EnvironmentKind::Multline, false),
     ];
     for (source, kind, starred) in cases {

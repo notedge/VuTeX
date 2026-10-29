@@ -505,7 +505,7 @@ impl Parser {
     /// The IR kind an AMS environment name lowers to, or `None` for the
     /// matrix-like environments that keep the generic grid.
     ///
-    /// `gathered` is `gather`'s inline form.  Its rows are centred over each
+    /// `gathered` is `gather`'s inner form.  Its rows are centred over each
     /// other exactly like `gather`, and the surrounding style still applies.
     fn environment_kind(name: &str, column_pairs: Option<usize>) -> Option<EnvironmentKind> {
         match name {
@@ -514,7 +514,8 @@ impl Parser {
             "split" => Some(EnvironmentKind::Split),
             "align" | "align*" => Some(EnvironmentKind::Align),
             "equation" | "equation*" => Some(EnvironmentKind::Equation),
-            "gather" | "gather*" | "gathered" => Some(EnvironmentKind::Gather),
+            "gather" | "gather*" => Some(EnvironmentKind::Gather),
+            "gathered" => Some(EnvironmentKind::Gathered),
             "multline" | "multline*" => Some(EnvironmentKind::Multline),
             _ => None,
         }

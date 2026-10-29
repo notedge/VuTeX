@@ -101,9 +101,9 @@ pub enum SemanticNode {
     /// The environment keeps its own kind, alignment anchors and per-row
     /// numbering intent instead of being lowered into a flagged
     /// [`SemanticNode::Matrix`]: `aligned`, `alignedat{n}`, `split`, `align`,
-    /// `equation`, `gather` and `multline` differ in how many `&` anchors a row
-    /// has, whether the rows are one equation or several, and whether the block
-    /// is display level.
+    /// `equation`, `gather`, `gathered` and `multline` differ in how many `&`
+    /// anchors a row has, whether the rows are one equation or several, and
+    /// whether the block is display level.
     Environment(MathEnvironment),
     /// Imperative: switch the enclosing layout scope to a different [`MathStyle`].
     ///
@@ -191,6 +191,10 @@ pub enum EnvironmentKind {
     Equation,
     /// `gather`: independent display-level rows, centred over each other.
     Gather,
+    /// `gathered`: `gather`'s inner form — independent rows centred over each
+    /// other, following the style of the surrounding list instead of pinning
+    /// display style the way `gather` does.
+    Gathered,
     /// `multline`: one display-level equation whose first row is flush left,
     /// last row flush right and middle rows centred.
     Multline,
@@ -221,7 +225,7 @@ impl EnvironmentKind {
                 AlignmentAnchors::ColumnPairs
             }
             EnvironmentKind::Split => AlignmentAnchors::SingleEquation,
-            EnvironmentKind::Equation | EnvironmentKind::Gather => AlignmentAnchors::Centered,
+            EnvironmentKind::Equation | EnvironmentKind::Gather | EnvironmentKind::Gathered => AlignmentAnchors::Centered,
             EnvironmentKind::Multline => AlignmentAnchors::Spread,
         }
     }
@@ -241,8 +245,8 @@ impl EnvironmentKind {
     ///
     /// `align`, `equation`, `gather` and `multline` pin display style, so an
     /// enclosing `\scriptstyle` cannot demote their rows.  `aligned`,
-    /// `alignedat` and `split` are inline fragments and follow the surrounding
-    /// style.
+    /// `alignedat`, `split` and `gathered` are inline fragments and follow the
+    /// surrounding style.
     pub fn is_display_level(self) -> bool {
         matches!(self, EnvironmentKind::Align | EnvironmentKind::Equation | EnvironmentKind::Gather | EnvironmentKind::Multline)
     }
@@ -256,6 +260,7 @@ impl EnvironmentKind {
             EnvironmentKind::Align => "align",
             EnvironmentKind::Equation => "equation",
             EnvironmentKind::Gather => "gather",
+            EnvironmentKind::Gathered => "gathered",
             EnvironmentKind::Multline => "multline",
         };
         if starred { format!("{base}*") } else { base.to_owned() }
@@ -854,25 +859,33 @@ mod tests {
     fn environment_kinds_keep_their_own_anchors_and_level() {
         // Each kind answers the anchor and level questions from its name, not
         // from a matrix flag: `alignedat` pins a pair count, `split` is one
-        // equation over rows, `gather`/`equation` have no anchors, and only
-        // `align`/`equation`/`gather`/`multline` pin display style.
+        // equation over rows, `gather`/`gathered`/`equation` have no anchors,
+        // and only `align`/`equation`/`gather`/`multline` pin display style.
         assert_eq!(EnvironmentKind::Aligned.anchors(), AlignmentAnchors::ColumnPairs);
         assert_eq!(EnvironmentKind::AlignedAt { pairs: 2 }.anchors(), AlignmentAnchors::ColumnPairs);
         assert_eq!(EnvironmentKind::Align.anchors(), AlignmentAnchors::ColumnPairs);
         assert_eq!(EnvironmentKind::Split.anchors(), AlignmentAnchors::SingleEquation);
         assert_eq!(EnvironmentKind::Equation.anchors(), AlignmentAnchors::Centered);
         assert_eq!(EnvironmentKind::Gather.anchors(), AlignmentAnchors::Centered);
+        assert_eq!(EnvironmentKind::Gathered.anchors(), AlignmentAnchors::Centered);
         assert_eq!(EnvironmentKind::Multline.anchors(), AlignmentAnchors::Spread);
 
         assert_eq!(EnvironmentKind::AlignedAt { pairs: 3 }.fixed_pairs(), Some(3));
         assert_eq!(EnvironmentKind::Aligned.fixed_pairs(), None);
+        assert_eq!(EnvironmentKind::Gathered.fixed_pairs(), None);
 
         for kind in [EnvironmentKind::Align, EnvironmentKind::Equation, EnvironmentKind::Gather, EnvironmentKind::Multline] {
             assert!(kind.is_display_level(), "{kind:?} is a display-level block");
         }
-        for kind in [EnvironmentKind::Aligned, EnvironmentKind::AlignedAt { pairs: 1 }, EnvironmentKind::Split] {
+        for kind in [
+            EnvironmentKind::Aligned,
+            EnvironmentKind::AlignedAt { pairs: 1 },
+            EnvironmentKind::Split,
+            EnvironmentKind::Gathered,
+        ] {
             assert!(!kind.is_display_level(), "{kind:?} follows the surrounding style");
         }
+        assert_eq!(EnvironmentKind::Gathered.name(false), "gathered");
     }
 
     #[test]
