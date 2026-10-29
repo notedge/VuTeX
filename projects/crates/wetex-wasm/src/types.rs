@@ -23,11 +23,15 @@ pub struct RenderOptions {
     /// Passing `false` opts into that host-font fallback explicitly.
     #[serde(default)]
     pub outline: Option<bool>,
+    /// Explicit base font size in CSS pixels. When omitted the renderer uses
+    /// `default_base_size(display_mode)` — 14px for inline, 16px for display.
+    #[serde(default)]
+    pub font_size: Option<f64>,
 }
 
 impl Default for RenderOptions {
     fn default() -> Self {
-        Self { display_mode: DisplayMode::Inline, outline: None }
+        Self { display_mode: DisplayMode::Inline, outline: None, font_size: None }
     }
 }
 

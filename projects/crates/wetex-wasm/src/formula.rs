@@ -136,7 +136,8 @@ fn layout_formula(
     options: &RenderOptions,
 ) -> Result<(FormulaLayoutResult, LayoutNode, Vec<Diagnostic>), MathError> {
     let display = options.display_mode == DisplayMode::Block;
-    layout_formula_with_result(source, display, default_base_size(display))
+    let base = options.font_size.unwrap_or_else(|| default_base_size(display));
+    layout_formula_with_result(source, display, base)
 }
 
 /// Render the SVG markup of one laid-out formula.
