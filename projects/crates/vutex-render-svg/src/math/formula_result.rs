@@ -178,6 +178,7 @@ mod tests {
             }]),
             diagnostics: Vec::new(),
             fonts: vutex_types::math::formula_layout::FontMetricsSnapshot::default(),
+            semantics: vutex_types::math::MathSemantics::default(),
         }
     }
 
