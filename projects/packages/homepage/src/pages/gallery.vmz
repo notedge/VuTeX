@@ -2,9 +2,9 @@
     <SiteShell page="gallery">
         <section class="container gallery__head">
             <p class="label">Gallery</p>
-            <h1>同一份 TeX，三种实现</h1>
+            <h1>WeTeX 排出来的每一行，旁边放两份参照</h1>
             <p class="lede">
-                每一行都是一个真实的 display 公式。切换输出格式，看三家引擎在同一语义下各自交出什么：路径、语义标记，还是依赖字体与样式的 DOM。
+                全部是真实的 display 公式，由浏览器现场渲染。第一列是 WeTeX 的结果，后两列是 KaTeX 与 MathJax，只用来核对：同一份 TeX，WeTeX 排得对不对。
             </p>
             <div class="gallery__controls">
                 <div class="segmented" role="group" aria-label="输出格式">
@@ -56,7 +56,7 @@ export default class Gallery {
     active = "mathml";
     outputs = {};
 
-    hint = "MathML 是三家共有格式，SVG 只有 WeTeX 与 MathJax 提供，HTML 只有 KaTeX 提供。";
+    hint = "WeTeX 支持 SVG 与 MathML。参照组的范围更窄：KaTeX 只有 HTML 与 MathML，MathJax 只有 SVG 与 MathML。";
 
     onMount() {
         this.run();

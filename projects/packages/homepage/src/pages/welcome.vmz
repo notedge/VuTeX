@@ -9,6 +9,7 @@
                 </p>
                 <div class="welcome__canvas" v-html="markup"></div>
                 <p class="welcome__caption">
+                    <span class="meta">WeTeX</span>
                     <span class="welcome__name">{{ name }}</span>
                     <span class="welcome__note">{{ note }}</span>
                 </p>

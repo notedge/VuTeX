@@ -2,9 +2,9 @@
     <SiteShell page="playground">
         <section class="container playground">
             <p class="label">Playground</p>
-            <h1>写你的 TeX，然后看三家怎么理解</h1>
+            <h1>写下你的 TeX，看 WeTeX 排成什么样</h1>
             <p class="lede">
-                输入即渲染，本地完成，不上传任何内容。WeTeX 走 WASM，KaTeX 与 MathJax 走各自打包产物。
+                输入即渲染，全在本地算完，不上传任何内容。WeTeX 走 WASM，是主要结果；KaTeX 与 MathJax 并列在旁边，方便你对照。
             </p>
 
             <div class="playground__controls">

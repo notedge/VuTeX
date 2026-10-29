@@ -2,19 +2,19 @@
     <SiteShell page="index">
         <section class="container hero">
             <div class="hero__copy">
-                <p class="label label--accent">VuTeX · 公式排版内核</p>
+                <p class="label label--accent">VuTeX · WeTeX</p>
                 <h1>
-                    公式不是图片，
+                    公式排版，
                     <br />
-                    <em>是可以被度量的文字。</em>
+                    <em>本来该算出来，不该拿 CSS 猜。</em>
                 </h1>
                 <p class="lede">
-                    WeTeX 用 Rust 写排版、编译成 WASM，输出 SVG 与 MathML，同时给出宽度、高度与基线深度。这里的每一次对比，都是真实引擎在同一份 TeX 上的运行结果。
+                    WeTeX 是 VuTeX 的排版内核：Rust 实现，编译成 WASM，在浏览器里算出每个字形的宽度、高度与基线深度，再落成 SVG 或 MathML。这个页面上的公式，都是它当场排出来的。
                 </p>
                 <div class="hero__actions">
-                    <a href="/gallery" class="btn btn--primary">进入画廊</a>
+                    <a href="/gallery" class="btn btn--primary">看它排得怎么样</a>
                     <a href="/playground" class="btn">
-                        自己写一个
+                        自己写一段
                         <span aria-hidden="true">→</span>
                     </a>
                 </div>
@@ -48,9 +48,9 @@
                     </article>
                     <article class="principle">
                         <span class="meta">03</span>
-                        <h2>可被验证</h2>
+                        <h2>拿成熟实现做参照</h2>
                         <p>
-                            与 KaTeX、MathJax 在同一语料上逐条对比，差异写进画廊，而不是写进宣传语。
+                            KaTeX 与 MathJax 在这里只当参照组：同一份 TeX 跑三遍，逐条看 WeTeX 排得对不对。差异写进画廊，不写进宣传语。
                         </p>
                     </article>
                 </div>
@@ -60,7 +60,7 @@
         <section class="section">
             <div class="container">
                 <p class="label">输出格式</p>
-                <h2 class="section__title">三家引擎，三种产物</h2>
+                <h2 class="section__title">WeTeX 给的是 SVG 与 MathML</h2>
                 <table class="matrix">
                     <thead>
                         <tr>
@@ -84,7 +84,7 @@
                     </tbody>
                 </table>
                 <p class="matrix__note">
-                    MathML 是唯一三家都能给出的格式；SVG 目前只有 WeTeX 与 MathJax；HTML 只有 KaTeX。画廊与试验台都按这个矩阵渲染。
+                    WeTeX 同时出 SVG 与 MathML。表里另外两行是参照：KaTeX 出 HTML 与 MathML，MathJax 出 SVG 与 MathML；HTML 只有 KaTeX 提供。
                 </p>
             </div>
         </section>
@@ -92,9 +92,9 @@
         <section class="section">
             <div class="container closing">
                 <p class="label label--accent">继续</p>
-                <h2 class="closing__title">先在展示页看它安静下来，再去试验台把它弄坏。</h2>
+                <h2 class="closing__title">先看这 14 条公式，再拿自己的 TeX 试一遍。</h2>
                 <div class="closing__actions">
-                    <a href="/welcome" class="btn btn--primary">全屏展示</a>
+                    <a href="/welcome" class="btn btn--primary">全屏逐条看</a>
                     <a href="/playground" class="btn">打开试验台</a>
                 </div>
             </div>
