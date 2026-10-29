@@ -1,8 +1,10 @@
-use vutex_layout::math::{FormulaLayout, default_base_size, layout_formula, layout_formula_with_diagnostics, parse_formula};
-use vutex_render_svg::math::{MathmlBackend, SvgBackend};
+use vutex_layout::math::{
+    LayoutNode, collect_layout_with_diagnostics, default_base_size, layout_formula_with_result, render_layout_node,
+};
+use vutex_render_svg::math::{SvgBackend, render_mathml_result};
 use vutex_types::{
     Diagnostic, Severity,
-    math::{MathError, MathSemantics},
+    math::{FormulaLayoutResult, MathError},
 };
 
 use crate::types::{DisplayMode, FormulaDiagnostic, FormulaMetrics, FormulaRender, RenderOptions};
@@ -13,21 +15,21 @@ const UNSUPPORTED_COMMANDS: &[&str] = &["usepackage", "input", "include", "write
 pub fn measure(source: &str, options: &RenderOptions) -> FormulaRender {
     let mut diagnostics = collect_diagnostics(source);
     if has_error(&diagnostics) {
-        return FormulaRender { metrics: FormulaMetrics::default(), svg: String::new(), mathml: None, diagnostics };
+        return failed(diagnostics);
     }
 
-    let display = options.display_mode == DisplayMode::Block;
-    match layout_formula_with_diagnostics(source, display, default_base_size(display)) {
-        Ok((_, layout, math_diagnostics)) => {
+    match layout_formula(source, options) {
+        Ok((result, root, math_diagnostics)) => {
             diagnostics.extend(math_diagnostics.into_iter().map(FormulaDiagnostic::from));
-            FormulaRender { metrics: layout_to_metrics(&layout), svg: String::new(), mathml: None, diagnostics }
+            FormulaRender {
+                metrics: node_metrics(&root),
+                svg: String::new(),
+                mathml: None,
+                semantics: Some(result.semantics),
+                diagnostics,
+            }
         }
-        Err(err) => FormulaRender {
-            metrics: FormulaMetrics::default(),
-            svg: String::new(),
-            mathml: None,
-            diagnostics: vec![math_error_to_diagnostic(&err)],
-        },
+        Err(err) => failed(vec![math_error_to_diagnostic(&err)]),
     }
 }
 
@@ -39,93 +41,128 @@ pub fn measure(source: &str, options: &RenderOptions) -> FormulaRender {
 /// also reports a `vutex.layout.math.outline_missing` warning so a host-font
 /// dependency is never silent.
 pub fn render_svg(source: &str, options: &RenderOptions) -> FormulaRender {
-    let diagnostics = collect_diagnostics(source);
+    let mut diagnostics = collect_diagnostics(source);
     if has_error(&diagnostics) {
-        return FormulaRender { metrics: FormulaMetrics::default(), svg: String::new(), mathml: None, diagnostics };
+        return failed(diagnostics);
     }
 
-    match render_formula_svg_inner(source, options.display_mode == DisplayMode::Block, options.outline.unwrap_or(true)) {
-        Ok((svg, layout, layout_diagnostics)) => FormulaRender {
-            metrics: layout_to_metrics(&layout),
-            svg,
-            mathml: None,
-            diagnostics: diagnostics.into_iter().chain(layout_diagnostics.into_iter().map(FormulaDiagnostic::from)).collect(),
-        },
-        Err(err) => FormulaRender {
-            metrics: FormulaMetrics::default(),
-            svg: String::new(),
-            mathml: None,
-            diagnostics: vec![math_error_to_diagnostic(&err)],
-        },
+    match layout_formula(source, options) {
+        Ok((result, root, math_diagnostics)) => {
+            diagnostics.extend(math_diagnostics.into_iter().map(FormulaDiagnostic::from));
+            match render_svg_markup(&root, options.outline.unwrap_or(true)) {
+                Ok((svg, outline_diagnostics)) => {
+                    diagnostics.extend(outline_diagnostics.into_iter().map(FormulaDiagnostic::from));
+                    FormulaRender {
+                        metrics: node_metrics(&root),
+                        svg,
+                        mathml: None,
+                        semantics: Some(result.semantics),
+                        diagnostics,
+                    }
+                }
+                Err(err) => {
+                    diagnostics.push(math_error_to_diagnostic(&err));
+                    failed(diagnostics)
+                }
+            }
+        }
+        Err(err) => failed(vec![math_error_to_diagnostic(&err)]),
     }
 }
 
 /// Render a formula to Presentation MathML.
+///
+/// The structure comes from [`FormulaLayoutResult::semantics`], the semantic
+/// tree the layout pass itself consumed, so the source is never parsed twice.
 pub fn render_mathml(source: &str, options: &RenderOptions) -> FormulaRender {
-    let mut result = measure(source, options);
-    if has_error(&result.diagnostics) {
-        return result;
+    let mut diagnostics = collect_diagnostics(source);
+    if has_error(&diagnostics) {
+        return failed(diagnostics);
     }
 
-    match render_formula_mathml_inner(source, options.display_mode == DisplayMode::Block) {
-        Ok((mathml, _)) => {
-            result.mathml = Some(mathml);
-            result
+    match layout_formula(source, options) {
+        Ok((result, root, math_diagnostics)) => {
+            diagnostics.extend(math_diagnostics.into_iter().map(FormulaDiagnostic::from));
+            FormulaRender {
+                metrics: node_metrics(&root),
+                svg: String::new(),
+                mathml: Some(render_mathml_result(&result)),
+                semantics: Some(result.semantics),
+                diagnostics,
+            }
         }
-        Err(err) => {
-            result.diagnostics.push(math_error_to_diagnostic(&err));
-            result
-        }
+        Err(err) => failed(vec![math_error_to_diagnostic(&err)]),
     }
 }
 
-/// Full render with SVG and MathML.
+/// Full render with SVG and MathML taken from one laid-out formula.
 pub fn render(source: &str, options: &RenderOptions) -> FormulaRender {
-    let mut result = render_svg(source, options);
-    if !has_error(&result.diagnostics) {
-        match render_formula_mathml_inner(source, options.display_mode == DisplayMode::Block) {
-            Ok((mathml, _)) => result.mathml = Some(mathml),
-            Err(err) => result.diagnostics.push(math_error_to_diagnostic(&err)),
+    let mut diagnostics = collect_diagnostics(source);
+    if has_error(&diagnostics) {
+        return failed(diagnostics);
+    }
+
+    match layout_formula(source, options) {
+        Ok((result, root, math_diagnostics)) => {
+            diagnostics.extend(math_diagnostics.into_iter().map(FormulaDiagnostic::from));
+            match render_svg_markup(&root, options.outline.unwrap_or(true)) {
+                Ok((svg, outline_diagnostics)) => {
+                    diagnostics.extend(outline_diagnostics.into_iter().map(FormulaDiagnostic::from));
+                    FormulaRender {
+                        metrics: node_metrics(&root),
+                        svg,
+                        mathml: Some(render_mathml_result(&result)),
+                        semantics: Some(result.semantics),
+                        diagnostics,
+                    }
+                }
+                Err(err) => {
+                    diagnostics.push(math_error_to_diagnostic(&err));
+                    failed(diagnostics)
+                }
+            }
         }
+        Err(err) => failed(vec![math_error_to_diagnostic(&err)]),
     }
-    result
 }
 
-fn render_formula_svg_inner(
+/// Parse and lay out one formula into the single immutable result plus the box
+/// tree the SVG backend walks.
+///
+/// Every entry point funnels through this call, so the SVG geometry, the MathML
+/// structure and the metrics reported to the host all describe the same formula.
+fn layout_formula(
     source: &str,
-    display: bool,
-    outline: bool,
-) -> Result<(String, FormulaLayout, Vec<Diagnostic>), MathError> {
-    use vutex_layout::math::{collect_layout_with_diagnostics, render_layout_node};
-    let (root, layout, math_diagnostics) = layout_formula_with_diagnostics(source, display, default_base_size(display))?;
-    let svg_height = layout.height + layout.depth;
-    let mut backend = if outline {
-        SvgBackend::new_deterministic(layout.width, svg_height)
-    }
-    else {
-        SvgBackend::new(layout.width, svg_height)
-    };
-    render_layout_node(&mut backend, &root, 0.0, layout.height)?;
-    // A glyph without an embedded outline is exactly what sends the non-strict
-    // backend to a host font, so this walk doubles as the fallback report.
-    let mut layout_diagnostics = math_diagnostics;
-    collect_layout_with_diagnostics(&root, 0.0, layout.height, &mut layout_diagnostics);
-    Ok((backend.finish(), layout, layout_diagnostics))
+    options: &RenderOptions,
+) -> Result<(FormulaLayoutResult, LayoutNode, Vec<Diagnostic>), MathError> {
+    let display = options.display_mode == DisplayMode::Block;
+    layout_formula_with_result(source, display, default_base_size(display))
 }
 
-fn render_formula_mathml_inner(source: &str, display: bool) -> Result<(String, FormulaLayout), MathError> {
-    // Structure comes from the parsed math IR and metrics from the same layout
-    // engine the SVG path uses, so both backends describe one formula.
-    let tree = parse_formula(source)?;
-    let (_, layout) = layout_formula(source, display)?;
-    let semantics = MathSemantics::from_semantic_tree(&tree);
-    let mut backend = MathmlBackend::new();
-    backend.render_semantics(&semantics);
-    Ok((backend.finish(), layout))
+/// Render the SVG markup of one laid-out formula.
+///
+/// Returns the markup plus the warnings raised while walking the box tree, such
+/// as a glyph that has no outline and fell back to a host font.
+fn render_svg_markup(root: &LayoutNode, outline: bool) -> Result<(String, Vec<Diagnostic>), MathError> {
+    let width = root.width().to_f64();
+    let baseline = root.height().to_f64();
+    let height = baseline + root.depth().to_f64();
+    let mut backend = if outline { SvgBackend::new_deterministic(width, height) } else { SvgBackend::new(width, height) };
+    render_layout_node(&mut backend, root, 0.0, baseline)?;
+    let mut diagnostics = Vec::new();
+    collect_layout_with_diagnostics(root, 0.0, baseline, &mut diagnostics);
+    Ok((backend.finish(), diagnostics))
 }
 
-fn layout_to_metrics(layout: &FormulaLayout) -> FormulaMetrics {
-    FormulaMetrics { width: layout.width, height: layout.height, depth: layout.depth, baseline: layout.baseline }
+/// Formula metrics derived from the laid-out box tree.
+fn node_metrics(root: &LayoutNode) -> FormulaMetrics {
+    let height = root.height().to_f64();
+    FormulaMetrics { width: root.width().to_f64(), height, depth: root.depth().to_f64(), baseline: height }
+}
+
+/// An empty payload carrying only the diagnostics of a failed render.
+fn failed(diagnostics: Vec<FormulaDiagnostic>) -> FormulaRender {
+    FormulaRender { metrics: FormulaMetrics::default(), svg: String::new(), mathml: None, semantics: None, diagnostics }
 }
 
 fn collect_diagnostics(source: &str) -> Vec<FormulaDiagnostic> {

@@ -6,7 +6,7 @@
 //! comes from the semantic node that produced it, never from a painted glyph
 //! run or from a laid-out geometry tree.
 
-use vutex_types::math::{AccentPosition, LineStyle, MathSemNode, MathSemantics};
+use vutex_types::math::{AccentPosition, FormulaLayoutResult, LineStyle, MathSemNode, MathSemantics};
 
 /// Presentation MathML backend for structured math semantics.
 #[derive(Debug, Default)]
@@ -32,6 +32,17 @@ impl MathmlBackend {
     pub fn finish(self) -> String {
         format!(r#"<math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow>{}</mrow></math>"#, self.buffer)
     }
+}
+
+/// Render the structured semantics carried by a [`FormulaLayoutResult`].
+///
+/// The structure comes from the semantic tree layout already consumed
+/// ([`FormulaLayoutResult::semantics`]), so MathML and the geometry of the same
+/// result describe one formula without the source being parsed a second time.
+pub fn render_mathml_result(result: &FormulaLayoutResult) -> String {
+    let mut backend = MathmlBackend::new();
+    backend.render_semantics(&result.semantics);
+    backend.finish()
 }
 
 /// Emit every sibling of a row in source order.

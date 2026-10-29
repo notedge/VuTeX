@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use vutex_types::math::MathSemantics;
+
 /// Inline or block formula layout mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -75,6 +77,13 @@ pub struct FormulaRender {
     pub svg: String,
     /// Presentation MathML, present only when requested.
     pub mathml: Option<String>,
+    /// Structured math semantics the layout consumed, absent when the formula
+    /// did not parse.
+    ///
+    /// This is the same IR snapshot the SVG geometry and the MathML structure
+    /// of this payload come from, so hosts can inspect the authored structure
+    /// without re-parsing the source.
+    pub semantics: Option<MathSemantics>,
     /// Parse or layout diagnostics.
     pub diagnostics: Vec<FormulaDiagnostic>,
 }
