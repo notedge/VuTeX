@@ -2806,11 +2806,7 @@ fn environment_rows_carry_anchor_metadata() {
 
     let mut anchors = Vec::new();
     anchors_of(&tree, &mut anchors);
-    assert_eq!(
-        anchors.len(),
-        3,
-        "three rows → three anchors, got {anchors:?}"
-    );
+    assert_eq!(anchors.len(), 3, "three rows → three anchors, got {anchors:?}");
 
     assert_eq!(anchors[0], (0, Numbering::Default), "row 0 keeps Default");
     assert_eq!(anchors[1], (1, Numbering::Tag("3".into())), "row 1 carries its \\tag label");
