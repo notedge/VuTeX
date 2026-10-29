@@ -92,6 +92,24 @@ fn mathml_matrix_becomes_a_table() {
 }
 
 #[test]
+fn mathml_environment_keeps_its_column_alignment() {
+    // An AMS environment knows how each column is aligned, and `mtable` can say
+    // it: `aligned` alternates right/left around its `&` anchors.
+    let mathml = render_mathml("\\begin{aligned} a &= b \\\\ c &= d \\end{aligned}");
+    assert!(mathml.contains(r#"<mtable columnalign="right left">"#), "aligned alternates right/left: {mathml}");
+
+    // `gather` has no anchors and centres its rows.
+    let mathml = render_mathml("\\begin{gather} a \\\\ b \\end{gather}");
+    assert!(mathml.contains(r#"<mtable columnalign="center">"#), "gather centres its column: {mathml}");
+
+    // A matrix authors no column alignment, so it stays a bare `mtable` and
+    // keeps MathML's default instead of inheriting an environment's grid.
+    let mathml = render_mathml("\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}");
+    assert!(mathml.contains("<mtable>"), "a matrix has no authored alignment: {mathml}");
+    assert!(!mathml.contains("columnalign"), "a matrix must not claim an alignment it never authored: {mathml}");
+}
+
+#[test]
 fn mathml_accent_becomes_mover() {
     let mathml = render_mathml("\\hat{f}");
     assert!(mathml.contains("<mover><mi>f</mi>"), "an accent is an over-script: {mathml}");

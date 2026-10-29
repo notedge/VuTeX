@@ -6,7 +6,7 @@
 //! comes from the semantic node that produced it, never from a painted glyph
 //! run or from a laid-out geometry tree.
 
-use vutex_types::math::{AccentPosition, FormulaLayoutResult, LineStyle, MathSemNode, MathSemantics};
+use vutex_types::math::{AccentPosition, Alignment, FormulaLayoutResult, LineStyle, MathSemNode, MathSemantics};
 
 /// Presentation MathML backend for structured math semantics.
 #[derive(Debug, Default)]
@@ -95,15 +95,21 @@ fn render_node(out: &mut String, node: &MathSemNode) {
             render_node(out, sub);
             render_node(out, sup);
         }),
-        MathSemNode::Table { rows } => wrap(out, "mtable", |out| {
-            for row in rows {
-                wrap(out, "mtr", |out| {
-                    for cell in row {
-                        wrap(out, "mtd", |out| render_node(out, cell));
-                    }
-                });
+        MathSemNode::Table { rows, columnalign } => {
+            // An authored column alignment is structure `mtable` can carry, so
+            // it is emitted instead of being left to MathML's default.  A table
+            // with no authored alignment (a matrix) keeps the bare element.
+            if columnalign.is_empty() {
+                wrap(out, "mtable", |out| render_table_rows(out, rows));
             }
-        }),
+            else {
+                out.push_str(r#"<mtable columnalign=""#);
+                out.push_str(&alignment_value(columnalign));
+                out.push_str("\">");
+                render_table_rows(out, rows);
+                out.push_str("</mtable>");
+            }
+        }
         MathSemNode::Accent { base, accent, position } => {
             let tag = match position {
                 AccentPosition::Above => "mover",
@@ -128,6 +134,30 @@ fn render_node(out: &mut String, node: &MathSemNode) {
         }
         MathSemNode::Empty => {}
     }
+}
+
+/// Emit one `mtr` per table row, one `mtd` per cell.
+fn render_table_rows(out: &mut String, rows: &[Vec<MathSemNode>]) {
+    for row in rows {
+        wrap(out, "mtr", |out| {
+            for cell in row {
+                wrap(out, "mtd", |out| render_node(out, cell));
+            }
+        });
+    }
+}
+
+/// MathML `columnalign` value for a table's per-column alignment.
+fn alignment_value(columnalign: &[Alignment]) -> String {
+    columnalign
+        .iter()
+        .map(|alignment| match alignment {
+            Alignment::Left => "left",
+            Alignment::Center => "center",
+            Alignment::Right => "right",
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Emit `<tag>…</tag>` around the content produced by `render`.
