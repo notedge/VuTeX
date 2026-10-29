@@ -1,0 +1,34 @@
+{
+    "brand": {
+        "primary": "#8A3A22",
+        "ink": "#16150F"
+    },
+    "surface": {
+        "paper": "#FBF9F4",
+        "page": "#FBFAF7",
+        "mist": "#F3EFE6",
+        "card": "#FFFDF8",
+        "ink": "#16150F",
+        "night": "#14130F",
+        "code": "#1B1A16"
+    },
+    "text": {
+        "ink": "#16150F",
+        "steel": "#54503F",
+        "muted": "#8A8578",
+        "faint": "#ADA69A",
+        "on-brand": "#FBF9F4",
+        "on-night": "#EDE8DC"
+    },
+    "line": {
+        "default": "#DDD7CA",
+        "subtle": "#E9E4D8",
+        "strong": "#C2BBAA"
+    },
+    "font": {
+        "display": "\"VuTeX Math\", \"Latin Modern Math\", \"Songti SC\", \"Noto Serif CJK SC\", \"Source Han Serif SC\", STSong, serif",
+        "serif": "\"VuTeX Math\", \"Songti SC\", \"Noto Serif CJK SC\", \"Source Han Serif SC\", STSong, Georgia, serif",
+        "sans": "\"PingFang SC\", \"Noto Sans CJK SC\", \"Microsoft YaHei\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif",
+        "mono": "ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace"
+    }
+}

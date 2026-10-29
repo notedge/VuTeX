@@ -1,0 +1,116 @@
+{
+    "entries": [
+        {
+            "key": { "path": ["space", "1"] },
+            "value": "0.25rem"
+        },
+        {
+            "key": { "path": ["space", "2"] },
+            "value": "0.5rem"
+        },
+        {
+            "key": { "path": ["space", "3"] },
+            "value": "0.75rem"
+        },
+        {
+            "key": { "path": ["space", "4"] },
+            "value": "1rem"
+        },
+        {
+            "key": { "path": ["space", "5"] },
+            "value": "1.5rem"
+        },
+        {
+            "key": { "path": ["space", "6"] },
+            "value": "2rem"
+        },
+        {
+            "key": { "path": ["space", "7"] },
+            "value": "3rem"
+        },
+        {
+            "key": { "path": ["space", "8"] },
+            "value": "4rem"
+        },
+        {
+            "key": { "path": ["space", "9"] },
+            "value": "6rem"
+        },
+        {
+            "key": { "path": ["space", "10"] },
+            "value": "8rem"
+        },
+        {
+            "key": { "path": ["layout", "max-width"] },
+            "value": "76rem"
+        },
+        {
+            "key": { "path": ["layout", "gutter"] },
+            "value": "clamp(1.25rem, 5vw, 4.5rem)"
+        },
+        {
+            "key": { "path": ["layout", "section"] },
+            "value": "clamp(3.5rem, 7vw, 7rem)"
+        },
+        {
+            "key": { "path": ["layout", "header-height"] },
+            "value": "4.25rem"
+        },
+        {
+            "key": { "path": ["layout", "line-width"] },
+            "value": "38rem"
+        },
+        {
+            "key": { "path": ["radius", "xs"] },
+            "value": "1px"
+        },
+        {
+            "key": { "path": ["radius", "sm"] },
+            "value": "2px"
+        },
+        {
+            "key": { "path": ["radius", "md"] },
+            "value": "3px"
+        },
+        {
+            "key": { "path": ["elevation", "0"] },
+            "value": "none"
+        },
+        {
+            "key": { "path": ["type", "display"] },
+            "value": "clamp(2.6rem, 5.4vw, 4.9rem)"
+        },
+        {
+            "key": { "path": ["type", "title"] },
+            "value": "clamp(1.6rem, 2.4vw, 2.1rem)"
+        },
+        {
+            "key": { "path": ["type", "subtitle"] },
+            "value": "1.0625rem"
+        },
+        {
+            "key": { "path": ["type", "body"] },
+            "value": "1rem"
+        },
+        {
+            "key": { "path": ["type", "caption"] },
+            "value": "0.875rem"
+        },
+        {
+            "key": { "path": ["type", "label"] },
+            "value": "0.6875rem"
+        },
+        {
+            "key": { "path": ["type", "line-height", "display"] },
+            "value": "1.1"
+        },
+        {
+            "key": { "path": ["type", "line-height", "title"] },
+            "value": "1.35"
+        },
+        {
+            "key": { "path": ["type", "line-height", "body"] },
+            "value": "1.8"
+        }
+    ]
+}

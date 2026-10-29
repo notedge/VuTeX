@@ -1,0 +1,36 @@
+{
+    "entries": [
+        {
+            "key": { "path": ["action", "primary", "background"] },
+            "value": "#16150F"
+        },
+        {
+            "key": { "path": ["action", "primary", "foreground"] },
+            "value": "#FBFAF7"
+        },
+        {
+            "key": { "path": ["action", "primary", "hover"] },
+            "value": "#8A3A22"
+        },
+        {
+            "key": { "path": ["action", "secondary", "background"] },
+            "value": "transparent"
+        },
+        {
+            "key": { "path": ["action", "secondary", "foreground"] },
+            "value": "#16150F"
+        },
+        {
+            "key": { "path": ["action", "secondary", "border"] },
+            "value": "#C2BBAA"
+        },
+        {
+            "key": { "path": ["action", "secondary", "hover"] },
+            "value": "#F3EFE6"
+        },
+        {
+            "key": { "path": ["focus", "ring"] },
+            "value": "rgba(138, 58, 34, .28)"
+        }
+    ]
+}

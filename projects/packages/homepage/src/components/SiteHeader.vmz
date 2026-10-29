@@ -1,0 +1,50 @@
+<template>
+    <header class="site-header">
+        <div class="container site-header__inner">
+            <a href="/" class="site-brand" aria-label="VuTeX 首页">
+                <span>VuTeX</span>
+                <span aria-hidden="true" class="site-brand__dot">·</span>
+            </a>
+            <nav class="site-nav" aria-label="主导航">
+                <div class="site-nav__links">
+                    <a href="/" :data-active="isActive('index')">概览</a>
+                    <a href="/welcome" :data-active="isActive('welcome')">全屏</a>
+                    <a href="/gallery" :data-active="isActive('gallery')">画廊</a>
+                    <a href="/playground" :data-active="isActive('playground')">试验台</a>
+                </div>
+                <div class="site-nav__meta">
+                    <span class="site-nav__version">{{ version }}</span>
+                    <a
+                        href="https://github.com/notedge/VuTeX"
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        class="site-nav__github"
+                    >
+                        <span>GitHub</span>
+                        <span aria-hidden="true">↗</span>
+                    </a>
+                </div>
+                <details class="site-menu">
+                    <summary>菜单</summary>
+                    <div class="site-menu__panel">
+                        <a href="/" :data-active="isActive('index')">概览</a>
+                        <a href="/welcome" :data-active="isActive('welcome')">全屏</a>
+                        <a href="/gallery" :data-active="isActive('gallery')">画廊</a>
+                        <a href="/playground" :data-active="isActive('playground')">试验台</a>
+                    </div>
+                </details>
+            </nav>
+        </div>
+    </header>
+</template>
+<script client>
+export default class SiteHeader {
+    page = "";
+    version = "wetex 0.0.12";
+
+    isActive(name) {
+        if (name === "index") return this.page === "index" ? "true" : "false";
+        return this.page === name ? "true" : "false";
+    }
+}
+</script>

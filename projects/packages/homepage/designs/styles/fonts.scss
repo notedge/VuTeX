@@ -1,0 +1,9 @@
+/* Bundled faces. Files live in `public/fonts/` and are staged verbatim by
+   the static assembly, so the URL is site-root absolute. */
+@font-face {
+    font-family: "VuTeX Math";
+    src: url("/fonts/LatinModernMath-Regular.otf") format("opentype");
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+}

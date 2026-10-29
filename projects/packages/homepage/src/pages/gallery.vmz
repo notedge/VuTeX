@@ -1,0 +1,116 @@
+<template>
+    <SiteShell page="gallery">
+        <section class="container gallery__head">
+            <p class="label">Gallery</p>
+            <h1>同一份 TeX，三种实现</h1>
+            <p class="lede">
+                每一行都是一个真实的 display 公式。切换输出格式，看三家引擎在同一语义下各自交出什么：路径、语义标记，还是依赖字体与样式的 DOM。
+            </p>
+            <div class="gallery__controls">
+                <div class="segmented" role="group" aria-label="输出格式">
+                    <button
+                        v-for="backend in backends"
+                        :key="backend.id"
+                        :data-active="backend.id === active ? 'true' : 'false'"
+                        @click="pick(backend.id)"
+                    >
+                        {{ backend.label }}
+                    </button>
+                </div>
+                <p class="gallery__hint">{{ hint }}</p>
+            </div>
+        </section>
+
+        <div class="container gallery__list">
+            <article class="specimen" v-for="item in specimens" :key="item.id">
+                <header class="specimen__meta">
+                    <p class="meta">{{ item.category }}</p>
+                    <h2>{{ item.name }}</h2>
+                    <p class="specimen__note">{{ item.note }}</p>
+                </header>
+                <pre class="specimen__tex"><code>{{ item.tex }}</code></pre>
+                <div class="specimen__grid">
+                    <figure class="specimen__cell" v-for="engine in engines" :key="engine.id">
+                        <figcaption class="specimen__engine">
+                            <span>{{ engine.name }}</span>
+                            <span class="specimen__ms">{{ timing(item.id, engine.id) }}</span>
+                        </figcaption>
+                        <div class="specimen__canvas" v-html="markup(item.id, engine.id)"></div>
+                        <p class="specimen__fallback" v-if="note(item.id, engine.id)">
+                            {{ note(item.id, engine.id) }}
+                        </p>
+                    </figure>
+                </div>
+            </article>
+        </div>
+    </SiteShell>
+</template>
+<script client>
+import { BACKENDS, ENGINES, renderFormula } from "../lib/engines.ts";
+import { SPECIMENS } from "../lib/formulas.ts";
+
+export default class Gallery {
+    backends = BACKENDS.slice();
+    engines = ENGINES.slice();
+    specimens = SPECIMENS.slice();
+    active = "mathml";
+    outputs = {};
+
+    hint = "MathML 是三家共有格式，SVG 只有 WeTeX 与 MathJax 提供，HTML 只有 KaTeX 提供。";
+
+    onMount() {
+        this.run();
+    }
+
+    pick(backend) {
+        if (this.active === backend) return;
+        this.active = backend;
+        this.run();
+    }
+
+    key(specimenId, engineId) {
+        return `${specimenId}:${engineId}`;
+    }
+
+    output(specimenId, engineId) {
+        return this.outputs[this.key(specimenId, engineId)] || null;
+    }
+
+    markup(specimenId, engineId) {
+        const result = this.output(specimenId, engineId);
+        return result && result.ok ? result.markup : "";
+    }
+
+    timing(specimenId, engineId) {
+        const result = this.output(specimenId, engineId);
+        return result ? `${result.ms} ms` : "—";
+    }
+
+    note(specimenId, engineId) {
+        const result = this.output(specimenId, engineId);
+        if (!result) return "";
+        return result.note;
+    }
+
+    async run() {
+        const backend = this.active;
+        const spec = this.specimens;
+        const jobs = [];
+        for (const item of spec) {
+            for (const engine of this.engines) {
+                jobs.push(renderFormula(engine.id, backend, item.tex, true));
+            }
+        }
+        const results = await Promise.all(jobs);
+        const next = {};
+        let index = 0;
+        for (const item of spec) {
+            for (const engine of this.engines) {
+                next[this.key(item.id, engine.id)] = results[index];
+                index += 1;
+            }
+        }
+        this.outputs = next;
+    }
+}
+</script>

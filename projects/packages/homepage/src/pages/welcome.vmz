@@ -1,0 +1,97 @@
+<template>
+    <SiteShell page="welcome">
+        <section class="welcome">
+            <div class="welcome__stage">
+                <p class="welcome__index">
+                    <span>{{ position() }}</span>
+                    <span aria-hidden="true">/</span>
+                    <span>{{ total() }}</span>
+                </p>
+                <div class="welcome__canvas" v-html="markup"></div>
+                <p class="welcome__caption">
+                    <span class="welcome__name">{{ name }}</span>
+                    <span class="welcome__note">{{ note }}</span>
+                </p>
+            </div>
+            <div class="welcome__footer">
+                <div class="segmented" role="group" aria-label="输出格式">
+                    <button
+                        v-for="backend in backends"
+                        :key="backend.id"
+                        :data-active="backend.id === active ? 'true' : 'false'"
+                        @click="pick(backend.id)"
+                    >
+                        {{ backend.label }}
+                    </button>
+                </div>
+                <div class="welcome__nav">
+                    <button class="welcome__step" @click="step(-1)" aria-label="上一份">←</button>
+                    <button class="welcome__step" @click="step(1)" aria-label="下一份">→</button>
+                </div>
+            </div>
+        </section>
+    </SiteShell>
+</template>
+<script client>
+import { BACKENDS, renderFormula } from "../lib/engines.ts";
+import { SPECIMENS } from "../lib/formulas.ts";
+
+export default class Welcome {
+    backends = BACKENDS.slice();
+    items = SPECIMENS.slice();
+    active = "svg";
+    index = 0;
+    markup = "";
+    name = "";
+    note = "";
+    timer = 0;
+
+    position() {
+        return String(this.index + 1).padStart(2, "0");
+    }
+
+    total() {
+        return String(this.items.length).padStart(2, "0");
+    }
+
+    onMount() {
+        this.show(0);
+        this.timer = setInterval(() => this.step(1, true), 4200);
+    }
+
+    onDestroy() {
+        if (this.timer) clearInterval(this.timer);
+        this.timer = 0;
+    }
+
+    pick(backend) {
+        if (this.active === backend) return;
+        this.active = backend;
+        this.render();
+    }
+
+    step(delta, silent) {
+        const size = this.items.length;
+        this.index = (this.index + delta + size) % size;
+        if (!silent && this.timer) {
+            clearInterval(this.timer);
+            this.timer = setInterval(() => this.step(1, true), 4200);
+        }
+        this.render();
+    }
+
+    async show(index) {
+        this.index = index;
+        this.render();
+    }
+
+    async render() {
+        const item = this.items[this.index];
+        const backend = this.active;
+        const result = await renderFormula("wetex", backend, item.tex, true);
+        this.markup = result.ok ? result.markup : "";
+        this.name = item.name;
+        this.note = result.ok ? item.note : result.note;
+    }
+}
+</script>

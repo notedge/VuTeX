@@ -1,0 +1,133 @@
+<template>
+    <SiteShell page="index">
+        <section class="container hero">
+            <div class="hero__copy">
+                <p class="label label--accent">VuTeX · 公式排版内核</p>
+                <h1>
+                    公式不是图片，
+                    <br />
+                    <em>是可以被度量的文字。</em>
+                </h1>
+                <p class="lede">
+                    WeTeX 用 Rust 写排版、编译成 WASM，输出 SVG 与 MathML，同时给出宽度、高度与基线深度。这里的每一次对比，都是真实引擎在同一份 TeX 上的运行结果。
+                </p>
+                <div class="hero__actions">
+                    <a href="/gallery" class="btn btn--primary">进入画廊</a>
+                    <a href="/playground" class="btn">
+                        自己写一个
+                        <span aria-hidden="true">→</span>
+                    </a>
+                </div>
+            </div>
+            <div class="hero__specimen">
+                <div class="hero__canvas" v-html="heroMarkup"></div>
+                <p class="hero__caption">
+                    <span class="meta">WeTeX · SVG</span>
+                    <span class="hero__metric">{{ heroMetric }}</span>
+                </p>
+            </div>
+        </section>
+
+        <section class="section">
+            <div class="container">
+                <p class="label">为什么重写一遍</p>
+                <div class="principles">
+                    <article class="principle">
+                        <span class="meta">01</span>
+                        <h2>度量，而不只是显示</h2>
+                        <p>
+                            宽、高、基线深度与深度（depth）由内核直接返回。分页、对齐、自动换行这些排版问题因此可以用数字解决，而不是用 CSS 猜。
+                        </p>
+                    </article>
+                    <article class="principle">
+                        <span class="meta">02</span>
+                        <h2>一份语义，两种产物</h2>
+                        <p>
+                            同一棵公式树可以落到 SVG 路径，也可以落到 MathML 语义。选择格式是交付决定，不是重写公式。
+                        </p>
+                    </article>
+                    <article class="principle">
+                        <span class="meta">03</span>
+                        <h2>可被验证</h2>
+                        <p>
+                            与 KaTeX、MathJax 在同一语料上逐条对比，差异写进画廊，而不是写进宣传语。
+                        </p>
+                    </article>
+                </div>
+            </div>
+        </section>
+
+        <section class="section">
+            <div class="container">
+                <p class="label">输出格式</p>
+                <h2 class="section__title">三家引擎，三种产物</h2>
+                <table class="matrix">
+                    <thead>
+                        <tr>
+                            <th scope="col">引擎</th>
+                            <th scope="col" v-for="backend in backends" :key="backend.id">{{ backend.label }}</th>
+                            <th scope="col">来源</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="engine in engines" :key="engine.id">
+                            <td>
+                                <span class="matrix__name">{{ engine.name }}</span>
+                            </td>
+                            <td v-for="backend in backends" :key="backend.id">
+                                <span :data-on="supports(engine.id, backend.id) ? 'true' : 'false'">
+                                    {{ mark(engine.id, backend.id) }}
+                                </span>
+                            </td>
+                            <td class="meta">{{ engine.vendor }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+                <p class="matrix__note">
+                    MathML 是唯一三家都能给出的格式；SVG 目前只有 WeTeX 与 MathJax；HTML 只有 KaTeX。画廊与试验台都按这个矩阵渲染。
+                </p>
+            </div>
+        </section>
+
+        <section class="section">
+            <div class="container closing">
+                <p class="label label--accent">继续</p>
+                <h2 class="closing__title">先在展示页看它安静下来，再去试验台把它弄坏。</h2>
+                <div class="closing__actions">
+                    <a href="/welcome" class="btn btn--primary">全屏展示</a>
+                    <a href="/playground" class="btn">打开试验台</a>
+                </div>
+            </div>
+        </section>
+    </SiteShell>
+</template>
+<script client>
+import { BACKENDS, ENGINES, renderFormula, supportsBackend } from "../lib/engines.ts";
+import { SPECIMENS } from "../lib/formulas.ts";
+
+export default class Index {
+    backends = BACKENDS.slice();
+    engines = ENGINES.slice();
+    heroMarkup = "";
+    heroMetric = "编译中";
+
+    onMount() {
+        this.renderHero();
+    }
+
+    supports(engineId, backendId) {
+        return supportsBackend(engineId, backendId);
+    }
+
+    mark(engineId, backendId) {
+        return supportsBackend(engineId, backendId) ? "✓" : "—";
+    }
+
+    async renderHero() {
+        const item = SPECIMENS[6];
+        const result = await renderFormula("wetex", "svg", item.tex, true);
+        this.heroMarkup = result.ok ? result.markup : "";
+        this.heroMetric = `${item.name} · ${result.ms} ms`;
+    }
+}
+</script>

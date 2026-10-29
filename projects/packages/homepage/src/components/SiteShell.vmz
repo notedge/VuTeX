@@ -1,0 +1,22 @@
+<template>
+    <div class="site" :data-page="page">
+        <a href="#main" class="skip-link">
+            {{ skipLabel }}
+        </a>
+        <SiteHeader :page="page" />
+        <main id="main" class="site-main">
+            <slot />
+        </main>
+        <SiteFooter />
+    </div>
+</template>
+<script client>
+/**
+ * Site chrome: one header, one footer, one skip link. Pages own the content
+ * inside the slot, so section rhythm never depends on the shell.
+ */
+export default class SiteShell {
+    page = "";
+    skipLabel = "跳到正文";
+}
+</script>

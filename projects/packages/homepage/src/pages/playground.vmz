@@ -1,0 +1,157 @@
+<template>
+    <SiteShell page="playground">
+        <section class="container playground">
+            <p class="label">Playground</p>
+            <h1>写你的 TeX，然后看三家怎么理解</h1>
+            <p class="lede">
+                输入即渲染，本地完成，不上传任何内容。WeTeX 走 WASM，KaTeX 与 MathJax 走各自打包产物。
+            </p>
+
+            <div class="playground__controls">
+                <div class="segmented" role="group" aria-label="输出格式">
+                    <button
+                        v-for="backend in backends"
+                        :key="backend.id"
+                        :data-active="backend.id === active ? 'true' : 'false'"
+                        @click="pick(backend.id)"
+                    >
+                        {{ backend.label }}
+                    </button>
+                </div>
+                <div class="segmented" role="group" aria-label="公式模式">
+                    <button :data-active="display ? 'true' : 'false'" @click="setDisplay(true)">展示</button>
+                    <button :data-active="display ? 'false' : 'true'" @click="setDisplay(false)">行内</button>
+                </div>
+                <span class="playground__status">{{ status }}</span>
+            </div>
+
+            <div class="playground__workspace">
+                <div class="playground__editor">
+                    <div class="playground__editor-bar">
+                        <span class="meta">TeX</span>
+                        <span class="playground__hint">Ctrl / Cmd + Enter 重渲染</span>
+                    </div>
+                    <textarea
+                        class="playground__input"
+                        :value="tex"
+                        @input="onInput"
+                        @keydown="onKey"
+                        spellcheck="false"
+                        aria-label="TeX 源码"
+                    ></textarea>
+                    <div class="playground__presets">
+                        <button v-for="item in presets" :key="item.id" class="playground__preset" @click="use(item)">
+                            {{ item.name }}
+                        </button>
+                    </div>
+                </div>
+
+                <div class="playground__stage">
+                    <section class="playground__result" v-for="engine in engines" :key="engine.id">
+                        <header class="playground__result-head">
+                            <span>{{ engine.name }}</span>
+                            <span class="specimen__ms">{{ timing(engine.id) }}</span>
+                        </header>
+                        <div class="playground__canvas" v-html="markup(engine.id)"></div>
+                        <p class="specimen__fallback" v-if="note(engine.id)">
+                            {{ note(engine.id) }}
+                        </p>
+                    </section>
+                </div>
+            </div>
+        </section>
+    </SiteShell>
+</template>
+<script client>
+import { BACKENDS, ENGINES, renderFormula } from "../lib/engines.ts";
+import { DEFAULT_TEX, SPECIMENS } from "../lib/formulas.ts";
+
+export default class Playground {
+    backends = BACKENDS.slice();
+    engines = ENGINES.slice();
+    presets = SPECIMENS.slice(0, 8);
+    active = "mathml";
+    display = true;
+    tex = String(DEFAULT_TEX);
+    status = "渲染中";
+    outputs = {};
+    timer = 0;
+
+    onMount() {
+        this.render();
+    }
+
+    onDestroy() {
+        if (this.timer) clearTimeout(this.timer);
+        this.timer = 0;
+    }
+
+    pick(backend) {
+        if (this.active === backend) return;
+        this.active = backend;
+        this.render();
+    }
+
+    setDisplay(value) {
+        if (this.display === value) return;
+        this.display = value;
+        this.render();
+    }
+
+    use(item) {
+        this.tex = item.tex;
+        this.render();
+    }
+
+    onInput(event) {
+        this.tex = event.target.value;
+        if (this.timer) clearTimeout(this.timer);
+        this.timer = setTimeout(() => {
+            this.timer = 0;
+            this.render();
+        }, 260);
+    }
+
+    onKey(event) {
+        if (!event.ctrlKey && !event.metaKey) return;
+        if (event.key !== "Enter") return;
+        event.preventDefault();
+        this.render();
+    }
+
+    markup(engineId) {
+        const result = this.outputs[engineId];
+        return result && result.ok ? result.markup : "";
+    }
+
+    timing(engineId) {
+        const result = this.outputs[engineId];
+        return result ? `${result.ms} ms` : "—";
+    }
+
+    note(engineId) {
+        const result = this.outputs[engineId];
+        if (!result) return "";
+        return result.note;
+    }
+
+    async render() {
+        const backend = this.active;
+        const tex = this.tex;
+        const display = this.display;
+        this.status = "渲染中";
+        const engines = this.engines;
+        const results = await Promise.all(
+            engines.map((engine) => renderFormula(engine.id, backend, tex, display)),
+        );
+        const next = {};
+        let index = 0;
+        for (const engine of engines) {
+            next[engine.id] = results[index];
+            index += 1;
+        }
+        this.outputs = next;
+        this.status = `${engines.length} 个引擎 · ${backend.toUpperCase()}`;
+    }
+}
+</script>

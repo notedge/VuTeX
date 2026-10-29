@@ -1,0 +1,10 @@
+<template>
+    <slot />
+</template>
+<script client>
+/**
+ * Root application surface. Routing resolves `src/pages/*.vmz`; each page owns
+ * its own `<SiteShell>` so the chrome stays a single shared implementation.
+ */
+export default class Application {}
+</script>

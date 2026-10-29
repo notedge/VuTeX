@@ -1,0 +1,43 @@
+<template>
+    <footer class="site-footer">
+        <div class="container">
+            <div class="site-footer__grid">
+                <div class="site-footer__brand">
+                    <a href="/" class="site-brand">
+                        <span>VuTeX</span>
+                        <span aria-hidden="true" class="site-brand__dot">·</span>
+                    </a>
+                    <p>
+                        WeTeX 是 VuTeX 的排版内核：Rust + WASM，输出 SVG 与 MathML，度量公式的宽、高与基线深度，而不是拼一段 DOM。
+                    </p>
+                </div>
+                <div class="site-footer__group">
+                    <b>站点</b>
+                    <a href="/">概览</a>
+                    <a href="/welcome">全屏展示</a>
+                    <a href="/gallery">画廊</a>
+                    <a href="/playground">试验台</a>
+                </div>
+                <div class="site-footer__group">
+                    <b>引擎</b>
+                    <a href="/gallery">WeTeX</a>
+                    <a href="/gallery">KaTeX</a>
+                    <a href="/gallery">MathJax</a>
+                </div>
+                <div class="site-footer__group">
+                    <b>项目</b>
+                    <a href="https://github.com/notedge/VuTeX" target="_blank" rel="noreferrer noopener">源码</a>
+                    <a href="https://www.npmjs.com/package/@vutex/wetex" target="_blank" rel="noreferrer noopener">npm</a>
+                    <a href="https://notedge.github.io/VuTeX/" target="_blank" rel="noreferrer noopener">文档</a>
+                </div>
+            </div>
+            <div class="site-footer__colophon">
+                <span>VuTeX · 排版优先的公式内核</span>
+                <span>XITS Math 主字体 · Latin Modern Math 兼容</span>
+            </div>
+        </div>
+    </footer>
+</template>
+<script client>
+export default class SiteFooter {}
+</script>
