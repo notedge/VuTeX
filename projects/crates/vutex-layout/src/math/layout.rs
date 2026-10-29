@@ -7,9 +7,9 @@ use vutex_types::{
     Diagnostic, Severity,
     math::{
         Alignment, BBox, DelimiterComponent, Fixed, FontMetricsSnapshot, FontStyle, FormulaLayoutResult, FormulaMetrics,
-        GlyphKey, GlyphMetrics, LimitsPolicy, LineStyle, MathConstant, MathItem, MathKern, MathList, MathResult, MathStyle,
-        MathStyleState, Noad, NoadKind, OperatorClass, PaintNode, SemanticNode, SpacingRule, SymbolRole, normalize_math_list,
-        project_semantic_with_state,
+        GlyphKey, GlyphMetrics, LimitsPolicy, LineStyle, MathConstant, MathEnvironment, MathItem, MathKern, MathList,
+        MathResult, MathStyle, MathStyleState, Noad, NoadKind, OperatorClass, PaintNode, SemanticNode, SpacingRule, SymbolRole,
+        normalize_math_list, project_semantic_with_state,
     },
 };
 
@@ -247,7 +247,12 @@ impl AtomClass {
             NoadKind::Open => AtomClass::Open,
             NoadKind::Close => AtomClass::Close,
             NoadKind::Punct => AtomClass::Punct,
-            NoadKind::Inner | NoadKind::Fence | NoadKind::Radical | NoadKind::Vcent | NoadKind::TableCell => AtomClass::Inner,
+            NoadKind::Inner
+            | NoadKind::Fence
+            | NoadKind::Radical
+            | NoadKind::Vcent
+            | NoadKind::TableCell
+            | NoadKind::Environment => AtomClass::Inner,
         }
     }
 }
@@ -413,6 +418,7 @@ impl LayoutEngine {
             | SemanticNode::Radical { .. }
             | SemanticNode::Delimited { .. }
             | SemanticNode::Matrix { .. }
+            | SemanticNode::Environment(_)
             | SemanticNode::Accent { .. }
             | SemanticNode::HorizontalBox { .. }
             | SemanticNode::VerticalBox { .. }
@@ -447,6 +453,9 @@ impl LayoutEngine {
             SemanticNode::Paragraph { content, .. } => content.iter().find_map(Self::first_glyph_key),
             SemanticNode::VerticalBox { content, .. } => content.iter().find_map(Self::first_glyph_key),
             SemanticNode::Matrix { rows, .. } => rows.iter().flatten().find_map(Self::first_glyph_key),
+            SemanticNode::Environment(environment) => {
+                environment.rows.iter().flat_map(|row| row.cells.iter()).find_map(Self::first_glyph_key)
+            }
             SemanticNode::Space { .. } | SemanticNode::SetMathStyle(_) | SemanticNode::LimitsSpec(_) => None,
         }
     }
@@ -653,8 +662,10 @@ impl LayoutEngine {
                     // enclosing `\scriptstyle` cannot demote the grid.  The
                     // cramped flag still follows the surrounding formula.
                     let state = if *display_style { MathStyleState { style: MathStyle::Display, ..state } } else { state };
-                    self.layout_matrix(rows, *row_spacing, *col_spacing, column_alignment, state)
+                    let rows: Vec<&[SemanticNode]> = rows.iter().map(|row| row.as_slice()).collect();
+                    self.layout_matrix(&rows, *row_spacing, *col_spacing, column_alignment, state)
                 }
+                SemanticNode::Environment(environment) => self.layout_environment(environment, state),
                 SemanticNode::Delimited { left, right, content } => {
                     self.layout_delimited(left.as_ref(), right.as_ref(), content, state)
                 }
@@ -1697,9 +1708,33 @@ impl LayoutEngine {
         Ok(self.pack_hbox(children, None))
     }
 
+    /// Lay out one AMS environment block.
+    ///
+    /// **Transitional implementation.**  The environment keeps its own kind,
+    /// alignment anchors and per-row numbering in the IR
+    /// ([`MathEnvironment`]), but this round still hands its rows to the shared
+    /// grid path: the alignment comes from
+    /// [`MathEnvironment::column_alignment`], which reads the environment kind
+    /// and the anchor model rather than the author's row contents, and the grid
+    /// receives only that result and the row cells.  Two things therefore stay
+    /// unlaid-out and live on in the IR: `multline`'s per-row flush-left /
+    /// flush-right placement ([`AlignmentAnchors::Spread`]) and the row
+    /// numbering intent.  This is a staging point for the grid work, not a claim
+    /// that an environment is a matrix with a flag.
+    fn layout_environment(&self, environment: &MathEnvironment, state: MathStyleState) -> MathResult<LayoutNode> {
+        // `align`, `equation`, `gather` and `multline` pin display style so an
+        // enclosing `\scriptstyle` cannot demote their rows.  `aligned`,
+        // `alignedat` and `split` follow the surrounding style.
+        let state =
+            if environment.kind.is_display_level() { MathStyleState { style: MathStyle::Display, ..state } } else { state };
+        let rows: Vec<&[SemanticNode]> = environment.rows.iter().map(|row| row.cells.as_slice()).collect();
+        let column_alignment = environment.column_alignment();
+        self.layout_matrix(&rows, environment.row_spacing, environment.col_spacing, &column_alignment, state)
+    }
+
     fn layout_matrix(
         &self,
-        rows: &[Vec<SemanticNode>],
+        rows: &[&[SemanticNode]],
         row_spacing: Fixed,
         col_spacing: Fixed,
         column_alignment: &[Alignment],

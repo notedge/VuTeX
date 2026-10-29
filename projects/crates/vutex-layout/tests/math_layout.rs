@@ -6,7 +6,10 @@ use vutex_layout::math::{
 use vutex_text::math::{FontMetricsSystem, builtin_font_metrics};
 use vutex_types::{
     Severity,
-    math::{Fixed, FontMetricsData, FontStyle, GlyphKey, MathConstant, MathStyle, SemanticNode, SymbolRole},
+    math::{
+        EnvironmentKind, EnvironmentRow, Fixed, FontMetricsData, FontStyle, GlyphKey, MathConstant, MathEnvironment, MathStyle,
+        Numbering, SemanticNode, SymbolRole,
+    },
 };
 
 fn layout(source: &str) -> FormulaLayout {
@@ -2308,4 +2311,104 @@ fn cramped_leaves_the_insensitive_formulas_unchanged() {
             "`{source}` must keep its uncramped metrics: {metrics:?}"
         );
     }
+}
+
+// ── AMS environments through the IR ─────────────────────────────────
+
+/// One symbol atom of an environment cell.
+fn cell(c: char) -> SemanticNode {
+    SemanticNode::Symbol { glyph_key: GlyphKey::from_char(c, None, FontStyle::Math), role: SymbolRole::Ordinary }
+}
+
+/// An AMS environment block over the given rows.
+fn environment(kind: EnvironmentKind, rows: Vec<Vec<char>>) -> SemanticNode {
+    SemanticNode::Environment(MathEnvironment {
+        kind,
+        starred: false,
+        rows: rows
+            .into_iter()
+            .map(|row| EnvironmentRow { cells: row.into_iter().map(cell).collect(), numbering: Numbering::Default })
+            .collect(),
+        row_spacing: Fixed::from_f64(0.35),
+        col_spacing: Fixed::ZERO,
+    })
+}
+
+#[test]
+fn every_environment_kind_lays_out_as_one_block() {
+    // The IR keeps the environment kinds apart and each of them reaches layout
+    // as one block.  `equation` is one row by definition, the rest are given two
+    // to show the grid stacks them.  `multline`'s flush-left / flush-right rows
+    // are still a staging point (`layout_environment`), so this pins the block,
+    // not the row placement.
+    let engine = LayoutEngine::new(builtin_font_metrics());
+    let cases = [
+        (EnvironmentKind::Aligned, 2),
+        (EnvironmentKind::AlignedAt { pairs: 1 }, 2),
+        (EnvironmentKind::Split, 3),
+        (EnvironmentKind::Align, 2),
+        (EnvironmentKind::Equation, 1),
+        (EnvironmentKind::Gather, 2),
+        (EnvironmentKind::Multline, 2),
+    ];
+    for (kind, row_count) in cases {
+        let node = environment(kind, vec![vec!['a', 'b']; row_count]);
+        let tree = engine.layout_node(&node, MathStyle::Display).unwrap_or_else(|e| panic!("{kind:?}: {e}"));
+        assert!(tree.width() > Fixed::ZERO, "{kind:?} must produce a block: {tree:?}");
+        assert!(tree.height() >= tree.depth(), "{kind:?} must stay centred on the math axis: {tree:?}");
+    }
+}
+
+#[test]
+fn gather_environment_centres_its_rows() {
+    // `gather` has no alignment anchors, so each row is centred over the
+    // widest one — the alignment comes from `EnvironmentKind::anchors`, not from
+    // the author's cells.  Each row is one cell here: splitting `qrs` over three
+    // cells would make it three columns instead of one wide row.
+    //
+    // The engine's base em is 14pt, the same as `layout_formula(source, false)`
+    // uses, so glyph positions and formula widths share one unit.
+    let engine = LayoutEngine::new(builtin_font_metrics()).with_base_size(14.0);
+    let sequence = |source: &str| SemanticNode::Sequence(source.chars().map(cell).collect());
+    let node = SemanticNode::Environment(MathEnvironment {
+        kind: EnvironmentKind::Gather,
+        starred: false,
+        rows: vec![
+            EnvironmentRow { cells: vec![cell('p')], numbering: Numbering::Default },
+            EnvironmentRow { cells: vec![sequence("qrs")], numbering: Numbering::Default },
+        ],
+        row_spacing: Fixed::from_f64(0.35),
+        col_spacing: Fixed::ZERO,
+    });
+    let tree = engine.layout_node(&node, MathStyle::Display).expect("a `gather` block should lay out");
+
+    let (p_x, _, _) = glyph_at(&tree, 'p');
+    let expected = (layout("qrs").width - layout("p").width) / 2.0;
+    assert!((p_x - expected).abs() < 0.02, "the short row must be centred: {p_x} vs {expected}");
+}
+
+#[test]
+fn display_level_environments_pin_display_style() {
+    // `gather` and `align` are display-level blocks, so an enclosing
+    // `\scriptstyle` cannot demote their rows.  `aligned` is an inline fragment
+    // and follows the surrounding style.
+    let engine = LayoutEngine::new(builtin_font_metrics());
+    let width = |kind: EnvironmentKind, style: MathStyle| {
+        let node = environment(kind, vec![vec!['a']]);
+        engine.layout_node(&node, style).expect("the block should lay out").width().to_f64()
+    };
+
+    let gather_display = width(EnvironmentKind::Gather, MathStyle::Display);
+    let gather_script = width(EnvironmentKind::Gather, MathStyle::Script);
+    assert!(
+        (gather_display - gather_script).abs() < 1e-9,
+        "`gather` must pin display style: {gather_display} vs {gather_script}"
+    );
+
+    let aligned_display = width(EnvironmentKind::Aligned, MathStyle::Display);
+    let aligned_script = width(EnvironmentKind::Aligned, MathStyle::Script);
+    assert!(
+        aligned_script < aligned_display,
+        "`aligned` must follow the surrounding style: {aligned_display} vs {aligned_script}"
+    );
 }
