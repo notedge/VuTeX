@@ -53,11 +53,37 @@ struct Parser {
     /// Warnings raised while lowering source the grammar accepts but the
     /// layout semantics can only partly honour.
     diagnostics: Vec<Diagnostic>,
+    /// Numbering commands the row being read has spelled out so far.
+    row_numbering: RowNumbering,
+    /// True while the parser is inside the body of an AMS environment, where
+    /// `\tag` / `\notag` are row metadata.  Everywhere else they stay unknown
+    /// commands, because a bare formula has no row to number.
+    numbering_rows: bool,
+}
+
+/// Numbering intent an AMS environment row spelled out.
+///
+/// `\tag` / `\notag` / `\nonumber` describe the row, not an atom of it, so the
+/// parser records them here while it reads the row's cells and hands the intent
+/// back when the row ends.  Resolving the intent into printed numbers belongs
+/// to the document that embeds the formula.
+#[derive(Default)]
+struct RowNumbering {
+    /// `\tag{…}` label, kept verbatim.
+    tag: Option<String>,
+    /// A `\notag` / `\nonumber` asked for no numbering on this row.
+    suppressed: bool,
 }
 
 impl Parser {
     fn new(source: &str) -> Self {
-        Self { chars: source.chars().collect(), index: 0, diagnostics: Vec::new() }
+        Self {
+            chars: source.chars().collect(),
+            index: 0,
+            diagnostics: Vec::new(),
+            row_numbering: RowNumbering::default(),
+            numbering_rows: false,
+        }
     }
 
     fn position(&self) -> usize {
@@ -329,6 +355,14 @@ impl Parser {
             "scriptscriptstyle" => Ok(SemanticNode::SetMathStyle(MathStyle::ScriptScript)),
             "limits" => Ok(SemanticNode::LimitsSpec(LimitsPolicy::Limits)),
             "nolimits" => Ok(SemanticNode::LimitsSpec(LimitsPolicy::NoLimits)),
+            // `\tag` / `\notag` / `\nonumber` describe the row they sit on rather
+            // than an atom of it, so they only exist inside an AMS environment
+            // body and contribute no glyph of their own.
+            "tag" if self.numbering_rows => self.parse_tag(),
+            "notag" | "nonumber" if self.numbering_rows => {
+                self.row_numbering.suppressed = true;
+                Ok(SemanticNode::Sequence(Vec::new()))
+            }
             _ => {
                 if let Some((ch, role)) = named_symbol(&name) {
                     return Ok(SemanticNode::Symbol { glyph_key: GlyphKey::from_char(ch, None, FontStyle::Math), role });
@@ -462,13 +496,15 @@ impl Parser {
             _ => None,
         };
 
-        let rows = self.read_environment_rows(&name)?;
+        let kind = Self::environment_kind(&name, column_pairs);
+        let rows = self.read_environment_rows(&name, kind.is_some())?;
 
         // The AMS environments keep their own row rules in the IR instead of
-        // pretending to be a matrix.  Numbering stays an intent: `\tag` /
-        // `\notag` resolution belongs to the document, so every row starts as
-        // `Numbering::Default`.
-        if let Some(kind) = Self::environment_kind(&name, column_pairs) {
+        // pretending to be a matrix.  Numbering stays an intent: the parser
+        // records `\tag` / `\notag` / `\nonumber` on the row that carries them
+        // and leaves the printed numbers to the document that embeds the
+        // formula.
+        if let Some(kind) = kind {
             if let EnvironmentKind::AlignedAt { .. } = kind {
                 self.report_alignedat_columns(&name, kind, &rows);
             }
@@ -476,7 +512,6 @@ impl Parser {
                 AlignmentAnchors::ColumnPairs | AlignmentAnchors::SingleEquation => Fixed::ZERO,
                 AlignmentAnchors::Centered | AlignmentAnchors::Spread => Fixed::from_f64(0.8),
             };
-            let rows = rows.into_iter().map(|cells| EnvironmentRow { cells, numbering: Numbering::Default }).collect();
             return Ok(SemanticNode::Environment(MathEnvironment {
                 kind,
                 starred: name.ends_with('*'),
@@ -486,7 +521,7 @@ impl Parser {
             }));
         }
 
-        let matrix = self.pack_matrix(&name, rows);
+        let matrix = self.pack_matrix(&name, rows.into_iter().map(|row| row.cells).collect());
         let (left, right) = match name.as_str() {
             "pmatrix" => (Some(delimiter('(')), Some(delimiter(')'))),
             "bmatrix" => (Some(delimiter('[')), Some(delimiter(']'))),
@@ -521,11 +556,25 @@ impl Parser {
         }
     }
 
-    /// Read the cells of one environment body up to its own `\end{name}`.
+    /// Read the rows of one environment body up to its own `\end{name}`.
     ///
-    /// A row is the run of `&`-separated cells between two `\\`, so the cells
-    /// keep the authored anchor split for the environment's own row rule.
-    fn read_environment_rows(&mut self, name: &str) -> MathResult<Vec<Vec<SemanticNode>>> {
+    /// `numbering_rows` marks the environments whose rows carry numbering
+    /// intent: only there may a row spell `\tag` / `\notag`, and the intent
+    /// travels back on the row instead of living as an atom inside a cell.
+    fn read_environment_rows(&mut self, name: &str, numbering_rows: bool) -> MathResult<Vec<EnvironmentRow>> {
+        let outer = self.numbering_rows;
+        self.numbering_rows = numbering_rows;
+        let rows = self.read_environment_body(name);
+        self.numbering_rows = outer;
+        rows
+    }
+
+    /// Read the `&`-separated cells and `\\`-separated rows of an environment
+    /// body up to `\end{name}`.
+    ///
+    /// A row is the run of cells between two `\\`, so the cells keep the
+    /// authored anchor split for the environment's own row rule.
+    fn read_environment_body(&mut self, name: &str) -> MathResult<Vec<EnvironmentRow>> {
         let mut rows = Vec::new();
         loop {
             let mut row = Vec::new();
@@ -539,7 +588,7 @@ impl Parser {
                 }
                 break;
             }
-            rows.push(row);
+            rows.push(EnvironmentRow { cells: row, numbering: self.take_row_numbering() });
             self.skip_whitespace();
             if self.peek() == Some('\\') && self.peek_at(1) == Some('\\') {
                 self.bump();
@@ -559,18 +608,52 @@ impl Parser {
         Ok(rows)
     }
 
+    /// Drain the numbering commands the row just recorded.
+    ///
+    /// `\tag` decides the row when a `\notag` sits beside it: an explicit label
+    /// is the stronger statement, so the row is numbered under that name and
+    /// the contradiction is reported.
+    fn take_row_numbering(&mut self) -> Numbering {
+        let recorded = std::mem::take(&mut self.row_numbering);
+        if recorded.tag.is_some() && recorded.suppressed {
+            self.warn(
+                "vutex.layout.math.tag_and_notag",
+                "`\\tag` and `\\notag` both appear on this row, so `\\tag` decides its numbering".to_owned(),
+            );
+        }
+        match recorded.tag {
+            Some(tag) => Numbering::Tag(tag),
+            None if recorded.suppressed => Numbering::Suppressed,
+            None => Numbering::Default,
+        }
+    }
+
+    /// Parse `\tag{…}` / `\tag*{…}` as the current row's numbering intent.
+    ///
+    /// The label travels verbatim and the starred form keeps its label too:
+    /// `\tag*` only drops the parentheses VuTeX never prints.
+    fn parse_tag(&mut self) -> MathResult<SemanticNode> {
+        self.skip_whitespace();
+        if self.peek() == Some('*') {
+            self.bump();
+        }
+        let label = self.read_text_group()?;
+        self.row_numbering.tag = Some(label);
+        Ok(SemanticNode::Sequence(Vec::new()))
+    }
+
     /// Report a body whose column count does not match `alignedat{n}`'s
     /// declared pairs.
     ///
     /// The grid keeps the wider of the two, so the warning never promises to
     /// discard cells the author typed.
-    fn report_alignedat_columns(&mut self, name: &str, kind: EnvironmentKind, rows: &[Vec<SemanticNode>]) {
+    fn report_alignedat_columns(&mut self, name: &str, kind: EnvironmentKind, rows: &[EnvironmentRow]) {
         let Some(pairs) = kind.fixed_pairs()
         else {
             return;
         };
         let declared = (pairs as usize) * 2;
-        let typed = rows.iter().map(|row| row.len()).max().unwrap_or(0);
+        let typed = rows.iter().map(|row| row.cells.len()).max().unwrap_or(0);
         if declared == typed {
             return;
         }
