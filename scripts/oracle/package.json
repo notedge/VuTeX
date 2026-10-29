@@ -6,9 +6,12 @@
   "type": "module",
   "scripts": {
     "katex:mathml": "node emit-katex-mathml.mjs",
-    "latex:probe": "node probe-latex.mjs"
+    "mathjax:mathml": "node emit-mathjax-mathml.mjs",
+    "latex:probe": "node probe-latex.mjs",
+    "latex:boxes": "node emit-latex-boxes.mjs"
   },
   "devDependencies": {
-    "katex": "0.16.22"
+    "katex": "0.16.22",
+    "mathjax": "^3.2.2"
   }
 }
