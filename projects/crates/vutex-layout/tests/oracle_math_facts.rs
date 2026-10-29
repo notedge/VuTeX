@@ -196,7 +196,7 @@ fn snapshot_comes_from_fonttools_and_covers_the_shipped_font() {
 #[test]
 fn math_constants_match_the_fonttools_snapshot() {
     let facts = load_facts();
-    let data = opentype_font_metrics().expect("the embedded font must parse and expose its MATH table");
+    let data = opentype_font_metrics(vutex_text::math::MathFontFamily::LmMath).expect("the embedded font must parse and expose its MATH table");
 
     assert_eq!(data.units_per_em, facts.font.units_per_em, "design units per em must come from the font");
     assert_eq!(data.family, FAMILY);
@@ -236,7 +236,7 @@ fn constant_by_name(name: &str) -> MathConstant {
 #[test]
 fn glyph_metrics_match_the_fonttools_snapshot() {
     let facts = load_facts();
-    let data = opentype_font_metrics().expect("the embedded font must parse");
+    let data = opentype_font_metrics(vutex_text::math::MathFontFamily::LmMath).expect("the embedded font must parse");
     let one_em = f64::from(facts.font.units_per_em);
 
     assert!(!facts.math.glyphs.is_empty(), "the snapshot must cover glyphs");
@@ -276,7 +276,7 @@ fn glyph_metrics_match_the_fonttools_snapshot() {
 #[test]
 fn delimiter_constructions_match_the_fonttools_snapshot() {
     let facts = load_facts();
-    let data = opentype_font_metrics().expect("the embedded font must parse");
+    let data = opentype_font_metrics(vutex_text::math::MathFontFamily::LmMath).expect("the embedded font must parse");
     let one_em = f64::from(facts.font.units_per_em);
     let family = Some(FAMILY.to_string());
 
@@ -391,7 +391,7 @@ fn delimiter_constructions_match_the_fonttools_snapshot() {
 #[test]
 fn math_kern_data_follows_the_fonttools_snapshot() {
     let facts = load_facts();
-    let data = opentype_font_metrics().expect("the embedded font must parse");
+    let data = opentype_font_metrics(vutex_text::math::MathFontFamily::LmMath).expect("the embedded font must parse");
 
     assert!(
         !facts.math.math_kern_info.present,

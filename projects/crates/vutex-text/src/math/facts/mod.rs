@@ -34,7 +34,7 @@ pub use variants::{
     AssemblyPart, AssemblyPlan, GlyphAssembly, GlyphConstruction, MathVariant, MathVariants, StretchAxis, StretchPlan,
 };
 
-use super::opentype::MATH_FONT_BYTES;
+use super::opentype::LM_MATH_BYTES;
 
 /// A glyph index inside one font.
 ///
@@ -146,7 +146,7 @@ impl MathFontFacts {
 
     /// Read the `MATH` facts of the font embedded with this crate.
     pub fn embedded() -> Option<Self> {
-        Self::from_bytes(MATH_FONT_BYTES)
+        Self::from_bytes(LM_MATH_BYTES)
     }
 
     /// Font units per em, the divisor behind every em-relative value here.
@@ -337,8 +337,8 @@ mod tests {
 
     #[test]
     fn a_face_that_is_already_parsed_answers_the_same_facts() {
-        let from_bytes = MathFontFacts::from_bytes(MATH_FONT_BYTES).expect("the embedded font carries a MATH table");
-        let mut face = FontFace::load(MATH_FONT_BYTES).expect("the embedded font must load");
+        let from_bytes = MathFontFacts::from_bytes(LM_MATH_BYTES).expect("the embedded font carries a MATH table");
+        let mut face = FontFace::load(LM_MATH_BYTES).expect("the embedded font must load");
         let from_face = MathFontFacts::from_face(&mut face).expect("the parsed face carries a MATH table");
 
         assert_eq!(from_face.units_per_em(), from_bytes.units_per_em());

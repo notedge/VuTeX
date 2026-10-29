@@ -12,6 +12,26 @@ pub enum DisplayMode {
     Block,
 }
 
+/// Font family selection for math layout.
+///
+/// Each family requires an OpenType MATH table — wetex reads
+/// `MathConstants`, `MathVariants`, and `MathKern` from it to drive the
+/// TeXbook layout engine. Only [`FontFamily::LmMath`] ships as an embedded
+/// asset today; the remaining variants are declared here so hosts can opt
+/// into them once the font-loader layer lands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum FontFamily {
+    /// Latin Modern Math — Computer Modern's OpenType successor, the default
+    /// and only family with a complete embedded MATH table.
+    LmMath,
+    /// XITS Math — Times-based, shares the same MATH table schema as LM Math.
+    /// Embedding planned.
+    XitsMath,
+    /// STIX Two Math — STIX-based, full MATH table. Embedding planned.
+    StixTwoMath,
+}
+
 /// Host-facing render options.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -27,11 +47,23 @@ pub struct RenderOptions {
     /// `default_base_size(display_mode)` — 14px for inline, 16px for display.
     #[serde(default)]
     pub font_size: Option<f64>,
+    /// Math font family. Defaults to [`FontFamily::LmMath`] when omitted —
+    /// the only family with an embedded OpenType MATH table today.
+    /// [`FontFamily::XitsMath`] and [`FontFamily::StixTwoMath`] are declared
+    /// for forward compatibility but return a diagnostic until their font
+    /// assets ship.
+    #[serde(default)]
+    pub font_family: Option<FontFamily>,
 }
 
 impl Default for RenderOptions {
     fn default() -> Self {
-        Self { display_mode: DisplayMode::Inline, outline: None, font_size: None }
+        Self {
+            display_mode: DisplayMode::Inline,
+            outline: None,
+            font_size: None,
+            font_family: None,
+        }
     }
 }
 

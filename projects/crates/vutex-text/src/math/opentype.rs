@@ -1,6 +1,6 @@
 //! OpenType MATH font metrics projection.
 //!
-//! Embeds a real OpenType MATH font (Latin Modern Math) and projects its typed
+//! Embeds a real OpenType MATH font family and projects its typed
 //! [`MathFontFacts`] into the [`FontMetricsData`] cache the layout engine reads:
 //! the MATH constants, glyph advances and ink extents with SVG outline paths,
 //! and the MATH Variants constructions delimiters and large operators grow
@@ -26,17 +26,47 @@ use vutex_types::math::{
 
 use super::facts::{KernCorner, MathFontFacts, StretchAxis};
 
+/// Selectable OpenType MATH font families.
+///
+/// Each variant must carry both `bytes` (the raw OTF payload) and a stable
+/// family label so glyphs the cache holds under one family can be re-keyed to
+/// another without re-parsing. A missing font (bytes = `None`) causes
+/// [`opentype_font_metrics`] to return `None` and the caller falls back to
+/// synthetic metrics — the default-family gate in [`super::font_metrics`]
+/// chooses the first present font at startup.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MathFontFamily {
+    /// Times-like, same lineage as KaTeX_Main. Embedding planned.
+    XitsMath,
+    /// Computer Modern OpenType successor; always embedded.
+    LmMath,
+}
+
+impl MathFontFamily {
+    /// Stable family label used to key glyphs in [`FontMetricsData`].
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::XitsMath => "xits-math",
+            Self::LmMath => "latin-modern-math",
+        }
+    }
+
+    /// Raw OTF bytes for this family, or `None` when the font is not embedded.
+    pub fn bytes(self) -> Option<&'static [u8]> {
+        match self {
+            Self::LmMath => Some(LM_MATH_BYTES),
+            // XITS Math asset pending — wire up once XITSMath-Regular.otf
+            // lands in `assets/` (OFL 1.1, from alif-type/xits).
+            Self::XitsMath => None,
+        }
+    }
+}
+
 /// Embedded OpenType MATH font: Latin Modern Math Regular.
 ///
 /// Licensed under the GUST font license (analogous to OFL). Downloaded from
 /// `https://www.ctan.org/tex-archive/fonts/lm-math/opentype/latinmodern-math.otf`.
-pub(crate) const MATH_FONT_BYTES: &[u8] = include_bytes!("../../assets/LatinModernMath-Regular.otf");
-
-/// Family label every glyph this module projects is keyed under.
-///
-/// `builtin_font_metrics` re-keys the whole cache under `default`, so this is
-/// only the label the opentype data is built with.
-const FAMILY: &str = "latin-modern-math";
+pub(crate) const LM_MATH_BYTES: &[u8] = include_bytes!("../../assets/LatinModernMath-Regular.otf");
 
 // ---------------------------------------------------------------------------
 // SVG path OutlineBuilder
@@ -232,24 +262,24 @@ fn width_from_advance(advance_em: f64) -> Fixed {
 
 /// Try to build a [`FontMetricsData`] from the embedded OpenType MATH font.
 ///
-/// Returns `Some(data)` if the font parsed successfully and contains a MATH
-/// table. Returns `None` for any failure (parse error, missing MATH table).
-/// The caller should then use the synthetic fallback in
-/// [`super::font_metrics::builtin_font_metrics`].
-///
-/// The parsed face is read by [`MathFontFacts`] exactly once, and everything
-/// below is projected from those facts.
-pub fn opentype_font_metrics() -> Option<FontMetricsData> {
-    let mut face = FontFace::load(MATH_FONT_BYTES).ok()?;
+/// Returns `Some(data)` if the requested family has an embedded font that
+/// parsed successfully and carries a MATH table. Returns `None` otherwise
+/// (family not embedded, parse error, missing MATH table). The caller should
+/// then use the synthetic fallback in
+/// [`super::font_metrics::builtin_font_metrics`] or try a smaller family.
+pub fn opentype_font_metrics(family: MathFontFamily) -> Option<FontMetricsData> {
+    let bytes = family.bytes()?;
+    let mut face = FontFace::load(bytes).ok()?;
     let facts = MathFontFacts::from_face(&mut face)?;
+    let family_label = family.label();
     let one_em = facts.units_per_em() as f64;
 
-    let mut data = FontMetricsData::new(FAMILY.to_string(), facts.units_per_em());
+    let mut data = FontMetricsData::new(family_label.to_string(), facts.units_per_em());
     data.constants.extend(facts.constants().font_constants());
 
-    extract_glyph_metrics_and_outlines(&mut face, &facts, &mut data, one_em);
-    extract_delimiter_constructions(&mut face, &facts, &mut data, one_em);
-    extract_math_kerns(&facts, &mut data);
+    extract_glyph_metrics_and_outlines(&mut face, &facts, &mut data, one_em, family_label);
+    extract_delimiter_constructions(&mut face, &facts, &mut data, one_em, family_label);
+    extract_math_kerns(&facts, &mut data, family_label);
 
     Some(data)
 }
@@ -263,8 +293,14 @@ pub fn opentype_font_metrics() -> Option<FontMetricsData> {
 ///
 /// The math metrics come from the facts' glyph coverage: a glyph the font does
 /// not cover is stored with [`UNCOVERED_MATH_METRIC`] rather than a guess.
-fn extract_glyph_metrics_and_outlines(face: &mut FontFace, facts: &MathFontFacts, data: &mut FontMetricsData, one_em: f64) {
-    let family = Some(FAMILY.to_string());
+fn extract_glyph_metrics_and_outlines(
+    face: &mut FontFace,
+    facts: &MathFontFacts,
+    data: &mut FontMetricsData,
+    one_em: f64,
+    family: &str,
+) {
+    let family = Some(family.to_string());
 
     for ch in ('!'..='~').chain(TARGET_SYMBOLS.iter().copied()).chain(ACCENT_SYMBOLS.iter().copied()) {
         let Some(glyph) = facts.glyph_for_char(ch)
@@ -310,8 +346,14 @@ fn extract_glyph_metrics_and_outlines(face: &mut FontFace, facts: &MathFontFacts
 /// Which designs exist, in which order, with which connector lengths comes
 /// from the facts. Only glyph geometry — `hmtx` advances, ink boxes and
 /// outlines — is read from the face.
-fn extract_delimiter_constructions(face: &mut FontFace, facts: &MathFontFacts, data: &mut FontMetricsData, one_em: f64) {
-    let family = Some(FAMILY.to_string());
+fn extract_delimiter_constructions(
+    face: &mut FontFace,
+    facts: &MathFontFacts,
+    data: &mut FontMetricsData,
+    one_em: f64,
+    family: &str,
+) {
+    let family = Some(family.to_string());
 
     for &ch in DELIMITER_CHARS.iter().chain(LARGE_OPERATOR_CHARS) {
         let Some(glyph) = facts.glyph_for_char(ch)
@@ -448,8 +490,8 @@ fn glyph_outline(face: &mut FontFace, gid: u16, one_em: f64) -> Option<String> {
 /// each corner keeps the kern the font publishes for correction heights below
 /// its first step — the baseline kern the layout engine already uses via
 /// `get_math_kern`.
-fn extract_math_kerns(facts: &MathFontFacts, data: &mut FontMetricsData) {
-    let family = Some(FAMILY.to_string());
+fn extract_math_kerns(facts: &MathFontFacts, data: &mut FontMetricsData, family: &str) {
+    let family = Some(family.to_string());
 
     // Walk the same character set we already pull metrics for. The kern tables
     // are glyph-indexed, so each look-up first converts char to glyph. This
@@ -499,7 +541,7 @@ mod tests {
 
     #[test]
     fn opentype_parses_and_has_constants() {
-        let data = opentype_font_metrics().expect("font should parse and expose MATH table");
+        let data = opentype_font_metrics(MathFontFamily::LmMath).expect("font should parse and expose MATH table");
         assert!(data.constants.contains_key(&MathConstant::AxisHeight));
         assert!(data.constants.contains_key(&MathConstant::FractionRuleThickness));
         assert!(data.constants.contains_key(&MathConstant::SuperscriptShiftUp));
@@ -513,7 +555,7 @@ mod tests {
 
     #[test]
     fn opentype_has_glyph_metrics() {
-        let data = opentype_font_metrics().expect("font should parse");
+        let data = opentype_font_metrics(MathFontFamily::LmMath).expect("font should parse");
         let family = Some("latin-modern-math".to_string());
         let key = GlyphKey::from_char('x', family, FontStyle::Math);
         let m = data.glyphs.get(&key).expect("glyph 'x' should exist");
@@ -523,7 +565,7 @@ mod tests {
 
     #[test]
     fn opentype_has_outline_paths_for_common_glyphs() {
-        let data = opentype_font_metrics().expect("font should parse");
+        let data = opentype_font_metrics(MathFontFamily::LmMath).expect("font should parse");
         let family = Some("latin-modern-math".to_string());
         let key_a = GlyphKey::from_char('A', family.clone(), FontStyle::Math);
         let path_a = data.glyph_paths.get(&key_a).expect("glyph 'A' should have an SVG path");
@@ -536,7 +578,7 @@ mod tests {
 
     #[test]
     fn opentype_has_delimiter_variants() {
-        let data = opentype_font_metrics().expect("font should parse");
+        let data = opentype_font_metrics(MathFontFamily::LmMath).expect("font should parse");
         let family = Some("latin-modern-math".to_string());
         let key_paren = GlyphKey::from_char('(', family, FontStyle::Math);
         let c = data.delimiters.get(&key_paren).expect("'(' should have a construction");
@@ -546,7 +588,7 @@ mod tests {
 
     #[test]
     fn opentype_covers_every_accent_the_parser_emits() {
-        let data = opentype_font_metrics().expect("font should parse");
+        let data = opentype_font_metrics(MathFontFamily::LmMath).expect("font should parse");
         let family = Some("latin-modern-math".to_string());
         // `\hat`, `\bar`, `\vec`, `\tilde`, `\dot` and `\ddot`, in that order.
         for ch in ['ˆ', '¯', '→', '˜', '˙', '¨'] {
@@ -568,8 +610,8 @@ mod tests {
     /// failing if a vertical measurement is ever mixed back into the width.
     #[test]
     fn vertical_delimiter_variants_advance_by_their_hmtx_width() {
-        let data = opentype_font_metrics().expect("font should parse");
-        let mut face = FontFace::load(MATH_FONT_BYTES).expect("font should load");
+        let data = opentype_font_metrics(MathFontFamily::LmMath).expect("font should parse");
+        let mut face = FontFace::load(LM_MATH_BYTES).expect("font should load");
         let one_em = face.units_per_em() as f64;
         let math = face.math().cloned().expect("MATH table");
         let family = Some("latin-modern-math".to_string());

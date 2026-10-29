@@ -26,7 +26,7 @@ fn close(actual: Fixed, expected: Fixed, what: &str) {
 
 #[test]
 fn every_constant_in_the_cache_is_the_one_the_facts_read() {
-    let data = opentype_font_metrics().expect("the embedded font parses");
+    let data = opentype_font_metrics(vutex_text::math::MathFontFamily::LmMath).expect("the embedded font parses");
     let facts = MathFontFacts::embedded().expect("the embedded font carries a MATH table");
 
     let published: HashMap<MathConstant, Fixed> = facts.constants().font_constants().collect();
@@ -41,7 +41,7 @@ fn every_constant_in_the_cache_is_the_one_the_facts_read() {
 
 #[test]
 fn every_delimiter_projects_the_facts_construction_one_to_one() {
-    let data = opentype_font_metrics().expect("the embedded font parses");
+    let data = opentype_font_metrics(vutex_text::math::MathFontFamily::LmMath).expect("the embedded font parses");
     let facts = MathFontFacts::embedded().expect("the embedded font carries a MATH table");
     assert!(!data.delimiters.is_empty(), "the projection must carry the font's constructions");
 
@@ -125,7 +125,7 @@ fn every_delimiter_projects_the_facts_construction_one_to_one() {
 
 #[test]
 fn every_glyph_math_metric_in_the_cache_is_the_one_the_facts_read() {
-    let data = opentype_font_metrics().expect("the embedded font parses");
+    let data = opentype_font_metrics(vutex_text::math::MathFontFamily::LmMath).expect("the embedded font parses");
     let facts = MathFontFacts::embedded().expect("the embedded font carries a MATH table");
 
     let mut checked = 0usize;
@@ -156,7 +156,7 @@ fn every_glyph_math_metric_in_the_cache_is_the_one_the_facts_read() {
 /// character can be missing a design the font publishes.
 #[test]
 fn every_projected_design_glyph_is_a_glyph_the_facts_name() {
-    let data = opentype_font_metrics().expect("the embedded font parses");
+    let data = opentype_font_metrics(vutex_text::math::MathFontFamily::LmMath).expect("the embedded font parses");
     let facts = MathFontFacts::embedded().expect("the embedded font carries a MATH table");
 
     let mut designs = 0usize;
@@ -181,7 +181,7 @@ fn every_projected_design_glyph_is_a_glyph_the_facts_name() {
 /// glyph-keyed lookup never has to re-resolve a character.
 #[test]
 fn projected_character_entries_use_the_facts_character_map() {
-    let data = opentype_font_metrics().expect("the embedded font parses");
+    let data = opentype_font_metrics(vutex_text::math::MathFontFamily::LmMath).expect("the embedded font parses");
     let facts = MathFontFacts::embedded().expect("the embedded font carries a MATH table");
 
     for key in data.glyphs.keys().filter(|key| key.char.is_some()) {

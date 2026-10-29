@@ -2,6 +2,8 @@
 
 use std::collections::HashMap;
 
+use super::opentype::MathFontFamily;
+
 use vutex_types::math::{
     DelimiterConstruction, DelimiterVariant, Fixed, FontMetricsData, FontStyle, GlyphKey, GlyphMetrics, MathConstant,
     MathError, MathKern, MathResult,
@@ -455,14 +457,22 @@ fn rekey_delimiters(
 
 /// Builtin metrics for WASM and tests without font files.
 ///
-/// Prefers the embedded OpenType MATH font (Latin Modern Math) and falls back
-/// to synthetic metrics if the embedded font cannot be parsed. On the OTF
-/// path we also extract real glyph outline paths and MATH Variants delimiter
-/// constructions, re-keyed under "default". Synthetic variants and paths are
-/// still seeded for delimiter/path characters that the font did not provide.
+/// Prefers XITS Math (Times-like, KaTeX-compatible) when embedded, falls back
+/// to Latin Modern Math, and then to synthetic metrics if neither parses. On
+/// the OTF path we also extract real glyph outline paths and MATH Variants
+/// delimiter constructions, re-keyed under "default". Synthetic variants and
+/// paths are still seeded for delimiter/path characters that the font did not
+/// provide.
 pub fn builtin_font_metrics() -> FontMetricsSystem {
     let family_str = "default".to_string();
-    let mut data = if let Some(opentype_data) = super::opentype::opentype_font_metrics() {
+
+    // Prefer XITS Math (KaTeX lineage), fall back to LM Math (Computer Modern).
+    let preferred = [MathFontFamily::XitsMath, MathFontFamily::LmMath];
+    let opentype_data = preferred
+        .into_iter()
+        .find_map(|fam| super::opentype::opentype_font_metrics(fam));
+
+    let mut data = if let Some(opentype_data) = opentype_data {
         // Opentype data comes with its own family name ("latin-modern-math");
         // we re-key everything under "default" so downstream code that
         // hardcodes that name keeps working. Font units per em remains from
