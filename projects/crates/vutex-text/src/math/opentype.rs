@@ -1,24 +1,42 @@
-//! OpenType MATH font metrics extraction.
+//! OpenType MATH font metrics projection.
 //!
-//! Embeds a real OpenType MATH font (Latin Modern Math) and extracts MATH table
-//! constants plus glyph advance widths, bounding boxes, SVG outline paths,
-//! and MATH Variants constructions (delimiter and large-operator size
-//! variants) at build time via `include_bytes!`.
-//! Falls back gracefully to synthetic metrics if parsing fails or the font
-//! lacks a MATH table.
+//! Embeds a real OpenType MATH font (Latin Modern Math) and projects its typed
+//! [`MathFontFacts`] into the [`FontMetricsData`] cache the layout engine reads:
+//! the MATH constants, glyph advances and ink extents with SVG outline paths,
+//! and the MATH Variants constructions delimiters and large operators grow
+//! from.
+//!
+//! The `MATH` table has exactly one reader — `MathFontFacts` — so this module
+//! only re-keys its facts into the cache's [`GlyphKey`]-indexed shape. Glyph
+//! geometry comes from the same [`FontFace`]: the outline paths of everything
+//! the cache can paint, and the ink boxes plus `hmtx` advances it stores per
+//! glyph. Values the font does not publish are explicit stand-ins, collected in
+//! the `Synthesized fallbacks` section below.
+//!
+//! Falls back gracefully to synthetic metrics in
+//! [`super::font_metrics::builtin_font_metrics`] when the font cannot be
+//! parsed or carries no MATH table.
 
-use acorn_ttf::{FontFace, OutlineBuilder, tables::math::PartRecord};
+use acorn_ttf::{FontFace, OutlineBuilder};
 
 use vutex_types::math::{
     DelimiterComponent, DelimiterConstruction, DelimiterVariant, Fixed, FontMetricsData, FontStyle, GlyphKey, GlyphMetrics,
-    MathConstant, MathKern,
+    MathKern,
 };
+
+use super::facts::{KernCorner, MathFontFacts, StretchAxis};
 
 /// Embedded OpenType MATH font: Latin Modern Math Regular.
 ///
 /// Licensed under the GUST font license (analogous to OFL). Downloaded from
 /// `https://www.ctan.org/tex-archive/fonts/lm-math/opentype/latinmodern-math.otf`.
 pub(crate) const MATH_FONT_BYTES: &[u8] = include_bytes!("../../assets/LatinModernMath-Regular.otf");
+
+/// Family label every glyph this module projects is keyed under.
+///
+/// `builtin_font_metrics` re-keys the whole cache under `default`, so this is
+/// only the label the opentype data is built with.
+const FAMILY: &str = "latin-modern-math";
 
 // ---------------------------------------------------------------------------
 // SVG path OutlineBuilder
@@ -147,249 +165,259 @@ const DELIMITER_CHARS: &[char] = &['(', ')', '[', ']', '{', '}', '|', '‖', '�
 const LARGE_OPERATOR_CHARS: &[char] = &['∑', '∏', '∐', '∫', '∬', '∮'];
 
 // ---------------------------------------------------------------------------
-// Top-level extraction
+// Synthesized fallbacks
+// ---------------------------------------------------------------------------
+//
+// `FontMetricsData` has no way to say "the font publishes nothing", so a
+// handful of numbers below are this crate's own stand-ins. They are all defined
+// here so every synthesized value the cache can hold is visible in one place
+// instead of scattered through the projection.
+
+/// Narrowest advance the cache reports, in em.
+///
+/// A glyph the font gives no advance is laid out as a hair of ink rather than
+/// as a zero-width box.
+const MINIMUM_ADVANCE: f64 = 0.01;
+
+/// Ink box `(height, depth)` assumed for a glyph whose design publishes no
+/// bounds, in em.
+const SYNTHETIC_INK: (f64, f64) = (0.6, 0.2);
+
+/// Ink box assumed for the `index`-th prepared design of a construction when
+/// the font publishes no bounds for it, in em.
+///
+/// The construction already says the designs grow, so each successive one is
+/// assumed a step larger than the previous.
+fn synthesized_variant_ink(index: usize) -> (f64, f64) {
+    (SYNTHETIC_INK.0 + index as f64 * 0.2, SYNTHETIC_INK.1 + index as f64 * 0.1)
+}
+
+/// The MATH metric the cache reports for a glyph the font's `MathGlyphInfo`
+/// does not cover.
+///
+/// The glyph is stored with a zero correction and a zero accent attachment so
+/// the cache keeps one shape per glyph. Which glyphs the font actually covers
+/// stays visible through `MathFontFacts::glyph_math`.
+const UNCOVERED_MATH_METRIC: Fixed = Fixed::ZERO;
+
+// ---------------------------------------------------------------------------
+// Font geometry
+// ---------------------------------------------------------------------------
+
+/// Pen advance of `glyph` in em, from `hmtx`.
+///
+/// A glyph with no `hmtx` record has no advance: it answers zero here and the
+/// callers clamp it to [`MINIMUM_ADVANCE`].
+fn advance_em(face: &mut FontFace, glyph: u16, one_em: f64) -> f64 {
+    face.glyph_hor_advance(glyph).unwrap_or(0) as f64 / one_em
+}
+
+/// Ink box `(height, depth)` of `glyph` in em, from its font bounds.
+///
+/// `None` when the font publishes no bounds, so every caller picks its own
+/// documented stand-in.
+fn ink_from_bounds(face: &mut FontFace, glyph: u16, one_em: f64) -> Option<(f64, f64)> {
+    let bounds = face.glyph_bounding_box(glyph)?;
+    Some(((bounds.y_max as f64 / one_em).max(0.0), ((-bounds.y_min) as f64 / one_em).max(0.0)))
+}
+
+/// The cache's width for a pen advance, clamped to [`MINIMUM_ADVANCE`].
+fn width_from_advance(advance_em: f64) -> Fixed {
+    Fixed::from_f64(advance_em.max(MINIMUM_ADVANCE))
+}
+
+// ---------------------------------------------------------------------------
+// Top-level projection
 // ---------------------------------------------------------------------------
 
 /// Try to build a [`FontMetricsData`] from the embedded OpenType MATH font.
 ///
 /// Returns `Some(data)` if the font parsed successfully and contains a MATH
-/// table with usable constants. Returns `None` for any failure (parse error,
-/// missing MATH table, missing constants). The caller should then use the
-/// synthetic fallback in [`super::font_metrics::builtin_font_metrics`].
+/// table. Returns `None` for any failure (parse error, missing MATH table).
+/// The caller should then use the synthetic fallback in
+/// [`super::font_metrics::builtin_font_metrics`].
+///
+/// The parsed face is read by [`MathFontFacts`] exactly once, and everything
+/// below is projected from those facts.
 pub fn opentype_font_metrics() -> Option<FontMetricsData> {
     let mut face = FontFace::load(MATH_FONT_BYTES).ok()?;
-    let units_per_em = face.units_per_em();
+    let facts = MathFontFacts::from_face(&mut face)?;
+    let one_em = facts.units_per_em() as f64;
 
-    // Clone MATH table data up front so we can drop the mutable borrow on
-    // `face` and pass it on to the next extraction function.
-    let math_table = face.math()?.clone();
+    let mut data = FontMetricsData::new(FAMILY.to_string(), facts.units_per_em());
+    data.constants.extend(facts.constants().font_constants());
 
-    let mut data = FontMetricsData::new("latin-modern-math".to_string(), units_per_em);
-
-    let one_em = units_per_em as f64;
-
-    // ---- MATH constants (font units → em-relative Fixed) ----
-    extract_math_constants(&math_table.constants, &mut data, one_em);
-
-    // ---- Glyph advance widths bounding boxes outline paths MATH glyph info ----
-    extract_glyph_metrics_and_outlines(&mut face, &math_table.glyph_info, &mut data, one_em);
-
-    // ---- MATH Variants for delimiter stretching and operator display sizes ----
-    extract_glyph_variants(&mut face, &math_table.variants, &mut data, one_em);
-
-    // ---- MATH kern four-corner data (MathGlyphInfo.MathKernInfo) ----
-    extract_math_kerns(&mut face, &math_table.glyph_info, &mut data, one_em);
+    extract_glyph_metrics_and_outlines(&mut face, &facts, &mut data, one_em);
+    extract_delimiter_constructions(&mut face, &facts, &mut data, one_em);
+    extract_math_kerns(&facts, &mut data);
 
     Some(data)
-}
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-fn extract_math_constants(constants: &acorn_ttf::tables::math::MathConstants, data: &mut FontMetricsData, one_em: f64) {
-    // The table-to-constant mapping lives with the typed facts view, so this
-    // path and `MathFontFacts` cannot disagree about a value.
-    for (constant, value) in super::facts::MathConstants::from_table(constants, one_em).font_constants() {
-        data.constants.insert(constant, value);
-    }
 }
 
 // ---------------------------------------------------------------------------
 // Glyph metrics + outline paths
 // ---------------------------------------------------------------------------
 
-fn extract_glyph_metrics_and_outlines(
-    face: &mut FontFace,
-    math_glyph_info: &acorn_ttf::tables::math::MathGlyphInfo,
-    data: &mut FontMetricsData,
-    one_em: f64,
-) {
-    let family = Some("latin-modern-math".to_string());
-
-    let italic_corrections = &math_glyph_info.italic_correction;
-    let top_accent_attachments = &math_glyph_info.top_accent_attachment;
+/// Project the metrics and outline of every character in the product's glyph
+/// scope.
+///
+/// The math metrics come from the facts' glyph coverage: a glyph the font does
+/// not cover is stored with [`UNCOVERED_MATH_METRIC`] rather than a guess.
+fn extract_glyph_metrics_and_outlines(face: &mut FontFace, facts: &MathFontFacts, data: &mut FontMetricsData, one_em: f64) {
+    let family = Some(FAMILY.to_string());
 
     for ch in ('!'..='~').chain(TARGET_SYMBOLS.iter().copied()).chain(ACCENT_SYMBOLS.iter().copied()) {
-        let gid = match face.glyph_index(ch) {
-            Some(g) => g,
-            None => continue,
+        let Some(glyph) = facts.glyph_for_char(ch)
+        else {
+            continue;
         };
+        let gid = glyph.get();
 
-        let advance = face.glyph_hor_advance(gid).unwrap_or(0);
-        let bbox = face.glyph_bounding_box(gid);
-
-        let (height_emu, depth_emu) = match bbox {
-            Some(b) => {
-                let h = b.y_max as f64 / one_em;
-                let d = (-b.y_min) as f64 / one_em;
-                (h.max(0.0), d.max(0.0))
-            }
-            None => (0.6, 0.2),
-        };
-
-        let width_emu = advance as f64 / one_em;
-
-        // Real italic correction from MathGlyphInfo, in em units.
-        let italic_correction =
-            italic_corrections.get(&gid).map(|mv| Fixed::from_f64(*mv as f64 / one_em)).unwrap_or(Fixed::ZERO);
-
-        // MathTopAccentAttachment TopRight Y value, in em units.
-        let top_accent_attachment =
-            top_accent_attachments.get(&gid).map(|mv| Fixed::from_f64(*mv as f64 / one_em)).unwrap_or(Fixed::ZERO);
+        let advance = advance_em(face, gid, one_em);
+        let ink = ink_from_bounds(face, gid, one_em).unwrap_or(SYNTHETIC_INK);
+        let math = facts.glyph_math(glyph);
 
         let metrics = GlyphMetrics {
-            width: Fixed::from_f64(width_emu.max(0.01)),
-            height: Fixed::from_f64(height_emu),
-            depth: Fixed::from_f64(depth_emu),
-            italic_correction,
-            top_accent_attachment,
+            width: width_from_advance(advance),
+            height: Fixed::from_f64(ink.0),
+            depth: Fixed::from_f64(ink.1),
+            italic_correction: math.and_then(|math| math.italic_correction()).unwrap_or(UNCOVERED_MATH_METRIC),
+            top_accent_attachment: math.and_then(|math| math.top_accent_attachment()).unwrap_or(UNCOVERED_MATH_METRIC),
         };
 
+        // The same metrics serve the math face and the upright face, so accent
+        // marks resolve without a second lookup.
         let math_key = GlyphKey::from_char(ch, family.clone(), FontStyle::Math);
-        data.glyphs.insert(math_key, metrics);
         let normal_key = GlyphKey::from_char(ch, family.clone(), FontStyle::Normal);
+        data.glyphs.insert(math_key.clone(), metrics);
         data.glyphs.insert(normal_key.clone(), metrics);
 
-        // ---- Outline path (em-normalized) ----
-        let mut builder = SvgPathBuilder::new(one_em as f32);
-        let had_outline = face.outline_glyph(gid, &mut builder).is_some();
-        if had_outline {
-            let path = builder.finish();
-            if !path.is_empty() {
-                let math_path_key = GlyphKey::from_char(ch, family.clone(), FontStyle::Math);
-                data.glyph_paths.insert(math_path_key, path.clone());
-                data.glyph_paths.insert(normal_key, path);
-            }
+        if let Some(path) = glyph_outline(face, gid, one_em) {
+            data.glyph_paths.insert(math_key, path.clone());
+            data.glyph_paths.insert(normal_key, path);
         }
     }
 }
 
 // ---------------------------------------------------------------------------
-// MATH Variants extraction
+// MATH Variants projection
 // ---------------------------------------------------------------------------
 
-fn extract_glyph_variants(
-    face: &mut FontFace,
-    variants: &acorn_ttf::tables::math::MathVariants,
-    data: &mut FontMetricsData,
-    one_em: f64,
-) {
-    let family = Some("latin-modern-math".to_string());
+/// Project the growing designs of every delimiter and large operator into the
+/// cache: their prepared variants, their assembly parts and the metrics and
+/// outlines needed to draw either.
+///
+/// Which designs exist, in which order, with which connector lengths comes
+/// from the facts. Only glyph geometry — `hmtx` advances, ink boxes and
+/// outlines — is read from the face.
+fn extract_delimiter_constructions(face: &mut FontFace, facts: &MathFontFacts, data: &mut FontMetricsData, one_em: f64) {
+    let family = Some(FAMILY.to_string());
 
     for &ch in DELIMITER_CHARS.iter().chain(LARGE_OPERATOR_CHARS) {
-        let gid = match face.glyph_index(ch) {
-            Some(g) => g,
-            None => continue,
+        let Some(glyph) = facts.glyph_for_char(ch)
+        else {
+            continue;
         };
 
         // Try vertical constructions first (covers nearly all delimiters),
         // then horizontal as a fallback for a few horizontal stretchers.
         //
-        // The construction's `advance_measurement` is measured along the
+        // The construction's `stretch_measurement` is measured along the
         // stretching direction. For a vertical construction it is a height, so
         // it must never be mixed into the horizontal pen advance: doing that
         // gives `(` a width as tall as its tall variant and `\left(` then
         // leaves exactly that much blank space before the body. Horizontal
         // constructions advance horizontally, where the measurement *is* the
         // advance.
-        let is_vertical_construction = variants.vert_constructions.contains_key(&gid);
-        let construction = if is_vertical_construction {
-            variants.vert_constructions.get(&gid)
-        }
+        let vertical = facts.variants().construction(glyph, StretchAxis::Vertical).map(|c| (StretchAxis::Vertical, c));
+        let Some((axis, construction)) = vertical
+            .or_else(|| facts.variants().construction(glyph, StretchAxis::Horizontal).map(|c| (StretchAxis::Horizontal, c)))
         else {
-            variants.horiz_constructions.get(&gid)
+            continue;
         };
+        let is_vertical_construction = axis == StretchAxis::Vertical;
 
         let base_key = GlyphKey::from_char(ch, family.clone(), FontStyle::Math);
         let mut construction_variants: Vec<DelimiterVariant> = Vec::new();
         let mut construction_components: Vec<DelimiterComponent> = Vec::new();
 
-        if let Some(construction) = construction {
-            for (i, v) in construction.variants.iter().enumerate() {
-                let variant_glyph_id = v.variant_glyph;
+        for (index, variant) in construction.variants.iter().enumerate() {
+            let variant_glyph_id = variant.glyph.get();
 
-                let variant_key = GlyphKey {
-                    char: Some(ch),
-                    glyph_id: Some(variant_glyph_id),
-                    font_family: family.clone(),
-                    style: FontStyle::Math,
-                };
+            let variant_key = GlyphKey {
+                char: Some(ch),
+                glyph_id: Some(variant_glyph_id),
+                font_family: family.clone(),
+                style: FontStyle::Math,
+            };
 
-                // Also synthesize metrics for this variant glyph so that callers
-                // can ask the system for height/depth of the stretched variant.
-                let var_advance = if is_vertical_construction {
-                    face.glyph_hor_advance(variant_glyph_id).unwrap_or(0) as f64
-                }
-                else {
-                    v.advance_measurement as f64
-                };
-                let var_bbox = face.glyph_bounding_box(variant_glyph_id);
-                let (vh, vd) = match var_bbox {
-                    Some(b) => {
-                        let h = b.y_max as f64 / one_em;
-                        let d = (-b.y_min) as f64 / one_em;
-                        (h.max(0.0), d.max(0.0))
-                    }
-                    None => (0.6 + i as f64 * 0.2, 0.2 + i as f64 * 0.1),
-                };
-                let var_width = var_advance as f64 / one_em;
-                data.glyphs.insert(
-                    variant_key.clone(),
-                    GlyphMetrics {
-                        width: Fixed::from_f64(var_width.max(0.01)),
-                        height: Fixed::from_f64(vh),
-                        depth: Fixed::from_f64(vd),
-                        italic_correction: Fixed::ZERO,
-                        top_accent_attachment: Fixed::ZERO,
-                    },
-                );
-                // The variant keeps its own outline so stretching never falls
-                // back to the base glyph shape.
-                if let Some(path) = glyph_outline(face, variant_glyph_id, one_em) {
-                    data.glyph_paths.insert(variant_key.clone(), path);
-                }
-
-                construction_variants.push(DelimiterVariant { glyph: variant_key });
+            // Variant metrics so callers can ask for the ink and the width of a
+            // stretched design.
+            let variant_advance = if is_vertical_construction {
+                advance_em(face, variant_glyph_id, one_em)
+            }
+            else {
+                variant.stretch_measurement.to_f64()
+            };
+            let ink = ink_from_bounds(face, variant_glyph_id, one_em).unwrap_or_else(|| synthesized_variant_ink(index));
+            data.glyphs.insert(
+                variant_key.clone(),
+                GlyphMetrics {
+                    width: width_from_advance(variant_advance),
+                    height: Fixed::from_f64(ink.0),
+                    depth: Fixed::from_f64(ink.1),
+                    italic_correction: UNCOVERED_MATH_METRIC,
+                    top_accent_attachment: UNCOVERED_MATH_METRIC,
+                },
+            );
+            // The variant keeps its own outline so stretching never falls back
+            // to the base glyph shape.
+            if let Some(path) = glyph_outline(face, variant_glyph_id, one_em) {
+                data.glyph_paths.insert(variant_key.clone(), path);
             }
 
-            // Piecewise assembly parts are the only way to build delimiters
-            // taller than the largest prepared variant.
-            if let Some(assembly) = &construction.assembly {
-                for part in &assembly.parts {
-                    let part_key = GlyphKey::from_gid(part.glyph_id, family.clone(), FontStyle::Math);
-                    if let Some(path) = glyph_outline(face, part.glyph_id, one_em) {
-                        data.glyph_paths.insert(part_key.clone(), path);
-                    }
-                    if let Some(bbox) = face.glyph_bounding_box(part.glyph_id) {
-                        // Same rule as variants: `full_advance` measures the
-                        // stacking direction (kept in the component table),
-                        // while a vertical part's horizontal advance is `hmtx`.
-                        let part_advance = if is_vertical_construction {
-                            face.glyph_hor_advance(part.glyph_id).unwrap_or(0) as f64
-                        }
-                        else {
-                            part.full_advance as f64
-                        } / one_em;
-                        data.glyphs.insert(
-                            part_key.clone(),
-                            GlyphMetrics {
-                                width: Fixed::from_f64(part_advance.max(0.01)),
-                                height: Fixed::from_f64((bbox.y_max as f64 / one_em).max(0.0)),
-                                depth: Fixed::from_f64((-bbox.y_min as f64 / one_em).max(0.0)),
-                                italic_correction: Fixed::ZERO,
-                                top_accent_attachment: Fixed::ZERO,
-                            },
-                        );
-                    }
-                    construction_components.push(DelimiterComponent {
-                        glyph: part_key,
-                        is_extender: part.part_flags & PartRecord::EXTENDER != 0,
-                        start_connector: Fixed::from_f64(part.start_connector_length as f64 / one_em),
-                        end_connector: Fixed::from_f64(part.end_connector_length as f64 / one_em),
-                        full_advance: Fixed::from_f64(part.full_advance as f64 / one_em),
-                    });
+            construction_variants.push(DelimiterVariant { glyph: variant_key });
+        }
+
+        // Piecewise assembly parts are the only way to build delimiters taller
+        // than the largest prepared variant.
+        if let Some(assembly) = &construction.assembly {
+            for part in &assembly.parts {
+                let part_glyph_id = part.glyph.get();
+                let part_key = GlyphKey::from_gid(part_glyph_id, family.clone(), FontStyle::Math);
+                if let Some(path) = glyph_outline(face, part_glyph_id, one_em) {
+                    data.glyph_paths.insert(part_key.clone(), path);
                 }
+                // A part the font publishes no bounds for carries no ink
+                // metrics here, while its connectors below stay exact.
+                if let Some(ink) = ink_from_bounds(face, part_glyph_id, one_em) {
+                    // Same rule as variants: `full_advance` measures the
+                    // stacking direction (kept in the component table), while a
+                    // vertical part's horizontal advance is `hmtx`.
+                    let part_advance = if is_vertical_construction {
+                        advance_em(face, part_glyph_id, one_em)
+                    }
+                    else {
+                        part.full_advance.to_f64()
+                    };
+                    data.glyphs.insert(
+                        part_key.clone(),
+                        GlyphMetrics {
+                            width: width_from_advance(part_advance),
+                            height: Fixed::from_f64(ink.0),
+                            depth: Fixed::from_f64(ink.1),
+                            italic_correction: UNCOVERED_MATH_METRIC,
+                            top_accent_attachment: UNCOVERED_MATH_METRIC,
+                        },
+                    );
+                }
+                construction_components.push(DelimiterComponent {
+                    glyph: part_key,
+                    is_extender: part.is_extender,
+                    start_connector: part.start_connector,
+                    end_connector: part.end_connector,
+                    full_advance: part.full_advance,
+                });
             }
         }
 
@@ -411,33 +439,22 @@ fn glyph_outline(face: &mut FontFace, gid: u16, one_em: f64) -> Option<String> {
 }
 
 // ---------------------------------------------------------------------------
-// MATH kern extraction
+// MATH kern projection
 // ---------------------------------------------------------------------------
 
-/// Pull four-corner MATH kern values out of `MathGlyphInfo.MathKernInfo` and
-/// store them per glyph in `data.kern_map`.
+/// Project the four-corner `MathKernInfo` kerns into `data.kern_map`.
 ///
-/// Acorn-ttf stores the four corners as glyph-indexed `MathKernTable` maps
-/// (`math_kern_top_right`, `math_kern_top_left`, `math_kern_bottom_right`,
-/// `math_kern_bottom_left`). Each `MathKernTable` is a piecewise function:
-/// `kern_values.len() == correction_heights.len() + 1`. VuTeX's `MathKern` is
-/// a flat four-corner struct with no height parameter, so we collapse each
-/// corner to its lowest-height segment (kern_values[0], corresponding to
-/// height ≤ correction_heights[0]) — the baseline kern the layout engine
-/// already uses via `get_math_kern`.
-fn extract_math_kerns(
-    face: &mut FontFace,
-    math_glyph_info: &acorn_ttf::tables::math::MathGlyphInfo,
-    data: &mut FontMetricsData,
-    one_em: f64,
-) {
-    let family = Some("latin-modern-math".to_string());
-    let one_em_f64 = one_em;
+/// VuTeX's `MathKern` is a flat four-corner struct with no correction height, so
+/// each corner keeps the kern the font publishes for correction heights below
+/// its first step — the baseline kern the layout engine already uses via
+/// `get_math_kern`.
+fn extract_math_kerns(facts: &MathFontFacts, data: &mut FontMetricsData) {
+    let family = Some(FAMILY.to_string());
 
-    // Walk the same character set we already pull metrics for. The kern
-    // tables are glyph_id-indexed, so each look-up first converts char → gid.
-    // This guarantees our kern_map uses the same char-based GlyphKey as the
-    // glyphs/glyph_paths/delimiters maps.
+    // Walk the same character set we already pull metrics for. The kern tables
+    // are glyph-indexed, so each look-up first converts char to glyph. This
+    // guarantees `kern_map` uses the same char-based `GlyphKey` as the
+    // `glyphs`, `glyph_paths` and `delimiters` maps.
     let all_chars = ('!'..='~')
         .chain(TARGET_SYMBOLS.iter().copied())
         .chain(ACCENT_SYMBOLS.iter().copied())
@@ -445,16 +462,18 @@ fn extract_math_kerns(
         .chain(LARGE_OPERATOR_CHARS.iter().copied());
 
     for ch in all_chars {
-        let gid = match face.glyph_index(ch) {
-            Some(g) => g,
-            None => continue,
+        let Some(glyph) = facts.glyph_for_char(ch)
+        else {
+            continue;
         };
 
-        // Collapse each corner to its lowest-height kern value (font units → em).
-        let bottom_right = kern_to_em(math_glyph_info.math_kern_bottom_right.get(&gid), one_em_f64);
-        let top_right = kern_to_em(math_glyph_info.math_kern_top_right.get(&gid), one_em_f64);
-        let bottom_left = kern_to_em(math_glyph_info.math_kern_bottom_left.get(&gid), one_em_f64);
-        let top_left = kern_to_em(math_glyph_info.math_kern_top_left.get(&gid), one_em_f64);
+        let corner = |corner: KernCorner| {
+            facts.kerns().corner(glyph, corner).map_or(UNCOVERED_MATH_METRIC, |kern| kern.kern_below_first())
+        };
+        let bottom_right = corner(KernCorner::BottomRight);
+        let top_right = corner(KernCorner::TopRight);
+        let bottom_left = corner(KernCorner::BottomLeft);
+        let top_left = corner(KernCorner::TopLeft);
 
         if bottom_right == Fixed::ZERO && top_right == Fixed::ZERO && bottom_left == Fixed::ZERO && top_left == Fixed::ZERO {
             continue; // no kern data worth storing
@@ -466,20 +485,6 @@ fn extract_math_kerns(
         let kern = MathKern { bottom_right, top_right, bottom_left, top_left };
         data.kern_map.insert(math_key, kern);
         data.kern_map.insert(normal_key, kern);
-    }
-}
-
-/// Collapse one corner's `MathKernTable` to a single `Fixed` kern value.
-///
-/// Acorn-ttf's `MathKernTable` is a piecewise function over correction
-/// heights; VuTeX stores a flat `MathKern` without height parameter, so we
-/// return `kern_values[0]` (the lowest-height segment, i.e. baseline kern)
-/// normalized to em units. Returns `Fixed::ZERO` when the font has no kern
-/// data for that corner.
-fn kern_to_em(table: Option<&acorn_ttf::tables::math::MathKernTable>, one_em: f64) -> Fixed {
-    match table {
-        Some(t) if !t.kern_values.is_empty() => Fixed::from_f64(t.kern_values[0] as f64 / one_em),
-        _ => Fixed::ZERO,
     }
 }
 
