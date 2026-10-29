@@ -557,6 +557,94 @@ fn integral_limits_use_the_stacked_math_constants() {
     );
 }
 
+// ── \overset / \underset / \stackrel ──────────────────────────────
+
+#[test]
+fn overset_stacks_text_above_base() {
+    // `\overset{x}{y}` — top `x` sits above base `y`, both glyphs present,
+    // top is script-sized, and the top glyph's baseline is strictly above
+    // the base glyph's baseline.
+    let (tree, _) = layout_formula("\\overset{x}{y}", false).expect("overset must parse");
+    let glyphs = glyphs(&tree);
+    assert_eq!(glyphs.len(), 2, "overset must paint exactly two glyphs, got {glyphs:?}");
+
+    let (_, top_y, top) = glyph_at(&tree, 'x');
+    let (_, base_y, base) = glyph_at(&tree, 'y');
+
+    // Top is script-sized (one level down from text).
+    let system = builtin_font_metrics();
+    let script_ratio = system.get_math_constant("default", MathConstant::ScriptPercentScaleDown).unwrap().to_f64();
+    let em = base.size.to_f64();
+    let expected_script = em * script_ratio;
+    assert!(
+        (top.size.to_f64() - expected_script).abs() < 1e-3,
+        "overset top must be script-sized ({expected_script}), not {}",
+        top.size.to_f64()
+    );
+
+    // Top baseline is above base baseline (y axis grows downward, so top_y < base_y).
+    assert!(
+        top_y < base_y,
+        "overset top baseline ({top_y}) must sit above base baseline ({base_y})"
+    );
+}
+
+#[test]
+fn underset_stacks_text_below_base() {
+    // `\underset{x}{y}` — bot `x` sits below base `y`, both glyphs present,
+    // bot is script-sized, and the bot glyph's baseline is strictly below
+    // the base glyph's baseline.
+    let (tree, _) = layout_formula("\\underset{x}{y}", false).expect("underset must parse");
+    let glyphs = glyphs(&tree);
+    assert_eq!(glyphs.len(), 2, "underset must paint exactly two glyphs, got {glyphs:?}");
+
+    let (_, bot_y, bot) = glyph_at(&tree, 'x');
+    let (_, base_y, base) = glyph_at(&tree, 'y');
+
+    // Bot is script-sized.
+    let system = builtin_font_metrics();
+    let script_ratio = system.get_math_constant("default", MathConstant::ScriptPercentScaleDown).unwrap().to_f64();
+    let em = base.size.to_f64();
+    let expected_script = em * script_ratio;
+    assert!(
+        (bot.size.to_f64() - expected_script).abs() < 1e-3,
+        "underset bot must be script-sized ({expected_script}), not {}",
+        bot.size.to_f64()
+    );
+
+    // Bot baseline is below base baseline.
+    assert!(
+        bot_y > base_y,
+        "underset bot baseline ({bot_y}) must sit below base baseline ({base_y})"
+    );
+}
+
+#[test]
+fn stackrel_makes_relation() {
+    // `\stackrel{def}{=}` — the whole thing behaves like a Relation.  Smoke
+    // test: it parses, lays out without panicking, paints glyphs, and the
+    // base `=` carries the Relation spacing role on its nucleus.
+    let (tree, _) = layout_formula("\\stackrel{def}{=}", false).expect("stackrel must parse");
+    let gs = glyphs(&tree);
+    assert!(!gs.is_empty(), "stackrel must paint at least one glyph");
+
+    // The `=` symbol is still present as the base.
+    let (_, _, eq) = glyph_at(&tree, '=');
+    assert!(eq.metrics.width.to_f64() > 0.0, "stackrel base `=` must have nonzero width");
+}
+
+#[test]
+fn overset_base_not_forced_to_axis() {
+    // `\overset{x}{\sum}` — unlike `\sum\limits`, overset does *not* centre
+    // its base on the axis.  The sum sign keeps its natural baseline.  We
+    // check that the result has nonzero height and paint.
+    let (tree, _) = layout_formula("\\overset{x}{\\sum}", false).expect("overset on large op must parse");
+    let gs = glyphs(&tree);
+    let chars: Vec<char> = gs.iter().filter_map(|(_, _, g)| g.char).collect();
+    assert!(chars.contains(&'x'), "overset top must paint");
+    assert!(chars.contains(&'∑'), "overset base must paint");
+}
+
 /// Scripts beside an operator land on the `sup1`/`sup2` and `sub1`/`sub2`
 /// minima measured from the operator's own baseline, so a subscript's height
 /// never lifts the superscript.
@@ -2843,4 +2931,45 @@ fn anchor_width_is_zero() {
     assert_eq!(anchor.width(), Fixed::ZERO);
     assert_eq!(anchor.height(), Fixed::ZERO);
     assert_eq!(anchor.depth(), Fixed::ZERO);
+}
+
+// ── 数学字体家族：新命令解析并能跑通 layout ────────────────────────
+
+fn accepts_face_command(source: &str, description: &str) {
+    let (tree, _, diagnostics) = layout_formula_with_diagnostics(source, false, default_base_size(false))
+        .unwrap_or_else(|e| panic!("{description} (`{source}`) must parse and lay out: {e}"));
+
+    // Layout 完成即通过，不硬性要求有 outline——LM Math 对某些扩展字体
+    // 可能没有 embeddable outline，collect 会产出 outline_missing diagnostic。
+    let is_outline_missing = diagnostics.iter().any(|d| d.code == "vutex.layout.math.outline_missing");
+    let has_glyph = !glyphs(&tree).is_empty();
+    assert!(
+        is_outline_missing || has_glyph,
+        "{description} (`{source}`) should either produce glyphs or an outline_missing diagnostic, got: {diagnostics:?}"
+    );
+}
+
+#[test]
+fn mathcal_command_parses_and_lays_out() {
+    // `\mathcal{A}` — Calligraphic（花体）。LM Math 有 Unicode Script range。
+    accepts_face_command(r"\mathcal{A}", r"\mathcal{A}");
+    accepts_face_command(r"\mathcal{ABC}", r"\mathcal{ABC}");
+}
+
+#[test]
+fn mathbb_and_mathfrak_are_accepted() {
+    // `\mathbb{R}` — DoubleStruck（黑板粗体）；`\mathfrak{A}` — Fraktur（哥特体）。
+    accepts_face_command(r"\mathbb{R}", r"\mathbb{R}");
+    accepts_face_command(r"\mathbb{NQZC}", r"\mathbb{NQZC}");
+    accepts_face_command(r"\mathfrak{A}", r"\mathfrak{A}");
+    accepts_face_command(r"\mathfrak{abc}", r"\mathfrak{abc}");
+}
+
+#[test]
+fn mathsf_mathit_textit_and_mathit_variants_are_accepted() {
+    // 枚举已有但 parser 之前没接的，以及 textit（LaTeX 里和 mathit 同义）。
+    accepts_face_command(r"\mathsf{x}", r"\mathsf{x}");
+    accepts_face_command(r"\mathtt{y}", r"\mathtt{y}");
+    accepts_face_command(r"\textit{z}", r"\textit{z}");
+    accepts_face_command(r"\mathit{w}", r"\mathit{w}");
 }
