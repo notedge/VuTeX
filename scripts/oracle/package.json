@@ -7,6 +7,7 @@
   "scripts": {
     "katex:mathml": "node emit-katex-mathml.mjs",
     "mathjax:mathml": "node emit-mathjax-mathml.mjs",
+    "mathjax:svg": "node emit-mathjax-svg.mjs",
     "latex:probe": "node probe-latex.mjs",
     "latex:boxes": "node emit-latex-boxes.mjs"
   },
