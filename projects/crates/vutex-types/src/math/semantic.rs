@@ -424,6 +424,12 @@ pub enum FontStyle {
     /// A text face, not a math face: it selects the serif body text and the
     /// decoration itself comes from layout geometry, not from the font.
     Strike,
+    /// Calligraphic (Script) — `\mathcal`. LM Math has a dedicated calligraphic face.
+    Calligraphic,
+    /// Double-struck (Blackboard Bold) — `\mathbb`. LM Math has ℕ ℤ ℝ ℚ ℂ in this face.
+    DoubleStruck,
+    /// Fraktur — `\mathfrak`. LM Math has a Fraktur face.
+    Fraktur,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]

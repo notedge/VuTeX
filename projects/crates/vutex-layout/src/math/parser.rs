@@ -338,6 +338,30 @@ impl Parser {
                 let text = self.read_text_group()?;
                 Ok(SemanticNode::Text { text, font_style: FontStyle::Bold })
             }
+            "textit" => {
+                let text = self.read_text_group()?;
+                Ok(SemanticNode::Text { text, font_style: FontStyle::Italic })
+            }
+            "mathcal" => {
+                let text = self.read_text_group()?;
+                Ok(SemanticNode::Text { text, font_style: FontStyle::Calligraphic })
+            }
+            "mathbb" => {
+                let text = self.read_text_group()?;
+                Ok(SemanticNode::Text { text, font_style: FontStyle::DoubleStruck })
+            }
+            "mathfrak" => {
+                let text = self.read_text_group()?;
+                Ok(SemanticNode::Text { text, font_style: FontStyle::Fraktur })
+            }
+            "mathsf" => {
+                let text = self.read_text_group()?;
+                Ok(SemanticNode::Text { text, font_style: FontStyle::SansSerif })
+            }
+            "mathtt" => {
+                let text = self.read_text_group()?;
+                Ok(SemanticNode::Text { text, font_style: FontStyle::Monospace })
+            }
             "big" | "Big" | "bigg" | "Bigg" | "bigm" | "Bigm" | "biggm" | "Biggm" => self.parse_big_delimiter(),
             "hat" | "widehat" => self.parse_accent('ˆ'),
             "bar" | "overline" => self.parse_accent('¯'),
