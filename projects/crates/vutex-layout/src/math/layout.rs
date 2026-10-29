@@ -460,9 +460,12 @@ impl LayoutEngine {
             | SemanticNode::Matrix { .. }
             | SemanticNode::Environment(_)
             | SemanticNode::Accent { .. }
+            | SemanticNode::OverSet { .. }
+            | SemanticNode::UnderSet { .. }
             | SemanticNode::HorizontalBox { .. }
             | SemanticNode::VerticalBox { .. }
             | SemanticNode::Paragraph { .. } => SymbolRole::Inner,
+            SemanticNode::Relation(inner) => Self::role_of(inner),
             SemanticNode::Sequence(_)
             | SemanticNode::Text { .. }
             | SemanticNode::Space { .. }
@@ -489,6 +492,8 @@ impl LayoutEngine {
             SemanticNode::Radical { radicand, .. } => Self::first_glyph_key(radicand),
             SemanticNode::Delimited { content, .. } => Self::first_glyph_key(content),
             SemanticNode::Accent { base, .. } => Self::first_glyph_key(base),
+            SemanticNode::OverSet { base, .. } | SemanticNode::UnderSet { base, .. } => Self::first_glyph_key(base),
+            SemanticNode::Relation(inner) => Self::first_glyph_key(inner),
             SemanticNode::HorizontalBox { content, .. } => content.iter().find_map(Self::first_glyph_key),
             SemanticNode::Paragraph { content, .. } => content.iter().find_map(Self::first_glyph_key),
             SemanticNode::VerticalBox { content, .. } => content.iter().find_map(Self::first_glyph_key),
@@ -748,6 +753,12 @@ impl LayoutEngine {
                     self.layout_delimited(left.as_ref(), right.as_ref(), content, state)
                 }
                 SemanticNode::Accent { accent, base } => self.layout_accent(accent, base, state),
+                SemanticNode::OverSet { top, base } => self.layout_overset(top, base, state),
+                SemanticNode::UnderSet { bot, base } => self.layout_underset(bot, base, state),
+                // `Relation` is a spacing wrapper, not a layout wrapper — the
+                // nucleus renders exactly as before, and the Relation class
+                // is carried on the Noad kind from `project_one` instead.
+                SemanticNode::Relation(inner) => self.layout_node_state(inner, state),
                 // Imperative nodes: no boxes; side-effects are handled by
                 // `layout_sequence` and `layout_subsup` when they iterate.
                 SemanticNode::SetMathStyle(_) | SemanticNode::LimitsSpec(_) => Ok(LayoutNode::Kern(Fixed::ZERO)),
@@ -1647,6 +1658,101 @@ impl LayoutEngine {
         else {
             Ok(vbox_node)
         }
+    }
+
+    /// Lay out `\overset{top}{base}` — stack `top` above `base`.
+    ///
+    /// Unlike [`layout_limits`], the base keeps its natural baseline
+    /// (not centred on the axis), and `top` uses `state.sup()` — uncramped
+    /// so the superscript shift `SuperscriptShiftUp` rather than the cramped
+    /// variant.
+    fn layout_overset(
+        &self,
+        top: &SemanticNode,
+        base: &SemanticNode,
+        state: MathStyleState,
+    ) -> MathResult<LayoutNode> {
+        let style = state.style;
+        let size = self.base_size * self.get_style_scale(style);
+
+        let base_layout = self.layout_node_state(base, state)?;
+        // `overset`'s top is a superscript-style node, uncramped (TeX does not
+        // apply the cramped flag to overscripts the way it does to subscripts).
+        let top_style = match state.style {
+            MathStyle::Display | MathStyle::Text => MathStyle::Script,
+            MathStyle::Script | MathStyle::ScriptScript => MathStyle::ScriptScript,
+        };
+        let top_state = MathStyleState { style: top_style, cramped: false };
+        let top_layout = self.layout_node_state(top, top_state)?;
+
+        // Total width is the wider of the two, so the vertical stack keeps
+        // its widest child's advance.
+        let total_width = base_layout.width().max(top_layout.width());
+
+        // Upper limit gap — clearance between the base's ink top and the
+        // overscript's ink bottom, plus the minimum baseline rise.
+        let gap = self.math_constant(MathConstant::UpperLimitGapMin, size).unwrap_or(Fixed::ZERO);
+        let rise = self.math_constant(MathConstant::UpperLimitBaselineRiseMin, size).unwrap_or(Fixed::ZERO);
+        let kern = gap.max(rise - base_layout.height() - top_layout.depth());
+
+        let top_hbox = self.pack_hbox(vec![
+            LayoutNode::Kern((total_width - top_layout.width()) / Fixed::from_f64(2.0)),
+            top_layout,
+        ], Some(total_width));
+        let base_hbox = self.pack_hbox(vec![
+            LayoutNode::Kern((total_width - base_layout.width()) / Fixed::from_f64(2.0)),
+            base_layout,
+        ], Some(total_width));
+
+        Ok(self.pack_vbox(vec![top_hbox, LayoutNode::Kern(kern), base_hbox], Alignment::Center))
+    }
+
+    /// Lay out `\underset{bot}{base}` — stack `bot` below `base`.
+    ///
+    /// `bot` uses `state.sub()` (demoted and cramped), and the overall
+    /// baseline shifts down so the stacked expression descends below the
+    /// original base the way TeX underset does.
+    fn layout_underset(
+        &self,
+        bot: &SemanticNode,
+        base: &SemanticNode,
+        state: MathStyleState,
+    ) -> MathResult<LayoutNode> {
+        let style = state.style;
+        let size = self.base_size * self.get_style_scale(style);
+
+        let base_layout = self.layout_node_state(base, state)?;
+        // `underset`'s bottom is subscript-style: demoted and cramped.
+        let bot_state = state.sub();
+        let bot_layout = self.layout_node_state(bot, bot_state)?;
+        let bot_height = bot_layout.height();
+
+        let total_width = base_layout.width().max(bot_layout.width());
+
+        // Lower limit gap — clearance between the base's ink bottom and the
+        // underscript's ink top, plus the minimum baseline drop.
+        let gap = self.math_constant(MathConstant::LowerLimitGapMin, size).unwrap_or(Fixed::ZERO);
+        let _drop = self.math_constant(MathConstant::LowerLimitBaselineDropMin, size).unwrap_or(Fixed::ZERO);
+
+        let base_hbox = self.pack_hbox(vec![
+            LayoutNode::Kern((total_width - base_layout.width()) / Fixed::from_f64(2.0)),
+            base_layout,
+        ], Some(total_width));
+        let bot_hbox = self.pack_hbox(vec![
+            LayoutNode::Kern((total_width - bot_layout.width()) / Fixed::from_f64(2.0)),
+            bot_layout,
+        ], Some(total_width));
+
+        let vbox = self.pack_vbox(vec![base_hbox, LayoutNode::Kern(gap), bot_hbox], Alignment::Center);
+
+        // Shift the whole vbox down by the bot's height plus the gap so the
+        // formula's baseline stays on the base (the underset extends downward).
+        let baseline_shift = bot_height + gap;
+        let mut wrapper = self.pack_hbox(vec![vbox], None);
+        if let LayoutNode::HBox(ref mut h) = wrapper {
+            h.shift = baseline_shift;
+        }
+        Ok(wrapper)
     }
 
     /// Attach `sub` / `sup` to `base` in `style`.

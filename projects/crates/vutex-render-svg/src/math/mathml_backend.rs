@@ -120,6 +120,14 @@ fn render_node(out: &mut String, node: &MathSemNode) {
                 push_element(out, "mo", accent);
             });
         }
+        MathSemNode::StackAbove { base, over } => wrap(out, "mover", |out| {
+            render_node(out, base);
+            render_node(out, over);
+        }),
+        MathSemNode::StackBelow { base, under } => wrap(out, "munder", |out| {
+            render_node(out, base);
+            render_node(out, under);
+        }),
         MathSemNode::Delimited { left, right, body } => wrap(out, "mrow", |out| {
             if let Some(left) = left {
                 push_element(out, "mo", left);

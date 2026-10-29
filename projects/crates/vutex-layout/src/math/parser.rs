@@ -345,6 +345,25 @@ impl Parser {
             "tilde" | "widetilde" => self.parse_accent('˜'),
             "dot" => self.parse_accent('˙'),
             "ddot" => self.parse_accent('¨'),
+            // Stacking commands — TeX's `\overset`, `\underset`, `\stackrel`.
+            // `\overset`/`\underset` layer a script-sized node above/below the
+            // base, and `\stackrel` is `\mathrel{\overset}` so the whole
+            // stacked expression takes Relation spacing.
+            "overset" => {
+                let top = self.parse_argument()?;
+                let base = self.parse_argument()?;
+                Ok(SemanticNode::OverSet { top: Box::new(top), base: Box::new(base) })
+            }
+            "underset" => {
+                let bot = self.parse_argument()?;
+                let base = self.parse_argument()?;
+                Ok(SemanticNode::UnderSet { bot: Box::new(bot), base: Box::new(base) })
+            }
+            "stackrel" => {
+                let top = self.parse_argument()?;
+                let base = self.parse_argument()?;
+                Ok(SemanticNode::Relation(Box::new(SemanticNode::OverSet { top: Box::new(top), base: Box::new(base) })))
+            }
             // `\quad` is 1em and `\qquad` 2em, which TeX expresses as 18mu and
             // 36mu: the same table the thin, medium and thick spaces use.
             "quad" => Ok(math_space(18.0)),
