@@ -765,6 +765,58 @@ fn literal_math_space_adds_no_advance() {
     );
 }
 
+/// An explicit math space is `\mskip` glue, not an atom, so it cannot sit
+/// between the atom that owns the Appendix G glue and change its class.
+///
+/// `a\,+b` therefore keeps Ord→Bin = 2 = Medium 4mu on the left of `+` and
+/// Bin→Ord = 2 = Medium 4mu on the right, exactly like `a+b`, and gains only
+/// the 3mu of `\,` on the side the space was written.
+#[test]
+fn explicit_space_adds_its_width_without_changing_atom_spacing() {
+    // TeX Book Table p.444: Ord↔Bin = 2 = Medium 4mu, `\,` = 3mu.
+    let em = default_base_size(false);
+    let tol = 2.0 * em / Fixed::SCALE as f64;
+
+    let (plain, _) = layout_formula("a+b", false).expect("`a+b` should lay out");
+    let (spaced, _) = layout_formula("a\\,+b", false).expect("`a\\,+b` should lay out");
+
+    let plain_left = mu_gap_between(&plain, 'a', '+');
+    let plain_right = mu_gap_between(&plain, '+', 'b');
+    let spaced_left = mu_gap_between(&spaced, 'a', '+');
+    let spaced_right = mu_gap_between(&spaced, '+', 'b');
+
+    assert!((plain_left - 4.0 / 18.0 * em).abs() < tol, "Ord→Bin must be 4mu, got {plain_left}");
+    assert!((plain_right - 4.0 / 18.0 * em).abs() < tol, "Bin→Ord must be 4mu, got {plain_right}");
+    assert!(
+        (spaced_right - plain_right).abs() < tol,
+        "the space sits left of `+`, so the right side stays at 4mu: {plain_right} vs {spaced_right}"
+    );
+    assert!(
+        (spaced_left - plain_left - 3.0 / 18.0 * em).abs() < tol,
+        "the left side must be the same 4mu plus the 3mu of `\\,`: {plain_left} vs {spaced_left}"
+    );
+}
+
+/// Ordinary atoms take no Appendix G glue against each other, so `x\,y`
+/// differs from `xy` by exactly the width of `\,` and nothing else.
+#[test]
+fn explicit_space_between_ordinary_atoms_adds_only_its_width() {
+    // TeX Book Table p.444: Ord→Ord = 0 = no glue, `\,` = 3mu.
+    let em = default_base_size(false);
+    let tol = 2.0 * em / Fixed::SCALE as f64;
+
+    let (plain, _) = layout_formula("xy", false).expect("`xy` should lay out");
+    let (spaced, _) = layout_formula("x\\,y", false).expect("`x\\,y` should lay out");
+
+    let plain_gap = mu_gap_between(&plain, 'x', 'y');
+    let spaced_gap = mu_gap_between(&spaced, 'x', 'y');
+
+    assert!(
+        (spaced_gap - plain_gap - 3.0 / 18.0 * em).abs() < tol,
+        "`x\\,y` must be `xy` plus 3mu: plain {plain_gap}, spaced {spaced_gap}"
+    );
+}
+
 #[test]
 fn big_delimiter_parses() {
     let metrics = layout("\\big(x\\big)");

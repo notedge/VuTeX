@@ -14,7 +14,8 @@ pub use formula_layout::{
 };
 pub use math_kern::MathKern;
 pub use math_list::{
-    MathList, MathStyleState, Noad, NoadKind, Scripts, normalize_math_list, project_semantic, project_semantic_with_state,
+    MathGlue, MathItem, MathList, MathStyleState, Noad, NoadKind, Scripts, normalize_math_list, project_semantic,
+    project_semantic_with_state,
 };
 pub use metrics::{DelimiterComponent, DelimiterConstruction, DelimiterVariant, FontMetricsData, GlyphMetrics, MathConstant};
 pub use operator::{LimitsPolicy, OperatorClass};
