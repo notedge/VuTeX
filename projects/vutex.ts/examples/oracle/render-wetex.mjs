@@ -1,5 +1,5 @@
 // Render oracle corpus formulas to SVG via the workspace `@vutex/wetex` API.
-//   pnpm --filter @vutex/oracle-tools render:wetex [--display] [--outdir PATH]
+//   pnpm --filter @vutex/oracle-tools render:wetex [--display] [--font lm|xits] [--outdir PATH]
 // (the script builds `@vutex/wetex` first, so its `dist` entry is current)
 
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
@@ -17,7 +17,13 @@ const wasmEntry = fileURLToPath(import.meta.resolve("@vutex/vutex-unknown-wasm32
 const wasmBytes = readFileSync(resolve(dirname(wasmEntry), "wetex_wasm_bg.wasm"));
 const wasmOptions = { bytes: new Uint8Array(wasmBytes) };
 
+// `--font` maps onto the wasm `RenderOptions.fontFamily` wire names (Rust
+// `FontFamily`, kebab-case serde). The font is part of the output file name so
+// two renders can be compared side by side.
+const FONT_FAMILIES = { lm: "lm-math", xits: "xits-math" };
+
 let displayMode = false;
+let font = "xits";
 let outdir = resolve(repo, "out-wetex");
 
 const args = process.argv.slice(2);
@@ -25,7 +31,13 @@ for (let i = 0; i < args.length; i++) {
   const a = args[i];
   if (a === "--display") displayMode = true;
   else if (a === "--inline") displayMode = false;
-  else if (a === "--outdir") outdir = resolve(args[++i]);
+  else if (a === "--font") {
+    font = args[++i];
+    if (!(font in FONT_FAMILIES)) {
+      console.error(`unknown --font "${font}" (expected one of: ${Object.keys(FONT_FAMILIES).join(", ")})`);
+      process.exit(1);
+    }
+  } else if (a === "--outdir") outdir = resolve(args[++i]);
 }
 
 const corpus = JSON.parse(
@@ -47,6 +59,7 @@ for (const formula of corpus.formulas) {
       {
         displayMode: displayMode ? "block" : "inline",
         fontSize: KATEX_DEFAULT_PX,
+        fontFamily: FONT_FAMILIES[font],
       },
       wasmOptions,
     );
@@ -55,7 +68,7 @@ for (const formula of corpus.formulas) {
       fail++;
       continue;
     }
-    const fname = `${formula.id}-${displayMode ? "display" : "inline"}.svg`;
+    const fname = `${formula.id}-${displayMode ? "display" : "inline"}-${font}.svg`;
     writeFileSync(resolve(outdir, fname), res.svg);
     console.log(`OK    ${fname}  ${res.svg.length} bytes`);
     ok++;
@@ -65,4 +78,4 @@ for (const formula of corpus.formulas) {
   }
 }
 
-console.log(`\nWetex render: ${ok} OK, ${fail} failed, ${skip} skipped (env bodies), mode=${displayMode ? "display" : "inline"}`);
+console.log(`\nWetex render: ${ok} OK, ${fail} failed, ${skip} skipped (env bodies), mode=${displayMode ? "display" : "inline"}, font=${font}`);
