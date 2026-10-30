@@ -1,7 +1,7 @@
 //! Integration tests for the SVG and MathML math backends.
 
-use vutex_layout::math::{LayoutBackend, default_base_size, layout_formula_with_result, parse_formula};
-use vutex_render_svg::math::{MathmlBackend, SvgBackend, render_formula_result};
+use vutex_layout::math::{default_base_size, layout_formula_with_result, parse_formula};
+use vutex_render_svg::math::{MathmlBackend, render_formula_result};
 use vutex_types::math::MathSemantics;
 
 /// Render one formula through the SVG backend with host-font fallback enabled.
@@ -35,12 +35,6 @@ fn svg_backend_emits_svg_tags_for_a_fraction() {
 fn svg_backend_emits_paths_for_radicals() {
     let svg = render_svg("\\sqrt{x}");
     assert!(svg.contains("<path"), "radical should emit a path: {svg}");
-}
-
-#[test]
-fn svg_backend_reports_unbalanced_groups() {
-    let mut backend = SvgBackend::new(10.0, 10.0);
-    assert!(backend.end_group().is_err());
 }
 
 #[test]

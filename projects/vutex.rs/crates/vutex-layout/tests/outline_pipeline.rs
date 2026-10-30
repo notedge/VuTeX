@@ -3,7 +3,7 @@
 //! Verifies that the chain
 //!     `opentype.rs` glyph outline extraction
 //!     → `collect.rs` / `layout.rs` path emission
-//!     → `SvgBackend` path rendering
+//!     → `render_formula_result` path rendering
 //! produces SVG `<path>` elements (never `<text>`) for representative
 //! formulas, and that tricky constructs like `Vmatrix` keep their
 //! double-bar delimiters.

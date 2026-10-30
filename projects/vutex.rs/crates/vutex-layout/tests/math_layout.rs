@@ -37,7 +37,7 @@ fn layout(source: &str) -> Extents {
 /// Walk the layout tree and report every glyph with its absolute position
 /// relative to the tree origin.
 ///
-/// Mirrors `render_layout_node`: an HBox advances its children horizontally and
+/// An HBox advances its children horizontally and
 /// applies its `shift` on the vertical axis, a VBox advances vertically and
 /// applies its `shift` on the horizontal axis.
 fn glyphs(node: &LayoutNode) -> Vec<(f64, f64, Glyph)> {
@@ -550,7 +550,7 @@ fn stacked_limits_keep_the_math_table_gap_minima() {
 
     // A script-style operator demotes its limits one style further, to
     // scriptscript, instead of leaving them at the operator's script size.
-    // 14 px is the inline base em used by `layout_formula`.
+    // 14 px is the inline base em from `default_base_size(false)`.
     let (_, tree, _) = layout_formula_with_result("\\scriptstyle\\sum\\limits_{j}^{k}", false, default_base_size(false))
         .expect("script limits");
     let (_, _, op) = glyph_at(&tree, '∑');
@@ -1233,8 +1233,8 @@ fn ink_bounds(d: &str) -> (f64, f64, f64, f64) {
 
 /// Every rule in the tree as an absolute `(x, top, width, height)` rectangle.
 ///
-/// Mirrors the same walk as [`glyphs`] and the ``Rule`` rectangle
-/// `render_layout_node` paints from the node's baseline.
+/// Mirrors the same walk as [`glyphs`], with each `Rule` rectangle
+/// anchored to the node's baseline.
 fn rules(node: &LayoutNode) -> Vec<(f64, f64, f64, f64)> {
     fn walk(node: &LayoutNode, x: f64, y: f64, out: &mut Vec<(f64, f64, f64, f64)>) {
         match node {
@@ -1793,7 +1793,7 @@ fn fraction_arguments_demote_one_style_further() {
     };
     let script_scale = scale(MathConstant::ScriptPercentScaleDown);
     let scriptscript_scale = scale(MathConstant::ScriptScriptPercentScaleDown);
-    // 14 px is the inline base em used by `layout_formula`.
+    // 14 px is the inline base em from `default_base_size(false)`.
     for (source, expected) in [
         ("\\frac{a}{b}", 14.0 * script_scale),
         ("\\textstyle \\frac{a}{b}", 14.0 * script_scale),

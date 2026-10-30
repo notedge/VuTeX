@@ -287,106 +287,6 @@ pub struct Path {
     pub depth: Fixed,
 }
 
-/// Rendering sink consumed by [`render_layout_node`].
-pub trait LayoutBackend {
-    /// Emit text at the given baseline position.
-    fn render_text(&mut self, text: &str, x: f64, y: f64, font_size: f64, font_family: Option<&str>) -> MathResult<()>;
-
-    /// Emit a filled rectangle.
-    fn render_rect(&mut self, x: f64, y: f64, w: f64, h: f64) -> MathResult<()>;
-
-    /// Emit a vector path scaled by `scale`.
-    fn render_path(&mut self, d: &str, x: f64, y: f64, scale: f64) -> MathResult<()>;
-
-    /// Open a group, optionally with an SVG transform string.
-    fn start_group(&mut self, transform: Option<&str>) -> MathResult<()>;
-
-    /// Close the innermost group.
-    fn end_group(&mut self) -> MathResult<()>;
-
-    /// When true, Glyph nodes should emit text (for semantic backends like
-    /// MathML that need role-aware tags), not outline paths.
-    #[allow(unused_variables)]
-    fn prefers_text_over_path(&self) -> bool {
-        false
-    }
-}
-
-/// Whether painting this node puts any ink on the page.
-///
-/// Glue, kerns and penalties only advance, and a glyph the font could not
-/// outline carries no path, so a box built from those alone is blank.
-fn paints(node: &LayoutNode) -> bool {
-    match node {
-        LayoutNode::Glyph(glyph) => glyph.path_data.is_some() || glyph.char.is_some(),
-        LayoutNode::Rule { .. } | LayoutNode::Path(_) => true,
-        LayoutNode::HBox(hbox) => hbox.children.iter().any(paints),
-        LayoutNode::VBox(vbox) => vbox.children.iter().any(paints),
-        LayoutNode::Glue(_) | LayoutNode::Kern(_) | LayoutNode::Penalty { .. } | LayoutNode::Anchor { .. } => false,
-    }
-}
-
-/// Recursively render a layout tree into a backend at the given baseline position.
-pub fn render_layout_node(backend: &mut dyn LayoutBackend, node: &LayoutNode, x: f64, y: f64) -> MathResult<()> {
-    match node {
-        LayoutNode::HBox(hbox) => {
-            // A box whose subtree paints nothing (an unused alignment cell, a
-            // box of kerns and glue) must not open a group that the SVG backend
-            // would emit as a blank `<g>`.
-            if !hbox.children.iter().any(paints) {
-                return Ok(());
-            }
-            backend.start_group(Some(&format!("translate({}, {})", x, y + hbox.shift.to_f64())))?;
-            let mut current_x = 0.0;
-            for child in &hbox.children {
-                render_layout_node(backend, child, current_x, 0.0)?;
-                current_x += child.width().to_f64();
-            }
-            backend.end_group()?;
-        }
-        LayoutNode::VBox(vbox) => {
-            if !vbox.children.iter().any(paints) {
-                return Ok(());
-            }
-            backend.start_group(Some(&format!("translate({}, {})", x + vbox.shift.to_f64(), y)))?;
-            let mut current_y = -vbox.height.to_f64();
-            for child in &vbox.children {
-                render_layout_node(backend, child, 0.0, current_y + child.height().to_f64())?;
-                current_y += child.height().to_f64() + child.depth().to_f64();
-            }
-            backend.end_group()?;
-        }
-        LayoutNode::Glyph(glyph) => {
-            // Path-first for render targets (SVG), text-first for semantic
-            // targets (MathML that needs role-aware tags like <mo>/<mi>).
-            if !backend.prefers_text_over_path() {
-                if let Some(ref path) = glyph.path_data {
-                    backend.render_path(path, x, y, glyph.size.to_f64())?;
-                }
-                else if let Some(c) = glyph.char {
-                    let text = c.to_string();
-                    backend.render_text(&text, x, y, glyph.size.to_f64(), Some(&glyph.font_family))?;
-                }
-            }
-            else if let Some(c) = glyph.char {
-                let text = c.to_string();
-                backend.render_text(&text, x, y, glyph.size.to_f64(), Some(&glyph.font_family))?;
-            }
-        }
-        LayoutNode::Rule { width, height, depth } => {
-            backend.render_rect(x, y - height.to_f64(), width.to_f64(), height.to_f64() + depth.to_f64())?;
-        }
-        LayoutNode::Path(path) => {
-            backend.render_path(&path.d, x, y, 1.0)?;
-        }
-        LayoutNode::Kern(_) | LayoutNode::Glue(_) | LayoutNode::Penalty { .. } | LayoutNode::Anchor { .. } => {
-            // Kerns, Glue, Penalty and Anchor don't render anything —
-            // anchor metadata is consumed by the render layer before painting.
-        }
-    }
-    Ok(())
-}
-
 /// The accent character `\bar` / `\overline` is built from.
 ///
 /// Unlike `\hat`, `\tilde`, `\dot`, `\ddot` and `\vec`, an overbar is a rule
@@ -1941,14 +1841,6 @@ impl LayoutEngine {
                     // Actually, if we use pack_vbox, the baseline is the baseline of the last child (Sub).
                     // So we shift the whole VBox down by calculated_sub_shift?
                     // No, shifting down means positive shift in our VBox logic (translate(x + shift, y)).
-                    // Wait, VBox shift is on X axis in render_layout_node?
-                    // Let's check render_layout_node for VBox.
-                    // LayoutNode::VBox(vbox) => {
-                    //     backend.start_group(Some(&format!("translate({}, {})", x + vbox.shift.to_f64(), y)))?;
-                    // HBox shift is on Y axis.
-                    // LayoutNode::HBox(hbox) => {
-                    //     backend.start_group(Some(&format!("translate({}, {})", x, y + hbox.shift.to_f64())))?;
-
                     // Ah! VBox shift is X-offset, HBox shift is Y-offset.
                     // So for scripts, we need to wrap it in an HBox and shift that HBox.
                     v.shift = Fixed::ZERO;
@@ -2738,8 +2630,8 @@ fn collect_glyph_paths(node: &LayoutNode, out: &mut Vec<(String, u16, String)>) 
 
 /// 递归把 [`LayoutNode`] 树降成 [`PaintNode`] 树。
 ///
-/// 光标算术与渲染器退场前的 `render_layout_node` 完全一致，坐标是画布
-/// y-down 像素：
+/// 光标算术与盒树语义一致：VBox 的 shift 走 X 轴，HBox 的 shift 走 Y 轴，
+/// 坐标是画布 y-down 像素：
 ///
 /// * HBox → [`PaintNode::Group`] `translate = (x, y + shift)`，children 从
 ///   `current_x = 0` 按 `child.width()`（含 italic correction）推进，child 的

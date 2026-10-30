@@ -1,6 +1,6 @@
 //! Geometry regressions for the real glyph-outline pipeline.
 //!
-//! `SvgBackend` receives em-unit outlines whose y axis grows upward from the
+//! The SVG renderer receives em-unit outlines whose y axis grows upward from the
 //! baseline and paints them on a y-down canvas. These tests read the emitted
 //! SVG back and assert that the viewport really contains the painted ink, that
 //! the ink never runs away from the layout box, that emphasis faces keep their
