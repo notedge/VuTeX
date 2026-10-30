@@ -97,6 +97,11 @@ impl FontMetricsSystem {
         self.metrics_cache.get(family)?.constants.get(&constant).copied()
     }
 
+    /// The font's own outline for `key`.
+    ///
+    /// An emphasis face is never synthesized from the upright outline: when the
+    /// font carries no bold or italic design for the character, the miss is
+    /// reported as an explicit diagnostic naming the face and codepoint.
     pub fn get_glyph_path(&self, key: &GlyphKey) -> MathResult<String> {
         let family = key.font_family.as_deref().unwrap_or("default");
         let normalized = GlyphKey { font_family: Some(family.to_string()), ..key.clone() };
@@ -104,9 +109,20 @@ impl FontMetricsSystem {
             if let Some(path) = data.glyph_paths.get(&normalized) {
                 return Ok(path.clone());
             }
-            if let Some(path) = emphasis_outline(data, &normalized) {
-                return Ok(path);
-            }
+        }
+        let emphasis = match key.style {
+            FontStyle::Bold => Some("bold"),
+            FontStyle::Italic => Some("italic"),
+            _ => None,
+        };
+        if let (Some(face), Some(ch)) = (emphasis, key.char) {
+            return Err(MathError::font_error(
+                family,
+                format!(
+                    "font ships no {face} face for '{ch}' (U+{:04X}); synthesized emphasis outlines are forbidden",
+                    ch as u32
+                ),
+            ));
         }
         Err(MathError::font_error(family, "glyph path not in cache"))
     }
@@ -153,9 +169,9 @@ impl FontMetricsSystem {
     }
 }
 
-/// Slant applied to an upright outline when no italic face is available.
+/// Slant assumed when widening the advance of a derived italic face.
 const ITALIC_SHEAR: f64 = 0.21;
-/// Horizontal offset between the copies that thicken a bold outline.
+/// Extra advance a derived bold face adds for its heavier stroke.
 const BOLD_OFFSET: f64 = 0.014;
 
 /// Look up the upright key a derived emphasis face is built from.
@@ -183,7 +199,7 @@ fn emphasis_metrics(data: &FontMetricsData, key: &GlyphKey) -> Option<GlyphMetri
     match key.style {
         FontStyle::Italic => {
             // Keep the real MATH italic correction of the source glyph: the
-            // sheared copy stands for a face the font does not ship, so the
+            // derived face stands for one the font does not ship, so the
             // correction the OpenType MATH table reports for its upright design
             // is still the closest real value (`f` carries 0.079 em).
             metrics.width = metrics.width + Fixed::from_f64(ITALIC_SHEAR * metrics.height.to_f64());
@@ -193,80 +209,6 @@ fn emphasis_metrics(data: &FontMetricsData, key: &GlyphKey) -> Option<GlyphMetri
         }
     }
     Some(metrics)
-}
-
-/// Outline for a derived bold or italic face.
-///
-/// Bold repeats the upright outline at increasing x offsets, so the union of
-/// the copies reads as a heavier stroke. Italic shears the upright outline
-/// around its origin. A font that ships a real face keeps it: this is only
-/// reached when the exact key is absent.
-fn emphasis_outline(data: &FontMetricsData, key: &GlyphKey) -> Option<String> {
-    if !matches!(key.style, FontStyle::Bold | FontStyle::Italic) {
-        return None;
-    }
-    let normal = upright_key(key, FontStyle::Normal);
-    let path = data.glyph_paths.get(&normal).or_else(|| data.glyph_paths.get(&upright_key(key, FontStyle::Math)))?;
-    Some(match key.style {
-        FontStyle::Italic => map_path_d(path, |x, y| (x + ITALIC_SHEAR * y, y)),
-        _ => {
-            let mut bold = String::with_capacity(path.len() * 3);
-            for copy in 0..3 {
-                let offset = BOLD_OFFSET * copy as f64;
-                bold.push_str(&map_path_d(path, |x, y| (x + offset, y)));
-            }
-            bold
-        }
-    })
-}
-
-/// Rewrite every coordinate pair of an em-normalised outline.
-///
-/// `point` receives `(x, y)` in em units and returns the replacement pair.
-/// Operator letters and pair structure are preserved; coordinates are
-/// re-emitted as `x,y` pairs separated by spaces.
-fn map_path_d(raw: &str, mut point: impl FnMut(f64, f64) -> (f64, f64)) -> String {
-    let mut out = String::with_capacity(raw.len() + 16);
-    let mut chars = raw.chars().peekable();
-    let mut pending_x: Option<f64> = None;
-    while let Some(c) = chars.peek().copied() {
-        if c.is_ascii_alphabetic() {
-            out.push(c);
-            out.push(' ');
-            pending_x = None;
-            chars.next();
-            continue;
-        }
-        if c.is_ascii_digit() || c == '-' || c == '+' || c == '.' {
-            let mut token = String::new();
-            if c == '-' || c == '+' {
-                token.push(c);
-                chars.next();
-            }
-            while let Some(&next) = chars.peek() {
-                let exponent_sign = matches!(next, '-' | '+') && matches!(token.chars().last(), Some('e' | 'E'));
-                if next.is_ascii_digit() || next == '.' || next == 'e' || next == 'E' || exponent_sign {
-                    token.push(next);
-                    chars.next();
-                }
-                else {
-                    break;
-                }
-            }
-            if let Ok(value) = token.parse::<f64>() {
-                match pending_x.take() {
-                    None => pending_x = Some(value),
-                    Some(x) => {
-                        let (nx, ny) = point(x, value);
-                        out.push_str(&format!("{nx:.4},{ny:.4} "));
-                    }
-                }
-            }
-            continue;
-        }
-        chars.next();
-    }
-    out
 }
 
 fn default_glyph_metrics(ch: Option<char>) -> GlyphMetrics {

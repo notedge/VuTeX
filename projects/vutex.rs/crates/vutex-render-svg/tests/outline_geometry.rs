@@ -6,7 +6,7 @@
 //! the ink never runs away from the layout box, that emphasis faces keep their
 //! own outlines, and that `Vmatrix` and `vmatrix` stay structurally distinct.
 
-use vutex_layout::math::{FormulaLayout, layout_formula, render_layout_node};
+use vutex_layout::math::{FormulaLayout, Glyph, LayoutNode, layout_formula, render_layout_node};
 use vutex_render_svg::math::SvgBackend;
 
 /// Representative formulas, all rendered as vector paths.
@@ -23,6 +23,40 @@ fn render(source: &str, display: bool) -> (String, FormulaLayout) {
     let mut backend = SvgBackend::new_deterministic(layout.width, layout.height + layout.depth);
     render_layout_node(&mut backend, &root, 0.0, layout.height).expect("render should succeed");
     (backend.finish(), layout)
+}
+
+/// Like [`render`], but hands back the layout tree instead of the box extents.
+fn render_with_tree(source: &str, display: bool) -> (String, LayoutNode) {
+    let (root, layout) = layout_formula(source, display).expect("layout should succeed");
+    let mut backend = SvgBackend::new_deterministic(layout.width, layout.height + layout.depth);
+    render_layout_node(&mut backend, &root, 0.0, layout.height).expect("render should succeed");
+    (backend.finish(), root)
+}
+
+/// Every `Glyph` node in a layout tree, in document order.
+fn collect_glyphs<'a>(node: &'a LayoutNode, out: &mut Vec<&'a Glyph>) {
+    match node {
+        LayoutNode::Glyph(glyph) => out.push(glyph),
+        LayoutNode::HBox(hbox) => {
+            for child in &hbox.children {
+                collect_glyphs(child, out);
+            }
+        }
+        LayoutNode::VBox(vbox) => {
+            for child in &vbox.children {
+                collect_glyphs(child, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// The single glyph a one-letter formula lays out.
+fn only_glyph<'a>(root: &'a LayoutNode) -> &'a Glyph {
+    let mut glyphs = Vec::new();
+    collect_glyphs(root, &mut glyphs);
+    assert_eq!(glyphs.len(), 1, "the formula lays out exactly one glyph");
+    glyphs[0]
 }
 
 /// Read the root `viewBox` as `(min_x, min_y, width, height)`.
@@ -325,9 +359,9 @@ fn tall_brace_is_assembled_from_stacked_parts() {
 
 #[test]
 fn emphasis_faces_keep_their_own_outlines() {
-    let bold_svg = render(r"\mathbf{a}", false).0;
-    let italic_svg = render(r"\mathit{a}", false).0;
-    let upright_svg = render(r"\mathrm{a}", false).0;
+    let (bold_svg, bold_root) = render_with_tree(r"\mathbf{a}", false);
+    let (italic_svg, italic_root) = render_with_tree(r"\mathit{a}", false);
+    let (upright_svg, upright_root) = render_with_tree(r"\mathrm{a}", false);
     let bold = outline_paths(&bold_svg);
     let italic = outline_paths(&italic_svg);
     let upright = outline_paths(&upright_svg);
@@ -335,7 +369,17 @@ fn emphasis_faces_keep_their_own_outlines() {
     assert_ne!(bold[0], upright[0], "`\\mathbf` must not reuse the upright outline");
     assert_ne!(italic[0], upright[0], "`\\mathit` must not reuse the upright outline");
     assert_ne!(bold[0], italic[0], "bold and italic must not share one outline");
-    assert!(bold[0].len() > upright[0].len(), "bold is built from several offset copies");
+
+    // Each face resolves to the math font's own design for its dedicated
+    // math-alphalect codepoint, not to a transformed copy of the upright one.
+    let bold_glyph = only_glyph(&bold_root);
+    let italic_glyph = only_glyph(&italic_root);
+    let upright_glyph = only_glyph(&upright_root);
+    assert_eq!(bold_glyph.char, Some('\u{1D41A}'), "`\\mathbf` must select the font's bold `a` codepoint");
+    assert_eq!(italic_glyph.char, Some('\u{1D44E}'), "`\\mathit` must select the font's italic `a` codepoint");
+    assert_eq!(upright_glyph.char, Some('a'), "`\\mathrm` must keep the upright `a`");
+    assert!(bold_glyph.path_data.is_some(), "the bold face must paint a real outline");
+    assert_eq!(bold[0].matches('M').count(), upright[0].matches('M').count(), "bold is built from several offset copies");
 }
 
 /// `\hat` paints the font's circumflex next to the nucleus, never a host-font
