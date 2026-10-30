@@ -403,6 +403,10 @@ impl LayoutEngine {
     /// [`Self::alphalect_key`] contract [`Self::layout_scaled_symbol`] uses to
     /// pick the face. Digits, operators and letters a font ships no italic
     /// face for keep their authored key.
+    ///
+    /// An accent answers `None`: TeX attaches a script to the accented box,
+    /// never to the glyph under the mark, and the accent's own ink occupies the
+    /// top corner a `MathKernInfo` corner would pull the script into.
     fn first_glyph_key(&self, node: &SemanticNode) -> Option<GlyphKey> {
         Self::authored_glyph_key(node).map(|key| self.alphalect_key(&key))
     }
@@ -424,7 +428,7 @@ impl LayoutEngine {
             SemanticNode::Fraction { num, .. } => Self::authored_glyph_key(num),
             SemanticNode::Radical { radicand, .. } => Self::authored_glyph_key(radicand),
             SemanticNode::Delimited { content, .. } => Self::authored_glyph_key(content),
-            SemanticNode::Accent { base, .. } => Self::authored_glyph_key(base),
+            SemanticNode::Accent { .. } => None,
             SemanticNode::OverSet { base, .. } | SemanticNode::UnderSet { base, .. } => Self::authored_glyph_key(base),
             SemanticNode::Relation(inner) => Self::authored_glyph_key(inner),
             SemanticNode::HorizontalBox { content, .. } => content.iter().find_map(Self::authored_glyph_key),
@@ -1954,8 +1958,9 @@ impl LayoutEngine {
         // TeX kerns the script against the base glyph's facing corner: a
         // superscript reads the top-right corner at its own extent above the
         // baseline, a lone subscript the bottom-right corner at its depth. A
-        // font that publishes no such corner attaches the script at the advance
-        // with no kern.
+        // font that publishes no such corner — and a nucleus that is a box
+        // rather than a glyph, such as an accent, which reports no glyph key at
+        // all — attaches the script at the advance with no kern.
         let script_kern = base_key.as_ref().and_then(|key| {
             let (corner, correction_height) = match (sup.is_some(), sub.is_some()) {
                 (true, _) => (KernCorner::TopRight, sup_correction_height),

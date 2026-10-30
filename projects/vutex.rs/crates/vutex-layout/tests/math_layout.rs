@@ -3337,3 +3337,40 @@ fn script_kern_follows_the_drawn_alphalect_face() {
     assert_eq!(upright_corners.len(), 1, "the drawn upright Δ keeps its own `TopRight` kern: {upright_corners:?}");
     assert!(upright_corners[0] < Fixed::ZERO, "the step is a negative kern: {}", upright_corners[0].to_f64());
 }
+
+/// An accent shields the base glyph's top corner from a following superscript.
+///
+/// TeX attaches a script to the accented box, never to the glyph under the
+/// mark: the accent's own ink occupies the top-right region a `TopRight`
+/// `MathKernInfo` corner would pull the superscript into. XITS Math publishes
+/// a `TopRight` step on upright `Δ`, so `\hat{\Delta}^2` must carry no negative
+/// corner kern while the bare `\Delta^2` above keeps exactly its own.
+#[test]
+fn accent_shields_the_base_corner_from_the_script() {
+    fn horizontal_kerns(node: &LayoutNode, out: &mut Vec<Fixed>) {
+        match node {
+            LayoutNode::HBox(hbox) => {
+                for child in &hbox.children {
+                    if let LayoutNode::Kern(kern) = child {
+                        out.push(*kern);
+                    }
+                    horizontal_kerns(child, out);
+                }
+            }
+            LayoutNode::VBox(vbox) => {
+                for child in &vbox.children {
+                    horizontal_kerns(child, out);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let family = vutex_text::math::MathFontFamily::XitsMath;
+    let (_, accented, _) = layout_formula_with_result_for("\\hat{\\Delta}^2", false, default_base_size(false), family)
+        .expect("the formula should lay out");
+    let mut kerns = Vec::new();
+    horizontal_kerns(&accented, &mut kerns);
+    let corners: Vec<Fixed> = kerns.into_iter().filter(|kern| *kern < Fixed::ZERO).collect();
+    assert!(corners.is_empty(), "the accent covers the base's `TopRight` corner, so the script takes no kern: {corners:?}");
+}
