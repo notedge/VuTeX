@@ -42,3 +42,44 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y fonts-droid-fallback fonts-wqy-zenhei
       - run: cargo test --workspace
+
+  # Quality gates (design doc 16, G1-G4). These binaries also run inside
+  # `cargo test --workspace` above, but are re-invoked here by name so the
+  # gate layer is explicit and auditable in the job list. All steps are
+  # blocking: no continue-on-error. The LaTeX gate consumes the checked-in
+  # Tectonic snapshot (`latex-status.json`, status=available), so no TeX
+  # engine is required on the runner.
+  quality-gates:
+    name: quality gates (G1-G4)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # G1: box width/height/depth against the LaTeX reference within the
+      # recorded tolerance. The tolerance test is `#[ignore]`d in source as
+      # advisory; `--include-ignored` promotes it to a blocking gate here.
+      - name: G1 LaTeX geometry oracle
+        run: cargo test -p vutex-layout --test oracle_latex_geometry -- --include-ignored
+      # G2: corpus contract plus KaTeX / MathJax structure and font facts.
+      - name: G2 structure oracles
+        run: >
+          cargo test -p vutex-layout
+          --test oracle_corpus_contract
+          --test oracle_katex_mathml
+          --test oracle_mathjax_mathml
+          --test oracle_mathjax_svg
+          --test oracle_math_facts
+      # G1/G4: SVG outline geometry, ink invariants and single-result
+      # cross-backend consistency.
+      - name: outline geometry and backend consistency
+        run: >
+          cargo test -p vutex-render-svg
+          --test outline_geometry
+          --test corpus_invariants
+          --test formula_backend_consistency
+      - name: G4 cross-backend consistency
+        run: cargo test -p vutex-layout --test cross_backend
+      # Error corpus: malformed input must really fail to parse.
+      - name: math gate corpus coverage and error records
+        run: cargo test -p vutex-layout --test math_gate_corpus
