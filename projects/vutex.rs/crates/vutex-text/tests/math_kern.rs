@@ -1,10 +1,11 @@
 //! The glyph-level `MathGlyphInfo` facts as the embedded math font publishes them.
 //!
-//! Latin Modern Math is the reference: it ships italic corrections, top accent
-//! attachments and an extended shape coverage, and — as a TeX-derived design —
-//! publishes no four-corner `MathKern` subtable at all. The step semantics of a
-//! corner kern are exercised against synthetic tables in the crate's unit
-//! tests; here the point is the font facts and how an absence is expressed.
+//! XITS Math is the reference: it ships italic corrections for its slanted
+//! letters, top accent attachments and an extended shape coverage, and — unlike
+//! the TeX-derived Latin Modern design — a real four-corner `MathKern`
+//! subtable. The step semantics of a corner kern are exercised against
+//! synthetic tables in the crate's unit tests; here the point is the font facts
+//! and how a measured value and an absence stay distinguishable.
 
 use vutex_text::math::{GlyphId, KernCorner, MathFontFacts};
 use vutex_types::math::Fixed;
@@ -31,9 +32,16 @@ fn italic_correction_is_read_from_the_fonts_glyph_info() {
     let facts = facts();
     // 'f' is the classic slanted letter: the correction is what keeps its
     // overhanging top from crashing into the following script.
-    close(facts.italic_correction(glyph(&facts, 'f')), 0.079, "'f' italic correction");
-    close(facts.italic_correction(glyph(&facts, 'x')), 0.016, "'x' italic correction");
-    close(facts.italic_correction(glyph(&facts, '[')), 0.006, "'[' italic correction");
+    close(facts.italic_correction(glyph(&facts, 'f')), 0.1, "'f' italic correction");
+
+    // The correction coverage is selective: letters the font does not measure
+    // stay unmeasured rather than being given an invented number.
+    assert_eq!(
+        facts.italic_correction(glyph(&facts, 'x')),
+        None,
+        "'x' must stay unmeasured rather than inventing a correction"
+    );
+    assert_eq!(facts.italic_correction(glyph(&facts, '[')), None, "'[' must stay unmeasured");
 
     // A parenthesis carries no italic correction: the value is absent, which is
     // a different answer from "zero".
@@ -49,9 +57,10 @@ fn italic_correction_is_read_from_the_fonts_glyph_info() {
 fn top_accent_attachment_is_published_for_the_glyphs_an_accent_lands_on() {
     let facts = facts();
     // A capital is the widest base an accent has to centre over.
-    close(facts.top_accent_attachment(glyph(&facts, 'A')), 0.375, "'A' top accent attachment");
-    close(facts.top_accent_attachment(glyph(&facts, '1')), 0.257, "'1' top accent attachment");
-    close(facts.top_accent_attachment(glyph(&facts, 'j')), 0.156, "'j' top accent attachment");
+    close(facts.top_accent_attachment(glyph(&facts, 'A')), 0.361, "'A' top accent attachment");
+    close(facts.top_accent_attachment(glyph(&facts, 'j')), 0.144, "'j' top accent attachment");
+    // Digits sit outside the attachment coverage: absence, not zero.
+    assert_eq!(facts.top_accent_attachment(glyph(&facts, '1')), None, "'1' must stay unmeasured");
 
     // Extended shapes stretch to whatever the formula needs, so the font names
     // no single attachment point for them.
@@ -62,7 +71,7 @@ fn top_accent_attachment_is_published_for_the_glyphs_an_accent_lands_on() {
 fn the_extended_shape_coverage_comes_from_the_font() {
     let facts = facts();
     let shapes = facts.extended_shapes();
-    assert_eq!(shapes.len(), 250, "the embedded font marks 250 extended shapes");
+    assert_eq!(shapes.len(), 293, "the embedded font marks 293 extended shapes");
 
     // The coverage is handed out in glyph order with duplicates removed, which
     // is what makes the membership test a binary search.
@@ -81,14 +90,21 @@ fn the_extended_shape_coverage_comes_from_the_font() {
 }
 
 #[test]
-fn the_embedded_font_publishes_no_corner_kern_and_the_absence_is_visible() {
+fn the_embedded_font_publishes_corner_kerns_and_the_absence_is_still_visible() {
     let facts = facts();
     let kerns = facts.kerns();
-    assert_eq!(kerns.glyphs().count(), 0, "Latin Modern Math carries no four-corner `MathKern` subtable");
+    assert_eq!(kerns.glyphs().count(), 29, "XITS Math carries a four-corner `MathKern` subtable for 29 glyphs");
 
-    // Absence is reported as absence, not as a zero kern: a caller that wants
-    // to know whether the font measured the corner can tell the two apart.
-    for ch in ['f', '(', 'A', '∫'] {
+    // Slanted-sided capitals request clearance from a following script: the
+    // top-right corner is measured, and the record exists at all.
+    let a = glyph(&facts, 'A');
+    assert!(kerns.corner(a, KernCorner::TopRight).is_some(), "`A` must publish a top-right kern");
+    assert!(kerns.corners(a).is_some(), "`A` must have a kern record");
+
+    // Absence is still reported as absence, not as a zero kern: a caller that
+    // wants to know whether the font measured the corner can tell the two
+    // apart even now the table exists.
+    for ch in ['f', '(', '∫'] {
         let glyph = glyph(&facts, ch);
         for corner in KernCorner::ALL {
             assert!(kerns.corner(glyph, corner).is_none(), "`{ch}` must publish no {corner:?} kern");

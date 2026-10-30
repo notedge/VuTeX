@@ -467,8 +467,10 @@ pub fn builtin_font_metrics() -> FontMetricsSystem {
     let family_str = "default".to_string();
 
     // Prefer XITS Math (KaTeX lineage), fall back to LM Math (Computer Modern).
-    let preferred = [MathFontFamily::XitsMath, MathFontFamily::LmMath];
-    let opentype_data = preferred.into_iter().find_map(|fam| super::opentype::opentype_font_metrics(fam));
+    // The same list gates `MathFontFacts::embedded`, so the engine's facts and
+    // this cache always describe one font.
+    let opentype_data =
+        MathFontFamily::BUILTIN_PREFERENCE.into_iter().find_map(|fam| super::opentype::opentype_font_metrics(fam));
 
     let mut data = if let Some(opentype_data) = opentype_data {
         // Opentype data comes with its own family name ("latin-modern-math");

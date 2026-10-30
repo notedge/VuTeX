@@ -1,6 +1,6 @@
 //! The `MathConstants` facts as the embedded math font publishes them.
 //!
-//! Every value here is checked against Latin Modern Math, and every value also
+//! Every value here is checked against XITS Math, and every value also
 //! carries where it came from: a number the font measured is
 //! `MathConstantValue::FontTable`, while a number this crate invented because the
 //! font said nothing is `MathConstantValue::SyntheticFallback`. A caller can
@@ -27,9 +27,9 @@ fn close(value: MathConstantValue, expected: f64, what: &str) {
 fn the_font_publishes_the_limit_constants() {
     let facts = facts();
     let constants = facts.constants();
-    close(constants.upper_limit_gap_min(), 0.2, "UpperLimitGapMin");
-    close(constants.upper_limit_baseline_rise_min(), 0.111, "UpperLimitBaselineRiseMin");
-    close(constants.lower_limit_gap_min(), 0.167, "LowerLimitGapMin");
+    close(constants.upper_limit_gap_min(), 0.15, "UpperLimitGapMin");
+    close(constants.upper_limit_baseline_rise_min(), 0.3, "UpperLimitBaselineRiseMin");
+    close(constants.lower_limit_gap_min(), 0.15, "LowerLimitGapMin");
     close(constants.lower_limit_baseline_drop_min(), 0.6, "LowerLimitBaselineDropMin");
 }
 
@@ -38,7 +38,7 @@ fn the_font_publishes_the_accent_constants() {
     let facts = facts();
     let constants = facts.constants();
     close(constants.accent_base_height(), 0.45, "AccentBaseHeight");
-    close(constants.flattened_accent_base_height(), 0.664, "FlattenedAccentBaseHeight");
+    close(constants.flattened_accent_base_height(), 0.662, "FlattenedAccentBaseHeight");
 }
 
 #[test]
@@ -46,18 +46,18 @@ fn the_font_publishes_the_radical_constants() {
     let facts = facts();
     let constants = facts.constants();
     // The degree raise is a percentage in the table and reaches us as a
-    // fraction: 60% of the radical height.
-    close(constants.radical_degree_bottom_raise_percent(), 0.6, "RadicalDegreeBottomRaisePercent");
+    // fraction: 70% of the radical height.
+    close(constants.radical_degree_bottom_raise_percent(), 0.7, "RadicalDegreeBottomRaisePercent");
     // The kern after a degree pulls the degree towards the radical sign.
-    close(constants.radical_kern_after_degree(), -0.556, "RadicalKernAfterDegree");
+    close(constants.radical_kern_after_degree(), -0.555, "RadicalKernAfterDegree");
 }
 
 #[test]
 fn the_font_publishes_the_script_constants() {
     let facts = facts();
     let constants = facts.constants();
-    close(constants.superscript_shift_up_cramped(), 0.289, "SuperscriptShiftUpCramped");
-    close(constants.space_after_script(), 0.056, "SpaceAfterScript");
+    close(constants.superscript_shift_up_cramped(), 0.275, "SuperscriptShiftUpCramped");
+    close(constants.space_after_script(), 0.041, "SpaceAfterScript");
 }
 
 #[test]

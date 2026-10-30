@@ -36,9 +36,11 @@ use super::facts::{KernCorner, MathFontFacts, StretchAxis};
 /// chooses the first present font at startup.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MathFontFamily {
-    /// Times-like, same lineage as KaTeX_Main. Embedding planned.
+    /// Times-like, same lineage as KaTeX_Main; the modern default face.
     XitsMath,
-    /// Computer Modern OpenType successor; always embedded.
+    /// STIX Two Math — full MATH table upstream, asset not embedded yet.
+    StixTwoMath,
+    /// Computer Modern OpenType successor; kept embedded for compatibility.
     LmMath,
 }
 
@@ -47,6 +49,7 @@ impl MathFontFamily {
     pub const fn label(self) -> &'static str {
         match self {
             Self::XitsMath => "xits-math",
+            Self::StixTwoMath => "stix-two-math",
             Self::LmMath => "latin-modern-math",
         }
     }
@@ -55,10 +58,21 @@ impl MathFontFamily {
     pub fn bytes(self) -> Option<&'static [u8]> {
         match self {
             Self::LmMath => Some(LM_MATH_BYTES),
-            // XITS Math asset pending — wire up once XITSMath-Regular.otf
-            // lands in `assets/` (OFL 1.1, from alif-type/xits).
-            Self::XitsMath => None,
+            Self::XitsMath => Some(XITS_MATH_BYTES),
+            // STIX Two Math asset pending — falls back to synthetic metrics.
+            Self::StixTwoMath => None,
         }
+    }
+
+    /// Embedded families in preference order.
+    ///
+    /// The metrics cache and the font facts must resolve the default face
+    /// through this list so they always describe the same font.
+    pub const BUILTIN_PREFERENCE: [Self; 2] = [Self::XitsMath, Self::LmMath];
+
+    /// The first embedded family, i.e. the builtin default face.
+    pub fn builtin_default() -> Option<Self> {
+        Self::BUILTIN_PREFERENCE.into_iter().find(|family| family.bytes().is_some())
     }
 }
 
@@ -67,6 +81,13 @@ impl MathFontFamily {
 /// Licensed under the GUST font license (analogous to OFL). Downloaded from
 /// `https://www.ctan.org/tex-archive/fonts/lm-math/opentype/latinmodern-math.otf`.
 pub(crate) const LM_MATH_BYTES: &[u8] = include_bytes!("../../assets/LatinModernMath-Regular.otf");
+
+/// Embedded OpenType MATH font: XITS Math Regular.
+///
+/// Licensed under the SIL Open Font License 1.1. Downloaded from
+/// `https://cdn.jsdelivr.net/gh/alif-type/xits@master/XITSMath-Regular.otf`
+/// (upstream: <https://github.com/alif-type/xits>).
+pub(crate) const XITS_MATH_BYTES: &[u8] = include_bytes!("../../assets/XITSMath-Regular.otf");
 
 // ---------------------------------------------------------------------------
 // SVG path OutlineBuilder

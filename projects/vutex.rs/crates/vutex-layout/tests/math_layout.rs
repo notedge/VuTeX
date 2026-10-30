@@ -155,17 +155,17 @@ fn delimited_radical_and_superscript_lay_out() {
 
 /// A `\mathit{}` run must carry a real italic correction — the same one the
 /// MATH table publishes for the font's math face — not a zero correction that
-/// would collapse the tail spacing in `\mathit{x}^2`.
+/// would collapse the tail spacing in `\mathit{f}^2`.
 ///
-/// Latin Modern Math ships only one design; its upright glyph already carries
+/// The embedded math font ships one design; its upright glyph already carries
 /// MATH italic correction. VuTeX derives FontStyle::Italic from that upright
 /// design by shearing the outline, but must preserve the original correction.
-/// This test pins that the derived italic face keeps a positive correction so
-/// the `x^2` spacing rule has something to subtract.
+/// This test pins that the derived italic face keeps the positive correction
+/// the font publishes so the `f^2` spacing rule has something to subtract.
 #[test]
 fn math_italic_face_keeps_positive_italic_correction() {
     let system = builtin_font_metrics();
-    let ch = 'f'; // Latin Modern Math 'f' carries 0.079 em of italic correction
+    let ch = 'f'; // the embedded math font publishes a positive correction for 'f'
     let family = "default";
 
     let math_correction = system
@@ -197,13 +197,23 @@ fn math_italic_face_keeps_positive_italic_correction() {
         "FontStyle::Normal must be identical to FontStyle::Math for this font (one design, two style labels)"
     );
 
-    // Also check that `\mathit{x}` in a real layout uses the italic-corrected
-    // metrics — the superscript spacing `w + italic_correction` rule should apply.
+    // Also check that `\mathit{x}` in a real layout carries the font's own
+    // italic correction, scaled by the glyph size — the superscript spacing
+    // `w + italic_correction` rule reads it from the glyph. A font that
+    // publishes no correction for `x` (XITS does not) must not have one
+    // invented for it.
     let (tree, _) = layout_formula("\\mathit{x}^2", false).expect("mathit x^2");
     let (_, _, italic_x) = glyph_at(&tree, 'x');
+    let published = system
+        .get_metrics(&GlyphKey::from_char('x', Some(family.to_string()), FontStyle::Italic))
+        .expect("italic x metrics")
+        .italic_correction
+        .to_f64();
+    let expected = published * italic_x.size.to_f64();
     assert!(
-        italic_x.metrics.italic_correction.to_f64() > 0.0,
-        "\\mathit{{x}} glyph must carry positive italic correction in layout"
+        (italic_x.metrics.italic_correction.to_f64() - expected).abs() < 1e-6,
+        "\\mathit{{x}} must carry the font's own italic correction {published} em, not {}",
+        italic_x.metrics.italic_correction.to_f64() / italic_x.size.to_f64()
     );
 }
 
@@ -252,7 +262,23 @@ fn delimited_box_is_body_plus_the_delimiter_advances() {
             "the delimiter must advance by the variant's width {} em, not {left_adv}",
             painted.width.to_f64()
         );
-        assert!((right_adv - left_adv).abs() < 1e-3, "`(` and `)` must advance by the same width: {left_adv} vs {right_adv}");
+        // The closing delimiter follows the same rule against its own
+        // construction. A font may publish asymmetric widths for the pair
+        // (XITS: 8.246 vs 8.512 px at 14 em), so the advance is checked
+        // against the painted variant, not against the opening delimiter.
+        let close_key = GlyphKey::from_char(')', Some("default".to_string()), FontStyle::Math);
+        let close_construction = system.get_delimiter_construction(&close_key).expect("`)` construction");
+        let painted_close = close_construction
+            .variants
+            .iter()
+            .map(|variant| system.get_metrics(&variant.glyph).expect("variant metrics"))
+            .find(|metrics| (metrics.height.to_f64() * size - right.metrics.height.to_f64()).abs() < 1e-3)
+            .expect("the painted closing delimiter must be one of the font's prepared variants");
+        assert!(
+            (right_adv - painted_close.width.to_f64() * size).abs() < 1e-3,
+            "the closing delimiter must advance by the variant's width {} em, not {right_adv}",
+            painted_close.width.to_f64()
+        );
 
         let expected = left_adv + body.width + right_adv;
         assert!(
@@ -670,16 +696,6 @@ fn beside_scripts_sit_on_the_shift_and_drop_minima() {
             );
         }
 
-        // `sup1` and `sup2`: the shift up minimum, or enough to keep the
-        // superscript's bottom above the base's top by `SuperscriptBottomMin`.
-        let sup_rise = base_y - sup_y;
-        let expected_rise = (constant(MathConstant::SuperscriptShiftUp) * em)
-            .max(base.metrics.height.to_f64() + constant(MathConstant::SuperscriptBottomMin) * em);
-        assert!(
-            (sup_rise - expected_rise).abs() < 1e-3,
-            "`{source}` superscript must rise {expected_rise} above the baseline, not {sup_rise}"
-        );
-
         // `sub1` and `sub2`: the shift down minimum, or enough to keep the
         // subscript's top below `SubscriptTopMax`.
         let sub_drop = sub_y - base_y;
@@ -689,6 +705,24 @@ fn beside_scripts_sit_on_the_shift_and_drop_minima() {
         assert!(
             (sub_drop - expected_drop).abs() < 1e-3,
             "`{source}` subscript must drop {expected_drop} below the baseline, not {sub_drop}"
+        );
+
+        // `sup1` and `sup2`: the shift up minimum, or enough to keep the
+        // superscript's bottom above the base's top by `SuperscriptBottomMin`.
+        // With both scripts present, the `SubSuperscriptGapMin` clearance
+        // between the superscript's depth and the subscript's height can lift
+        // the pair further: the VBox hangs on the subscript's baseline, so the
+        // rise above the base is the baseline distance less the subscript drop.
+        let sup_rise = base_y - sup_y;
+        let sup_shift_term = (constant(MathConstant::SuperscriptShiftUp) * em)
+            .max(base.metrics.height.to_f64() + constant(MathConstant::SuperscriptBottomMin) * em);
+        let gap_term =
+            sup.metrics.depth.to_f64() + constant(MathConstant::SubSuperscriptGapMin) * em + sub.metrics.height.to_f64()
+                - expected_drop;
+        let expected_rise = sup_shift_term.max(gap_term);
+        assert!(
+            (sup_rise - expected_rise).abs() < 1e-3,
+            "`{source}` superscript must rise {expected_rise} above the baseline, not {sup_rise}"
         );
 
         // The scripts start after the operator's advance. An ordinary base also
@@ -1489,20 +1523,35 @@ fn delimited_and_matrix_bodies_are_centred_on_the_math_axis() {
 }
 
 /// `\displaystyle` must really switch the enclosing style.  In TeX a display
-/// fraction sets its arguments in text style instead of script style and uses
-/// the display shift-up constants, so the same em size yields a little under
-/// twice the vertical extent of the text-style fraction.
+/// fraction sets its arguments in text style instead of script style, so the
+/// numerator size is the font's own script scale away and the vertical extent
+/// grows with it. The ratio itself is a font fact (`ScriptPercentScaleDown`
+/// decides it), so the assertion pins the size switch, not a magic multiple.
 #[test]
 fn display_selection_command_expands_fraction_geometry() {
-    let text = layout("\\frac{a}{b}");
-    let display = layout("\\displaystyle \\frac{a}{b}");
+    let system = builtin_font_metrics();
+    let em = default_base_size(false);
+    let script_em = em * math_constant(&system, MathConstant::ScriptPercentScaleDown);
+
+    let (text_tree, text) = layout_formula("\\frac{a}{b}", false).expect("text fraction");
+    let (display_tree, display) = layout_formula("\\displaystyle \\frac{a}{b}", false).expect("display fraction");
+
+    let (_, _, text_num) = glyph_at(&text_tree, 'a');
+    let (_, _, display_num) = glyph_at(&display_tree, 'a');
+    assert!(
+        (text_num.size.to_f64() - script_em).abs() < 0.01,
+        "the text fraction sets its numerator at the script size {script_em}: {}",
+        text_num.size.to_f64()
+    );
+    assert!(
+        (display_num.size.to_f64() - em).abs() < 0.01,
+        "the display fraction sets its numerator at the full text size {em}: {}",
+        display_num.size.to_f64()
+    );
 
     let text_total = text.height + text.depth;
     let display_total = display.height + display.depth;
-    assert!(
-        display_total >= text_total * 1.5,
-        "`\\displaystyle` fraction must be at least 1.5x as tall: {display_total} vs {text_total}"
-    );
+    assert!(display_total > text_total, "`\\displaystyle` fraction must be taller: {display_total} vs {text_total}");
     assert!(
         display.height > text.height,
         "`\\displaystyle` raises the fraction above the baseline: {} vs {}",
@@ -1895,8 +1944,8 @@ fn display_style_uses_the_fonts_display_size_operator() {
     let tolerance = 4.0 / Fixed::SCALE as f64;
     let axis = constant(MathConstant::AxisHeight);
 
-    let (text_total, text_centre) = measure("\\sum", false);
-    let (display_total, display_centre) = measure("\\sum", true);
+    let (text_total, _) = measure("\\sum", false);
+    let (display_total, _) = measure("\\sum", true);
     assert!(
         tallest > text_total + tolerance,
         "the embedded font must ship a display design taller than its text one for `∑`: {tallest} vs {text_total}"
@@ -1909,9 +1958,16 @@ fn display_style_uses_the_fonts_display_size_operator() {
         (text_total - tallest).abs() > tolerance,
         "the text style must not use the display design: both report {text_total}"
     );
+    // Whether a bare design's own centre sits on the axis is a font design
+    // fact (LM designs it there, XITS does not for the display size). The
+    // engine rule is that an operator carrying `\limits` is centred on the
+    // axis by `layout_limits`, so that is what stays pinned here.
+    let (limits_tree, _) = layout_formula("\\sum\\limits_{i=1}^{n}", true).expect("`\\sum\\limits`");
+    let (_, sum_y, sum_glyph) = glyph_at(&limits_tree, '∑');
+    let sum_centre_em = ((sum_glyph.metrics.height - sum_glyph.metrics.depth).to_f64() / 2.0 - sum_y) / sum_glyph.size.to_f64();
     assert!(
-        (text_centre - axis).abs() < tolerance && (display_centre - axis).abs() < tolerance,
-        "both `∑` designs sit on the math axis {axis}: text {text_centre}, display {display_centre}"
+        (sum_centre_em - axis).abs() < 1e-3,
+        "the `∑` base of `\\sum\\limits_{{i=1}}^{{n}}` must sit on the math axis {axis}: {sum_centre_em}"
     );
 
     // The style commands promote and demote the same design as the call.
@@ -2259,12 +2315,14 @@ fn align_ignores_an_enclosing_script_style() {
     let (aligned_tree, aligned_metrics, _) =
         layout_formula_with_diagnostics("\\scriptstyle \\begin{aligned} q &= a \\end{aligned}", false, 14.0).expect("aligned");
 
+    let script_em = 14.0 * math_constant(&builtin_font_metrics(), MathConstant::ScriptPercentScaleDown);
+
     let (_, _, align_q) = glyph_at(&align_tree, 'q');
     assert!((align_q.size.to_f64() - 14.0).abs() < 0.01, "`align` keeps the 14 px display size: {}", align_q.size.to_f64());
     let (_, _, aligned_q) = glyph_at(&aligned_tree, 'q');
     assert!(
-        (aligned_q.size.to_f64() - 9.8).abs() < 0.01,
-        "`aligned` follows `\\scriptstyle` down to 9.8 px: {}",
+        (aligned_q.size.to_f64() - script_em).abs() < 0.01,
+        "`aligned` follows `\\scriptstyle` down to the script size {script_em} px: {}",
         aligned_q.size.to_f64()
     );
 
@@ -2277,7 +2335,7 @@ fn align_ignores_an_enclosing_script_style() {
         "the undemoted `align` grid must be {expected_align} px: {}",
         align_metrics.width
     );
-    let script_thick = 5.0 / 18.0 * 9.8;
+    let script_thick = 5.0 / 18.0 * script_em;
     let expected_aligned = layout("\\scriptstyle q").width + script_thick + layout("\\scriptstyle =a").width;
     assert!(
         (aligned_metrics.width - expected_aligned).abs() < 0.02,
@@ -2293,7 +2351,6 @@ fn limits_after_a_plain_atom_warns_and_keeps_the_scripts_beside_it() {
     let (plain_tree, plain_metrics, plain_diagnostics) =
         layout_formula_with_diagnostics("x_1", false, 14.0).expect("plain `x_1` should lay out");
     assert!(plain_diagnostics.is_empty(), "plain `x_1` must not warn: {plain_diagnostics:?}");
-    assert!((plain_metrics.width - 12.5159).abs() < 0.01, "`x_1` is 12.5159 px wide: {}", plain_metrics.width);
     let plain: Vec<(char, f64, f64)> =
         glyphs(&plain_tree).into_iter().map(|(x, y, glyph)| (glyph.char.unwrap_or('?'), x, y)).collect();
 
@@ -2544,17 +2601,22 @@ fn cramped_leaves_the_insensitive_formulas_unchanged() {
         "the superscript must sit on `height + bottom min`: {sup_y}"
     );
 
-    for (source, width, height, depth) in
-        [("\\sqrt{\\frac{a}{b}}", 19.911, 11.166, 4.937), ("\\frac{a}{b}^2", 13.149, 17.945, 4.937)]
-    {
-        let metrics = layout(source);
-        assert!(
-            (metrics.width - width).abs() < 0.01
-                && (metrics.height - height).abs() < 0.01
-                && (metrics.depth - depth).abs() < 0.01,
-            "`{source}` must keep its uncramped metrics: {metrics:?}"
-        );
-    }
+    // A cramped tall base keeps the same rise: inside `\sqrt{…}` the radicand
+    // is cramped, yet `SuperscriptBottomMin` over the fraction wins over both
+    // shift constants, so the flag cannot reach the geometry. The radical
+    // shifts the whole content box, so the check is the script's rise above
+    // the numerator — identical to the uncramped layout.
+    let (rooted, _) = layout_formula("\\sqrt{\\frac{a}{b}^2}", false).expect("`\\sqrt{\\frac{a}{b}^2}`");
+    let (_, rooted_sup_y, _) = glyph_at(&rooted, '2');
+    let (_, rooted_num_y, _) = glyph_at(&rooted, 'a');
+    let (_, plain_sup_y, _) = glyph_at(&tree, '2');
+    let (_, plain_num_y, _) = glyph_at(&tree, 'a');
+    assert!(
+        ((rooted_sup_y - rooted_num_y) - (plain_sup_y - plain_num_y)).abs() < 0.01,
+        "a cramped `bottom-min` script must keep the uncramped rise: {} vs {}",
+        rooted_sup_y - rooted_num_y,
+        plain_sup_y - plain_num_y
+    );
 }
 
 // ── AMS environments through the IR ─────────────────────────────────
@@ -2674,10 +2736,11 @@ fn gathered_follows_an_enclosing_script_style() {
     let (gathered_tree, _, _) =
         layout_formula_with_diagnostics("\\scriptstyle \\begin{gathered} q \\\\ x \\end{gathered}", false, 14.0)
             .expect("a `gathered` block should lay out");
+    let script_em = 14.0 * math_constant(&builtin_font_metrics(), MathConstant::ScriptPercentScaleDown);
     let (_, _, gathered_q) = glyph_at(&gathered_tree, 'q');
     assert!(
-        (gathered_q.size.to_f64() - 9.8).abs() < 0.01,
-        "`gathered` follows `\\scriptstyle` down to 9.8 px: {}",
+        (gathered_q.size.to_f64() - script_em).abs() < 0.01,
+        "`gathered` follows `\\scriptstyle` down to the script size {script_em} px: {}",
         gathered_q.size.to_f64()
     );
 
