@@ -83,7 +83,7 @@ impl SvgWalk {
             PaintNode::Group { children, translate_x, translate_y } => {
                 let nx = ox + translate_x.to_f64();
                 let ny = oy + translate_y.to_f64();
-                let _ = write!(self.buffer, r#"<g transform="translate({}, {})">"#, nx, ny);
+                let _ = write!(self.buffer, r#"<g transform="translate({}, {})">"#, translate_x.to_f64(), translate_y.to_f64());
                 for child in children {
                     self.walk(child, nx, ny)?;
                 }

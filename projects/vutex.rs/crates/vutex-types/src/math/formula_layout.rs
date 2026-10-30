@@ -129,7 +129,8 @@ impl PaintNode {
             PaintNode::Group { children, translate_x, translate_y } => children
                 .iter()
                 .map(|c| offset_bbox(c.bbox(), *translate_x, *translate_y))
-                .fold(BBox::default(), |acc, b| bbox_union(acc, b)),
+                .reduce(|acc, b| bbox_union(acc, b))
+                .unwrap_or_default(),
             PaintNode::GlyphRun { .. } => BBox::default(),
             PaintNode::Rect { x, y, width, height, .. } => BBox { x: *x, y: *y, width: *width, height: *height },
             PaintNode::VectorPath { bbox, .. } => *bbox,
