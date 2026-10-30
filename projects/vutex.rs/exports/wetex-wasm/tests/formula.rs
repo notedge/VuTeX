@@ -217,9 +217,9 @@ fn font_family_option_changes_the_render() {
     assert_ne!(xits["svg"].as_str(), lm["svg"].as_str(), "the family option must change the SVG");
     assert_ne!(xits["metrics"], lm["metrics"], "the family option must change the metrics");
 
-    // Omitting the option resolves to the builtin default face, XITS Math.
+    // Omitting the option resolves to the builtin default face, Latin Modern Math.
     let default = parse(&render_svg_wasm(source, Some("{\"displayMode\":\"block\"}".to_string())));
-    assert_eq!(default["svg"].as_str(), xits["svg"].as_str(), "the default must render as XITS Math: {default}");
+    assert_eq!(default["svg"].as_str(), lm["svg"].as_str(), "the default must render as Latin Modern Math: {default}");
 }
 
 /// A family whose asset is not embedded fails with a clear code instead of

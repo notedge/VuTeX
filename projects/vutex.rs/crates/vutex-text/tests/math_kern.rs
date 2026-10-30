@@ -1,13 +1,15 @@
 //! The glyph-level `MathGlyphInfo` facts as the embedded math font publishes them.
 //!
-//! XITS Math is the reference: it ships italic corrections for its slanted
-//! letters, top accent attachments and an extended shape coverage, and — unlike
-//! the TeX-derived Latin Modern design — a real four-corner `MathKern`
-//! subtable. The step semantics of a corner kern are exercised against
-//! synthetic tables in the crate's unit tests; here the point is the font facts
-//! and how a measured value and an absence stay distinguishable.
+//! XITS Math is the reference — pinned explicitly here, because the builtin
+//! default family is a product choice that may move: it ships italic corrections
+//! for its slanted letters, top accent attachments and an extended shape
+//! coverage, and — unlike the TeX-derived Latin Modern design — a real
+//! four-corner `MathKern` subtable. The step semantics of a corner kern are
+//! exercised against synthetic tables in the crate's unit tests; here the point
+//! is the font facts and how a measured value and an absence stay
+//! distinguishable.
 
-use vutex_text::math::{GlyphId, KernCorner, MathFontFacts};
+use vutex_text::math::{GlyphId, KernCorner, MathFontFamily, MathFontFacts};
 use vutex_types::math::Fixed;
 
 /// Absolute tolerance for an em-relative font fact, generous enough for the
@@ -15,7 +17,7 @@ use vutex_types::math::Fixed;
 const EM_TOLERANCE: f64 = 0.002;
 
 fn facts() -> MathFontFacts {
-    MathFontFacts::embedded().expect("the embedded font must carry a MATH table")
+    MathFontFacts::for_family(MathFontFamily::XitsMath).expect("XITS Math must carry a MATH table")
 }
 
 fn glyph(facts: &MathFontFacts, ch: char) -> GlyphId {

@@ -1,11 +1,11 @@
-//! `MathVariants` facts must come from the embedded font, not from a guess.
+//! `MathVariants` facts must come from the reference font, not from a guess.
 //!
 //! Every expectation below is a fact of `XITSMath-Regular.otf`: its
 //! `MathVariants` coverage, its prepared variant records and its `GlyphAssembly`
 //! recipes. A size the font does not publish must be reported as missing rather
 //! than replaced with a scaled-up copy of the base glyph.
 
-use vutex_text::math::{GlyphId, MathFontFacts, StretchAxis, StretchPlan};
+use vutex_text::math::{GlyphId, MathFontFamily, MathFontFacts, StretchAxis, StretchPlan};
 use vutex_types::math::Fixed;
 
 fn em(value: f64) -> Fixed {
@@ -19,7 +19,7 @@ fn close(actual: Fixed, expected: f64, what: &str) {
 
 #[test]
 fn the_font_publishes_a_construction_per_covered_glyph() {
-    let facts = MathFontFacts::embedded().expect("the embedded font carries a MATH table");
+    let facts = MathFontFacts::for_family(MathFontFamily::XitsMath).expect("the embedded font carries a MATH table");
     let variants = facts.variants();
 
     assert_eq!(facts.units_per_em(), 1000, "XITS Math is a 1000 unit font");
@@ -40,7 +40,7 @@ fn the_font_publishes_a_construction_per_covered_glyph() {
 
 #[test]
 fn parenthesis_variants_and_assembly_are_read_from_the_font() {
-    let facts = MathFontFacts::embedded().expect("MATH table");
+    let facts = MathFontFacts::for_family(MathFontFamily::XitsMath).expect("MATH table");
     let variants = facts.variants();
     let paren = facts.glyph_for_char('(').expect("the font maps `(`");
     assert_eq!(paren, GlyphId::new(41), "'(' is glyph 41 in this font");
@@ -73,7 +73,7 @@ fn parenthesis_variants_and_assembly_are_read_from_the_font() {
 
 #[test]
 fn stretch_takes_the_smallest_sufficient_variant_then_the_assembly() {
-    let facts = MathFontFacts::embedded().expect("MATH table");
+    let facts = MathFontFacts::for_family(MathFontFamily::XitsMath).expect("MATH table");
     let variants = facts.variants();
     let paren = facts.glyph_for_char('(').expect("the font maps `(`");
 
@@ -100,7 +100,7 @@ fn stretch_takes_the_smallest_sufficient_variant_then_the_assembly() {
 
 #[test]
 fn a_brace_grows_through_both_of_its_extenders() {
-    let facts = MathFontFacts::embedded().expect("MATH table");
+    let facts = MathFontFacts::for_family(MathFontFamily::XitsMath).expect("MATH table");
     let variants = facts.variants();
     let brace = facts.glyph_for_char('{').expect("the font maps `{`");
     let construction = variants.construction(brace, StretchAxis::Vertical).expect("the brace grows");
@@ -121,7 +121,7 @@ fn a_brace_grows_through_both_of_its_extenders() {
 
 #[test]
 fn horizontal_constructions_cover_the_wide_forms_the_font_ships() {
-    let facts = MathFontFacts::embedded().expect("MATH table");
+    let facts = MathFontFacts::for_family(MathFontFamily::XitsMath).expect("MATH table");
     let variants = facts.variants();
 
     // XITS Math does not stretch `=` at all: a construction must not be
@@ -160,7 +160,7 @@ fn horizontal_constructions_cover_the_wide_forms_the_font_ships() {
 
 #[test]
 fn a_size_the_font_does_not_publish_is_reported_as_missing() {
-    let facts = MathFontFacts::embedded().expect("MATH table");
+    let facts = MathFontFacts::for_family(MathFontFamily::XitsMath).expect("MATH table");
     let variants = facts.variants();
 
     // `∑` publishes two prepared designs and no assembly, so 2 em is simply not
@@ -179,7 +179,7 @@ fn a_size_the_font_does_not_publish_is_reported_as_missing() {
 
 #[test]
 fn vertical_integral_variants_keep_their_math_italic_correction() {
-    let facts = MathFontFacts::embedded().expect("MATH table");
+    let facts = MathFontFacts::for_family(MathFontFamily::XitsMath).expect("MATH table");
     let variants = facts.variants();
     let integral = facts.glyph_for_char('∫').expect("the font maps `∫`");
     let construction = variants.construction(integral, StretchAxis::Vertical).expect("'∫' has display versions");

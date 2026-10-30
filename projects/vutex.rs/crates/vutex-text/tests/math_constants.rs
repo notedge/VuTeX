@@ -1,12 +1,13 @@
 //! The `MathConstants` facts as the embedded math font publishes them.
 //!
-//! Every value here is checked against XITS Math, and every value also
-//! carries where it came from: a number the font measured is
+//! Every value here is checked against XITS Math — pinned explicitly, because
+//! the builtin default family is a product choice that may move — and every
+//! value also carries where it came from: a number the font measured is
 //! `MathConstantValue::FontTable`, while a number this crate invented because the
 //! font said nothing is `MathConstantValue::SyntheticFallback`. A caller can
 //! therefore audit a layout that fell back without reading the font itself.
 
-use vutex_text::math::{MathConstantValue, MathConstants, MathFontFacts};
+use vutex_text::math::{MathConstantValue, MathConstants, MathFontFamily, MathFontFacts};
 use vutex_types::math::MathConstant;
 
 /// Absolute tolerance for an em-relative constant, covering the 1/65536 `Fixed`
@@ -14,7 +15,7 @@ use vutex_types::math::MathConstant;
 const EM_TOLERANCE: f64 = 0.002;
 
 fn facts() -> MathFontFacts {
-    MathFontFacts::embedded().expect("the embedded font must carry a MATH table")
+    MathFontFacts::for_family(MathFontFamily::XitsMath).expect("XITS Math must carry a MATH table")
 }
 
 fn close(value: MathConstantValue, expected: f64, what: &str) {
