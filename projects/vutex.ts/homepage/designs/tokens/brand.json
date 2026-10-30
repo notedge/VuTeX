@@ -1,29 +1,29 @@
 {
     "brand": {
-        "primary": "#5A5A64",
-        "ink": "#101012"
+        "primary": "#D6D6DE",
+        "ink": "#F4F4F6"
     },
     "surface": {
-        "paper": "#FAFAFB",
-        "page": "#FCFCFD",
-        "mist": "#F2F2F4",
-        "card": "#FFFFFF",
-        "ink": "#101012",
-        "night": "#0B0B0D",
-        "code": "#17171A"
+        "paper": "#0E0E11",
+        "page": "#0A0A0C",
+        "mist": "#16161A",
+        "card": "#121216",
+        "ink": "#F4F4F6",
+        "night": "#050506",
+        "code": "#08080A"
     },
     "text": {
-        "ink": "#101012",
-        "steel": "#4A4A52",
-        "muted": "#82828B",
-        "faint": "#ADADB6",
-        "on-brand": "#FAFAFB",
+        "ink": "#F4F4F6",
+        "steel": "#A6A6B0",
+        "muted": "#71717C",
+        "faint": "#4C4C56",
+        "on-brand": "#0B0B0D",
         "on-night": "#E9E9EC"
     },
     "line": {
-        "default": "#DDDEE1",
-        "subtle": "#E9EAEC",
-        "strong": "#C3C4C9"
+        "default": "#26262D",
+        "subtle": "#1C1C21",
+        "strong": "#3A3A44"
     },
     "font": {
         "display": "\"VuTeX Math\", \"Latin Modern Math\", \"Songti SC\", \"Noto Serif CJK SC\", \"Source Han Serif SC\", STSong, serif",
