@@ -22,7 +22,7 @@
 use std::{collections::BTreeMap, fs, path::Path};
 
 use serde::Deserialize;
-use vutex_layout::math::{FormulaLayout, layout_formula_with_size};
+use vutex_layout::math::{FormulaLayout, LayoutNode, layout_formula_with_size};
 use vutex_types::math::MathResult;
 
 // ---------------------------------------------------------------------------
@@ -83,7 +83,41 @@ struct Record {
     rule_thickness: Option<f64>,
     delimiter_size: Option<f64>,
     script_positions: Option<serde_json::Value>,
+    degree: Option<Degree>,
     mathml: Option<String>,
+}
+
+/// One advance box of the degree assembly, in em (engine box metrics).
+#[derive(Debug, Deserialize)]
+struct DegreeBox {
+    width: f64,
+    height: f64,
+    depth: f64,
+}
+
+/// The degree content measured by the engine in each superscript-demoted
+/// candidate style, so the recorded style is a matched measurement.
+#[derive(Debug, Deserialize)]
+struct CandidateBoxes {
+    script: Option<DegreeBox>,
+    scriptscript: Option<DegreeBox>,
+}
+
+/// Reference-side radical-degree geometry (`tests/fixtures/oracle` schema
+/// definition `radicalDegree`): what the engine's own `\showbox` assembly
+/// dump and companion `\hbox` measurements say about `\sqrt[n]{...}`.
+#[derive(Debug, Deserialize)]
+struct Degree {
+    style: Option<String>,
+    anchor_x: Option<f64>,
+    anchor_y: Option<f64>,
+    advance_box: Option<DegreeBox>,
+    ink_bbox: Option<serde_json::Value>,
+    kern_before: Option<f64>,
+    kern_after: Option<f64>,
+    advance_total: Option<f64>,
+    naked_box: Option<DegreeBox>,
+    candidate_boxes: CandidateBoxes,
 }
 
 #[derive(Debug, Deserialize)]
@@ -398,6 +432,239 @@ fn vutex_geometry_is_within_tolerance_of_latex_reference() {
     if !failures.is_empty() {
         panic!("LaTeX geometry parity failures ({}):\n  {}", failures.len(), failures.join("\n  "));
     }
+}
+
+// ---------------------------------------------------------------------------
+// Radical-degree assembly on the VuTeX side
+// ---------------------------------------------------------------------------
+
+/// The degree assembly read back from VuTeX's radical layout tree, in pixels.
+///
+/// `layout_radical` assembles an indexed root as the hlist
+/// `Kern(before), VBox([degree, Kern(raise)]), Kern(after), radical, radicand`
+/// (tex.web rule 11 with the MATH-table kerns), so the degree's left edge is
+/// the before-kern and its baseline sits `raise + degree depth` above the
+/// formula baseline — the same quantities the engine's `\showbox` dump
+/// exposes on the reference side.
+struct VuDegree {
+    kern_before: f64,
+    kern_after: f64,
+    raise: f64,
+    degree_width: f64,
+    degree_height: f64,
+    degree_depth: f64,
+}
+
+/// Depth-first search for the radical's degree assembly in a layout tree.
+fn find_vu_degree(node: &LayoutNode) -> Option<VuDegree> {
+    match node {
+        LayoutNode::HBox(h) => {
+            if h.children.len() >= 3 {
+                if let (LayoutNode::Kern(kb), LayoutNode::VBox(v), LayoutNode::Kern(ka)) =
+                    (&h.children[0], &h.children[1], &h.children[2])
+                {
+                    if v.children.len() == 2 {
+                        if let LayoutNode::Kern(raise) = &v.children[1] {
+                            let deg = &v.children[0];
+                            return Some(VuDegree {
+                                kern_before: kb.to_f64(),
+                                kern_after: ka.to_f64(),
+                                raise: raise.to_f64(),
+                                degree_width: deg.width().to_f64(),
+                                degree_height: deg.height().to_f64(),
+                                degree_depth: deg.depth().to_f64(),
+                            });
+                        }
+                    }
+                }
+            }
+            h.children.iter().find_map(find_vu_degree)
+        }
+        LayoutNode::VBox(v) => v.children.iter().find_map(find_vu_degree),
+        _ => None,
+    }
+}
+
+/// Every field the Tectonic probe demonstrably produces must be present for
+/// a degree-carrying available record, and the two independent measurement
+/// paths (the `\showbox` assembly dump and the companion `\hbox` widths) must
+/// agree with each other.  This is the reference side's own integrity gate:
+/// a regenerated fixture that silently loses the showbox pass fails here
+/// instead of weakening the VuTeX parity gate downstream.
+#[test]
+fn degree_records_agree_with_the_engines_own_cross_measurements() {
+    let doc = load_document();
+    if !is_available(&doc) {
+        eprintln!("\n=== degree oracle blocked (no TeX engine) ===");
+        eprintln!("skipping degree self-consistency assertions");
+        return;
+    }
+
+    let mut checked = 0;
+    for record in &doc.records {
+        let carries_degree = record.tex.contains("\\sqrt[");
+        let Some(degree) = &record.degree
+        else {
+            assert!(
+                !carries_degree,
+                "`{}` display={}: a degree-carrying source must record a `degree` object",
+                record.corpus_id, record.display_mode
+            );
+            continue;
+        };
+        assert!(carries_degree, "`{}` records a `degree` object but its source has no `\\sqrt[...]`", record.corpus_id);
+
+        let label = format!("{} ({})", record.corpus_id, if record.display_mode { "display" } else { "inline" });
+        let want = |field: &str, value: Option<f64>| {
+            value.unwrap_or_else(|| panic!("{label}: `{field}` must not be null — Tectonic produces it"))
+        };
+        let full_w = record.width.unwrap_or_else(|| panic!("{label}: available record must carry width"));
+        let full_h = record.height.unwrap_or_else(|| panic!("{label}: available record must carry height"));
+
+        let naked = degree.naked_box.as_ref().unwrap_or_else(|| panic!("{label}: naked_box must be measured"));
+        let advance =
+            degree.advance_box.as_ref().unwrap_or_else(|| panic!("{label}: advance_box must come from the showbox dump"));
+        let kb = want("kern_before", degree.kern_before);
+        let ka = want("kern_after", degree.kern_after);
+        let anchor_x = want("anchor_x", degree.anchor_x);
+        let anchor_y = want("anchor_y", degree.anchor_y);
+        let total = want("advance_total", degree.advance_total);
+
+        // `advance_total` is defined as the width difference of two engine
+        // hboxes, so recomputation from the stored values must be exact.
+        let re = (full_w - naked.width - total).abs() / total.abs().max(0.001);
+        assert!(re < 1e-9, "{label}: advance_total {total} != full width {full_w} - naked width {}", naked.width);
+
+        // The showbox assembly (kerns + degree box) and the two-hbox advance
+        // difference are independent measurements; TeX prints five decimals,
+        // so they may differ only by rounding (~1e-5pt per value).
+        let re = (kb + advance.width + ka - total).abs() / total.abs().max(0.001);
+        assert!(
+            re < 0.01,
+            "{label}: assembly advance {} deviates from measured advance {total} by {re:.4}",
+            kb + advance.width + ka
+        );
+
+        // The degree's left edge is exactly the before-kerns of the dump.
+        assert!((anchor_x - kb).abs() < 1e-9, "{label}: anchor_x {anchor_x} must equal kern_before {kb}");
+        // A negative shift means raised (`\raise` verified), so the anchor is
+        // above the baseline.
+        assert!(anchor_y > 0.0, "{label}: anchor_y must be positive (raised)");
+
+        // The recorded style must match the engine's own candidate box.
+        match degree.style.as_deref() {
+            Some(s @ ("script" | "scriptscript")) => {
+                let cand = if s == "script" {
+                    degree.candidate_boxes.script.as_ref()
+                }
+                else {
+                    degree.candidate_boxes.scriptscript.as_ref()
+                };
+                let cand = cand.unwrap_or_else(|| panic!("{label}: style `{s}` requires the `{s}` candidate box"));
+                assert!(
+                    (advance.width - cand.width).abs() < 1e-6,
+                    "{label}: assembled box width {} does not match the `{s}` candidate width {}",
+                    advance.width,
+                    cand.width
+                );
+            }
+            Some(other) => panic!("{label}: unexpected degree style `{other}`"),
+            None => panic!("{label}: style must be decided from the engine's candidate boxes"),
+        }
+
+        // TeX box metrics are advance boxes, not ink extents, and the harness
+        // extracts no glyph outlines — the schema documents `ink_bbox` as the
+        // field the LaTeX oracle cannot produce.
+        assert!(degree.ink_bbox.is_none(), "{label}: the LaTeX oracle reports no ink extent for the degree");
+
+        // The degree sits inside the assembled radical's vertical extent.
+        assert!(
+            anchor_y + advance.height <= full_h + 1e-6,
+            "{label}: degree top {} exceeds formula height {full_h}",
+            anchor_y + advance.height
+        );
+        checked += 1;
+    }
+    assert!(checked >= 2, "radical-degree must be recorded in both inline and display styles");
+}
+
+/// Per-field parity between VuTeX's assembled degree geometry and the
+/// reference engine's measurements for `radical-degree`.
+///
+/// Tolerances and their evidence, all relative deviations:
+///
+/// - kerns and the degree's left edge: 2%.  VuTeX takes
+///   `RadicalKernBeforeDegree`/`AfterDegree` from the Latin Modern MATH table
+///   (278/-556 per 1000 em → 0.277/0.556 at 10px); the LaTeX kernel hard-codes
+///   the same design values as 0.277771/-0.555542 em — 0.3% apart.  A 2% gate
+///   is a real equality check, not a shrug.
+/// - anchor height: 25%.  The kernel raises the degree by its own fraction of
+///   the radical clearance (≈0.42 inline / ≈0.465 display, visible as the
+///   recorded shift), while VuTeX follows tex.web
+///   `RadicalDegreeBottomRaisePercent` = 60% of `bar_top - radicand depth`.
+///   That is a documented algorithm difference (the parity fixture records
+///   0.336/0.395 against VuTeX's 0.416/0.489 — 24%); the gate pins that VuTeX
+///   stays on the tex.web rule instead of drifting.
+/// - degree box: 15% against the engine's own `script` candidate box.  The
+///   kernel packs the degree in scriptscript (recorded in `style`), VuTeX
+///   demotes it through the superscript rule to script — comparing VuTeX
+///   against the assembled scriptscript box would conflate the style choice
+///   with glyph metrics, so the same-style candidate is the honest reference.
+///   LM Math's script "3" (0.375, 0.507 em) against the engine's
+///   `\scriptstyle 3` hbox (0.399, 0.451 em) is 6%/12% — font design, not
+///   layout structure.  Depth gets a 0.02em absolute bound instead: the
+///   reference digit depth is exactly 0 (relative tolerance degenerates) and
+///   LM Math's script "3" descends ~0.01em — a glyph-design fact.
+#[test]
+fn vutex_radical_degree_matches_the_latex_degree_assembly() {
+    let doc = load_document();
+    if !is_available(&doc) {
+        eprintln!("\n=== degree oracle blocked (no TeX engine) ===");
+        eprintln!("skipping degree parity assertions");
+        return;
+    }
+
+    let mut checked = 0;
+    for record in &doc.records {
+        if record.corpus_id != "radical-degree" {
+            continue;
+        }
+        let label = format!("radical-degree ({})", if record.display_mode { "display" } else { "inline" });
+        let degree =
+            record.degree.as_ref().unwrap_or_else(|| panic!("{label}: degree-carrying record must have a `degree` object"));
+        let want = |field: &str, value: Option<f64>| {
+            value.unwrap_or_else(|| panic!("{label}: reference `{field}` missing — regenerate the fixture"))
+        };
+
+        let (root, _layout) = layout_formula_with_size(&record.tex, record.display_mode, REFERENCE_BASE_SIZE_PX)
+            .expect("VuTeX must layout the corpus radical-degree source");
+        let vu =
+            find_vu_degree(&root).expect("VuTeX must assemble the degree as `Kern, VBox([degree, Kern(raise)]), Kern, ...`");
+        let em = REFERENCE_BASE_SIZE_PX;
+
+        within_tolerance("kern_before", vu.kern_before / em, want("kern_before", degree.kern_before), 0.02, &label);
+        within_tolerance("kern_after", vu.kern_after / em, want("kern_after", degree.kern_after), 0.02, &label);
+        within_tolerance("anchor_x", vu.kern_before / em, want("anchor_x", degree.anchor_x), 0.02, &label);
+        let anchor_y_vu = (vu.raise + vu.degree_depth) / em;
+        within_tolerance("anchor_y", anchor_y_vu, want("anchor_y", degree.anchor_y), 0.25, &label);
+
+        let cand = degree
+            .candidate_boxes
+            .script
+            .as_ref()
+            .unwrap_or_else(|| panic!("{label}: reference `script` candidate box missing"));
+        within_tolerance("degree width", vu.degree_width / em, cand.width, 0.15, &label);
+        within_tolerance("degree height", vu.degree_height / em, cand.height, 0.15, &label);
+        let depth_diff = (vu.degree_depth / em - cand.depth).abs();
+        assert!(
+            depth_diff < 0.02,
+            "{label}: degree depth vutex={:.4} latex={:.4} differ by {depth_diff:.4}em > 0.02em",
+            vu.degree_depth / em,
+            cand.depth
+        );
+        checked += 1;
+    }
+    assert_eq!(checked, 2, "radical-degree must be recorded in both inline and display styles");
 }
 
 // ---------------------------------------------------------------------------
