@@ -22,13 +22,14 @@ Cargo.lock
 node_modules/
 .env.placeholder.local
 .cache/
-projects/packages/vutex-unknown-wasm32/lib/
-projects/packages/vutex-*/lib/
+projects/vutex.ts/platforms/vutex-unknown-wasm32/lib/
+projects/vutex.ts/platforms/vutex-*/lib/
 cache/
 dist/
 *.node
 *.wasm
 pnpm-lock.yaml
+package-lock.json
 
 # Renderer
 _tmp_render/

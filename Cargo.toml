@@ -1,28 +1,28 @@
 [workspace]
 resolver = "2"
 members = [
-    "projects/crates/vutex-types",
-    "projects/crates/vutex-style",
-    "projects/crates/vutex-text",
-    "projects/crates/vutex-layout",
-    "projects/crates/vutex-presentation",
-    "projects/crates/vutex-render",
-    "projects/crates/vutex-render-pdf",
-    "projects/crates/vutex-render-svg",
-    "projects/crates/vutex-render-html",
-    "projects/crates/vutex-render-raster",
-    "projects/crates/wetex-wasm",
-    "projects/crates/vutex-napi",
+    "projects/vutex.rs/crates/vutex-types",
+    "projects/vutex.rs/crates/vutex-style",
+    "projects/vutex.rs/crates/vutex-text",
+    "projects/vutex.rs/crates/vutex-layout",
+    "projects/vutex.rs/crates/vutex-presentation",
+    "projects/vutex.rs/crates/vutex-render",
+    "projects/vutex.rs/crates/vutex-render-pdf",
+    "projects/vutex.rs/crates/vutex-render-svg",
+    "projects/vutex.rs/crates/vutex-render-html",
+    "projects/vutex.rs/crates/vutex-render-raster",
+    "projects/vutex.rs/exports/wetex-wasm",
+    "projects/vutex.rs/exports/vutex-napi",
 ]
 default-members = [
-    "projects/crates/vutex-types",
-    "projects/crates/vutex-style",
-    "projects/crates/vutex-text",
-    "projects/crates/vutex-layout",
-    "projects/crates/vutex-presentation",
-    "projects/crates/vutex-render",
-    "projects/crates/wetex-wasm",
-    "projects/crates/vutex-napi",
+    "projects/vutex.rs/crates/vutex-types",
+    "projects/vutex.rs/crates/vutex-style",
+    "projects/vutex.rs/crates/vutex-text",
+    "projects/vutex.rs/crates/vutex-layout",
+    "projects/vutex.rs/crates/vutex-presentation",
+    "projects/vutex.rs/crates/vutex-render",
+    "projects/vutex.rs/exports/wetex-wasm",
+    "projects/vutex.rs/exports/vutex-napi",
 ]
 
 [workspace.lints.rust]
@@ -57,18 +57,18 @@ napi = { version = "3.14.2", default-features = false, features = ["napi4", "dyn
 napi-derive = "3.6.12"
 napi-build = "2"
 
-vutex-types = { path = "projects/crates/vutex-types" }
-vutex-style = { path = "projects/crates/vutex-style" }
-vutex-text = { path = "projects/crates/vutex-text" }
-vutex-layout = { path = "projects/crates/vutex-layout" }
-vutex-presentation = { path = "projects/crates/vutex-presentation" }
-vutex-render = { path = "projects/crates/vutex-render" }
-vutex-render-pdf = { path = "projects/crates/vutex-render-pdf" }
-vutex-render-svg = { path = "projects/crates/vutex-render-svg" }
-vutex-render-html = { path = "projects/crates/vutex-render-html" }
-vutex-render-raster = { path = "projects/crates/vutex-render-raster" }
-wetex-wasm = { path = "projects/crates/wetex-wasm" }
-vutex-napi = { path = "projects/crates/vutex-napi" }
+vutex-types = { path = "projects/vutex.rs/crates/vutex-types" }
+vutex-style = { path = "projects/vutex.rs/crates/vutex-style" }
+vutex-text = { path = "projects/vutex.rs/crates/vutex-text" }
+vutex-layout = { path = "projects/vutex.rs/crates/vutex-layout" }
+vutex-presentation = { path = "projects/vutex.rs/crates/vutex-presentation" }
+vutex-render = { path = "projects/vutex.rs/crates/vutex-render" }
+vutex-render-pdf = { path = "projects/vutex.rs/crates/vutex-render-pdf" }
+vutex-render-svg = { path = "projects/vutex.rs/crates/vutex-render-svg" }
+vutex-render-html = { path = "projects/vutex.rs/crates/vutex-render-html" }
+vutex-render-raster = { path = "projects/vutex.rs/crates/vutex-render-raster" }
+wetex-wasm = { path = "projects/vutex.rs/exports/wetex-wasm" }
+vutex-napi = { path = "projects/vutex.rs/exports/vutex-napi" }
 
 [profile.release]
 lto = true

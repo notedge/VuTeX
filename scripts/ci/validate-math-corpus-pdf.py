@@ -2,7 +2,7 @@
 """Validate VuTeX math-corpus PDFs with two independent parsers.
 
 The gate is optional: it shells out to the `#[ignore]` Rust writer in
-`projects/crates/vutex-render-pdf/tests/math_corpus_pdf.rs`, which renders one
+`projects/vutex.rs/crates/vutex-render-pdf/tests/math_corpus_pdf.rs`, which renders one
 PDF page per layout record of the shared math corpus. Every page is then opened
 with pypdf *and* PyMuPDF, two parsers that share no code, and both must agree
 that the page carries vector drawings and no text at all.

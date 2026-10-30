@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const napiDir = join(root, "projects/crates/vutex-napi");
+const napiDir = join(root, "projects/vutex.rs/exports/vutex-napi");
 
 /** @type {Record<string, { packageDir: string, fileName: string }>} */
 const ARTIFACTS = {
@@ -64,7 +64,7 @@ for (const name of built) {
         console.warn(`skip unmapped artifact: ${name}`);
         continue;
     }
-    const libDir = join(root, "projects/packages", mapping.packageDir, "lib");
+    const libDir = join(root, "projects/vutex.ts/platforms", mapping.packageDir, "lib");
     mkdirSync(libDir, { recursive: true });
     for (const existing of readdirSync(libDir).filter((entry) => entry.endsWith(".node"))) {
         unlinkSync(join(libDir, existing));

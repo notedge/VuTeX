@@ -1,0 +1,24 @@
+{
+    "name": "@vutex/vutex-darwin-arm64",
+    "version": "0.0.12",
+    "description": "VuTeX Node-API binary for macOS arm64",
+    "type": "module",
+    "license": "MPL-2.0",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/notedge/VuTeX.git",
+        "directory": "projects/vutex.ts/platforms/vutex-darwin-arm64"
+    },
+    "main": "./index.js",
+    "files": [
+        "index.js",
+        "lib",
+        "readme.md"
+    ],
+    "os": [
+        "darwin"
+    ],
+    "cpu": [
+        "arm64"
+    ]
+}

@@ -1,0 +1,2057 @@
+{
+  "schema_version": "v0",
+  "source": {
+    "engine": "mathjax",
+    "version": "3.2.2",
+    "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+    "status": "available",
+    "status_reason": null
+  },
+  "corpus_path": "projects/vutex.rs/crates/vutex-layout/tests/fixtures/oracle/corpus.json",
+  "records": [
+    {
+      "schema_version": "v0",
+      "corpus_id": "sum-of-atoms",
+      "tex": "x+y",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 2284.4,
+        "height": 788,
+        "depth": 583
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 651
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 171
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 738
+        }
+      ],
+      "rules": [],
+      "paths_count": 3,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "sum-of-atoms",
+      "tex": "x+y",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 2284.4,
+        "height": 788,
+        "depth": 583
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 651
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 171
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 738
+        }
+      ],
+      "rules": [],
+      "paths_count": 3,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "relation",
+      "tex": "a+b=c",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 3947,
+        "height": 776,
+        "depth": 694
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 171
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 158
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 361
+        }
+      ],
+      "rules": [],
+      "paths_count": 5,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "relation",
+      "tex": "a+b=c",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 3947,
+        "height": 776,
+        "depth": 694
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 171
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 158
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 361
+        }
+      ],
+      "rules": [],
+      "paths_count": 5,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "fraction-compound",
+      "tex": "\\frac{a+b}{c+d}",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 1667.5,
+        "height": 1291.7,
+        "depth": 888.7
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 171
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 361
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 640
+        }
+      ],
+      "rules": [
+        {
+          "x1": 120,
+          "y1": 220,
+          "x2": 1547.5,
+          "y2": 280
+        }
+      ],
+      "paths_count": 5,
+      "rects_count": 1,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "fraction-compound",
+      "tex": "\\frac{a+b}{c+d}",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 2620.4,
+        "height": 2138,
+        "depth": 1370
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 171
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 361
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 640
+        }
+      ],
+      "rules": [
+        {
+          "x1": 120,
+          "y1": 220,
+          "x2": 2500.4,
+          "y2": 280
+        }
+      ],
+      "paths_count": 5,
+      "rects_count": 1,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "script-nested",
+      "tex": "x^{a_b}",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 1302.2,
+        "height": 685.8,
+        "depth": 674.8
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 651
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        }
+      ],
+      "rules": [],
+      "paths_count": 3,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "script-nested",
+      "tex": "x^{a_b}",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 1302.2,
+        "height": 735.8,
+        "depth": 724.8
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 651
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        }
+      ],
+      "rules": [],
+      "paths_count": 3,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "radical",
+      "tex": "\\sqrt{x}",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 1425,
+        "height": 1060,
+        "depth": 843
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 305
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 651
+        }
+      ],
+      "rules": [
+        {
+          "x1": 853,
+          "y1": 723,
+          "x2": 1425,
+          "y2": 783
+        }
+      ],
+      "paths_count": 2,
+      "rects_count": 1,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "radical",
+      "tex": "\\sqrt{x}",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 1425,
+        "height": 1060,
+        "depth": 890.8
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 305
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 651
+        }
+      ],
+      "rules": [
+        {
+          "x1": 853,
+          "y1": 770.8,
+          "x2": 1425,
+          "y2": 830.8
+        }
+      ],
+      "paths_count": 2,
+      "rects_count": 1,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "radical-degree",
+      "tex": "\\sqrt[3]{x}",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 1425,
+        "height": 1060,
+        "depth": 843
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 642
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 305
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 651
+        }
+      ],
+      "rules": [
+        {
+          "x1": 853,
+          "y1": 723,
+          "x2": 1425,
+          "y2": 783
+        }
+      ],
+      "paths_count": 3,
+      "rects_count": 1,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "radical-degree",
+      "tex": "\\sqrt[3]{x}",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 1425,
+        "height": 1060,
+        "depth": 890.8
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 642
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 305
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 651
+        }
+      ],
+      "rules": [
+        {
+          "x1": 853,
+          "y1": 770.8,
+          "x2": 1425,
+          "y2": 830.8
+        }
+      ],
+      "paths_count": 3,
+      "rects_count": 1,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "sum-limits",
+      "tex": "\\sum_{i=1}^{n} i",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 2798.3,
+        "height": 1132.9,
+        "depth": 789.6
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 451
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 554
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 520
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 158
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 252
+        }
+      ],
+      "rules": [],
+      "paths_count": 5,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "sum-limits",
+      "tex": "\\sum_{i=1}^{n} i",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 1955.7,
+        "height": 2808.5,
+        "depth": 1562.5
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 500
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 520
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 158
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 252
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 554
+        }
+      ],
+      "rules": [],
+      "paths_count": 5,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "integral-limits",
+      "tex": "\\int_0^1 x^2\\,dx",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 3537.7,
+        "height": 1359.9,
+        "depth": 1003.5
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 602
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 252
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 329
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 651
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 454
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 640
+        }
+      ],
+      "rules": [],
+      "paths_count": 6,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "integral-limits",
+      "tex": "\\int_0^1 x^2\\,dx",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 3884.2,
+        "height": 2470.9,
+        "depth": 1559
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 543
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 252
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 329
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 651
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 454
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 640
+        }
+      ],
+      "rules": [],
+      "paths_count": 6,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "fenced-fraction",
+      "tex": "\\left(\\frac{a}{b}\\right)",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 1730.1,
+        "height": 1202.3,
+        "depth": 849.5
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 216
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 192
+        }
+      ],
+      "rules": [
+        {
+          "x1": 120,
+          "y1": 220,
+          "x2": 694.1,
+          "y2": 280
+        }
+      ],
+      "paths_count": 4,
+      "rects_count": 1,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "fenced-fraction",
+      "tex": "\\left(\\frac{a}{b}\\right)",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 2163,
+        "height": 1846.5,
+        "depth": 1149.5
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 281
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 248
+        }
+      ],
+      "rules": [
+        {
+          "x1": 120,
+          "y1": 220,
+          "x2": 849,
+          "y2": 280
+        }
+      ],
+      "paths_count": 4,
+      "rects_count": 1,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "fenced-norm",
+      "tex": "\\left\\lVert x \\right\\rVert",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 2128,
+        "height": 602,
+        "depth": 551
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 42
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 651
+        }
+      ],
+      "rules": [],
+      "paths_count": 2,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "fenced-norm",
+      "tex": "\\left\\lVert x \\right\\rVert",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 2128,
+        "height": 602,
+        "depth": 551
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 42
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 651
+        }
+      ],
+      "rules": [],
+      "paths_count": 2,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "accent-hat",
+      "tex": "\\hat{f}",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 550,
+        "height": 1278,
+        "depth": 1073
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 651
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 137
+        }
+      ],
+      "rules": [],
+      "paths_count": 2,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "accent-hat",
+      "tex": "\\hat{f}",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 550,
+        "height": 1278,
+        "depth": 1073
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 651
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 137
+        }
+      ],
+      "rules": [],
+      "paths_count": 2,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "accent-bar",
+      "tex": "\\bar{AB}",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 1509,
+        "height": 967,
+        "depth": 967
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 512
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 651
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 23
+        }
+      ],
+      "rules": [],
+      "paths_count": 3,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "accent-bar",
+      "tex": "\\bar{AB}",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 1509,
+        "height": 967,
+        "depth": 967
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 512
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 651
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 23
+        }
+      ],
+      "rules": [],
+      "paths_count": 3,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "matrix",
+      "tex": "\\begin{matrix} a & b \\\\ c & d \\end{matrix}",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 2049,
+        "height": 2400,
+        "depth": 1450
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 361
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 640
+        }
+      ],
+      "rules": [],
+      "paths_count": 4,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "matrix",
+      "tex": "\\begin{matrix} a & b \\\\ c & d \\end{matrix}",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 2049,
+        "height": 2400,
+        "depth": 1450
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 361
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 640
+        }
+      ],
+      "rules": [],
+      "paths_count": 4,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "cases",
+      "tex": "\\begin{cases} x & x > 0 \\\\ 0 & \\text{otherwise} \\end{cases}",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 6441,
+        "height": 2399,
+        "depth": 1449.5
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 774
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 651
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 233
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 329
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 266
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 236
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 603
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 358
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 524
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 583
+        }
+      ],
+      "rules": [],
+      "paths_count": 12,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "cases",
+      "tex": "\\begin{cases} x & x > 0 \\\\ 0 & \\text{otherwise} \\end{cases}",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 6441,
+        "height": 2399,
+        "depth": 1449.5
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 774
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 651
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 233
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 329
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 266
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 236
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 603
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 358
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 524
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 583
+        }
+      ],
+      "rules": [],
+      "paths_count": 12,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "aligned",
+      "tex": "\\begin{aligned} a &= b + c \\\\ d &= e \\end{aligned}",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 3947,
+        "height": 2300,
+        "depth": 1400
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 158
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 171
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 361
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 640
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 399
+        }
+      ],
+      "rules": [],
+      "paths_count": 7,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "aligned",
+      "tex": "\\begin{aligned} a &= b + c \\\\ d &= e \\end{aligned}",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 3947,
+        "height": 2300,
+        "depth": 1400
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 158
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 171
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 361
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 640
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 399
+        }
+      ],
+      "rules": [],
+      "paths_count": 7,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "alignedat",
+      "tex": "\\begin{alignedat}{2} a &= b & c &= d \\end{alignedat}",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 4578.1,
+        "height": 1000,
+        "depth": 750
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 158
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 361
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 640
+        }
+      ],
+      "rules": [],
+      "paths_count": 5,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "alignedat",
+      "tex": "\\begin{alignedat}{2} a &= b & c &= d \\end{alignedat}",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 4578.1,
+        "height": 1000,
+        "depth": 750
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 158
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 361
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 640
+        }
+      ],
+      "rules": [],
+      "paths_count": 5,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "split",
+      "tex": "\\begin{split} a &= b \\\\ &= c \\end{split}",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 2295.6,
+        "height": 2300,
+        "depth": 1400
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 158
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 361
+        }
+      ],
+      "rules": [],
+      "paths_count": 4,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "split",
+      "tex": "\\begin{split} a &= b \\\\ &= c \\end{split}",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 2295.6,
+        "height": 2300,
+        "depth": 1400
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 158
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 361
+        }
+      ],
+      "rules": [],
+      "paths_count": 4,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    }
+  ]
+}

@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const targets = ['projects/packages/vutex-unknown-wasm32/lib/.gitignore'];
+const targets = ['projects/vutex.ts/platforms/vutex-unknown-wasm32/lib/.gitignore'];
 
 for (const target of targets) {
     const file = path.join(root, target);

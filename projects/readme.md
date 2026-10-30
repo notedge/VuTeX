@@ -1,4 +1,4 @@
 # VuTeX projects
 
-- `crates/` — Rust `vutex-*` workspace members
-- `packages/` — reserved for future npm/CLI surfaces (empty during scaffold)
+- `vutex.rs/` — Rust workspace (`crates/` core, `exports/` for `vutex-napi` and `wetex-wasm`)
+- `vutex.ts/` — TypeScript surfaces (`packages/`, `platforms/`, `homepage/`)

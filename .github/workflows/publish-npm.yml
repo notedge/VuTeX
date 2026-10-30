@@ -128,7 +128,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          dir="projects/packages/vutex-${{ matrix.short }}/lib"
+          dir="projects/vutex.ts/platforms/vutex-${{ matrix.short }}/lib"
           find "$dir" -name '*.node' -type f | grep -q . || {
             echo "missing .node under $dir" >&2
             ls -la "$dir" || true
@@ -139,7 +139,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: native-${{ matrix.short }}
-          path: projects/packages/vutex-${{ matrix.short }}/lib
+          path: projects/vutex.ts/platforms/vutex-${{ matrix.short }}/lib
           if-no-files-found: error
 
   publish:
@@ -203,7 +203,7 @@ jobs:
           for short in win32-x64 linux-x64 linux-arm64 darwin-arm64 darwin-x64; do
             src="dist/native-artifacts/native-$short"
             [[ -d "$src" ]] || { echo "missing native artifact for $short" >&2; exit 1; }
-            dir="projects/packages/vutex-$short/lib"
+            dir="projects/vutex.ts/platforms/vutex-$short/lib"
             mkdir -p "$dir"
             cp -r "$src"/. "$dir"/
             find "$dir" -name '*.node' -type f | grep -q . || { echo "no .node staged for $short" >&2; exit 1; }

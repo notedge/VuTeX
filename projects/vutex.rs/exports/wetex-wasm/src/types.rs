@@ -1,0 +1,120 @@
+use serde::{Deserialize, Serialize};
+
+use vutex_types::math::MathSemantics;
+
+/// Inline or block formula layout mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DisplayMode {
+    /// Inline formula set at text size.
+    Inline,
+    /// Display formula set at display size with display-style spacing.
+    Block,
+}
+
+/// Font family selection for math layout.
+///
+/// Each family requires an OpenType MATH table — wetex reads
+/// `MathConstants`, `MathVariants`, and `MathKern` from it to drive the
+/// TeXbook layout engine. Only [`FontFamily::LmMath`] ships as an embedded
+/// asset today; the remaining variants are declared here so hosts can opt
+/// into them once the font-loader layer lands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum FontFamily {
+    /// Latin Modern Math — Computer Modern's OpenType successor, the default
+    /// and only family with a complete embedded MATH table.
+    LmMath,
+    /// XITS Math — Times-based, shares the same MATH table schema as LM Math.
+    /// Embedding planned.
+    XitsMath,
+    /// STIX Two Math — STIX-based, full MATH table. Embedding planned.
+    StixTwoMath,
+}
+
+/// Host-facing render options.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct RenderOptions {
+    /// Inline or block layout mode.
+    pub display_mode: DisplayMode,
+    /// Strict path-only SVG output. Defaults to `true` when omitted, so the
+    /// public render path never falls back to a host-font `<text>` run.
+    /// Passing `false` opts into that host-font fallback explicitly.
+    #[serde(default)]
+    pub outline: Option<bool>,
+    /// Explicit base font size in CSS pixels. When omitted the renderer uses
+    /// `default_base_size(display_mode)` — 14px for inline, 16px for display.
+    #[serde(default)]
+    pub font_size: Option<f64>,
+    /// Math font family. Defaults to [`FontFamily::LmMath`] when omitted —
+    /// the only family with an embedded OpenType MATH table today.
+    /// [`FontFamily::XitsMath`] and [`FontFamily::StixTwoMath`] are declared
+    /// for forward compatibility but return a diagnostic until their font
+    /// assets ship.
+    #[serde(default)]
+    pub font_family: Option<FontFamily>,
+}
+
+impl Default for RenderOptions {
+    fn default() -> Self {
+        Self { display_mode: DisplayMode::Inline, outline: None, font_size: None, font_family: None }
+    }
+}
+
+/// Formula bounding metrics in CSS pixels.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FormulaMetrics {
+    /// Advance width.
+    pub width: f64,
+    /// Extent above the baseline.
+    pub height: f64,
+    /// Extent below the baseline.
+    pub depth: f64,
+    /// Baseline offset.
+    pub baseline: f64,
+}
+
+impl Default for FormulaMetrics {
+    fn default() -> Self {
+        Self { width: 0.0, height: 0.0, depth: 0.0, baseline: 0.0 }
+    }
+}
+
+/// Structured diagnostic for formula parsing or layout.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FormulaDiagnostic {
+    /// Stable diagnostic code, e.g. `WETEX_EMPTY_SOURCE`.
+    pub code: String,
+    /// Severity name: `info`, `warning`, or `error`.
+    pub severity: String,
+    /// Human-readable message.
+    pub message: String,
+    /// Optional start offset in the source.
+    pub start: Option<u32>,
+    /// Optional end offset in the source.
+    pub end: Option<u32>,
+}
+
+/// Combined render payload returned to JavaScript hosts.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FormulaRender {
+    /// Formula bounding metrics.
+    pub metrics: FormulaMetrics,
+    /// SVG document, empty when only measuring.
+    pub svg: String,
+    /// Presentation MathML, present only when requested.
+    pub mathml: Option<String>,
+    /// Structured math semantics the layout consumed, absent when the formula
+    /// did not parse.
+    ///
+    /// This is the same IR snapshot the SVG geometry and the MathML structure
+    /// of this payload come from, so hosts can inspect the authored structure
+    /// without re-parsing the source.
+    pub semantics: Option<MathSemantics>,
+    /// Parse or layout diagnostics.
+    pub diagnostics: Vec<FormulaDiagnostic>,
+}
