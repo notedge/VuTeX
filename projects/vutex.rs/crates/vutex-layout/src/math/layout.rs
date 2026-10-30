@@ -11,7 +11,7 @@ use vutex_types::{
         Alignment, AlignmentAnchors, BBox, DelimiterComponent, DelimiterVariant, Fixed, FontMetricsSnapshot, FontStyle,
         FormulaLayoutResult, FormulaMetrics, GlyphKey, GlyphMetrics, LimitsPolicy, LineStyle, MathConstant, MathEnvironment,
         MathItem, MathList, MathResult, MathStyle, MathStyleState, Noad, NoadKind, Numbering, OperatorClass, PaintNode,
-        SemanticNode, SpacingRule, SymbolRole, math_alphalect, normalize_math_list, project_semantic_with_state,
+        RowPlacement, SemanticNode, SpacingRule, SymbolRole, math_alphalect, normalize_math_list, project_semantic_with_state,
     },
 };
 
@@ -2040,7 +2040,9 @@ impl LayoutEngine {
     /// - `equation`, `gather` and `gathered` have no anchors and centre every
     ///   row over the widest one.
     /// - `multline` flushes its first row left, its last row right and centres
-    ///   the rows between.
+    ///   the rows between — a per-row rule the environment answers through
+    ///   [`MathEnvironment::row_placements`], which layout consumes instead of
+    ///   deriving the placement from row indices itself.
     ///
     /// Row numbering stays an IR intent: VuTeX keeps the authored `Numbering`
     /// and assigns no number itself.
@@ -2138,25 +2140,12 @@ impl LayoutEngine {
                     row_boxes.push(self.pack_hbox(children, None));
                 }
             }
-            // `equation` and `gather`: no anchors, so every row is one centred
-            // line.  A stray `&` still separates cells, and the gutter is all
-            // that holds them together.
-            AlignmentAnchors::Centered => {
-                for cells in cell_layouts {
-                    let mut children = Vec::new();
-                    for (column, cell) in cells.into_iter().enumerate() {
-                        if column > 0 && col_spacing > Fixed::ZERO {
-                            children.push(LayoutNode::Kern(col_spacing));
-                        }
-                        children.push(cell);
-                    }
-                    row_boxes.push(self.pack_hbox(children, None));
-                }
-            }
-            // `multline`: the first row starts at the left edge, the last ends
-            // at the right edge and the rows between are centred.  A single row
-            // cannot be both edges, so it stays centred.
-            AlignmentAnchors::Spread => {
+            // `equation`, `gather`, `gathered` and `multline`: no anchors, so
+            // every row is one line across the block.  A stray `&` still
+            // separates cells, and the gutter is all that holds them together;
+            // where each row then sits across the block is the row placement
+            // applied below.
+            AlignmentAnchors::Centered | AlignmentAnchors::Spread => {
                 for cells in cell_layouts {
                     let mut children = Vec::new();
                     for (column, cell) in cells.into_iter().enumerate() {
@@ -2170,21 +2159,24 @@ impl LayoutEngine {
             }
         }
 
-        // A `Centered` or `Spread` block pads each row to the widest one, so the
+        // A block that places whole rows pads each row to the widest one, so the
         // rows share one box width and the `VBox` can stack them at one left
-        // edge.  Anchor grids already pad every cell to its column, so their
-        // rows are uniform without this pass.
-        if !matches!(anchors, AlignmentAnchors::ColumnPairs | AlignmentAnchors::SingleEquation) {
+        // edge.  Where a row sits inside that width comes from the environment's
+        // own [`MathEnvironment::row_placements`] attribute — `multline`'s flush
+        // edges included — not from a row-index rule here.  Anchor grids already
+        // pad every cell to its column, so their rows are uniform without this
+        // pass.
+        if let Some(placements) = environment.row_placements() {
             let widest = row_boxes.iter().map(LayoutNode::width).max().unwrap_or(Fixed::ZERO);
-            let row_count = row_boxes.len();
-            let last = row_count - 1;
-            for (index, row) in row_boxes.iter_mut().enumerate() {
+            for (row, placement) in row_boxes.iter_mut().zip(placements) {
                 let diff = widest - row.width();
-                let half = diff / Fixed::from_f64(2.0);
-                let (left, right) = match anchors {
-                    AlignmentAnchors::Spread if row_count > 1 && index == 0 => (Fixed::ZERO, diff),
-                    AlignmentAnchors::Spread if row_count > 1 && index == last => (diff, Fixed::ZERO),
-                    _ => (half, diff - half),
+                let (left, right) = match placement {
+                    RowPlacement::FlushLeft => (Fixed::ZERO, diff),
+                    RowPlacement::FlushRight => (diff, Fixed::ZERO),
+                    RowPlacement::Centered => {
+                        let half = diff / Fixed::from_f64(2.0);
+                        (half, diff - half)
+                    }
                 };
                 let padded = std::mem::replace(row, LayoutNode::Kern(Fixed::ZERO));
                 *row = self.pack_hbox(vec![LayoutNode::Kern(left), padded, LayoutNode::Kern(right)], None);

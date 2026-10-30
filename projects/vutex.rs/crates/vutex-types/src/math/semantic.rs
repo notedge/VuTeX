@@ -237,8 +237,29 @@ pub enum AlignmentAnchors {
     /// alignment point rather than being independent column grids.
     SingleEquation,
     /// `multline`: no anchors, but the first row is flush left, the last row
-    /// flush right and the rows between are centred.
+    /// flush right and the rows between are centred.  The rule is per row, so
+    /// it is expressed through [`MathEnvironment::row_placements`], not through
+    /// the environment's column grid.
     Spread,
+}
+
+/// Where one row of an environment sits across the block it forms.
+///
+/// The placement is a row rule, not a column rule.  `multline` spreads the
+/// fragments of one equation across the block, so its first row is flush left,
+/// its last flush right and the rows between centred, while every column of
+/// its grid stays centred.  Column-grid environments (`aligned`, `alignedat`,
+/// `align`, `split`) position their rows through
+/// [`MathEnvironment::column_alignment`] instead and carry no per-row
+/// placement.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum RowPlacement {
+    /// The row starts at the left edge of the block.
+    FlushLeft,
+    /// The row is centred over the widest row.
+    Centered,
+    /// The row ends at the right edge of the block.
+    FlushRight,
 }
 
 impl EnvironmentKind {
@@ -317,12 +338,46 @@ impl MathEnvironment {
         }
     }
 
+    /// Per-row horizontal placement, when the environment places whole rows.
+    ///
+    /// `None` for the column-grid kinds (`aligned`, `alignedat`, `align`,
+    /// `split`): their rows sit where the column rules put them.  `equation`,
+    /// `gather` and `gathered` centre every row.  `multline` spreads the
+    /// fragments of one equation across the block: first row flush left, last
+    /// flush right, the rows between centred.  A single row cannot be both
+    /// edges, so it stays centred.
+    pub fn row_placements(&self) -> Option<Vec<RowPlacement>> {
+        match self.kind.anchors() {
+            AlignmentAnchors::ColumnPairs | AlignmentAnchors::SingleEquation => None,
+            AlignmentAnchors::Centered => Some(vec![RowPlacement::Centered; self.rows.len()]),
+            AlignmentAnchors::Spread => {
+                let last = self.rows.len().saturating_sub(1);
+                let spreads = self.rows.len() > 1;
+                Some(
+                    (0..self.rows.len())
+                        .map(|index| {
+                            if spreads && index == 0 {
+                                RowPlacement::FlushLeft
+                            }
+                            else if spreads && index == last {
+                                RowPlacement::FlushRight
+                            }
+                            else {
+                                RowPlacement::Centered
+                            }
+                        })
+                        .collect(),
+                )
+            }
+        }
+    }
+
     /// Per-column alignment this environment's rows use.
     ///
     /// Derived from [`EnvironmentKind::anchors`], never from the author's row
-    /// contents.  `multline`'s per-row flush-left / flush-right placement is a
-    /// row rule rather than a column rule, so it reports a centred grid here
-    /// until layout consumes [`AlignmentAnchors::Spread`] directly.
+    /// contents.  `multline`'s flush-left / flush-right rule is a row rule, so
+    /// it travels on [`Self::row_placements`] and the column grid itself stays
+    /// centred — exactly what an `mtable`'s `columnalign` can carry.
     pub fn column_alignment(&self) -> Vec<Alignment> {
         let columns = self.columns();
         match self.kind.anchors() {
@@ -939,6 +994,35 @@ mod tests {
             assert!(!kind.is_display_level(), "{kind:?} follows the surrounding style");
         }
         assert_eq!(EnvironmentKind::Gathered.name(false), "gathered");
+    }
+
+    #[test]
+    fn multline_row_placement_is_a_row_rule_not_a_column_rule() {
+        // `multline` spreads one equation across the block: first row flush
+        // left, last flush right, middle rows centred.  The rule travels as a
+        // per-row attribute; the environment's column grid stays centred, and
+        // a single row — which cannot be both edges — is centred.
+        let cell = || vec![sym('a', SymbolRole::Ordinary)];
+        let four = env(EnvironmentKind::Multline, vec![cell(), cell(), cell(), cell()]);
+        assert_eq!(
+            four.row_placements(),
+            Some(vec![RowPlacement::FlushLeft, RowPlacement::Centered, RowPlacement::Centered, RowPlacement::FlushRight])
+        );
+        assert_eq!(four.column_alignment(), vec![Alignment::Center; four.columns()], "the column grid itself stays centred");
+
+        let one = env(EnvironmentKind::Multline, vec![cell()]);
+        assert_eq!(one.row_placements(), Some(vec![RowPlacement::Centered]), "a lone row is centred, not both edges");
+
+        // `gather` centres every row; the column-grid kinds place their rows
+        // through the columns and carry no row placement.
+        let gather = env(EnvironmentKind::Gather, vec![cell(), cell()]);
+        assert_eq!(gather.row_placements(), Some(vec![RowPlacement::Centered, RowPlacement::Centered]));
+        for kind in
+            [EnvironmentKind::Aligned, EnvironmentKind::AlignedAt { pairs: 1 }, EnvironmentKind::Align, EnvironmentKind::Split]
+        {
+            let grid = env(kind, vec![cell(), cell()]);
+            assert_eq!(grid.row_placements(), None, "{kind:?} positions its rows through the column grid");
+        }
     }
 
     #[test]
