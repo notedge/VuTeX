@@ -388,14 +388,19 @@ fn delimiter_constructions_match_the_fonttools_snapshot() {
     );
 }
 
-/// Latin Modern Math publishes no `MathKernInfo`, so VuTeX must extract no kern.
+/// Latin Modern Math publishes no `MathKernInfo`, so VuTeX must carry no kern.
 ///
-/// A non-empty kern map here would mean a fabricated kern: the external tool
-/// proves the font has no corner kern data at all.
+/// A non-empty corner set in the facts would mean a fabricated kern: the
+/// external tool proves the font has no corner kern data at all. The layout
+/// reads its kerns straight from these facts, so an empty facts table is the
+/// whole guarantee — there is no second projection left to check.
 #[test]
 fn math_kern_data_follows_the_fonttools_snapshot() {
     let facts = load_facts();
-    let data = opentype_font_metrics(vutex_text::math::MathFontFamily::LmMath).expect("the embedded font must parse");
+    let kerns = vutex_text::math::MathFontFacts::for_family(vutex_text::math::MathFontFamily::LmMath)
+        .expect("the embedded font must parse")
+        .kerns()
+        .clone();
 
     assert!(
         !facts.math.math_kern_info.present,
@@ -406,11 +411,7 @@ fn math_kern_data_follows_the_fonttools_snapshot() {
         Some("the font publishes no MathKernInfo subtable, so no corner kern exists at all"),
         "a missing kern table must be explained, not left blank"
     );
-    assert!(
-        data.kern_map.is_empty(),
-        "`vutex-text` invented {} corner kernels for a font without MathKernInfo",
-        data.kern_map.len()
-    );
+    assert_eq!(kerns.glyphs().count(), 0, "`vutex-text` invented corner kerns for a font without MathKernInfo");
 }
 
 /// The single character a fixture glyph or variant entry describes.

@@ -1,10 +1,6 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
-use super::{
-    math_kern::MathKern,
-    semantic::{Fixed, GlyphKey},
-};
+use super::semantic::{Fixed, GlyphKey};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum MathConstant {
@@ -104,7 +100,6 @@ pub struct FontMetricsData {
     pub glyphs: std::collections::HashMap<GlyphKey, GlyphMetrics>,
     pub glyph_paths: std::collections::HashMap<GlyphKey, String>,
     pub delimiters: std::collections::HashMap<GlyphKey, DelimiterConstruction>,
-    pub kern_map: std::collections::HashMap<GlyphKey, MathKern>,
 }
 
 impl FontMetricsData {
@@ -116,7 +111,6 @@ impl FontMetricsData {
             glyphs: std::collections::HashMap::new(),
             glyph_paths: std::collections::HashMap::new(),
             delimiters: std::collections::HashMap::new(),
-            kern_map: std::collections::HashMap::new(),
         }
     }
 }

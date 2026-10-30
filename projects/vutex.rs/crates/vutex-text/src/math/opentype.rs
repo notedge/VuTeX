@@ -21,10 +21,10 @@ use acorn_ttf::{FontFace, OutlineBuilder};
 
 use vutex_types::math::{
     DelimiterComponent, DelimiterConstruction, DelimiterVariant, Fixed, FontMetricsData, FontStyle, GlyphKey, GlyphMetrics,
-    MathKern, alphalect_sources, alphalect_styles, math_alphalect,
+    alphalect_sources, alphalect_styles, math_alphalect,
 };
 
-use super::facts::{KernCorner, MathFontFacts, StretchAxis};
+use super::facts::{MathFontFacts, StretchAxis};
 
 /// Selectable OpenType MATH font families.
 ///
@@ -319,7 +319,6 @@ pub fn opentype_font_metrics(family: MathFontFamily) -> Option<FontMetricsData> 
 
     extract_glyph_metrics_and_outlines(&mut face, &facts, &mut data, one_em, family_label);
     extract_delimiter_constructions(&mut face, &facts, &mut data, one_em, family_label);
-    extract_math_kerns(&facts, &mut data, family_label);
 
     Some(data)
 }
@@ -519,56 +518,6 @@ fn glyph_outline(face: &mut FontFace, gid: u16, one_em: f64) -> Option<String> {
     face.outline_glyph(gid, &mut builder)?;
     let path = builder.finish();
     (!path.is_empty()).then_some(path)
-}
-
-// ---------------------------------------------------------------------------
-// MATH kern projection
-// ---------------------------------------------------------------------------
-
-/// Project the four-corner `MathKernInfo` kerns into `data.kern_map`.
-///
-/// VuTeX's `MathKern` is a flat four-corner struct with no correction height, so
-/// each corner keeps the kern the font publishes for correction heights below
-/// its first step — the baseline kern the layout engine already uses via
-/// `get_math_kern`.
-fn extract_math_kerns(facts: &MathFontFacts, data: &mut FontMetricsData, family: &str) {
-    let family = Some(family.to_string());
-
-    // Walk the same character set we already pull metrics for. The kern tables
-    // are glyph-indexed, so each look-up first converts char to glyph. This
-    // guarantees `kern_map` uses the same char-based `GlyphKey` as the
-    // `glyphs`, `glyph_paths` and `delimiters` maps.
-    let all_chars = ('!'..='~')
-        .chain(TARGET_SYMBOLS.iter().copied())
-        .chain(ACCENT_SYMBOLS.iter().copied())
-        .chain(DELIMITER_CHARS.iter().copied())
-        .chain(LARGE_OPERATOR_CHARS.iter().copied());
-
-    for ch in all_chars {
-        let Some(glyph) = facts.glyph_for_char(ch)
-        else {
-            continue;
-        };
-
-        let corner = |corner: KernCorner| {
-            facts.kerns().corner(glyph, corner).map_or(UNCOVERED_MATH_METRIC, |kern| kern.kern_below_first())
-        };
-        let bottom_right = corner(KernCorner::BottomRight);
-        let top_right = corner(KernCorner::TopRight);
-        let bottom_left = corner(KernCorner::BottomLeft);
-        let top_left = corner(KernCorner::TopLeft);
-
-        if bottom_right == Fixed::ZERO && top_right == Fixed::ZERO && bottom_left == Fixed::ZERO && top_left == Fixed::ZERO {
-            continue; // no kern data worth storing
-        }
-
-        let math_key = GlyphKey::from_char(ch, family.clone(), FontStyle::Math);
-        let normal_key = GlyphKey::from_char(ch, family.clone(), FontStyle::Normal);
-
-        let kern = MathKern { bottom_right, top_right, bottom_left, top_left };
-        data.kern_map.insert(math_key, kern);
-        data.kern_map.insert(normal_key, kern);
-    }
 }
 
 // ---------------------------------------------------------------------------

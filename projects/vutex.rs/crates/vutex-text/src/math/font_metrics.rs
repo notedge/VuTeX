@@ -6,7 +6,7 @@ use super::opentype::MathFontFamily;
 
 use vutex_types::math::{
     DelimiterConstruction, DelimiterVariant, Fixed, FontMetricsData, FontStyle, GlyphKey, GlyphMetrics, MathConstant,
-    MathError, MathKern, MathResult,
+    MathError, MathResult,
 };
 
 #[derive(Debug)]
@@ -125,47 +125,6 @@ impl FontMetricsSystem {
             ));
         }
         Err(MathError::font_error(family, "glyph path not in cache"))
-    }
-
-    /// Return the four-corner MathKern for `glyph_key`.
-    ///
-    /// Looks up the kern table built from the embedded OpenType MATH font's
-    /// `MathKernInfo` subtable (extracted by acorn-ttf). Falls back to
-    /// `MathKern::ZERO` when the glyph has no kern data — callers already
-    /// handle the zero case by skipping the kern supplement.
-    pub fn get_math_kern(&self, key: &GlyphKey) -> MathKern {
-        let family = key.font_family.as_deref().unwrap_or("default");
-        let normalized = GlyphKey { font_family: Some(family.to_string()), ..key.clone() };
-        if let Some(data) = self.metrics_cache.get(family) {
-            if let Some(kern) = data.kern_map.get(&normalized) {
-                return *kern;
-            }
-            // Also try the fallback faces the font actually records (Math and
-            // Normal styles), since the caller's key may carry a derived face.
-            for style in [FontStyle::Math, FontStyle::Normal] {
-                let candidate = GlyphKey { font_family: Some(family.to_string()), style, ..key.clone() };
-                if let Some(kern) = data.kern_map.get(&candidate) {
-                    return *kern;
-                }
-            }
-        }
-        MathKern::ZERO
-    }
-
-    /// Return the four-corner MathKern in em units (identity wrapper).
-    ///
-    /// Raw kern values stored by `get_math_kern` are already in **em** units —
-    /// `opentype::kern_to_em` converts font design units to em at ingest time —
-    /// so no additional scaling is needed. This method exists for API symmetry
-    /// with the layout layer, which accepts an `em_size` parameter; it would
-    /// allow font-size-dependent kern tweaks in the future.
-    ///
-    /// `em_size` is intentionally unused because the underlying kern is stored
-    /// as a fixed fraction of 1 em and scales linearly with font size at the
-    /// layout boundary.
-    #[allow(unused_variables)]
-    pub fn get_math_kern_em(&self, key: &GlyphKey, em_size: Fixed) -> MathKern {
-        self.get_math_kern(key)
     }
 }
 
@@ -456,7 +415,6 @@ fn builtin_font_metrics_from(opentype_data: Option<FontMetricsData>) -> FontMetr
             glyphs: rekey_family(opentype_data.glyphs, &family_str),
             glyph_paths: rekey_family(opentype_data.glyph_paths, &family_str),
             delimiters: rekey_delimiters(opentype_data.delimiters, &family_str),
-            kern_map: rekey_family(opentype_data.kern_map, &family_str),
         }
     }
     else {
