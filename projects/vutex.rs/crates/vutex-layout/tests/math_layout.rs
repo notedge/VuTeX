@@ -2245,6 +2245,39 @@ fn alignedat_pads_missing_columns_and_reports_the_mismatch() {
     }
 }
 
+/// A body that types more columns than `alignedat{n}` declares keeps them: the
+/// declared pair count is the environment's structured floor and layout reads
+/// the grid from the IR instead of re-deriving it from the rows, so the
+/// overflowed `{1}` grid is exactly the `{2}` grid the same body would declare.
+#[test]
+fn alignedat_overflowing_body_keeps_the_full_grid() {
+    let body = " q &= a & r &= b \\\\ xyz &= c & s &= d ";
+    let overflow = format!("\\begin{{alignedat}}{{1}}{body}\\end{{alignedat}}");
+    let declared = format!("\\begin{{alignedat}}{{2}}{body}\\end{{alignedat}}");
+
+    let (overflow_tree, overflow_metrics, diagnostics) =
+        layout_formula_with_diagnostics(&overflow, false, 14.0).expect("overflowing alignedat should lay out");
+    assert_eq!(diagnostics.len(), 1, "the mismatch is still reported: {diagnostics:?}");
+    assert_eq!(diagnostics[0].code, "vutex.layout.math.alignedat_columns");
+
+    let (declared_tree, declared_metrics, clean) =
+        layout_formula_with_diagnostics(&declared, false, 14.0).expect("matching alignedat should lay out");
+    assert!(clean.is_empty(), "a body that fills its pairs must not warn: {clean:?}");
+
+    assert!(
+        (overflow_metrics.width - declared_metrics.width).abs() < 0.01,
+        "the overflowed grid must match the declared one: {} vs {}",
+        overflow_metrics.width,
+        declared_metrics.width
+    );
+    let overflow_x: Vec<f64> = glyphs(&overflow_tree).into_iter().map(|(x, _, _)| x).collect();
+    let declared_x: Vec<f64> = glyphs(&declared_tree).into_iter().map(|(x, _, _)| x).collect();
+    assert_eq!(overflow_x.len(), declared_x.len(), "both grids must hold the same glyphs");
+    for (left, right) in overflow_x.iter().zip(&declared_x) {
+        assert!((left - right).abs() < 0.01, "the overflowed grid moved a glyph to {left} from {right}");
+    }
+}
+
 /// `align` is the display-level `rl` grid: each `&` separates a column and
 /// every relation lands on one x, matching what `aligned` produces.
 #[test]

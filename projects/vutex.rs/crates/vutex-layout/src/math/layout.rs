@@ -2062,11 +2062,13 @@ impl LayoutEngine {
         let col_spacing = environment.col_spacing * size;
         let anchors = environment.kind.anchors();
 
-        // `alignedat{n}` presents exactly its `2n` declared columns, so a short
-        // row leaves the trailing columns empty instead of shrinking the grid.
-        // Every other kind takes the widest authored row.  A body that types
-        // more columns than it declares keeps them rather than dropping cells.
-        let columns = environment.columns().max(environment.rows.iter().map(|row| row.cells.len()).max().unwrap_or(0));
+        // The environment's own `columns()` attribute is the whole grid:
+        // `alignedat{n}` presents its declared `2n` columns (a short row leaves
+        // the trailing columns empty instead of shrinking the grid, and a body
+        // that types more than declared keeps them rather than dropping cells),
+        // every other kind takes the widest authored row.  Layout reads the
+        // structured count and never re-derives it from the cells.
+        let columns = environment.columns();
         if columns == 0 {
             return Ok(LayoutNode::Kern(Fixed::ZERO));
         }

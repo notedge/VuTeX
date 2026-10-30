@@ -327,13 +327,16 @@ pub enum EnvironmentContext {
 impl MathEnvironment {
     /// Columns the environment presents.
     ///
-    /// A fixed-pair environment presents exactly the declared pairs.  Every
-    /// other kind takes the widest row, because a shorter row simply leaves the
-    /// trailing columns empty.
+    /// A fixed-pair environment presents its declared `2n` grid, and a body
+    /// that types more columns than declared keeps them rather than dropping
+    /// cells — the declared count is the floor, so consumers never have to
+    /// re-derive the grid from the row contents.  Every other kind takes the
+    /// widest row, because a shorter row simply leaves the trailing columns
+    /// empty.
     pub fn columns(&self) -> usize {
         let typed = self.rows.iter().map(|row| row.cells.len()).max().unwrap_or(0);
         match self.kind.fixed_pairs() {
-            Some(pairs) => (pairs as usize) * 2,
+            Some(pairs) => typed.max((pairs as usize) * 2),
             None => typed,
         }
     }
@@ -1086,6 +1089,23 @@ mod tests {
         assert_eq!(diagnostics[0].code, "vutex.layout.math.alignedat_columns");
         assert_eq!(diagnostics[0].severity, Severity::Warning);
         assert_eq!(short.columns(), 4, "the declared grid is what the environment presents");
+
+        // The declared count is the floor, not a ceiling: a body wider than the
+        // declaration keeps its columns, so consumers read one structured count
+        // and never re-derive the grid from the rows themselves.
+        let over = env(
+            EnvironmentKind::AlignedAt { pairs: 1 },
+            vec![vec![
+                sym('a', SymbolRole::Ordinary),
+                sym('=', SymbolRole::Relation),
+                sym('b', SymbolRole::Ordinary),
+                sym('c', SymbolRole::Ordinary),
+            ]],
+        );
+        assert_eq!(over.columns(), 4, "an overflowing body keeps its columns");
+        let over_diagnostics = over.diagnostics(EnvironmentContext::Display);
+        assert_eq!(over_diagnostics.len(), 1, "the mismatch is still reported: {over_diagnostics:?}");
+        assert_eq!(over_diagnostics[0].code, "vutex.layout.math.alignedat_columns");
     }
 
     #[test]
