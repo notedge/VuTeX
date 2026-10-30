@@ -39,9 +39,10 @@ pub enum SemanticNode {
     },
     /// Plain text atoms with an explicit font face.
     ///
-    /// `\text` / `\textrm` emit `FontStyle::Normal`; `\mathbf` / `\mathit` /
-    /// `\mathrm` emit their respective faces so the layout engine can render
-    /// them differently from math-italic symbols.
+    /// `\text` / `\textrm` emit `FontStyle::Normal`; `\mathbf` / `\mathit`
+    /// emit their respective faces so the layout engine can render them
+    /// differently from math-italic symbols.  `\mathrm` is a face switch: its
+    /// body stays a math tree with the symbols' faces overridden, not text.
     Text {
         text: String,
         font_style: FontStyle,

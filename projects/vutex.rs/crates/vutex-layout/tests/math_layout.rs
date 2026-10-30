@@ -3048,6 +3048,56 @@ fn mathsf_mathit_textit_and_mathit_variants_are_accepted() {
     accepts_face_command(r"\mathit{w}", r"\mathit{w}");
 }
 
+/// `\mathrm` is a face switch, not a text group: its body stays math, so a
+/// command like `\lambda` keeps its symbol meaning and the upright face draws
+/// the Greek glyph instead of the command name's letters.
+#[test]
+fn mathrm_switches_the_face_without_leaving_math_mode() {
+    let tree = parse_formula(r"\mathrm{\lambda}").expect("`\\mathrm{\\lambda}` parses");
+    let SemanticNode::Symbol { glyph_key, role } = &tree.root
+    else {
+        panic!("`\\mathrm{{\\lambda}}` must stay a symbol node, got {:?}", tree.root)
+    };
+    assert_eq!(glyph_key.char, Some('λ'), "the command keeps its Greek symbol meaning");
+    assert_eq!(glyph_key.style, FontStyle::Normal, "the switch overrides the math-italic default face");
+    assert_eq!(*role, SymbolRole::Ordinary);
+
+    // The face reaches every atom of the group, including nested structure.
+    let tree = parse_formula(r"\mathrm{x^2}").expect("`\\mathrm{x^2}` parses");
+    let SemanticNode::Superscript { base, sup } = &tree.root
+    else {
+        panic!("`\\mathrm{{x^2}}` must stay a superscript, got {:?}", tree.root)
+    };
+    let SemanticNode::Symbol { glyph_key, .. } = &**base
+    else {
+        panic!("the nucleus is a symbol")
+    };
+    assert_eq!(glyph_key.style, FontStyle::Normal, "the nucleus takes the upright face");
+    let SemanticNode::Symbol { glyph_key, .. } = &**sup
+    else {
+        panic!("the script is a symbol")
+    };
+    assert_eq!(glyph_key.style, FontStyle::Normal, "the script takes it too");
+
+    // `\text` still reads its group literally — the literal-text commands keep
+    // their own contract, and a named operator inside `\mathrm` stays upright
+    // text rather than being re-drawn letter by letter.
+    let tree = parse_formula(r"\text{lambda}").expect("`\\text{lambda}` parses");
+    assert!(matches!(&tree.root, SemanticNode::Text { text, .. } if text.as_str() == "lambda"));
+    let tree = parse_formula(r"\mathrm{\sin x}").expect("`\\mathrm{\\sin x}` parses");
+    let SemanticNode::Sequence(items) = &tree.root
+    else {
+        panic!("two atoms: {:?}", tree.root)
+    };
+    assert!(matches!(&items[0], SemanticNode::Text { text, .. } if text.as_str() == "sin"), "a named operator stays text");
+    let SemanticNode::Symbol { glyph_key, .. } = &items[1]
+    else {
+        panic!("`x` is a symbol")
+    };
+    assert_eq!(glyph_key.char, Some('x'));
+    assert_eq!(glyph_key.style, FontStyle::Normal);
+}
+
 /// A script's `MathKern` corner is read from the face that actually draws.
 ///
 /// XITS publishes a `TopRight` step on upright `λ` and `Δ` and nothing on the

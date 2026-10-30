@@ -275,6 +275,17 @@ impl Parser {
         }
     }
 
+    /// Parse the argument of a math face switch such as `\mathrm{…}`.
+    ///
+    /// TeX's `\math…` face commands are not text: the body stays math, so a
+    /// command like `\lambda` keeps its symbol meaning and the switch only
+    /// overrides the face every symbol atom in the group is drawn with.
+    fn parse_face_group(&mut self, style: FontStyle) -> MathResult<SemanticNode> {
+        let mut content = self.parse_argument()?;
+        apply_symbol_face(&mut content, style);
+        Ok(content)
+    }
+
     /// Parse a command starting at the current backslash.
     fn parse_command(&mut self) -> MathResult<SemanticNode> {
         self.bump();
@@ -326,10 +337,11 @@ impl Parser {
                 let text = self.read_text_group()?;
                 Ok(SemanticNode::Text { text, font_style: FontStyle::Normal })
             }
-            "text" | "textrm" | "mathrm" => {
+            "text" | "textrm" => {
                 let text = self.read_text_group()?;
                 Ok(SemanticNode::Text { text, font_style: FontStyle::Normal })
             }
+            "mathrm" => self.parse_face_group(FontStyle::Normal),
             "mathit" => {
                 let text = self.read_text_group()?;
                 Ok(SemanticNode::Text { text, font_style: FontStyle::Italic })
@@ -861,6 +873,82 @@ impl Parser {
         else {
             Err(self.error(format!("expected `{expected}`")))
         }
+    }
+}
+
+/// Override the face of every symbol atom inside `node`.
+///
+/// A face switch governs its whole group, including atoms nested in scripts,
+/// fractions and other containers.  `Text` atoms keep their own authored face:
+/// a `\text` / `\operatorname` body and a named operator are upright text by
+/// contract, and a nested face command has already fixed the face of its body.
+fn apply_symbol_face(node: &mut SemanticNode, style: FontStyle) {
+    match node {
+        SemanticNode::Symbol { glyph_key, .. } => glyph_key.style = style,
+        SemanticNode::Sequence(items) => {
+            for item in items {
+                apply_symbol_face(item, style);
+            }
+        }
+        SemanticNode::HorizontalBox { content, .. }
+        | SemanticNode::Paragraph { content, .. }
+        | SemanticNode::VerticalBox { content, .. } => {
+            for item in content {
+                apply_symbol_face(item, style);
+            }
+        }
+        SemanticNode::Fraction { num, den, .. } => {
+            apply_symbol_face(num, style);
+            apply_symbol_face(den, style);
+        }
+        SemanticNode::Radical { degree, radicand } => {
+            if let Some(degree) = degree {
+                apply_symbol_face(degree, style);
+            }
+            apply_symbol_face(radicand, style);
+        }
+        SemanticNode::Subscript { base, sub } => {
+            apply_symbol_face(base, style);
+            apply_symbol_face(sub, style);
+        }
+        SemanticNode::Superscript { base, sup } => {
+            apply_symbol_face(base, style);
+            apply_symbol_face(sup, style);
+        }
+        SemanticNode::SubSuperscript { base, sub, sup } => {
+            apply_symbol_face(base, style);
+            apply_symbol_face(sub, style);
+            apply_symbol_face(sup, style);
+        }
+        SemanticNode::Matrix { rows, .. } => {
+            for row in rows.iter_mut() {
+                for cell in row.iter_mut() {
+                    apply_symbol_face(cell, style);
+                }
+            }
+        }
+        SemanticNode::Environment(environment) => {
+            for row in &mut environment.rows {
+                for cell in &mut row.cells {
+                    apply_symbol_face(cell, style);
+                }
+            }
+        }
+        SemanticNode::Delimited { content, .. } => apply_symbol_face(content, style),
+        SemanticNode::Accent { base, .. } => apply_symbol_face(base, style),
+        SemanticNode::OverSet { top, base } => {
+            apply_symbol_face(top, style);
+            apply_symbol_face(base, style);
+        }
+        SemanticNode::UnderSet { bot, base } => {
+            apply_symbol_face(bot, style);
+            apply_symbol_face(base, style);
+        }
+        SemanticNode::Relation(inner) => apply_symbol_face(inner, style),
+        SemanticNode::Text { .. }
+        | SemanticNode::Space { .. }
+        | SemanticNode::SetMathStyle(_)
+        | SemanticNode::LimitsSpec(_) => {}
     }
 }
 
