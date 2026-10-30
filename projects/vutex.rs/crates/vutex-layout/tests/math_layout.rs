@@ -1,6 +1,6 @@
 //! Integration tests for the math parse/layout pipeline.
 
-use vutex_layout::math::{Glyph, LayoutEngine, LayoutNode, default_base_size, layout_formula_with_result, parse_formula};
+use vutex_layout::math::{Glyph, LayoutEngine, LayoutNode, default_base_size, layout_formula_with_result, layout_formula_with_result_for, parse_formula};
 use vutex_text::math::{FontMetricsSystem, builtin_font_metrics};
 use vutex_types::{
     Severity,
@@ -758,14 +758,16 @@ fn beside_scripts_sit_on_the_shift_and_drop_minima() {
         );
 
         // `sup1` and `sup2`: the shift up minimum, or enough to keep the
-        // superscript's bottom above the base's top by `SuperscriptBottomMin`.
-        // With both scripts present, the `SubSuperscriptGapMin` clearance
-        // between the superscript's depth and the subscript's height can lift
-        // the pair further: the VBox hangs on the subscript's baseline, so the
-        // rise above the base is the baseline distance less the subscript drop.
+        // superscript's own bottom `SuperscriptBottomMin` above the baseline —
+        // TeX's `make_scripts` measures that clearance on the script box, not
+        // from the top of the nucleus. With both scripts present, the
+        // `SubSuperscriptGapMin` clearance between the superscript's depth and
+        // the subscript's height can lift the pair further: the VBox hangs on
+        // the subscript's baseline, so the rise above the base is the baseline
+        // distance less the subscript drop.
         let sup_rise = base_y - sup_y;
         let sup_shift_term = (constant(MathConstant::SuperscriptShiftUp) * em)
-            .max(base.metrics.height.to_f64() + constant(MathConstant::SuperscriptBottomMin) * em);
+            .max(sup.metrics.depth.to_f64() + constant(MathConstant::SuperscriptBottomMin) * em);
         let gap_term =
             sup.metrics.depth.to_f64() + constant(MathConstant::SubSuperscriptGapMin) * em + sub.metrics.height.to_f64()
                 - expected_drop;
@@ -2758,33 +2760,37 @@ fn cramped_is_inherited_by_superscripts_and_forced_by_subscripts() {
     assert!((sub_rise_in_script - cramped).abs() < 0.01, "a subscript must force the cramped flag");
 }
 
-/// The cramped flag may not disturb formulas whose nucleus is tall enough for
-/// `SuperscriptBottomMin` to win over both shift constants.
+/// The cramped flag may not disturb formulas whose box nucleus is tall enough
+/// for the `SuperscriptBaselineDropMax` cap to win over both shift constants.
 ///
 /// `\sqrt{\frac{a}{b}}` contains no script at all, and the fraction under the
-/// `^2` of `\frac{a}{b}^2` is taller than `SuperscriptShiftUp`, so both keep the
-/// exact metrics they had before the flag reached the geometry.
+/// `^2` of `\frac{a}{b}^2` is a box nucleus, so TeX's `make_scripts` seeds the
+/// superscript's rise at `height(z) - sup_drop` and both shift constants stay
+/// below that cap. `SuperscriptBottomMin` is measured on the script box, whose
+/// short digit carries no depth here, so the flag cannot reach the geometry.
 #[test]
 fn cramped_leaves_the_insensitive_formulas_unchanged() {
     let system = builtin_font_metrics();
     let em = default_base_size(false);
     let bottom_min = math_constant(&system, MathConstant::SuperscriptBottomMin) * em;
+    let drop_max = math_constant(&system, MathConstant::SuperscriptBaselineDropMax) * em;
     let regular = math_constant(&system, MathConstant::SuperscriptShiftUp) * em;
 
     let (_, tree, _) = layout_formula_with_result("\\frac{a}{b}^2", false, default_base_size(false)).expect("`\\frac{a}{b}^2`");
     let base_height = layout("\\frac{a}{b}").height;
-    assert!(base_height + bottom_min > regular, "the fraction is tall enough to make the shift constant irrelevant");
-    let (_, sup_y, _) = glyph_at(&tree, '2');
+    assert!(base_height - drop_max > regular, "the box nucleus is tall enough to make the shift constant irrelevant");
+    let (_, sup_y, sup) = glyph_at(&tree, '2');
+    let expected_rise = regular.max(sup.metrics.depth.to_f64() + bottom_min).max(base_height - drop_max);
     assert!(
-        (sup_y.abs() - (base_height + bottom_min)).abs() < 0.01,
-        "the superscript must sit on `height + bottom min`: {sup_y}"
+        (sup_y.abs() - expected_rise).abs() < 0.01,
+        "the superscript must sit on the box-nucleus drop cap {expected_rise}: {sup_y}"
     );
 
     // A cramped tall base keeps the same rise: inside `\sqrt{…}` the radicand
-    // is cramped, yet `SuperscriptBottomMin` over the fraction wins over both
-    // shift constants, so the flag cannot reach the geometry. The radical
-    // shifts the whole content box, so the check is the script's rise above
-    // the numerator — identical to the uncramped layout.
+    // is cramped, yet the box nucleus' `SuperscriptBaselineDropMax` cap wins
+    // over both shift constants, so the flag cannot reach the geometry. The
+    // radical shifts the whole content box, so the check is the script's rise
+    // above the numerator — identical to the uncramped layout.
     let (_, rooted, _) = layout_formula_with_result("\\sqrt{\\frac{a}{b}^2}", false, default_base_size(false))
         .expect("`\\sqrt{\\frac{a}{b}^2}`");
     let (_, rooted_sup_y, _) = glyph_at(&rooted, '2');
@@ -3285,9 +3291,12 @@ fn mathrm_switches_the_face_without_leaving_math_mode() {
 
 /// A script's `MathKern` corner is read from the face that actually draws.
 ///
-/// XITS publishes a `TopRight` step on upright `λ` and `Δ` and nothing on the
-/// math-italic 𝜆 the alphalect contract redirects `\\lambda` onto, so the
-/// italic base must take no kern while the upright one keeps its own.
+/// The default Latin Modern Math publishes no `MathKernInfo` subtable at all,
+/// so the corner contract is pinned to XITS Math, which publishes a `TopRight`
+/// step on upright `λ` and `Δ` and nothing on the math-italic 𝜆 the alphalect
+/// contract redirects `\\lambda` onto: the italic base must take no corner
+/// while the upright one keeps its own. Every script box also carries TeX's
+/// positive `scriptspace` trailing step, which the corner check filters out.
 #[test]
 fn script_kern_follows_the_drawn_alphalect_face() {
     fn horizontal_kerns(node: &LayoutNode, out: &mut Vec<Fixed>) {
@@ -3309,16 +3318,19 @@ fn script_kern_follows_the_drawn_alphalect_face() {
         }
     }
 
+    let family = vutex_text::math::MathFontFamily::XitsMath;
     let (_, italic, _) =
-        layout_formula_with_result("\\lambda^2", false, default_base_size(false)).expect("the formula should lay out");
+        layout_formula_with_result_for("\\lambda^2", false, default_base_size(false), family).expect("the formula should lay out");
     let mut italic_kerns = Vec::new();
     horizontal_kerns(&italic, &mut italic_kerns);
-    assert!(italic_kerns.is_empty(), "upright λ's `TopRight` step must not leak onto the drawn 𝜆: {italic_kerns:?}");
+    let italic_corners: Vec<Fixed> = italic_kerns.into_iter().filter(|kern| *kern < Fixed::ZERO).collect();
+    assert!(italic_corners.is_empty(), "upright λ's `TopRight` step must not leak onto the drawn 𝜆: {italic_corners:?}");
 
     let (_, upright, _) =
-        layout_formula_with_result("\\Delta^2", false, default_base_size(false)).expect("the formula should lay out");
+        layout_formula_with_result_for("\\Delta^2", false, default_base_size(false), family).expect("the formula should lay out");
     let mut upright_kerns = Vec::new();
     horizontal_kerns(&upright, &mut upright_kerns);
-    assert_eq!(upright_kerns.len(), 1, "the drawn upright Δ keeps its own `TopRight` kern: {upright_kerns:?}");
-    assert!(upright_kerns[0] < Fixed::ZERO, "the step is a negative kern: {}", upright_kerns[0].to_f64());
+    let upright_corners: Vec<Fixed> = upright_kerns.into_iter().filter(|kern| *kern < Fixed::ZERO).collect();
+    assert_eq!(upright_corners.len(), 1, "the drawn upright Δ keeps its own `TopRight` kern: {upright_corners:?}");
+    assert!(upright_corners[0] < Fixed::ZERO, "the step is a negative kern: {}", upright_corners[0].to_f64());
 }

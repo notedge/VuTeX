@@ -818,6 +818,19 @@ impl LayoutEngine {
                 let size = self.base_size * style_scale;
                 let skip = Self::tex_skip_between_noad(left_kind, right_kind);
 
+                // TeX's Appendix G string spells every medium and thick cell as
+                // a *conditional* `\nonscript\mskip`: the glue vanishes at
+                // script style and below, so e.g. `a+b` inside a fraction
+                // numerator carries no muskip around the binary operator.
+                let skip = if matches!(style, MathStyle::Script | MathStyle::ScriptScript)
+                    && matches!(skip, TexSkip::Medium | TexSkip::Thick)
+                {
+                    TexSkip::NoGlue
+                }
+                else {
+                    skip
+                };
+
                 // Appendix G glue.
                 if let Some(glue) = skip.to_glue(size) {
                     children.push(LayoutNode::Glue(glue));
@@ -1345,7 +1358,9 @@ impl LayoutEngine {
         let den_width = den_layout.width();
         let den_height = den_layout.height();
 
-        let width = num_width.max(den_width) + Fixed::from_f64(0.2) * size;
+        // TeX pads a fraction by two `nulldelimspace`s (`2 × 0.12 em`), the
+        // side bearings a `\left.`/`\right.` pair would contribute.
+        let width = num_width.max(den_width) + Fixed::from_f64(0.24) * size;
 
         let mut v_children = Vec::new();
 
@@ -1417,7 +1432,11 @@ impl LayoutEngine {
         let rule_thickness =
             self.font_system.get_math_constant(family, MathConstant::RadicalRuleThickness).unwrap_or(Fixed::from_f64(0.06))
                 * size;
-        let vertical_gap = if style == MathStyle::Display {
+        // TeX's clearance between the radicand's ink and the rule: the MATH
+        // table publishes the display and text values that equal TeX's
+        // `drt + xh/4` and `drt + drt/4`; do not inflate them, the table already
+        // carries the value that reads correctly with its own radical design.
+        let mut vertical_gap = if style == MathStyle::Display {
             self.font_system
                 .get_math_constant(family, MathConstant::RadicalDisplayStyleVerticalGap)
                 .unwrap_or(Fixed::from_f64(0.1))
@@ -1426,30 +1445,37 @@ impl LayoutEngine {
         else {
             self.font_system.get_math_constant(family, MathConstant::RadicalVerticalGap).unwrap_or(Fixed::from_f64(0.05)) * size
         };
-        // TeX's `RadicalVerticalGap` is the font's own clearance between the
-        // rule and the radicand's ink; do not inflate it, the MATH table already
-        // publishes the value that reads correctly with its own radical design.
-        // Height of the radical bar above the radicand baseline. The sign is
-        // raised so its own top bar lands exactly on this line and the two
-        // strokes read as one continuous rule.
-        let bar_top = radicand_layout.height() + vertical_gap + rule_thickness;
-        // The sign reaches this far below the baseline so it hugs the radicand.
-        let sign_bottom = radicand_layout.depth() + vertical_gap;
 
         // The font grows the radical sign with `MathVariants`: a prepared design
-        // covering the bar, or a connector assembly beyond the tallest design. A
-        // sign drawn from the base outline is never scaled — that would be an
-        // invented design, not a font fact.
+        // covering the bar, or a connector assembly beyond the tallest design.
+        // TeX's `make_radical` asks for the smallest construction whose own
+        // height plus depth reaches the radicand's extent plus the clearance
+        // plus the rule. A sign drawn from the base outline is never scaled —
+        // that would be an invented design, not a font fact.
         let radical_key = GlyphKey::from_char('√', Some("default".to_string()), FontStyle::Normal);
-        let radical_symbol = self.radical_sign(&radical_key, bar_top + sign_bottom, size)?;
+        let min_hdp = radicand_layout.height() + radicand_layout.depth() + vertical_gap + rule_thickness;
+        let radical_symbol = self.radical_sign(&radical_key, min_hdp, size)?;
 
-        // Raise the sign so its own top bar lands on the bar line. The shift is
-        // an extra render offset that `LayoutNode::height` subtracts again, so
-        // the wrapper reports the raised ascent without counting it twice.
+        // Height of the nominal radical bar above the radicand baseline, before
+        // the delta adjustment below. The engine raises the degree by a
+        // percentage of this nominal ascent, not of the adjusted one.
+        let degree_bar_top = radicand_layout.height() + vertical_gap + rule_thickness;
+
+        // TeX's `delta`: when the chosen sign's own depth exceeds the radicand's
+        // top plus the clearance, the excess splits in halves — the bar rises
+        // by half, the sign's bottom drops by the other half.
         let mut radical_box = self.pack_hbox(vec![radical_symbol], None);
+        let excess = radical_box.depth() - (radicand_layout.height() + radicand_layout.depth() + vertical_gap);
+        if excess > Fixed::ZERO {
+            vertical_gap = vertical_gap + excess / Fixed::from_f64(2.0);
+        }
+
+        // TeX sets the sign's baseline `height(radicand) + clr` above the
+        // formula baseline (`shift_amount(y) := -(height(x)+clr)`). The sign's
+        // own top bar then meets the overbar rule, whose bottom sits on the
+        // same line, so the two strokes read as one continuous rule.
         if let LayoutNode::HBox(h) = &mut radical_box {
-            let rise = bar_top - h.height;
-            h.shift = Fixed::ZERO - rise;
+            h.shift = Fixed::ZERO - (radicand_layout.height() + vertical_gap);
         }
 
         let mut children = Vec::new();
@@ -1480,7 +1506,7 @@ impl LayoutEngine {
                 .font_system
                 .get_math_constant(family, MathConstant::RadicalDegreeBottomRaisePercent)
                 .unwrap_or(Fixed::from_f64(0.6));
-            let raise = raise_percent * (bar_top - radicand_layout.depth());
+            let raise = raise_percent * (degree_bar_top - radicand_layout.depth());
 
             let mut deg_vbox = Vec::new();
             deg_vbox.push(deg_layout);
@@ -1739,9 +1765,15 @@ impl LayoutEngine {
         let style_scale = self.get_style_scale(style);
         let size = self.base_size * style_scale;
 
+        // TeX's `make_scripts` adds `scriptspace` to every script box's own
+        // width before the boxes are stacked, so the following atom never
+        // touches the script's ink.
+        let script_space = self.math_constant(MathConstant::SpaceAfterScript, size).unwrap_or(Fixed::ZERO);
+
         let mut script_vbox_children = Vec::new();
         let mut calculated_sub_shift = Fixed::ZERO;
         let mut sup_depth = Fixed::ZERO;
+        let mut calculated_sup_shift = Fixed::ZERO;
         // How far each script's ink reaches away from the base baseline. TeX
         // feeds that extent to the base glyph's corner kern, so it is recorded
         // while the shifts are being decided.
@@ -1767,16 +1799,20 @@ impl LayoutEngine {
         };
 
         if let Some(sup_node) = sup {
-            let sup_layout = self.layout_node_state(sup_node, state.sup())?;
+            let sup_inner = self.layout_node_state(sup_node, state.sup())?;
+            let sup_layout = self.pack_hbox(vec![sup_inner, LayoutNode::Kern(script_space)], None);
             // A cramped base takes the font's cramped minimum instead of the
-            // regular one.  `SuperscriptBottomMin` still wins over both when the
-            // nucleus is tall enough.
+            // regular one. TeX's `make_scripts` then keeps the script's own
+            // bottom at least `x-height/4` above the baseline — the MATH table
+            // publishes that clearance as `SuperscriptBottomMin` — and the
+            // nucleus height only enters for a box nucleus via
+            // `SuperscriptBaselineDropMax`.
             let sup_constant =
                 if state.cramped { MathConstant::SuperscriptShiftUpCramped } else { MathConstant::SuperscriptShiftUp };
             let sup_shift = self.math_constant(sup_constant, size).unwrap_or(Fixed::ZERO);
             let sup_bottom_min = self.math_constant(MathConstant::SuperscriptBottomMin, size).unwrap_or(Fixed::ZERO);
 
-            let mut calculated_sup_shift = sup_shift.max(base_layout.height() + sup_bottom_min);
+            calculated_sup_shift = sup_shift.max(sup_layout.depth() + sup_bottom_min);
             if extended_base {
                 // `SuperscriptBaselineDropMax` caps how far a superscript's
                 // baseline may drop below the top of a box nucleus.
@@ -1787,12 +1823,15 @@ impl LayoutEngine {
             sup_depth = sup_layout.depth();
             sup_correction_height = calculated_sup_shift + sup_layout.height();
             script_vbox_children.push(sup_layout);
-            // This kern will be between Sup and the baseline (or Sub)
-            script_vbox_children.push(LayoutNode::Kern(calculated_sup_shift));
+            // The vbox reference point must land on the formula baseline, so the
+            // trailing kern is the shift measured from the script's own bottom.
+            // This kern will be between Sup and the baseline (or Sub).
+            script_vbox_children.push(LayoutNode::Kern(calculated_sup_shift - sup_depth));
         }
 
         if let Some(sub_node) = sub {
-            let sub_layout = self.layout_node_state(sub_node, state.sub())?;
+            let sub_inner = self.layout_node_state(sub_node, state.sub())?;
+            let sub_layout = self.pack_hbox(vec![sub_inner, LayoutNode::Kern(script_space)], None);
             let sub_shift = self.math_constant(MathConstant::SubscriptShiftDown, size).unwrap_or(Fixed::ZERO);
             let sub_top_max = self.math_constant(MathConstant::SubscriptTopMax, size).unwrap_or(Fixed::ZERO);
 
@@ -1807,19 +1846,20 @@ impl LayoutEngine {
 
             // If we already have a superscript, we need to adjust the kern between them
             if script_vbox_children.len() == 2 {
-                if let LayoutNode::Kern(sup_kern) = script_vbox_children.pop().unwrap() {
-                    let subsup_gap = self.math_constant(MathConstant::SubSuperscriptGapMin, size).unwrap_or(Fixed::ZERO);
+                // Drop the superscript-only trailing kern; the combined baseline
+                // distance replaces it.
+                script_vbox_children.pop();
+                let subsup_gap = self.math_constant(MathConstant::SubSuperscriptGapMin, size).unwrap_or(Fixed::ZERO);
 
-                    let sub_height = sub_layout.height();
-                    let baseline_distance = (sup_kern + calculated_sub_shift).max(sup_depth + subsup_gap + sub_height);
+                let sub_height = sub_layout.height();
+                let baseline_distance = (calculated_sup_shift + calculated_sub_shift).max(sup_depth + subsup_gap + sub_height);
 
-                    // A vertical box advances a child by its full line height, so
-                    // the kern between the two scripts is the baseline distance
-                    // less the superscript's depth and the subscript's height.
-                    // Pushing the baseline distance itself would add both of them
-                    // again and lift the superscript by the subscript's height.
-                    script_vbox_children.push(LayoutNode::Kern(baseline_distance - sup_depth - sub_height));
-                }
+                // A vertical box advances a child by its full line height, so
+                // the kern between the two scripts is the baseline distance
+                // less the superscript's depth and the subscript's height.
+                // Pushing the baseline distance itself would add both of them
+                // again and lift the superscript by the subscript's height.
+                script_vbox_children.push(LayoutNode::Kern(baseline_distance - sup_depth - sub_height));
             }
             else {
                 // Only subscript, push the shift kern before the subscript
@@ -1874,10 +1914,11 @@ impl LayoutEngine {
                     let node = LayoutNode::VBox(v);
                     let mut wrapper = self.pack_hbox(vec![node], None);
                     if let LayoutNode::HBox(ref mut h) = wrapper {
-                        // The kern above the last child is measured from the box's
-                        // top, so the superscript's own depth is already inside the
-                        // rise. Shift it back out to land on `SuperscriptShiftUp`.
-                        h.shift = Fixed::ZERO - sup_depth;
+                        // The trailing kern already shortened the shift by the
+                        // superscript's own depth, so the vbox reference point
+                        // sits exactly on the formula baseline and the script
+                        // reports no depth below it.
+                        h.shift = Fixed::ZERO;
                     }
                     wrapper
                 }
