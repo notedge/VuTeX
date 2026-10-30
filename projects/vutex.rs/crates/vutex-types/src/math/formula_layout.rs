@@ -38,21 +38,45 @@ pub struct FormulaMetrics {
 
 /// Immutable paint tree — one node = one visual primitive.
 ///
-/// Pure data.  Every renderer (SVG / PDF / MathML / measure) walks this
-/// tree and emits its own dialect.  No font handles, no backend state.
+/// Pure data.  Every renderer (SVG / PDF / HTML / measure) walks this tree
+/// and emits its own dialect.  No font handles, no backend state.
+///
+/// # Coordinate space
+///
+/// All offsets are canvas pixels with **y growing downward**, laid out in the
+/// formula box: the root origin is the box top-left and the baseline sits at
+/// `y = metrics.height`.  A [`PaintNode::Group`] places its children with its
+/// own translate; every child position is relative to the innermost enclosing
+/// group origin.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PaintNode {
-    /// A group of children rendered in sequence.  Offset is accumulated by
-    /// the parent; every child position is relative to the group origin.
-    Group(Vec<PaintNode>),
-    /// One or more glyphs rendered at per-glyph offsets.
+    /// Children sharing one translate offset from the enclosing group origin.
+    Group {
+        /// Children rendered in sequence.
+        children: Vec<PaintNode>,
+        /// Horizontal offset of the group origin, canvas pixels.
+        translate_x: Fixed,
+        /// Vertical offset of the group origin, canvas pixels (y-down).
+        translate_y: Fixed,
+    },
+    /// One or more glyphs rendered at per-glyph baseline anchors.
     GlyphRun {
         /// Font unique identifier (hash key used by the renderer to look up
         /// the actual face; matches [`FontFaceSnapshot::font_id`]).
         font_id: String,
         /// Glyph ids within the referenced font.
         glyph_ids: Vec<u16>,
-        /// Per-glyph `(x, y)` offset relative to the group origin.
+        /// Unicode scalar per glyph when the layout key carried one.  A
+        /// renderer may emit a host-font text run for these only when the
+        /// face ships no outline (`path_data` entry is `None`) and the caller
+        /// allows text fallback; whitespace never paints.
+        chars: Vec<Option<char>>,
+        /// Font family label for the text fallback run.
+        family: String,
+        /// Per-glyph `(x, y)` baseline anchor relative to the group origin,
+        /// canvas pixels (y-down).  The outline in `path_data` is in em units
+        /// with y growing upward and paints under
+        /// `translate(x, y) scale(size, -size)`.
         positions: Vec<(Fixed, Fixed)>,
         /// Design size in the same units as [`Fixed`].
         size: Fixed,
@@ -62,13 +86,23 @@ pub enum PaintNode {
         path_data: Vec<Option<String>>,
     },
     /// A filled rectangle (rule bar, fraction line, underline, ...).
+    /// `(x, y)` is the top-left corner relative to the group origin, canvas
+    /// pixels with y growing downward.
     Rect { x: Fixed, y: Fixed, width: Fixed, height: Fixed, stroke_width: Fixed },
-    /// A raw SVG path for complex glyph outlines that cannot be represented
+    /// A raw vector path for complex outlines that cannot be represented
     /// as a [`PaintNode::GlyphRun`].
     VectorPath {
-        /// SVG `d` attribute string.
+        /// SVG `d` attribute string in y-up unit space.  The renderer maps it
+        /// with `translate(x, y) scale(scale, -scale)`.
         d: String,
-        /// Pre-computed bounding box of the path.
+        /// Baseline anchor relative to the group origin, canvas pixels.
+        x: Fixed,
+        /// Baseline anchor relative to the group origin, canvas pixels.
+        y: Fixed,
+        /// Unit scale from `d` space to canvas pixels (glyph outlines use the
+        /// design size, pre-scaled paths use `1`).
+        scale: Fixed,
+        /// Pre-computed ink box in group-relative canvas coordinates.
         bbox: BBox,
     },
 }
@@ -76,30 +110,32 @@ pub enum PaintNode {
 impl Default for PaintNode {
     fn default() -> Self {
         // Empty group keeps the "paint tree is always a Group" invariant.
-        PaintNode::Group(Vec::new())
+        PaintNode::Group { children: Vec::new(), translate_x: Fixed::ZERO, translate_y: Fixed::ZERO }
     }
 }
 
 impl PaintNode {
     /// Compute the total axis-aligned bounding box of this node and all of
-    /// its descendants.
+    /// its descendants, in the coordinates of the enclosing group.
     ///
-    /// The `GlyphRun` variant is a first-pass placeholder: it returns an
-    /// empty [`BBox`] because metrics live in the font snapshot and the
-    /// paint tree must remain backend-free.  Layout will fill the real box
-    /// in a follow-up change.
+    /// The `GlyphRun` variant returns an empty [`BBox`] because its ink
+    /// depends on parsing outline geometry, which stays a render-time
+    /// concern; the paint tree must remain backend-free.
     pub fn bbox(&self) -> BBox {
         match self {
-            PaintNode::Group(children) => children.iter().map(|c| c.bbox()).fold(BBox::default(), |acc, b| bbox_union(acc, b)),
-            // path_data bbox computation delegated to render-time: the
-            // renderer can inspect `path_data` / `glyph_paths` in
-            // [`FontMetricsSnapshot`] and build the real box from SVG
-            // geometry.  Layout keeps the paint tree backend-free.
+            PaintNode::Group { children, translate_x, translate_y } => children
+                .iter()
+                .map(|c| offset_bbox(c.bbox(), *translate_x, *translate_y))
+                .fold(BBox::default(), |acc, b| bbox_union(acc, b)),
             PaintNode::GlyphRun { .. } => BBox::default(),
             PaintNode::Rect { x, y, width, height, .. } => BBox { x: *x, y: *y, width: *width, height: *height },
             PaintNode::VectorPath { bbox, .. } => *bbox,
         }
     }
+}
+
+fn offset_bbox(b: BBox, dx: Fixed, dy: Fixed) -> BBox {
+    BBox { x: b.x + dx, y: b.y + dy, width: b.width, height: b.height }
 }
 
 fn bbox_union(a: BBox, b: BBox) -> BBox {
@@ -190,8 +226,31 @@ mod tests {
             height: Fixed::ONE,
             stroke_width: Fixed::ZERO,
         };
-        let group = PaintNode::Group(vec![a, b]);
+        let group = PaintNode::Group { children: vec![a, b], translate_x: Fixed::ZERO, translate_y: Fixed::ZERO };
         let bbox = group.bbox();
         assert_eq!(bbox.width, Fixed::from_f64(3.0));
+    }
+
+    #[test]
+    fn paint_group_translate_offsets_children() {
+        let a = PaintNode::Rect {
+            x: Fixed::ZERO,
+            y: Fixed::ZERO,
+            width: Fixed::ONE,
+            height: Fixed::ONE,
+            stroke_width: Fixed::ZERO,
+        };
+        let group = PaintNode::Group {
+            children: vec![PaintNode::Group {
+                children: vec![a],
+                translate_x: Fixed::from_f64(4.0),
+                translate_y: Fixed::from_f64(-2.0),
+            }],
+            translate_x: Fixed::from_f64(1.0),
+            translate_y: Fixed::ZERO,
+        };
+        let bbox = group.bbox();
+        assert_eq!(bbox.x, Fixed::from_f64(5.0));
+        assert_eq!(bbox.y, Fixed::from_f64(-2.0));
     }
 }

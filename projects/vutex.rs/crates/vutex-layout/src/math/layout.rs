@@ -834,8 +834,24 @@ impl LayoutEngine {
     /// `PaintNode` 树 + `FormulaMetrics`。
     pub fn layout_formula_result(&self, nodes: &[SemanticNode], style: MathStyle) -> MathResult<FormulaLayoutResult> {
         let layout_node = self.layout_math_list(nodes, style)?;
-        let paint = lower_layout_to_paint(&layout_node, self.base_size);
-        let metrics = extract_metrics(&layout_node, &self.font_system);
+        // width / height / depth take the packed root box (the same
+        // advance/shift semantics the render cursor walks), axis is the font's
+        // published `AxisHeight` scaled to the base size — ZERO when nothing
+        // publishes it, so a caller can tell measured from missing.
+        let width = layout_node.width();
+        let height = layout_node.height();
+        let depth = layout_node.depth();
+        let axis = self.math_constant(MathConstant::AxisHeight, self.base_size).unwrap_or(Fixed::ZERO);
+        let metrics = FormulaMetrics {
+            width,
+            height,
+            depth,
+            axis,
+            ink_bounds: BBox { x: Fixed::ZERO, y: Fixed::ZERO, width, height: height + depth },
+        };
+        // The paint tree lives in the canvas space the renderers emit into:
+        // box top-left at the origin, baseline at `y = metrics.height`.
+        let paint = lower_layout_to_paint(&layout_node, Fixed::ZERO, metrics.height).unwrap_or_default();
         let mut glyph_paths = Vec::new();
         collect_glyph_paths(&layout_node, &mut glyph_paths);
         let fonts = FontMetricsSnapshot { faces: Vec::new(), glyph_paths };
@@ -2722,142 +2738,76 @@ fn collect_glyph_paths(node: &LayoutNode, out: &mut Vec<(String, u16, String)>) 
 
 /// 递归把 [`LayoutNode`] 树降成 [`PaintNode`] 树。
 ///
-/// * HBox / VBox → [`PaintNode::Group`]，递归子节点。
-/// * Glyph → 优先 [`PaintNode::GlyphRun`]（font_id + glyph_ids + positions），
-///   缺 glyph_id 时回退 [`PaintNode::VectorPath`]（SVG outline），再兜底空
-///   Group。
-/// * Rule → [`PaintNode::Rect`]。
-/// * Path → [`PaintNode::VectorPath`]。
-/// * Kern / Glue / Penalty → 空 Group（不 paint，advance 进 metrics）。
-fn lower_layout_to_paint(node: &LayoutNode, base_size: Fixed) -> PaintNode {
+/// 光标算术与渲染器退场前的 `render_layout_node` 完全一致，坐标是画布
+/// y-down 像素：
+///
+/// * HBox → [`PaintNode::Group`] `translate = (x, y + shift)`，children 从
+///   `current_x = 0` 按 `child.width()`（含 italic correction）推进，child 的
+///   基线 y 为 0。
+/// * VBox → [`PaintNode::Group`] `translate = (x + shift, y)`，children 从
+///   `current_y = -height` 起，child 基线 y 为 `current_y + child.height()`，
+///   按 `height + depth` 推进。
+/// * Glyph → 单 glyph [`PaintNode::GlyphRun`]，positions 为基线锚点。
+/// * Rule → [`PaintNode::Rect`] `(x, y - height, width, height + depth)`。
+/// * Path → [`PaintNode::VectorPath`] `(x, y, scale = 1)`（`d` 已预缩放）。
+/// * Kern / Glue / Penalty / Anchor → `None`（只推进，不出墨）。
+///
+/// 不产出任何墨的盒返回 `None`，父盒据此跳过空 Group，和旧渲染器
+/// 「blank box 不开组」的行为对齐。
+fn lower_layout_to_paint(node: &LayoutNode, x: Fixed, y: Fixed) -> Option<PaintNode> {
     match node {
         LayoutNode::HBox(hbox) => {
-            let children: Vec<_> = hbox.children.iter().map(|c| lower_layout_to_paint(c, base_size)).collect();
-            PaintNode::Group(children)
+            let mut children = Vec::new();
+            let mut current_x = Fixed::ZERO;
+            for child in &hbox.children {
+                if let Some(paint) = lower_layout_to_paint(child, current_x, Fixed::ZERO) {
+                    children.push(paint);
+                }
+                current_x = current_x + child.width();
+            }
+            if children.is_empty() {
+                return None;
+            }
+            Some(PaintNode::Group { children, translate_x: x, translate_y: y + hbox.shift })
         }
         LayoutNode::VBox(vbox) => {
-            let children: Vec<_> = vbox.children.iter().map(|c| lower_layout_to_paint(c, base_size)).collect();
-            PaintNode::Group(children)
+            let mut children = Vec::new();
+            let mut current_y = Fixed::ZERO - vbox.height;
+            for child in &vbox.children {
+                if let Some(paint) = lower_layout_to_paint(child, Fixed::ZERO, current_y + child.height()) {
+                    children.push(paint);
+                }
+                current_y = current_y + child.height() + child.depth();
+            }
+            if children.is_empty() {
+                return None;
+            }
+            Some(PaintNode::Group { children, translate_x: x + vbox.shift, translate_y: y })
         }
         LayoutNode::Glyph(glyph) => {
-            // 有 glyph_id 就走 GlyphRun；这是 PaintNode 里字体友好的表示。
-            if glyph.glyph_id.is_some() {
-                return PaintNode::GlyphRun {
-                    font_id: glyph.font_id.clone().unwrap_or_default(),
-                    glyph_ids: vec![glyph.glyph_id.unwrap_or(0)],
-                    positions: vec![(Fixed::ZERO, Fixed::ZERO)],
-                    size: glyph.size,
-                    path_data: vec![glyph.path_data.clone()],
-                };
+            if glyph.path_data.is_none() && glyph.char.is_none() {
+                return None;
             }
-            // 没 glyph_id 但有 outline path：走 VectorPath。
-            if let Some(ref path) = glyph.path_data {
-                let bbox = BBox {
-                    x: Fixed::ZERO,
-                    y: Fixed::ZERO - glyph.metrics.height,
-                    width: glyph.metrics.width,
-                    height: glyph.metrics.height + glyph.metrics.depth,
-                };
-                return PaintNode::VectorPath { d: path.clone(), bbox };
-            }
-            // 兜底：空 Group。renderer 应该能接受，但这表示 layout
-            // 没为这个 glyph 准备好任何可见内容。
-            let _ = base_size; // 当前 Glyph.size 已足够，留签名给将来 fallback
-            PaintNode::Group(Vec::new())
+            Some(PaintNode::GlyphRun {
+                font_id: glyph.font_id.clone().unwrap_or_default(),
+                glyph_ids: vec![glyph.glyph_id.unwrap_or(0)],
+                chars: vec![glyph.char],
+                family: glyph.font_family.clone(),
+                positions: vec![(x, y)],
+                size: glyph.size,
+                path_data: vec![glyph.path_data.clone()],
+            })
         }
-        LayoutNode::Rule { width, height, depth } => PaintNode::Rect {
-            x: Fixed::ZERO,
-            y: Fixed::ZERO - *height,
-            width: *width,
-            height: *height + *depth,
-            stroke_width: Fixed::ZERO,
-        },
-        LayoutNode::Path(path) => PaintNode::VectorPath {
+        LayoutNode::Rule { width, height, depth } => {
+            Some(PaintNode::Rect { x, y: y - *height, width: *width, height: *height + *depth, stroke_width: Fixed::ZERO })
+        }
+        LayoutNode::Path(path) => Some(PaintNode::VectorPath {
             d: path.d.clone(),
-            bbox: BBox { x: Fixed::ZERO, y: Fixed::ZERO - path.height, width: path.width, height: path.height + path.depth },
-        },
-        LayoutNode::Kern(_) | LayoutNode::Glue(_) | LayoutNode::Penalty { .. } | LayoutNode::Anchor { .. } => {
-            // 只推进位置，不 paint。
-            PaintNode::Group(Vec::new())
-        }
-    }
-}
-
-/// 从 [`LayoutNode`] 树根节点收集 [`FormulaMetrics`]。
-///
-/// 递归累加整棵树的 extents，避免依赖根节点必须是 HBox / VBox。
-/// width 是所有节点 advance 的总和（或 root HBox 的 width），height 是
-/// 所有子树的上沿到 baseline 的最大值，depth 是 baseline 下沿的最大值
-/// （正数表示 descended below baseline）。
-///
-/// `font_system` 参数预留了未来查 `AxisHeight` / 字体快照的入口；当前
-/// 版本 `axis` 仍返回 ZERO，等 [`FontMetricsSnapshot`] 真正填充后再查。
-/// `ink_bounds` 用 width / height / depth 推导一个以 baseline 为 y=0
-/// 的矩形。
-fn extract_metrics(root: &LayoutNode, font_system: &FontMetricsSystem) -> FormulaMetrics {
-    let (width, height, depth) = compute_extents(root);
-
-    // axis 暂时留 ZERO — FontMetricsSnapshot 还是空的。等 snapshot 接入后：
-    // let family = "default";
-    // let axis = font_system.get_math_constant(family, MathConstant::AxisHeight)
-    //     .unwrap_or(Fixed::from_f64(0.25)) * /* base size */;
-    let _ = font_system;
-    let axis = Fixed::ZERO;
-
-    FormulaMetrics {
-        width,
-        height,
-        depth,
-        axis,
-        ink_bounds: BBox { x: Fixed::ZERO, y: Fixed::ZERO - height, width, height: height + depth },
-    }
-}
-
-/// 递归计算一个 [`LayoutNode`] 子树的 (width, height, depth)。
-///
-/// * width: 水平 advance 总量（HBox 累加所有 children，VBox 取最宽的 child）
-/// * height: 子树上沿到 baseline 的最大距离（正数）
-/// * depth: 子树下沿到 baseline 的最大距离（正数）
-fn compute_extents(node: &LayoutNode) -> (Fixed, Fixed, Fixed) {
-    match node {
-        LayoutNode::HBox(h) => {
-            let mut width = Fixed::ZERO;
-            let mut max_height = Fixed::ZERO;
-            let mut max_depth = Fixed::ZERO;
-            for child in &h.children {
-                let (cw, ch, cd) = compute_extents(child);
-                width = width + cw;
-                max_height = max_height.max(ch);
-                max_depth = max_depth.max(cd);
-            }
-            // HBox 自带 shift：向上（负 shift）减小 height，增大 depth；
-            // 向下（正 shift）相反。与 HBox::height / HBox::depth 的语义
-            // 完全对齐，所以直接用打包好的值加上 shift 修正即可。
-            width = width.max(h.width); // 打包值已经考虑了 glue_set 拉伸
-            let height = h.height - h.shift;
-            let depth = h.depth + h.shift;
-            (width, height, depth.max(max_depth))
-        }
-        LayoutNode::VBox(v) => {
-            let mut max_width = Fixed::ZERO;
-            let mut total_height = Fixed::ZERO;
-            let mut total_depth = Fixed::ZERO;
-            for child in &v.children {
-                let (cw, ch, cd) = compute_extents(child);
-                max_width = max_width.max(cw);
-                total_height = total_height + ch;
-                total_depth = total_depth + cd;
-            }
-            // VBox 也可以直接用打包值，shift 只水平移动不影响 extents
-            max_width = max_width.max(v.width);
-            (max_width, v.height, v.depth)
-        }
-        LayoutNode::Glyph(g) => (g.metrics.width, g.metrics.height, g.metrics.depth),
-        LayoutNode::Glue(g) => (g.width, Fixed::ZERO, Fixed::ZERO),
-        LayoutNode::Kern(k) => (*k, Fixed::ZERO, Fixed::ZERO),
-        LayoutNode::Rule { width, height, depth } => (*width, *height, *depth),
-        LayoutNode::Path(p) => (p.width, p.height, p.depth),
-        LayoutNode::Penalty { width, .. } => (*width, Fixed::ZERO, Fixed::ZERO),
-        LayoutNode::Anchor { .. } => (Fixed::ZERO, Fixed::ZERO, Fixed::ZERO),
+            x,
+            y,
+            scale: Fixed::ONE,
+            bbox: BBox { x, y: y - path.height, width: path.width, height: path.height + path.depth },
+        }),
+        LayoutNode::Kern(_) | LayoutNode::Glue(_) | LayoutNode::Penalty { .. } | LayoutNode::Anchor { .. } => None,
     }
 }

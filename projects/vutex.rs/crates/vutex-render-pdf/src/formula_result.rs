@@ -25,32 +25,28 @@ use vutex_types::{
 
 /// Render a fully laid-out formula as a minimal single-page PDF document.
 ///
-/// The page size is derived from [`FormulaLayoutResult::metrics`] — preferring
-/// `ink_bounds` when non-degenerate, otherwise falling back to the formula's
-/// advance width and vertical extent.  Content is placed on page 1 in PDF's
-/// y-up coordinate space; math-space coordinates (y-up) are consumed verbatim
-/// because PDF shares the same convention.
+/// The page is the formula box from [`FormulaLayoutResult::metrics`] padded by
+/// 4 pt on every side.  The paint tree is canvas y-down (box top-left at the
+/// origin, baseline at `y = metrics.height`); PDF content is y-up, so the
+/// walker keeps a canvas-space origin and flips at emit time:
+/// `pdf_y = baseline + metrics.height - canvas_y`.
 ///
 /// Returns PDF 1.7 bytes ready to write.  Errors surface as a single
 /// [`Diagnostic`] with code `vutex.render.pdf.formula_result`.
 pub fn render_formula_result(result: &FormulaLayoutResult) -> Result<Vec<u8>, Diagnostic> {
     let metrics = &result.metrics;
     // Page dimensions in PDF points (≈ CSS px).
-    let (page_w, page_h) = if metrics.ink_bounds.width.to_f64() > 0.0 || metrics.ink_bounds.height.to_f64() > 0.0 {
-        let ib = &metrics.ink_bounds;
-        (ib.x.to_f64() + ib.width.to_f64() + 8.0, ib.y.to_f64() + ib.height.to_f64() + metrics.depth.to_f64() + 8.0)
-    }
-    else {
-        (metrics.width.to_f64().max(1.0) + 8.0, (metrics.height.to_f64() + metrics.depth.to_f64()).max(1.0) + 8.0)
-    };
+    let (page_w, page_h) =
+        (metrics.width.to_f64().max(1.0) + 8.0, (metrics.height.to_f64() + metrics.depth.to_f64()).max(1.0) + 8.0);
 
-    // Page-space y origin for the formula baseline.  PDF origin is bottom-left,
-    // so baseline sits at depth + padding.
+    // Canvas-space state: the formula box top-left maps to PDF (4, baseline +
+    // height), where the baseline sits 4 pt above the page bottom plus depth.
     let baseline_y = metrics.depth.to_f64() + 4.0;
+    let height = metrics.height.to_f64();
 
     let mut content = String::new();
     let _ = write!(content, "q\n");
-    render_paint_pdf(&mut content, &result.paint, 4.0, baseline_y);
+    render_paint_pdf(&mut content, &result.paint, 0.0, 0.0, baseline_y, height);
     let _ = write!(content, "Q\n");
     if content.trim().is_empty() {
         content.push('\n');
@@ -61,20 +57,24 @@ pub fn render_formula_result(result: &FormulaLayoutResult) -> Result<Vec<u8>, Di
 
 /// Recursively emit PDF content-stream operators for one [`PaintNode`] subtree.
 ///
-/// `(origin_x, origin_y)` is the cumulative PDF-space offset of the current
-/// group (y-up, origin at page bottom-left, formula baseline already offset).
-fn render_paint_pdf(out: &mut String, node: &PaintNode, origin_x: f64, origin_y: f64) {
+/// `(ox, oy)` is the cumulative canvas-space (y-down) origin of the current
+/// group.  `(baseline_y, height)` describe the page mapping: a canvas point
+/// `(x, y)` becomes PDF `(4 + x, baseline_y + height - y)`.
+fn render_paint_pdf(out: &mut String, node: &PaintNode, ox: f64, oy: f64, baseline_y: f64, height: f64) {
     match node {
-        PaintNode::Group(children) => {
+        PaintNode::Group { children, translate_x, translate_y } => {
+            let nx = ox + translate_x.to_f64();
+            let ny = oy + translate_y.to_f64();
             for child in children {
-                render_paint_pdf(out, child, origin_x, origin_y);
+                render_paint_pdf(out, child, nx, ny, baseline_y, height);
             }
         }
-        PaintNode::Rect { x, y, width, height, stroke_width } => {
-            let rx = origin_x + x.to_f64();
-            let ry = origin_y + y.to_f64();
+        PaintNode::Rect { x, y, width, height: rect_height, stroke_width } => {
+            let rx = 4.0 + ox + x.to_f64();
             let rw = width.to_f64();
-            let rh = height.to_f64();
+            let rh = rect_height.to_f64();
+            // Canvas y is the rect top; PDF `re` anchors at the bottom-left.
+            let ry = baseline_y + height - (oy + y.to_f64()) - rh;
             let _ = write!(out, "q\n");
             if stroke_width.to_f64() > 0.0 {
                 let _ = write!(out, "0.6 G\n0.5 w\n{} {} {} {} re\nS\n", num(rx), num(ry), num(rw), num(rh));
@@ -84,38 +84,35 @@ fn render_paint_pdf(out: &mut String, node: &PaintNode, origin_x: f64, origin_y:
             }
             let _ = write!(out, "Q\n");
         }
-        PaintNode::VectorPath { d, bbox: _bbox } => {
-            // PDF path ops are already in y-up convention — translate by group
-            // origin and emit path operators.
-            let ops = svg_path_to_pdf_ops(d, origin_x, origin_y);
-            if !ops.is_empty() {
-                let _ = write!(out, "q\n0.0 f\n{ops}f\nQ\n");
-            }
+        PaintNode::VectorPath { d, x, y, scale, bbox: _bbox } => {
+            // `d` is y-up unit space; PDF is y-up, so only the canvas flip
+            // remains: anchor at the translated baseline point with positive
+            // scale.
+            emit_pdf_path(out, d, 4.0 + ox + x.to_f64(), baseline_y + height - (oy + y.to_f64()), scale.to_f64());
         }
-        PaintNode::GlyphRun { font_id, glyph_ids, positions, size, path_data } => {
-            // 每个 glyph 的 path_data 是 em 单位的 SVG `d`，用 PDF `cm` 矩阵
-            // 统一做 scale (em → math pixels) + translate (per-glyph offset)，
-            // 然后 svg_path_to_pdf_ops 只需输出相对原点的路径即可。
+        PaintNode::GlyphRun { font_id, glyph_ids, positions, size, path_data, chars: _, family: _ } => {
+            // 每个 glyph 的 path_data 是 em 单位的 y-up SVG `d`，用 PDF `cm`
+            // 矩阵做 scale (em → 画布像素) + translate（画布翻转后的基线锚点）。
             let scale = size.to_f64();
             for (i, d_opt) in path_data.iter().enumerate() {
                 if let Some(d) = d_opt {
-                    let (ox, oy) = positions.get(i).copied().unwrap_or((Fixed::ZERO, Fixed::ZERO));
-                    let ops = svg_path_to_pdf_ops(d, 0.0, 0.0);
-                    if !ops.is_empty() {
-                        let _ = write!(
-                            out,
-                            "q\n0.0 f\n{:.4} 0 0 {:.4} {:.4} {:.4} cm\n{ops}f\nQ\n",
-                            scale,
-                            scale,
-                            ox.to_f64(),
-                            oy.to_f64()
-                        );
-                    }
+                    let (px, py) = positions.get(i).copied().unwrap_or((Fixed::ZERO, Fixed::ZERO));
+                    emit_pdf_path(out, d, 4.0 + ox + px.to_f64(), baseline_y + height - (oy + py.to_f64()), scale);
                 }
             }
             let _ = (font_id, glyph_ids); // 将来用于 CID font 引用
         }
     }
+}
+
+/// Emit one y-up path `d` under a `cm` matrix placing its origin at the PDF
+/// point `(tx, ty)` and scaling by `s`.
+fn emit_pdf_path(out: &mut String, d: &str, tx: f64, ty: f64, s: f64) {
+    let ops = svg_path_to_pdf_ops(d, 0.0, 0.0);
+    if ops.is_empty() {
+        return;
+    }
+    let _ = write!(out, "q\n0.0 f\n{s:.4} 0 0 {s:.4} {tx:.4} {ty:.4} cm\n{ops}f\nQ\n");
 }
 
 /// Convert an SVG `d` attribute string into PDF path operators translated by
@@ -331,13 +328,17 @@ mod tests {
                     height: Fixed::from_f64(15.0),
                 },
             },
-            paint: PaintNode::Group(vec![PaintNode::Rect {
-                x: Fixed::from_f64(10.0),
-                y: Fixed::ZERO,
-                width: Fixed::from_f64(80.0),
-                height: Fixed::from_f64(15.0),
-                stroke_width: Fixed::ZERO,
-            }]),
+            paint: PaintNode::Group {
+                children: vec![PaintNode::Rect {
+                    x: Fixed::from_f64(10.0),
+                    y: Fixed::ZERO,
+                    width: Fixed::from_f64(80.0),
+                    height: Fixed::from_f64(15.0),
+                    stroke_width: Fixed::ZERO,
+                }],
+                translate_x: Fixed::ZERO,
+                translate_y: Fixed::ZERO,
+            },
             diagnostics: Vec::new(),
             fonts: vutex_types::math::formula_layout::FontMetricsSnapshot::default(),
             semantics: vutex_types::math::MathSemantics::default(),
@@ -359,12 +360,27 @@ mod tests {
     }
 
     #[test]
+    fn rect_paint_flips_canvas_y() {
+        // Box: height 20 above the baseline, depth 5 below; canvas rect at
+        // (10, 0) 80x15 maps to PDF bottom-left (4 + 10, (5 + 4) + 20 - 0 - 15).
+        let pdf = String::from_utf8_lossy(&render_formula_result(&rect_result()).expect("render")).into_owned();
+        assert!(pdf.contains("14.0000 14.0000 80.0000 15.0000 re"), "{pdf}");
+    }
+
+    #[test]
     fn vector_path_paint_emits_pdf_path_ops() {
         let mut res = rect_result();
-        res.paint = PaintNode::Group(vec![PaintNode::VectorPath {
-            d: "M 0 0 L 10 0 L 5 10 Z".to_string(),
-            bbox: BBox { x: Fixed::ZERO, y: Fixed::ZERO, width: Fixed::from_f64(10.0), height: Fixed::from_f64(10.0) },
-        }]);
+        res.paint = PaintNode::Group {
+            children: vec![PaintNode::VectorPath {
+                d: "M 0 0 L 10 0 L 5 10 Z".to_string(),
+                x: Fixed::from_f64(1.0),
+                y: Fixed::from_f64(2.0),
+                scale: Fixed::ONE,
+                bbox: BBox { x: Fixed::ZERO, y: Fixed::ZERO, width: Fixed::from_f64(10.0), height: Fixed::from_f64(10.0) },
+            }],
+            translate_x: Fixed::ZERO,
+            translate_y: Fixed::ZERO,
+        };
         let pdf = render_formula_result(&res).expect("render");
         let text = String::from_utf8_lossy(&pdf);
         assert!(text.contains(" m\n"));
@@ -384,17 +400,43 @@ mod tests {
     #[test]
     fn glyph_run_emits_no_paint() {
         let mut res = rect_result();
-        res.paint = PaintNode::Group(vec![PaintNode::GlyphRun {
-            font_id: "lmr".to_string(),
-            glyph_ids: vec![65, 66],
-            positions: vec![(Fixed::ZERO, Fixed::ZERO), (Fixed::from_f64(10.0), Fixed::ZERO)],
-            size: Fixed::from_f64(16.0),
-            path_data: vec![None, None],
-        }]);
+        res.paint = PaintNode::Group {
+            children: vec![PaintNode::GlyphRun {
+                font_id: "lmr".to_string(),
+                glyph_ids: vec![65, 66],
+                chars: vec![Some('A'), Some('B')],
+                family: "latin-modern-math".to_string(),
+                positions: vec![(Fixed::ZERO, Fixed::ZERO), (Fixed::from_f64(10.0), Fixed::ZERO)],
+                size: Fixed::from_f64(16.0),
+                path_data: vec![None, None],
+            }],
+            translate_x: Fixed::ZERO,
+            translate_y: Fixed::ZERO,
+        };
         let pdf = render_formula_result(&res).expect("render");
-        let text = String::from_utf8_lossy(&pdf);
         // No rect/path operators, but still valid PDF page
         assert!(is_pdf(&pdf));
+    }
+
+    #[test]
+    fn glyph_run_outline_paints_under_cm_matrix() {
+        let mut res = rect_result();
+        res.paint = PaintNode::Group {
+            children: vec![PaintNode::GlyphRun {
+                font_id: "lmr".to_string(),
+                glyph_ids: vec![65],
+                chars: vec![Some('A')],
+                family: "latin-modern-math".to_string(),
+                positions: vec![(Fixed::from_f64(3.0), Fixed::from_f64(4.0))],
+                size: Fixed::from_f64(16.0),
+                path_data: vec![Some("M 0 0 L 1 1 Z".to_string())],
+            }],
+            translate_x: Fixed::ZERO,
+            translate_y: Fixed::ZERO,
+        };
+        let pdf = String::from_utf8_lossy(&render_formula_result(&res).expect("render")).into_owned();
+        // 16 x 16 scale at the flipped anchor: x = 4 + 3, y = (5 + 4) + 20 - 4
+        assert!(pdf.contains("16.0000 0 0 16.0000 7.0000 25.0000 cm"), "{pdf}");
     }
 }
 

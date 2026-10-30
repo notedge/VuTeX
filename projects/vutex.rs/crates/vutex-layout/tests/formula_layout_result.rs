@@ -37,9 +37,9 @@ fn paint_tree_is_group_rooted() {
     let nodes = vec![sym('a', SymbolRole::Ordinary), sym('+', SymbolRole::Binary), sym('b', SymbolRole::Ordinary)];
     let result = engine.layout_formula_result(&nodes, MathStyle::Text).unwrap();
 
-    // 第一版的 paint 树根节点是 Group(HBox children lowered)。
+    // paint 树根节点是 Group(HBox children lowered)。
     match &result.paint {
-        vutex_types::math::PaintNode::Group(children) => {
+        vutex_types::math::PaintNode::Group { children, .. } => {
             assert!(!children.is_empty(), "paint tree group must have children");
         }
         other => panic!("expected PaintNode::Group root, got {other:?}"),

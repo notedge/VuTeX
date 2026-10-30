@@ -1,7 +1,5 @@
-use vutex_layout::math::{
-    LayoutNode, collect_layout_with_diagnostics, default_base_size, layout_formula_with_result_for, render_layout_node,
-};
-use vutex_render_svg::math::{SvgBackend, render_mathml_result};
+use vutex_layout::math::{LayoutNode, default_base_size, layout_formula_with_result_for};
+use vutex_render_svg::math::{render_formula_result, render_mathml_result};
 use vutex_text::math::MathFontFamily;
 use vutex_types::{
     Diagnostic, Severity,
@@ -26,10 +24,10 @@ pub fn measure(source: &str, options: &RenderOptions) -> FormulaRender {
     }
 
     match layout_formula(source, options) {
-        Ok((result, root, math_diagnostics)) => {
+        Ok((result, _root, math_diagnostics)) => {
             diagnostics.extend(math_diagnostics.into_iter().map(FormulaDiagnostic::from));
             FormulaRender {
-                metrics: node_metrics(&root),
+                metrics: result_metrics(&result.metrics),
                 svg: String::new(),
                 html: String::new(),
                 mathml: None,
@@ -58,13 +56,13 @@ pub fn render_svg(source: &str, options: &RenderOptions) -> FormulaRender {
     }
 
     match layout_formula(source, options) {
-        Ok((result, root, math_diagnostics)) => {
+        Ok((result, _root, math_diagnostics)) => {
             diagnostics.extend(math_diagnostics.into_iter().map(FormulaDiagnostic::from));
-            match render_svg_markup(&root, options.outline.unwrap_or(true)) {
+            match render_svg_markup(&result, options.outline.unwrap_or(true)) {
                 Ok((svg, outline_diagnostics)) => {
                     diagnostics.extend(outline_diagnostics.into_iter().map(FormulaDiagnostic::from));
                     FormulaRender {
-                        metrics: node_metrics(&root),
+                        metrics: result_metrics(&result.metrics),
                         svg,
                         html: String::new(),
                         mathml: None,
@@ -96,13 +94,14 @@ pub fn render_mathml(source: &str, options: &RenderOptions) -> FormulaRender {
     }
 
     match layout_formula(source, options) {
-        Ok((result, root, math_diagnostics)) => {
+        Ok((result, _root, math_diagnostics)) => {
             diagnostics.extend(math_diagnostics.into_iter().map(FormulaDiagnostic::from));
+            let mathml = render_mathml_result(&result);
             FormulaRender {
-                metrics: node_metrics(&root),
+                metrics: result_metrics(&result.metrics),
                 svg: String::new(),
                 html: String::new(),
-                mathml: Some(render_mathml_result(&result)),
+                mathml: Some(mathml),
                 semantics: Some(result.semantics),
                 diagnostics,
             }
@@ -130,10 +129,11 @@ pub fn render_html(source: &str, options: &RenderOptions) -> FormulaRender {
         Ok((result, root, math_diagnostics)) => {
             diagnostics.extend(math_diagnostics.into_iter().map(FormulaDiagnostic::from));
             let family = embedded_family(options.font_family).expect("entries reject unsupported families before layout");
+            let html = HtmlBackend::new(family).render(&root);
             FormulaRender {
-                metrics: node_metrics(&root),
+                metrics: result_metrics(&result.metrics),
                 svg: String::new(),
-                html: HtmlBackend::new(family).render(&root),
+                html,
                 mathml: None,
                 semantics: Some(result.semantics),
                 diagnostics,
@@ -156,16 +156,18 @@ pub fn render(source: &str, options: &RenderOptions) -> FormulaRender {
     match layout_formula(source, options) {
         Ok((result, root, math_diagnostics)) => {
             diagnostics.extend(math_diagnostics.into_iter().map(FormulaDiagnostic::from));
-            match render_svg_markup(&root, options.outline.unwrap_or(true)) {
+            match render_svg_markup(&result, options.outline.unwrap_or(true)) {
                 Ok((svg, outline_diagnostics)) => {
                     diagnostics.extend(outline_diagnostics.into_iter().map(FormulaDiagnostic::from));
                     let family =
                         embedded_family(options.font_family).expect("entries reject unsupported families before layout");
+                    let html = HtmlBackend::new(family).render(&root);
+                    let mathml = render_mathml_result(&result);
                     FormulaRender {
-                        metrics: node_metrics(&root),
+                        metrics: result_metrics(&result.metrics),
                         svg,
-                        html: HtmlBackend::new(family).render(&root),
-                        mathml: Some(render_mathml_result(&result)),
+                        html,
+                        mathml: Some(mathml),
                         semantics: Some(result.semantics),
                         diagnostics,
                     }
@@ -226,23 +228,19 @@ fn font_family_diagnostic(options: &RenderOptions) -> Option<FormulaDiagnostic> 
 
 /// Render the SVG markup of one laid-out formula.
 ///
-/// Returns the markup plus the warnings raised while walking the box tree, such
-/// as a glyph that has no outline and fell back to a host font.
-fn render_svg_markup(root: &LayoutNode, outline: bool) -> Result<(String, Vec<Diagnostic>), MathError> {
-    let width = root.width().to_f64();
-    let baseline = root.height().to_f64();
-    let height = baseline + root.depth().to_f64();
-    let mut backend = if outline { SvgBackend::new_deterministic(width, height) } else { SvgBackend::new(width, height) };
-    render_layout_node(&mut backend, root, 0.0, baseline)?;
-    let mut diagnostics = Vec::new();
-    collect_layout_with_diagnostics(root, 0.0, baseline, &mut diagnostics);
-    Ok((backend.finish(), diagnostics))
+/// Returns the markup plus the warnings raised while walking the paint tree,
+/// such as a glyph that has no outline and fell back to a host font.
+fn render_svg_markup(result: &FormulaLayoutResult, outline: bool) -> Result<(String, Vec<Diagnostic>), MathError> {
+    match render_formula_result(result, !outline) {
+        Ok(svg) => Ok((svg.markup, svg.diagnostics)),
+        Err(message) => Err(MathError::backend_error(message)),
+    }
 }
 
-/// Formula metrics derived from the laid-out box tree.
-fn node_metrics(root: &LayoutNode) -> FormulaMetrics {
-    let height = root.height().to_f64();
-    FormulaMetrics { width: root.width().to_f64(), height, depth: root.depth().to_f64(), baseline: height }
+/// Formula metrics taken from the single immutable layout result.
+fn result_metrics(metrics: &vutex_types::math::FormulaMetrics) -> FormulaMetrics {
+    let height = metrics.height.to_f64();
+    FormulaMetrics { width: metrics.width.to_f64(), height, depth: metrics.depth.to_f64(), baseline: height }
 }
 
 /// An empty payload carrying only the diagnostics of a failed render.
