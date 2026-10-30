@@ -8,8 +8,9 @@
 //! formulas, and that tricky constructs like `Vmatrix` keep their
 //! double-bar delimiters.
 
-use vutex_layout::math::{FormulaLayout, layout_formula, render_layout_node};
-use vutex_render_svg::math::SvgBackend;
+use vutex_layout::math::{collect_paint, default_base_size, layout_formula_with_result};
+use vutex_render_svg::math::render_formula_result;
+use vutex_types::math::FormulaLayoutResult;
 
 struct Case {
     name: &'static str,
@@ -19,13 +20,11 @@ struct Case {
     check: fn(&str),
 }
 
-fn render_outline(source: &str, display: bool) -> (String, FormulaLayout) {
-    let (root, layout) = layout_formula(source, display).expect("layout should succeed");
-    let svg_height = layout.height + layout.depth;
-    let mut backend = SvgBackend::new_deterministic(layout.width, svg_height);
-    render_layout_node(&mut backend, &root, 0.0, layout.height).expect("render should succeed");
-    let svg = backend.finish();
-    (svg, layout)
+fn render_outline(source: &str, display: bool) -> (String, FormulaLayoutResult) {
+    let (result, _, _) =
+        layout_formula_with_result(source, display, default_base_size(display)).expect("layout should succeed");
+    let svg = render_formula_result(&result, false).expect("deterministic render should succeed").markup;
+    (svg, result)
 }
 
 /// Count closed, straight-sided subpaths.
@@ -78,8 +77,8 @@ fn all_five_formulas_render_as_paths() {
         assert!(!svg.contains("<text"), "{}: unexpected <text> fallback in SVG", case.name);
 
         // Metrics must be positive and finite.
-        assert!(layout.width > 0.0, "{}: non-positive width", case.name);
-        assert!(layout.height >= 0.0, "{}: negative height", case.name);
+        assert!(layout.metrics.width.to_f64() > 0.0, "{}: non-positive width", case.name);
+        assert!(layout.metrics.height.to_f64() >= 0.0, "{}: negative height", case.name);
 
         (case.check)(&svg);
     }
@@ -102,12 +101,11 @@ fn lowercase_vmatrix_keeps_a_single_bar() {
 /// cannot outline even though no ink was ever meant to be painted.
 #[test]
 fn spacing_commands_paint_no_glyph_and_raise_no_outline_gap() {
-    use vutex_layout::math::collect_layout_with_diagnostics;
-
     for source in [r"a\ b", r"a\,b", r"a\:b", r"a\;b", r"a\quad b", r"a\qquad b", r"\text{a b}"] {
-        let (root, _layout) = layout_formula(source, true).unwrap_or_else(|error| panic!("layout {source}: {error}"));
+        let (result, _, _) = layout_formula_with_result(source, true, default_base_size(true))
+            .unwrap_or_else(|error| panic!("layout {source}: {error}"));
         let mut diagnostics = Vec::new();
-        let items = collect_layout_with_diagnostics(&root, 0.0, 0.0, &mut diagnostics);
+        let items = collect_paint(&result, 0.0, result.metrics.height.to_f64(), &mut diagnostics);
 
         assert!(
             diagnostics.iter().all(|d| d.code != "vutex.layout.math.outline_missing"),
@@ -117,14 +115,14 @@ fn spacing_commands_paint_no_glyph_and_raise_no_outline_gap() {
     }
 
     // The space still advances the pen, it just does so without ink.
-    let (_, spaced) = layout_formula(r"a\ b", true).expect("layout");
-    let (_, tight) = layout_formula("ab", true).expect("layout");
-    assert!(spaced.width > tight.width, "a spacing command must still advance the pen: {} vs {}", spaced.width, tight.width);
+    let spaced = layout_formula_with_result(r"a\ b", true, default_base_size(true)).expect("layout").0.metrics.width.to_f64();
+    let tight = layout_formula_with_result("ab", true, default_base_size(true)).expect("layout").0.metrics.width.to_f64();
+    assert!(spaced > tight, "a spacing command must still advance the pen: {spaced} vs {tight}");
 
     // A glyph the font really cannot outline keeps its diagnostic.
-    let (root, _layout) = layout_formula(r"\text{中}", true).expect("layout");
+    let (result, _, _) = layout_formula_with_result(r"\text{中}", true, default_base_size(true)).expect("layout");
     let mut diagnostics = Vec::new();
-    let items = collect_layout_with_diagnostics(&root, 0.0, 0.0, &mut diagnostics);
+    let items = collect_paint(&result, 0.0, result.metrics.height.to_f64(), &mut diagnostics);
     assert!(items.is_empty(), "the CJK glyph paints nothing: {items:#?}");
     assert_eq!(diagnostics.len(), 1, "the CJK gap is still reported: {diagnostics:#?}");
     assert_eq!(diagnostics[0].code, "vutex.layout.math.outline_missing");

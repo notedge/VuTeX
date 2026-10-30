@@ -26,8 +26,8 @@
 use std::{collections::BTreeMap, fs, path::Path};
 
 use serde::Deserialize;
-use vutex_layout::math::{layout_formula, render_layout_node};
-use vutex_render_svg::math::SvgBackend;
+use vutex_layout::math::{default_base_size, layout_formula_with_result};
+use vutex_render_svg::math::render_formula_result;
 
 /// MathJax version the fixture must have been generated with.
 ///
@@ -132,16 +132,14 @@ fn load_document() -> Document {
 // ---------------------------------------------------------------------------
 
 /// Render a corpus formula through VuTeX's SVG backend and return the full
-/// SVG markup plus the FormulaLayout box metrics.
-fn vutex_svg(tex: &str, display_mode: bool) -> (String, vutex_layout::math::FormulaLayout) {
-    let (root, layout) = layout_formula(tex, display_mode)
+/// SVG markup plus the single layout result the render was painted from.
+fn vutex_svg(tex: &str, display_mode: bool) -> (String, vutex_types::math::FormulaLayoutResult) {
+    let (result, _, _) = layout_formula_with_result(tex, display_mode, default_base_size(display_mode))
         .unwrap_or_else(|e| panic!("corpus `{tex}` (display={display_mode}) must lay out: {e}"));
-    let total_height = layout.height + layout.depth;
-    let mut backend = SvgBackend::new(layout.width, total_height);
-    render_layout_node(&mut backend, &root, 0.0, layout.height)
-        .unwrap_or_else(|e| panic!("svg render failed for `{tex}` (display={display_mode}): {e}"));
-    let svg = backend.finish();
-    (svg, layout)
+    let svg = render_formula_result(&result, true)
+        .unwrap_or_else(|e| panic!("svg render failed for `{tex}` (display={display_mode}): {e}"))
+        .markup;
+    (svg, result)
 }
 
 /// Count how many `<path`, `<rect`, `<text` start-tags the SVG contains.
@@ -313,14 +311,12 @@ fn vutex_svg_renders_every_accepted_formula() {
         assert!(root_svgs >= 1, "`{}`: VuTeX SVG must contain at least one root <svg> element", record.corpus_id);
 
         // 2. Layout box sanity (VuTeX's own measurement)
-        assert!(layout.width > 0.0, "`{}`: VuTeX layout.width must be positive, got {}", record.corpus_id, layout.width);
-        assert!(
-            layout.height >= 0.0,
-            "`{}`: VuTeX layout.height must be non-negative, got {}",
-            record.corpus_id,
-            layout.height
-        );
-        assert!(layout.depth >= 0.0, "`{}`: VuTeX layout.depth must be non-negative, got {}", record.corpus_id, layout.depth);
+        let width = layout.metrics.width.to_f64();
+        let height = layout.metrics.height.to_f64();
+        let depth = layout.metrics.depth.to_f64();
+        assert!(width > 0.0, "`{}`: VuTeX layout.width must be positive, got {width}", record.corpus_id);
+        assert!(height >= 0.0, "`{}`: VuTeX layout.height must be non-negative, got {height}", record.corpus_id);
+        assert!(depth >= 0.0, "`{}`: VuTeX layout.depth must be non-negative, got {depth}", record.corpus_id);
 
         compared += 1;
     }

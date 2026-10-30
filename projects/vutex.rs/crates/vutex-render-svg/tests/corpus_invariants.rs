@@ -8,8 +8,9 @@
 //! fractions, script fractions, stretched delimiters, the `\bar` rule).
 
 use serde::Deserialize;
-use vutex_layout::math::{FormulaLayout, LayoutNode, collect_layout_with_diagnostics, layout_formula, render_layout_node};
-use vutex_render_svg::math::SvgBackend;
+use vutex_layout::math::{LayoutNode, collect_paint, default_base_size, layout_formula_with_result};
+use vutex_render_svg::math::render_formula_result;
+use vutex_types::math::FormulaLayoutResult;
 
 /// One formula record in the gate corpus.
 #[derive(Debug, Deserialize)]
@@ -59,13 +60,13 @@ fn is_display(case: &GateCase) -> bool {
 ///
 /// Strict mode fails the render as soon as a glyph would need a host-font
 /// `<text>` run, so a returned SVG already carries outlines only.
-fn render(case: &GateCase) -> (LayoutNode, FormulaLayout, String) {
-    let (root, metrics) = layout_formula(&case.src, is_display(case))
+fn render(case: &GateCase) -> (LayoutNode, FormulaLayoutResult, String) {
+    let display = is_display(case);
+    let (result, root, _) = layout_formula_with_result(&case.src, display, default_base_size(display))
         .unwrap_or_else(|e| panic!("`{}` ({}) must lay out: {e}", case.src, case.style));
-    let mut backend = SvgBackend::new_deterministic(metrics.width, metrics.height + metrics.depth);
-    render_layout_node(&mut backend, &root, 0.0, metrics.height)
-        .unwrap_or_else(|e| panic!("`{}` must render as outlines: {e}", case.src));
-    (root, metrics, backend.finish())
+    let svg =
+        render_formula_result(&result, false).unwrap_or_else(|e| panic!("`{}` must render as outlines: {e}", case.src)).markup;
+    (root, result, svg)
 }
 
 /// Number of outlined glyph nodes in a layout tree.
@@ -260,14 +261,16 @@ fn flush_numbers(operator: char, numbers: &mut Vec<f64>, points: &mut Vec<(f64, 
 
 /// Total vertical extent (`height + depth`) of a formula.
 fn total_extent(source: &str, display: bool) -> f64 {
-    let (_, metrics) = layout_formula(source, display).unwrap_or_else(|e| panic!("`{source}` must lay out: {e}"));
-    metrics.height + metrics.depth
+    let (result, _, _) = layout_formula_with_result(source, display, default_base_size(display))
+        .unwrap_or_else(|e| panic!("`{source}` must lay out: {e}"));
+    (result.metrics.height + result.metrics.depth).to_f64()
 }
 
 /// Vertical extents `(height, depth)` of a formula.
 fn extents(source: &str, display: bool) -> (f64, f64) {
-    let (_, metrics) = layout_formula(source, display).unwrap_or_else(|e| panic!("`{source}` must lay out: {e}"));
-    (metrics.height, metrics.depth)
+    let (result, _, _) = layout_formula_with_result(source, display, default_base_size(display))
+        .unwrap_or_else(|e| panic!("`{source}` must lay out: {e}"));
+    (result.metrics.height.to_f64(), result.metrics.depth.to_f64())
 }
 
 /// The gate must implement every invariant the corpus claims, or the fixture
@@ -292,7 +295,7 @@ fn every_case_paints_outlines_without_host_text() {
     let mut violations = Vec::new();
 
     for case in corpus.cases.iter().filter(|case| case.expected == "layout") {
-        let (root, metrics, svg) = render(case);
+        let (root, result, svg) = render(case);
         let label = format!("`{}` ({})", case.src, case.style);
 
         let glyphs = glyph_nodes(&root);
@@ -307,13 +310,17 @@ fn every_case_paints_outlines_without_host_text() {
         }
 
         let mut diagnostics = Vec::new();
-        collect_layout_with_diagnostics(&root, 0.0, metrics.height, &mut diagnostics);
+        collect_paint(&result, 0.0, result.metrics.height.to_f64(), &mut diagnostics);
         if !diagnostics.is_empty() {
             violations.push(format!("{label}: the font could not outline every glyph: {diagnostics:?}"));
         }
 
-        let positive =
-            [("width", metrics.width), ("height", metrics.height), ("depth", metrics.depth), ("baseline", metrics.baseline)];
+        let positive = [
+            ("width", result.metrics.width.to_f64()),
+            ("height", result.metrics.height.to_f64()),
+            ("depth", result.metrics.depth.to_f64()),
+            ("baseline", result.metrics.height.to_f64()),
+        ];
         for (name, value) in positive {
             if !value.is_finite() || value < 0.0 || (name != "depth" && value == 0.0) {
                 violations.push(format!("{label}: {name} is not a positive metric, got {value}"));
@@ -436,17 +443,18 @@ fn stretched_delimiters_cover_their_body() {
         }
         let body = case.body.as_deref().expect("`delimiter_covers_body` records the body");
         let display = is_display(case);
-        let (root, wrapped) =
-            layout_formula(&case.src, display).unwrap_or_else(|e| panic!("`{}` ({}) must lay out: {e}", case.src, case.style));
+        let (wrapped, root, _) = layout_formula_with_result(&case.src, display, default_base_size(display))
+            .unwrap_or_else(|e| panic!("`{}` ({}) must lay out: {e}", case.src, case.style));
         let (bare_height, bare_depth) = extents(body, display);
         let bare_total = bare_height + bare_depth;
         let label = format!("`{}` ({})", case.src, case.style);
         checked += 1;
 
-        if wrapped.height < bare_height - COVER_TOLERANCE || wrapped.depth < bare_depth - COVER_TOLERANCE {
+        let wrapped_height = wrapped.metrics.height.to_f64();
+        let wrapped_depth = wrapped.metrics.depth.to_f64();
+        if wrapped_height < bare_height - COVER_TOLERANCE || wrapped_depth < bare_depth - COVER_TOLERANCE {
             violations.push(format!(
-                "{label}: the delimited formula reaches {} above and {} below the baseline but the body alone is {bare_height} x {bare_depth}",
-                wrapped.height, wrapped.depth,
+                "{label}: the delimited formula reaches {wrapped_height} above and {wrapped_depth} below the baseline but the body alone is {bare_height} x {bare_depth}"
             ));
         }
 

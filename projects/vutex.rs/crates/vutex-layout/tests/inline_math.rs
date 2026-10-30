@@ -6,7 +6,7 @@ use vutex_layout::{
     document::layout_with_hint,
     hint::Margin,
     layout,
-    math::layout_formula_with_size,
+    math::layout_formula_with_result,
     plan::{LayoutItem, LayoutPage, Path, Rule, TextRun},
 };
 
@@ -111,11 +111,12 @@ fn inline_formula_flows_between_surrounding_text_runs_on_the_text_baseline() {
 #[test]
 fn inline_fraction_keeps_its_bar_between_the_text_runs_and_grows_the_line() {
     let hint = LayoutHint { line_height: 1.2, ..LayoutHint::a4() };
-    let (_, formula) = layout_formula_with_size("\\frac{a}{b}", false, hint.base_font_size).expect("fraction layout");
+    let (formula, _, _) = layout_formula_with_result("\\frac{a}{b}", false, hint.base_font_size).expect("fraction layout");
+    let fraction_extent = formula.metrics.height.to_f64() + formula.metrics.depth.to_f64();
     assert!(
-        formula.height + formula.depth > 0.75 * hint.base_font_size,
+        fraction_extent > 0.75 * hint.base_font_size,
         "fraction extent {} must be tall enough to visually break the text line",
-        formula.height + formula.depth
+        fraction_extent
     );
 
     // A single text-style `\frac{a}{b}` is only about 1.06 em tall and its

@@ -8,7 +8,8 @@
 use std::{fs, path::Path};
 
 use serde::Deserialize;
-use vutex_layout::math::{FormulaLayout, layout_formula};
+use vutex_layout::math::{default_base_size, layout_formula_with_result};
+use vutex_types::math::FormulaLayoutResult;
 
 /// A single corpus entry, deserialized from `formula_corpus.json`.
 #[derive(Debug, Deserialize)]
@@ -29,11 +30,14 @@ fn load_corpus() -> Vec<CorpusEntry> {
     serde_json::from_str(&text).expect("formula_corpus.json must be valid JSON array")
 }
 
-/// Assert that a FormulaLayout has all-positive metrics.
-fn assert_positive_metrics(src: &str, m: &FormulaLayout, style: &str) {
-    assert!(m.width > 0.0, "[{style}] `{src}`: width must be positive, got {}", m.width);
-    assert!(m.height > 0.0, "[{style}] `{src}`: height must be positive, got {}", m.height);
-    assert!(m.baseline >= 0.0, "[{style}] `{src}`: baseline must be non-negative, got {}", m.baseline);
+/// Assert that a laid-out result has all-positive metrics.
+fn assert_positive_metrics(src: &str, m: &FormulaLayoutResult, style: &str) {
+    let width = m.metrics.width.to_f64();
+    let height = m.metrics.height.to_f64();
+    let baseline = m.metrics.height.to_f64();
+    assert!(width > 0.0, "[{style}] `{src}`: width must be positive, got {width}");
+    assert!(height > 0.0, "[{style}] `{src}`: height must be positive, got {height}");
+    assert!(baseline >= 0.0, "[{style}] `{src}`: baseline must be non-negative, got {baseline}");
 }
 
 /// Every formula in the corpus must parse and lay out in both inline and
@@ -45,13 +49,13 @@ fn corpus_all_formulas_layout_successfully() {
 
     for entry in &corpus {
         // Inline / text style
-        let (_, inline) =
-            layout_formula(&entry.src, false).unwrap_or_else(|e| panic!("inline layout failed for `{}`: {e}", entry.src));
+        let (inline, _, _) = layout_formula_with_result(&entry.src, false, default_base_size(false))
+            .unwrap_or_else(|e| panic!("inline layout failed for `{}`: {e}", entry.src));
         assert_positive_metrics(&entry.src, &inline, "inline");
 
         // Display style
-        let (_, display) =
-            layout_formula(&entry.src, true).unwrap_or_else(|e| panic!("display layout failed for `{}`: {e}", entry.src));
+        let (display, _, _) = layout_formula_with_result(&entry.src, true, default_base_size(true))
+            .unwrap_or_else(|e| panic!("display layout failed for `{}`: {e}", entry.src));
         assert_positive_metrics(&entry.src, &display, "display");
     }
 }
@@ -83,16 +87,18 @@ fn corpus_non_operator_display_is_not_narrower_than_inline() {
             continue;
         }
 
-        let (_, inline) = layout_formula(&entry.src, false).unwrap();
-        let (_, display) = layout_formula(&entry.src, true).unwrap();
+        let (inline, _, _) = layout_formula_with_result(&entry.src, false, default_base_size(false)).unwrap();
+        let (display, _, _) = layout_formula_with_result(&entry.src, true, default_base_size(true)).unwrap();
+        let inline_width = inline.metrics.width.to_f64();
+        let display_width = display.metrics.width.to_f64();
 
-        if display.width < inline.width * TOLERANCE {
+        if display_width < inline_width * TOLERANCE {
             violations.push(format!(
                 "`{}`: display.width={:.3} < inline.width={:.3} (ratio={:.3})",
                 entry.src,
-                display.width,
-                inline.width,
-                display.width / inline.width.max(f64::EPSILON),
+                display_width,
+                inline_width,
+                display_width / inline_width.max(f64::EPSILON),
             ));
         }
     }
@@ -117,18 +123,24 @@ fn corpus_display_total_extent_ge_inline() {
     let mut violations = Vec::new();
 
     for entry in &corpus {
-        let (_, inline) = layout_formula(&entry.src, false).unwrap();
-        let (_, display) = layout_formula(&entry.src, true).unwrap();
+        let (inline, _, _) = layout_formula_with_result(&entry.src, false, default_base_size(false)).unwrap();
+        let (display, _, _) = layout_formula_with_result(&entry.src, true, default_base_size(true)).unwrap();
 
-        let inline_total = inline.height + inline.depth;
-        let display_total = display.height + display.depth;
+        let inline_total = inline.metrics.height.to_f64() + inline.metrics.depth.to_f64();
+        let display_total = display.metrics.height.to_f64() + display.metrics.depth.to_f64();
 
         // Allow a tiny absolute tolerance so single-atom floating-point
         // wobble doesn't trip us up.
         if display_total + 0.05 < inline_total {
             violations.push(format!(
                 "`{}`: display_total={:.3} (h={:.3},d={:.3}) < inline_total={:.3} (h={:.3},d={:.3})",
-                entry.src, display_total, display.height, display.depth, inline_total, inline.height, inline.depth,
+                entry.src,
+                display_total,
+                display.metrics.height.to_f64(),
+                display.metrics.depth.to_f64(),
+                inline_total,
+                inline.metrics.height.to_f64(),
+                inline.metrics.depth.to_f64(),
             ));
         }
     }
@@ -147,18 +159,19 @@ fn corpus_display_total_extent_ge_inline() {
 fn corpus_each_formula_is_wider_than_single_atom() {
     let corpus = load_corpus();
     let single_x = {
-        let (_, m) = layout_formula("x", false).unwrap();
-        m.width
+        let (m, _, _) = layout_formula_with_result("x", false, default_base_size(false)).unwrap();
+        m.metrics.width.to_f64()
     };
     assert!(single_x > 0.0, "sanity: single `x` must have positive width");
 
     let mut violations = Vec::new();
     for entry in &corpus {
-        let (_, inline) = layout_formula(&entry.src, false).unwrap();
-        if inline.width < single_x * 0.5 {
+        let (inline, _, _) = layout_formula_with_result(&entry.src, false, default_base_size(false)).unwrap();
+        let inline_width = inline.metrics.width.to_f64();
+        if inline_width < single_x * 0.5 {
             violations.push(format!(
                 "`{}`: width={:.3} is suspiciously close to single-atom width={:.3}",
-                entry.src, inline.width, single_x,
+                entry.src, inline_width, single_x,
             ));
         }
     }
@@ -173,9 +186,11 @@ fn corpus_metrics_summary() {
     let corpus = load_corpus();
     println!("{:<40} {:>10} {:>10} {:>10} {:>10}", "src", "inline_w", "display_w", "ratio", "group");
     for entry in &corpus {
-        let (_, inline) = layout_formula(&entry.src, false).unwrap();
-        let (_, display) = layout_formula(&entry.src, true).unwrap();
-        let ratio = display.width / inline.width.max(f64::EPSILON);
-        println!("{:<40} {:>10.2} {:>10.2} {:>10.2} {:>10}", entry.src, inline.width, display.width, ratio, entry.group);
+        let (inline, _, _) = layout_formula_with_result(&entry.src, false, default_base_size(false)).unwrap();
+        let (display, _, _) = layout_formula_with_result(&entry.src, true, default_base_size(true)).unwrap();
+        let inline_width = inline.metrics.width.to_f64();
+        let display_width = display.metrics.width.to_f64();
+        let ratio = display_width / inline_width.max(f64::EPSILON);
+        println!("{:<40} {:>10.2} {:>10.2} {:>10.2} {:>10}", entry.src, inline_width, display_width, ratio, entry.group);
     }
 }

@@ -10,7 +10,7 @@
 use std::{fs, path::Path};
 
 use serde::Deserialize;
-use vutex_layout::math::layout_formula;
+use vutex_layout::math::{default_base_size, layout_formula_with_result};
 use vutex_types::math::MathErrorKind;
 
 /// Invariants every `layout` record is checked against by the gate.
@@ -144,33 +144,21 @@ fn corpus_layout_records_produce_positive_metrics() {
 
     for case in corpus.cases.iter().filter(|case| case.expected == "layout") {
         let display = is_display(&case.style);
-        let (_, metrics) =
-            layout_formula(&case.src, display).unwrap_or_else(|e| panic!("`{}` ({}) must lay out: {e}", case.src, case.style));
+        let (result, _, _) = layout_formula_with_result(&case.src, display, default_base_size(display))
+            .unwrap_or_else(|e| panic!("`{}` ({}) must lay out: {e}", case.src, case.style));
+        let width = result.metrics.width.to_f64();
+        let height = result.metrics.height.to_f64();
+        let depth = result.metrics.depth.to_f64();
 
-        assert!(
-            metrics.width.is_finite() && metrics.width > 0.0,
-            "`{}`: width must be positive, got {}",
-            case.src,
-            metrics.width
-        );
-        assert!(
-            metrics.height.is_finite() && metrics.height > 0.0,
-            "`{}`: height must be positive, got {}",
-            case.src,
-            metrics.height
-        );
+        assert!(width.is_finite() && width > 0.0, "`{}`: width must be positive, got {width}", case.src);
+        assert!(height.is_finite() && height > 0.0, "`{}`: height must be positive, got {height}", case.src);
         // Descender-free atoms (`x^2`, `\hat{x}`) legitimately sit on the
         // baseline with no depth, so the gate forbids negative depth instead of
         // demanding ink below every formula.
-        assert!(
-            metrics.depth.is_finite() && metrics.depth >= 0.0,
-            "`{}`: depth must not be negative, got {}",
-            case.src,
-            metrics.depth
-        );
+        assert!(depth.is_finite() && depth >= 0.0, "`{}`: depth must not be negative, got {depth}", case.src);
 
         if let Some(body) = &case.body {
-            layout_formula(body, display)
+            layout_formula_with_result(body, display, default_base_size(display))
                 .unwrap_or_else(|e| panic!("`{}`: delimiter body `{body}` must lay out: {e}", case.src));
         }
     }
@@ -181,7 +169,8 @@ fn corpus_error_records_really_fail_to_parse() {
     let corpus = load_corpus();
 
     for case in corpus.cases.iter().filter(|case| case.expected == "error") {
-        let error = layout_formula(&case.src, is_display(&case.style)).expect_err(&format!("`{}` must be rejected", case.src));
+        let error = layout_formula_with_result(&case.src, is_display(&case.style), default_base_size(is_display(&case.style)))
+            .expect_err(&format!("`{}` must be rejected", case.src));
         assert!(
             matches!(*error.kind, MathErrorKind::ParseError { .. }),
             "`{}` must fail as a parse error, got {:?}",

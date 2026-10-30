@@ -11,7 +11,7 @@ use std::{env, fs, path::PathBuf};
 
 use serde::Deserialize;
 use vutex_layout::{
-    math::{LayoutNode, collect_layout_with_diagnostics, layout_formula},
+    math::{LayoutNode, collect_paint, default_base_size, layout_formula_with_result},
     plan::{LayoutItem, LayoutPage, LayoutPlan},
 };
 use vutex_presentation::build_display_presentation;
@@ -69,18 +69,18 @@ fn path_primitives(node: &LayoutNode) -> usize {
 /// Lay one corpus case out, lower it to display primitives and render a page.
 fn render_page(case: &GateCase) -> (Vec<u8>, Vec<LayoutItem>, LayoutNode) {
     let display = is_display(case);
-    let (root, layout) =
-        layout_formula(&case.src, display).unwrap_or_else(|e| panic!("`{}` ({}) must lay out: {e}", case.src, case.style));
+    let (result, root, _) = layout_formula_with_result(&case.src, display, default_base_size(display))
+        .unwrap_or_else(|e| panic!("`{}` ({}) must lay out: {e}", case.src, case.style));
 
-    let baseline = MARGIN + layout.height;
+    let baseline = MARGIN + result.metrics.height.to_f64();
     let mut diagnostics = Vec::new();
-    let items = collect_layout_with_diagnostics(&root, MARGIN, baseline, &mut diagnostics);
+    let items = collect_paint(&result, MARGIN, baseline, &mut diagnostics);
     assert!(diagnostics.is_empty(), "`{}`: the embedded font must outline every glyph: {diagnostics:?}", case.src);
 
     let plan = LayoutPlan {
         pages: vec![LayoutPage {
-            width: layout.width + 2.0 * MARGIN,
-            height: layout.height + layout.depth + 2.0 * MARGIN,
+            width: result.metrics.width.to_f64() + 2.0 * MARGIN,
+            height: (result.metrics.height + result.metrics.depth).to_f64() + 2.0 * MARGIN,
             items: items.clone(),
         }],
     };

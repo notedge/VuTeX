@@ -6,8 +6,9 @@
 //! the ink never runs away from the layout box, that emphasis faces keep their
 //! own outlines, and that `Vmatrix` and `vmatrix` stay structurally distinct.
 
-use vutex_layout::math::{FormulaLayout, Glyph, LayoutNode, layout_formula, render_layout_node};
-use vutex_render_svg::math::SvgBackend;
+use vutex_layout::math::{Glyph, LayoutNode, default_base_size, layout_formula_with_result};
+use vutex_render_svg::math::render_formula_result;
+use vutex_types::math::FormulaLayoutResult;
 
 /// Representative formulas, all rendered as vector paths.
 const CASES: &[(&str, &str, bool)] = &[
@@ -18,19 +19,19 @@ const CASES: &[(&str, &str, bool)] = &[
     ("vmatrix", r"\begin{Vmatrix}a&b\\c&d\end{Vmatrix}", true),
 ];
 
-fn render(source: &str, display: bool) -> (String, FormulaLayout) {
-    let (root, layout) = layout_formula(source, display).expect("layout should succeed");
-    let mut backend = SvgBackend::new_deterministic(layout.width, layout.height + layout.depth);
-    render_layout_node(&mut backend, &root, 0.0, layout.height).expect("render should succeed");
-    (backend.finish(), layout)
+fn render(source: &str, display: bool) -> (String, FormulaLayoutResult) {
+    let (result, _, _) =
+        layout_formula_with_result(source, display, default_base_size(display)).expect("layout should succeed");
+    let svg = render_formula_result(&result, false).expect("render should succeed").markup;
+    (svg, result)
 }
 
 /// Like [`render`], but hands back the layout tree instead of the box extents.
 fn render_with_tree(source: &str, display: bool) -> (String, LayoutNode) {
-    let (root, layout) = layout_formula(source, display).expect("layout should succeed");
-    let mut backend = SvgBackend::new_deterministic(layout.width, layout.height + layout.depth);
-    render_layout_node(&mut backend, &root, 0.0, layout.height).expect("render should succeed");
-    (backend.finish(), root)
+    let (result, root, _) =
+        layout_formula_with_result(source, display, default_base_size(display)).expect("layout should succeed");
+    let svg = render_formula_result(&result, false).expect("render should succeed").markup;
+    (svg, root)
 }
 
 /// Every `Glyph` node in a layout tree, in document order.
@@ -257,17 +258,17 @@ fn view_box_contains_every_painted_point() {
 #[test]
 fn painted_ink_stays_inside_the_layout_box() {
     for (name, source, display) in CASES {
-        let (svg, layout) = render(source, *display);
+        let (svg, result) = render(source, *display);
         let (min_x, min_y, width, height) = view_box(&svg);
-        let box_height = layout.height + layout.depth;
-        let pad = (layout.width.max(box_height) * 0.04).max(0.5);
+        let layout_width = result.metrics.width.to_f64();
+        let box_height = (result.metrics.height + result.metrics.depth).to_f64();
+        let pad = (layout_width.max(box_height) * 0.04).max(0.5);
         assert!(min_x >= -pad - 1e-3 && min_y >= -pad - 1e-3, "{name}: ink starts above or left of the layout box:\n{svg}");
         assert!(
-            min_x + width <= layout.width + pad + 1e-3 && min_y + height <= box_height + pad + 1e-3,
-            "{name}: ink {min_x}..{} x {min_y}..{} runs past the {} x {box_height} layout box + {pad} pad:\n{svg}",
+            min_x + width <= layout_width + pad + 1e-3 && min_y + height <= box_height + pad + 1e-3,
+            "{name}: ink {min_x}..{} x {min_y}..{} runs past the {layout_width} x {box_height} layout box + {pad} pad:\n{svg}",
             min_x + width,
             min_y + height,
-            layout.width
         );
     }
 }
@@ -276,25 +277,27 @@ fn painted_ink_stays_inside_the_layout_box() {
 fn simple_sum_extents_stay_in_one_em_range() {
     // Inline math lays out at a 14px em. `x + y` is a few em wide and a little
     // under one em tall; outlines painted in the wrong direction blow past this.
-    let (svg, layout) = render("x + y", false);
+    let (svg, result) = render("x + y", false);
     let em = 14.0;
-    let width = layout.width / em;
-    let height = (layout.height + layout.depth) / em;
+    let layout_width = result.metrics.width.to_f64();
+    let box_height = (result.metrics.height + result.metrics.depth).to_f64();
+    let width = layout_width / em;
+    let height = box_height / em;
     assert!((1.5..4.0).contains(&width), "{width} em wide is not plausible for `x + y`");
     assert!((0.5..1.2).contains(&height), "{height} em tall is not plausible for `x + y`");
     let (_, _, view_width, view_height) = view_box(&svg);
     assert!(
-        view_width >= layout.width - 1e-9 && view_height >= layout.height + layout.depth - 1e-9,
+        view_width >= layout_width - 1e-9 && view_height >= box_height - 1e-9,
         "viewport must cover the layout box:\n{svg}"
     );
 }
 
 #[test]
 fn thin_space_paints_nothing_in_deterministic_mode() {
-    let (svg, layout) = render(r"a\,b", false);
+    let (svg, result) = render(r"a\,b", false);
     assert!(!svg.contains("<text"), "deterministic mode must not fall back to a host font:\n{svg}");
     assert_eq!(outline_paths(&svg).len(), 2, "only the two letters carry ink:\n{svg}");
-    assert!(layout.width > render("ab", false).1.width, "`\\,` still advances the formula");
+    assert!(result.metrics.width.to_f64() > render("ab", false).1.metrics.width.to_f64(), "`\\,` still advances the formula");
 }
 
 /// Painted ink extent `(min_y, max_y)` in canvas coordinates.
@@ -311,11 +314,13 @@ fn stretched_delimiters_paint_their_own_outlines() {
     // Inline math lays out at a 14px em. Parentheses wrapped around a fraction
     // paint two extra outlines, which only happens when the variant glyph keys
     // resolve to the font's own extents and paths.
-    let (svg, layout) = render(r"\left(\frac{a}{b}\right)", false);
+    let (svg, result) = render(r"\left(\frac{a}{b}\right)", false);
     let paths = outline_paths(&svg);
     assert_eq!(paths.len(), 4, "two letters and two delimiter outlines:\n{svg}");
     let (_, _, view_width, view_height) = view_box(&svg);
-    assert!(view_width >= layout.width - 1e-9 && view_height >= layout.height + layout.depth - 1e-9, "{svg}");
+    let layout_width = result.metrics.width.to_f64();
+    let box_height = (result.metrics.height + result.metrics.depth).to_f64();
+    assert!(view_width >= layout_width - 1e-9 && view_height >= box_height - 1e-9, "{svg}");
 }
 
 #[test]
@@ -324,20 +329,18 @@ fn delimiters_cover_the_body_they_wrap() {
     // the parentheses must paint on both sides and enclose the fraction instead
     // of sticking to the one-em minimum.
     let bare = r"\frac{a}{b}";
-    let (bare_svg, bare_layout) = render(bare, false);
-    let (wrapped_svg, wrapped_layout) = render(r"\left(\frac{a}{b}\right)", false);
+    let (bare_svg, bare_result) = render(bare, false);
+    let (wrapped_svg, wrapped_result) = render(r"\left(\frac{a}{b}\right)", false);
     assert_eq!(
         outline_paths(&wrapped_svg).len(),
         outline_paths(&bare_svg).len() + 2,
         "both parentheses must paint their own outline:\n{wrapped_svg}"
     );
+    let (wrapped_height, wrapped_depth) = (wrapped_result.metrics.height.to_f64(), wrapped_result.metrics.depth.to_f64());
+    let (bare_height, bare_depth) = (bare_result.metrics.height.to_f64(), bare_result.metrics.depth.to_f64());
     assert!(
-        wrapped_layout.height >= bare_layout.height && wrapped_layout.depth >= bare_layout.depth,
-        "delimiter {} x {} does not cover the fraction {} x {}:\n{wrapped_svg}",
-        wrapped_layout.height,
-        wrapped_layout.depth,
-        bare_layout.height,
-        bare_layout.depth
+        wrapped_height >= bare_height && wrapped_depth >= bare_depth,
+        "delimiter {wrapped_height} x {wrapped_depth} does not cover the fraction {bare_height} x {bare_depth}:\n{wrapped_svg}"
     );
 }
 

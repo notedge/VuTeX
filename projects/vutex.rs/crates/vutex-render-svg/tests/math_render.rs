@@ -1,11 +1,13 @@
 //! Integration tests for the SVG and MathML math backends.
 
-use vutex_layout::math::{FormulaLayout, LayoutBackend, LayoutNode, layout_formula, parse_formula, render_layout_node};
-use vutex_render_svg::math::{MathmlBackend, SvgBackend};
+use vutex_layout::math::{LayoutBackend, default_base_size, layout_formula_with_result, parse_formula};
+use vutex_render_svg::math::{MathmlBackend, SvgBackend, render_formula_result};
 use vutex_types::math::MathSemantics;
 
-fn tree(source: &str) -> (LayoutNode, FormulaLayout) {
-    layout_formula(source, false).expect("formula should lay out")
+/// Render one formula through the SVG backend with host-font fallback enabled.
+fn render_svg(source: &str) -> String {
+    let (result, _, _) = layout_formula_with_result(source, false, default_base_size(false)).expect("formula should lay out");
+    render_formula_result(&result, true).expect("svg rendering").markup
 }
 
 /// Render the structured MathML of one formula source.
@@ -19,11 +21,7 @@ fn render_mathml(source: &str) -> String {
 
 #[test]
 fn svg_backend_emits_svg_tags_for_a_fraction() {
-    let (root, layout) = tree("\\frac{a}{b}");
-    let mut backend = SvgBackend::new(layout.width, layout.height + layout.depth);
-    render_layout_node(&mut backend, &root, 0.0, layout.height).expect("svg rendering");
-
-    let svg = backend.finish();
+    let svg = render_svg("\\frac{a}{b}");
     assert!(svg.starts_with("<svg"), "unexpected output: {svg}");
     assert!(svg.ends_with("</svg>"), "unexpected output: {svg}");
     // Glyphs now have real outline paths from Latin Modern Math, so they
@@ -35,11 +33,7 @@ fn svg_backend_emits_svg_tags_for_a_fraction() {
 
 #[test]
 fn svg_backend_emits_paths_for_radicals() {
-    let (root, layout) = tree("\\sqrt{x}");
-    let mut backend = SvgBackend::new(layout.width, layout.height + layout.depth);
-    render_layout_node(&mut backend, &root, 0.0, layout.height).expect("svg rendering");
-
-    let svg = backend.finish();
+    let svg = render_svg("\\sqrt{x}");
     assert!(svg.contains("<path"), "radical should emit a path: {svg}");
 }
 

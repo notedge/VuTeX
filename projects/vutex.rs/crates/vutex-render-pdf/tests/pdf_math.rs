@@ -6,14 +6,17 @@
 //! serif face.
 
 use vutex_layout::{
-    math::{Glyph, LayoutNode, collect_layout, collect_layout_with_diagnostics, layout_formula},
+    math::{LayoutNode, collect_paint, default_base_size, layout_formula_with_result},
     plan::{LayoutItem, LayoutPage, LayoutPlan},
 };
 use vutex_presentation::build_display_presentation;
 use vutex_render_pdf::render_pdf_with_diagnostics;
 use vutex_types::{
     Diagnostic,
-    math::{Fixed, FontStyle, GlyphMetrics},
+    math::{
+        Fixed, FormulaLayoutResult, FormulaMetrics, MathSemantics, PaintNode,
+        formula_layout::{BBox, FontMetricsSnapshot},
+    },
 };
 
 /// Page geometry every formula below is placed on.
@@ -87,9 +90,10 @@ fn rectangle_fills(content: &str, min_width: f64) -> usize {
 
 /// Lay out one formula, lower it to display primitives, and render a PDF page.
 fn render_formula(source: &str) -> (Vec<u8>, Vec<LayoutItem>, Vec<Diagnostic>) {
-    let (root, _layout) = layout_formula(source, true).unwrap_or_else(|e| panic!("layout {source}: {e}"));
+    let (result, _, _) =
+        layout_formula_with_result(source, true, default_base_size(true)).unwrap_or_else(|e| panic!("layout {source}: {e}"));
     let mut diagnostics = Vec::new();
-    let items = collect_layout_with_diagnostics(&root, 72.0, BASELINE, &mut diagnostics);
+    let items = collect_paint(&result, 72.0, BASELINE, &mut diagnostics);
     let plan = LayoutPlan { pages: vec![LayoutPage { width: PAGE_WIDTH, height: PAGE_HEIGHT, items: items.clone() }] };
     let display = build_display_presentation(&plan);
     let outcome = render_pdf_with_diagnostics(&display).expect("pdf render");
@@ -138,7 +142,7 @@ fn math_pages_paint_outlines_without_host_text() {
         let (pdf, items, diagnostics) = render_formula(source);
         let root_pdf = String::from_utf8_lossy(&pdf).into_owned();
         let content = page_content(&pdf);
-        let (root, _) = layout_formula(source, true).expect("layout");
+        let (_, root, _) = layout_formula_with_result(source, true, default_base_size(true)).expect("layout");
 
         assert!(diagnostics.is_empty(), "{source}: the embedded font must outline every glyph: {diagnostics:?}");
         assert!(
@@ -183,34 +187,40 @@ fn superscript_and_subscript_shift_their_baselines() {
 
 #[test]
 fn glyph_without_an_outline_is_reported_instead_of_falling_back() {
-    let glyph = LayoutNode::Glyph(Glyph {
-        char: Some('中'),
-        font_family: "default".to_string(),
-        font_style: FontStyle::Normal,
-        size: Fixed::from_f64(16.0),
-        metrics: GlyphMetrics {
+    // A one-glyph paint tree whose glyph carries no outline: the canvas baseline
+    // sits at `y = metrics.height`, so the run is anchored there.
+    let result = FormulaLayoutResult {
+        metrics: FormulaMetrics {
             width: Fixed::from_f64(10.0),
             height: Fixed::from_f64(10.0),
             depth: Fixed::ZERO,
-            italic_correction: Fixed::ZERO,
-            top_accent_attachment: Fixed::ZERO,
+            axis: Fixed::ZERO,
+            ink_bounds: BBox { x: Fixed::ZERO, y: Fixed::ZERO, width: Fixed::from_f64(10.0), height: Fixed::from_f64(10.0) },
         },
-        path_data: None,
-        font_id: None,
-        glyph_id: None,
-    });
+        paint: PaintNode::Group {
+            children: vec![PaintNode::GlyphRun {
+                font_id: "default".to_string(),
+                glyph_ids: Vec::new(),
+                chars: vec![Some('中')],
+                family: "default".to_string(),
+                positions: vec![(Fixed::ZERO, Fixed::from_f64(10.0))],
+                size: Fixed::from_f64(16.0),
+                path_data: vec![None],
+            }],
+            translate_x: Fixed::ZERO,
+            translate_y: Fixed::ZERO,
+        },
+        diagnostics: Vec::new(),
+        fonts: FontMetricsSnapshot::default(),
+        semantics: MathSemantics::default(),
+    };
 
     let mut diagnostics = Vec::new();
-    let items = collect_layout_with_diagnostics(&glyph, 72.0, BASELINE, &mut diagnostics);
+    let items = collect_paint(&result, 72.0, BASELINE, &mut diagnostics);
     assert!(items.is_empty(), "an outline-less glyph paints nothing: {items:#?}");
     assert_eq!(diagnostics.len(), 1, "the gap is structured, not silent: {diagnostics:?}");
     assert_eq!(diagnostics[0].code, "vutex.layout.math.outline_missing");
     assert!(diagnostics[0].message.contains("U+4E2D"), "the report names the code point: {diagnostics:?}");
-
-    // The compatibility wrapper keeps the same policy instead of resurrecting a
-    // serif run for callers that collect without a diagnostic sink.
-    let plain = collect_layout(&glyph, 72.0, BASELINE);
-    assert!(plain.is_empty(), "the plain collector paints nothing either: {plain:#?}");
 
     // A real formula whose glyph the math font cannot outline follows the same
     // rule: the PDF carries no text operator for it.

@@ -5,7 +5,7 @@ use vutex_layout::{
     Diagrams, LayoutHint,
     document::layout_with_diagnostics,
     layout,
-    math::layout_formula_with_size,
+    math::layout_formula_with_result,
     plan::{LayoutItem, LayoutPage, Path, Rule, TextRun},
 };
 
@@ -85,7 +85,7 @@ fn display_formula_is_centred_in_the_content_column() {
     let plan = layout(&math_graph("x + y"));
     let hint = LayoutHint::a4();
     let page = &plan.pages[0];
-    let (_, formula) = layout_formula_with_size("x + y", true, hint.base_font_size).expect("formula layout");
+    let (formula, _, _) = layout_formula_with_result("x + y", true, hint.base_font_size).expect("formula layout");
 
     let first = page
         .items
@@ -100,12 +100,13 @@ fn display_formula_is_centred_in_the_content_column() {
 
     assert!(first > hint.margin.left, "centred formula {} must start inside the margin, not on it", first);
 
-    let expected_offset = (hint.content_width() - formula.width) / 2.0;
+    let formula_width = formula.metrics.width.to_f64();
+    let expected_offset = (hint.content_width() - formula_width) / 2.0;
     let actual_offset = first - hint.margin.left;
     assert!(
         (actual_offset - expected_offset).abs() < 1.0,
         "left offset {actual_offset} should centre a {} pt formula in {} pt",
-        formula.width,
+        formula_width,
         hint.content_width()
     );
 }
@@ -244,8 +245,12 @@ fn display_math_uses_tex_display_skips_above_and_below() {
     // A formula wider than the column is centred at the left margin, so the
     // short line above it cannot make the display short.
     let wide = vec!["\\frac{a}{b}"; 24].join("+");
-    let (_, formula) = layout_formula_with_size(&wide, true, hint.base_font_size).expect("formula layout");
-    assert!(formula.width > hint.content_width(), "the display must span the column, got {}", formula.width);
+    let (formula, _, _) = layout_formula_with_result(&wide, true, hint.base_font_size).expect("formula layout");
+    assert!(
+        formula.metrics.width.to_f64() > hint.content_width(),
+        "the display must span the column, got {}",
+        formula.metrics.width.to_f64()
+    );
 
     let plan = layout(&paragraph_display_graph(&wide));
     assert_eq!(plan.pages.len(), 1, "the sample fits one page");

@@ -1,13 +1,13 @@
 //! Cross-backend consistency test for formula layout.
 //!
-//! Verifies that the same [`LayoutNode`] renders successfully through both SVG
-//! and MathML math backends without error-level diagnostics, and that every
-//! laid-out formula produces sane box metrics (positive width, non-negative
-//! height and depth).
+//! Verifies that the same [`FormulaLayoutResult`] renders successfully through
+//! both SVG and MathML math backends without error-level diagnostics, and that
+//! every laid-out formula produces sane box metrics (positive width,
+//! non-negative height and depth).
 
-use vutex_layout::math::{FormulaLayout, LayoutNode, layout_formula, parse_formula, render_layout_node};
-use vutex_render_svg::math::{MathmlBackend, SvgBackend};
-use vutex_types::math::{Fixed, MathSemantics};
+use vutex_layout::math::{LayoutNode, default_base_size, layout_formula_with_result, parse_formula};
+use vutex_render_svg::math::{MathmlBackend, render_formula_result};
+use vutex_types::math::{Fixed, FormulaLayoutResult, MathSemantics};
 
 /// A curated list of representative formulas that exercise every major node
 /// kind in the layout engine: plain atoms, fractions, radicals, sub/super-
@@ -29,12 +29,16 @@ fn formula_list() -> &'static [&'static str] {
 
 // ——— helpers ——— //
 
-fn layout(source: &str) -> (LayoutNode, FormulaLayout) {
-    layout_formula(source, false).unwrap_or_else(|e| panic!("failed to layout {source}: {e}"))
+fn layout(source: &str) -> (LayoutNode, FormulaLayoutResult) {
+    let (result, root, _) = layout_formula_with_result(source, false, default_base_size(false))
+        .unwrap_or_else(|e| panic!("failed to layout {source}: {e}"));
+    (root, result)
 }
 
-fn layout_display(source: &str) -> (LayoutNode, FormulaLayout) {
-    layout_formula(source, true).unwrap_or_else(|e| panic!("failed to layout (display) {source}: {e}"))
+fn layout_display(source: &str) -> (LayoutNode, FormulaLayoutResult) {
+    let (result, root, _) = layout_formula_with_result(source, true, default_base_size(true))
+        .unwrap_or_else(|e| panic!("failed to layout (display) {source}: {e}"));
+    (root, result)
 }
 
 /// Render the structured MathML of one formula source.
@@ -49,22 +53,22 @@ fn render_mathml(source: &str) -> String {
 // ——— group 1: box-metric sanity ——— //
 
 /// Every laid-out formula must have strictly positive width and non-negative
-/// height/depth on both the node accessors and the produced [`FormulaLayout`].
+/// height/depth on both the node accessors and the produced
+/// [`FormulaLayoutResult`].
 #[test]
 fn all_formulas_layout_with_sane_box_metrics() {
     for formula in formula_list() {
-        let (node, layout) = layout(formula);
+        let (node, result) = layout(formula);
+        let metrics = &result.metrics;
 
-        // FormulaLayout (f64, pipeline-computed)
-        assert!(layout.width > 0.0, "{formula}: FormulaLayout.width must be positive, got {}", layout.width);
-        assert!(layout.height >= 0.0, "{formula}: FormulaLayout.height must be non-negative, got {}", layout.height);
-        assert!(layout.depth >= 0.0, "{formula}: FormulaLayout.depth must be non-negative, got {}", layout.depth);
-        let total_expected = node.height().to_f64() + node.depth().to_f64();
-        let total_layout = layout.height + layout.depth;
-        assert!(
-            (total_expected - total_layout).abs() < 1e-6,
-            "{formula}: height + depth must match between LayoutNode ({total_expected}) \
-             and FormulaLayout ({total_layout})"
+        // Result metrics (Fixed, from the same packed box the renderers walk)
+        assert!(metrics.width > Fixed::ZERO, "{formula}: result width must be positive, got {:?}", metrics.width);
+        assert!(metrics.height >= Fixed::ZERO, "{formula}: result height must be non-negative, got {:?}", metrics.height);
+        assert!(metrics.depth >= Fixed::ZERO, "{formula}: result depth must be non-negative, got {:?}", metrics.depth);
+        assert_eq!(
+            node.height() + node.depth(),
+            metrics.height + metrics.depth,
+            "{formula}: the result's vertical extent must match the laid-out box"
         );
 
         // LayoutNode accessors (Fixed-based)
@@ -87,9 +91,17 @@ fn every_formula_lays_out_in_both_inline_and_display_style() {
         let (_, display) = layout_display(formula);
 
         for (label, m) in [("inline", inline), ("display", display)] {
-            assert!(m.width > 0.0, "{formula} ({label}): width must be positive, got {}", m.width);
-            assert!(m.height >= 0.0, "{formula} ({label}): height must be non-negative, got {}", m.height);
-            assert!(m.depth >= 0.0, "{formula} ({label}): depth must be non-negative, got {}", m.depth);
+            assert!(m.metrics.width > Fixed::ZERO, "{formula} ({label}): width must be positive, got {:?}", m.metrics.width);
+            assert!(
+                m.metrics.height >= Fixed::ZERO,
+                "{formula} ({label}): height must be non-negative, got {:?}",
+                m.metrics.height
+            );
+            assert!(
+                m.metrics.depth >= Fixed::ZERO,
+                "{formula} ({label}): depth must be non-negative, got {:?}",
+                m.metrics.depth
+            );
         }
     }
 }
@@ -101,20 +113,15 @@ fn every_formula_lays_out_in_both_inline_and_display_style() {
 #[test]
 fn all_formulas_render_through_svg_backend() {
     for formula in formula_list() {
-        let (root, layout) = layout(formula);
-        let mut backend = SvgBackend::new(layout.width, layout.height + layout.depth);
-        render_layout_node(&mut backend, &root, 0.0, layout.height)
-            .unwrap_or_else(|e| panic!("svg render failed for {formula}: {e}"));
+        let (_, result) = layout(formula);
+        let svg = render_formula_result(&result, true).unwrap_or_else(|e| panic!("svg render failed for {formula}: {e}"));
 
-        // Check warnings BEFORE finish() takes ownership.
-        let warnings: Vec<String> = backend.warnings().to_vec();
-        let svg = backend.finish();
-        assert!(svg.starts_with("<svg"), "{formula}: svg output must start with <svg, got {svg:?}");
-        assert!(svg.ends_with("</svg>"), "{formula}: svg output must end with </svg>, got {svg:?}");
+        assert!(svg.markup.starts_with("<svg"), "{formula}: svg output must start with <svg, got {:?}", svg.markup);
+        assert!(svg.markup.ends_with("</svg>"), "{formula}: svg output must end with </svg>, got {:?}", svg.markup);
 
         assert!(
-            warnings.is_empty() || warnings.iter().all(|w| !w.contains("deterministic")),
-            "{formula}: unexpected deterministic-path warning from non-strict backend"
+            svg.diagnostics.iter().all(|d| !d.message.contains("deterministic")),
+            "{formula}: unexpected deterministic-path warning from the text-fallback backend"
         );
     }
 }
@@ -143,13 +150,11 @@ fn all_formulas_render_through_mathml_backend() {
 #[test]
 fn svg_and_mathml_backends_both_render_every_formula() {
     for formula in formula_list() {
-        let (root, layout) = layout(formula);
-        let total_height = layout.height + layout.depth;
-
-        let mut svg_backend = SvgBackend::new(layout.width, total_height);
-        render_layout_node(&mut svg_backend, &root, 0.0, layout.height)
-            .unwrap_or_else(|e| panic!("svg failed for {formula}: {e}"));
-        let svg_ok = svg_backend.finish().starts_with("<svg");
+        let (_, result) = layout(formula);
+        let svg_ok = render_formula_result(&result, true)
+            .unwrap_or_else(|e| panic!("svg failed for {formula}: {e}"))
+            .markup
+            .starts_with("<svg");
 
         let mathml_ok = render_mathml(formula).starts_with("<math");
 
