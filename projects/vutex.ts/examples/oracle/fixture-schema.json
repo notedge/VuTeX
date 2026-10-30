@@ -87,6 +87,90 @@
         "x": { "type": "number" },
         "y": { "type": "number" }
       }
+    },
+    "degreeBox": {
+      "type": "object",
+      "description": "One advance box of the radical-degree assembly, in em units. TeX box metrics report advance boxes (width, ascent above the baseline, descent below it), never ink extents.",
+      "required": ["width", "height", "depth"],
+      "properties": {
+        "width": { "type": "number" },
+        "height": { "type": "number" },
+        "depth": { "type": "number" }
+      }
+    },
+    "radicalDegree": {
+      "type": "object",
+      "description": [
+        "Reference-side geometry of a radical degree (the n in \\sqrt[n]{x}).",
+        "The LaTeX engine assembles an indexed root as `kern-before, degree box (shifted up), kern-after, radical`,",
+        "and the harness reads that assembly from the engine's own box structure (`\\showbox` with",
+        "`\\showboxdepth` raised) plus companion `\\hbox` measurements, so every number is engine output.",
+        "null in any field means the engine did not expose that piece (e.g. the showbox pass failed)."
+      ],
+      "required": [
+        "style",
+        "anchor_x",
+        "anchor_y",
+        "advance_box",
+        "ink_bbox",
+        "kern_before",
+        "kern_after",
+        "advance_total",
+        "naked_box",
+        "candidate_boxes"
+      ],
+      "properties": {
+        "style": {
+          "type": ["string", "null"],
+          "enum": ["script", "scriptscript", null],
+          "description": "Which superscript-demoted style the engine actually packed the degree in, decided by matching the assembled degree box against the engine's own candidate boxes. null when the showbox pass produced nothing."
+        },
+        "anchor_x": {
+          "type": ["number", "null"],
+          "description": "Left edge of the degree box relative to the radical box's left edge, in em. Equals the sum of the engine's own kerns placed before the degree."
+        },
+        "anchor_y": {
+          "type": ["number", "null"],
+          "description": "Baseline of the degree box above the formula baseline, in em, positive upward. This is the shift the engine applied to the degree box."
+        },
+        "advance_box": {
+          "oneOf": [{ "$ref": "#/definitions/degreeBox" }, { "type": "null" }],
+          "description": "The degree box the engine assembled, in em."
+        },
+        "ink_bbox": {
+          "oneOf": [{ "$ref": "#/definitions/bbox" }, { "type": "null" }],
+          "description": "Ink extent of the degree. TeX box metrics are advance boxes, not ink extents, and this harness does not extract glyph outlines from the engine's PDF, so this is null for the LaTeX oracle."
+        },
+        "kern_before": {
+          "type": ["number", "null"],
+          "description": "The engine's kern placed before the degree (RadicalKernBeforeDegree in effect), in em."
+        },
+        "kern_after": {
+          "type": ["number", "null"],
+          "description": "The engine's kern placed after the degree (RadicalKernAfterDegree in effect, typically negative so the surd tucks under the index), in em."
+        },
+        "advance_total": {
+          "type": ["number", "null"],
+          "description": "Width the degree assembly adds to the radical: wd(\\sqrt[n]{rad}) - wd(\\sqrt{rad}), in em. Measured from two engine boxes, so it cross-checks kern_before + advance_box.width + kern_after."
+        },
+        "naked_box": {
+          "oneOf": [{ "$ref": "#/definitions/degreeBox" }, { "type": "null" }],
+          "description": "The same radical without the degree (`\\sqrt{rad}`) as the engine measured it, in em."
+        },
+        "candidate_boxes": {
+          "type": "object",
+          "description": "The degree content set by the engine itself in each superscript-demoted candidate style, so `style` is a measurement, not an assumption.",
+          "required": ["script", "scriptscript"],
+          "properties": {
+            "script": {
+              "oneOf": [{ "$ref": "#/definitions/degreeBox" }, { "type": "null" }]
+            },
+            "scriptscript": {
+              "oneOf": [{ "$ref": "#/definitions/degreeBox" }, { "type": "null" }]
+            }
+          }
+        }
+      }
     }
   },
   "type": "object",
@@ -146,6 +230,10 @@
       "type": ["array", "null"],
       "description": "Per-script placement relative to its base. null when the engine reports no script geometry.",
       "items": { "$ref": "#/definitions/scriptPosition" }
+    },
+    "degree": {
+      "oneOf": [{ "$ref": "#/definitions/radicalDegree" }, { "type": "null" }],
+      "description": "Radical-degree geometry for entries whose source carries `\\sqrt[...]{...}`. null when the formula has no degree or the engine exposed none."
     },
     "mathml": {
       "type": ["string", "null"],

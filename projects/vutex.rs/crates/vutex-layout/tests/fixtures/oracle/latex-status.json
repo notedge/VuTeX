@@ -3,17 +3,19 @@
   "source": {
     "engine": "latex",
     "version": "Tectonic 0.17.0",
-    "command": "node scripts/oracle/emit-latex-boxes.mjs",
+    "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
     "status": "available",
     "status_reason": null
   },
   "corpus_path": "projects/vutex.rs/crates/vutex-layout/tests/fixtures/oracle/corpus.json",
   "procedure": [
-    "Install a TeX distribution (TeX Live / MacTeX) that ships LuaLaTeX and amsmath, or fetch `tectonic` which is self-contained. Re-run `node scripts/oracle/emit-latex-boxes.mjs`.",
+    "Install a TeX distribution (TeX Live / MacTeX) that ships LuaLaTeX and amsmath, or fetch `tectonic` which is self-contained. Re-run `node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs`.",
     "For every corpus formula, set it in a box in both styles: inline via `\\setbox0=\\hbox{$<tex>$}`, display via `\\setbox0=\\hbox{\\displaystyle $<tex>$}`.",
     "Emit box dimensions to the log with explicit markers: `\\typeout{BOXMETRIC: <inline|display> <corpus_id> \\the\\wd0 \\the\\ht0 \\the\\dp0}`.",
     "Parse the log, convert TeX points to em: `em = pt / 10.0` (normalsize = 10pt, so 1em == 10pt).",
-    "Only `width`, `height`, `depth` are reliable: `ink_bounds`, `script_positions`, `delimiter_size` stay null."
+    "Only `width`, `height`, `depth` are reliable: `ink_bounds`, `script_positions`, `delimiter_size` stay null.",
+    "For every formula carrying a radical degree (`\\sqrt[...]{...}`), also measure the naked radical and the degree content in both superscript-demoted candidate styles with `\\typeout{NAKED: ...}` / `\\typeout{DEGBOX: ...}`.",
+    "Then run one dedicated `\\showbox` pass per degree entry (with `\\showboxdepth` and `\\showboxbreadth` raised): the engine's box-structure dump reveals the degree assembly `kern, shifted degree box, kern`, so the degree anchor, box and kerns are engine output, not reconstruction. `\\showbox` halts the engine (Tectonic treats it as an error), hence the dedicated pass and `--keep-logs`."
   ],
   "probes": [
     {
@@ -86,7 +88,7 @@
       "source": {
         "engine": "latex",
         "version": "Tectonic 0.17.0",
-        "command": "node scripts/oracle/emit-latex-boxes.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -107,6 +109,7 @@
       "rule_thickness": null,
       "delimiter_size": null,
       "script_positions": null,
+      "degree": null,
       "mathml": null
     },
     {
@@ -117,7 +120,7 @@
       "source": {
         "engine": "latex",
         "version": "Tectonic 0.17.0",
-        "command": "node scripts/oracle/emit-latex-boxes.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -138,6 +141,7 @@
       "rule_thickness": null,
       "delimiter_size": null,
       "script_positions": null,
+      "degree": null,
       "mathml": null
     },
     {
@@ -148,7 +152,7 @@
       "source": {
         "engine": "latex",
         "version": "Tectonic 0.17.0",
-        "command": "node scripts/oracle/emit-latex-boxes.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -169,6 +173,7 @@
       "rule_thickness": null,
       "delimiter_size": null,
       "script_positions": null,
+      "degree": null,
       "mathml": null
     },
     {
@@ -179,7 +184,7 @@
       "source": {
         "engine": "latex",
         "version": "Tectonic 0.17.0",
-        "command": "node scripts/oracle/emit-latex-boxes.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -200,6 +205,7 @@
       "rule_thickness": null,
       "delimiter_size": null,
       "script_positions": null,
+      "degree": null,
       "mathml": null
     },
     {
@@ -210,7 +216,7 @@
       "source": {
         "engine": "latex",
         "version": "Tectonic 0.17.0",
-        "command": "node scripts/oracle/emit-latex-boxes.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -231,6 +237,7 @@
       "rule_thickness": null,
       "delimiter_size": null,
       "script_positions": null,
+      "degree": null,
       "mathml": null
     },
     {
@@ -241,7 +248,7 @@
       "source": {
         "engine": "latex",
         "version": "Tectonic 0.17.0",
-        "command": "node scripts/oracle/emit-latex-boxes.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -262,6 +269,7 @@
       "rule_thickness": null,
       "delimiter_size": null,
       "script_positions": null,
+      "degree": null,
       "mathml": null
     },
     {
@@ -272,7 +280,7 @@
       "source": {
         "engine": "latex",
         "version": "Tectonic 0.17.0",
-        "command": "node scripts/oracle/emit-latex-boxes.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -293,6 +301,7 @@
       "rule_thickness": null,
       "delimiter_size": null,
       "script_positions": null,
+      "degree": null,
       "mathml": null
     },
     {
@@ -303,7 +312,7 @@
       "source": {
         "engine": "latex",
         "version": "Tectonic 0.17.0",
-        "command": "node scripts/oracle/emit-latex-boxes.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -324,6 +333,7 @@
       "rule_thickness": null,
       "delimiter_size": null,
       "script_positions": null,
+      "degree": null,
       "mathml": null
     },
     {
@@ -334,7 +344,7 @@
       "source": {
         "engine": "latex",
         "version": "Tectonic 0.17.0",
-        "command": "node scripts/oracle/emit-latex-boxes.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -355,6 +365,7 @@
       "rule_thickness": null,
       "delimiter_size": null,
       "script_positions": null,
+      "degree": null,
       "mathml": null
     },
     {
@@ -365,7 +376,7 @@
       "source": {
         "engine": "latex",
         "version": "Tectonic 0.17.0",
-        "command": "node scripts/oracle/emit-latex-boxes.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -386,6 +397,7 @@
       "rule_thickness": null,
       "delimiter_size": null,
       "script_positions": null,
+      "degree": null,
       "mathml": null
     },
     {
@@ -396,7 +408,7 @@
       "source": {
         "engine": "latex",
         "version": "Tectonic 0.17.0",
-        "command": "node scripts/oracle/emit-latex-boxes.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -417,6 +429,37 @@
       "rule_thickness": null,
       "delimiter_size": null,
       "script_positions": null,
+      "degree": {
+        "style": "scriptscript",
+        "anchor_x": 0.277771,
+        "anchor_y": 0.336331,
+        "advance_box": {
+          "width": 0.340283,
+          "height": 0.322221,
+          "depth": 0
+        },
+        "ink_bbox": null,
+        "kern_before": 0.277771,
+        "kern_after": -0.555542,
+        "advance_total": 0.06251200000000012,
+        "naked_box": {
+          "width": 1.404863,
+          "height": 0.800272,
+          "depth": 0.23972500000000002
+        },
+        "candidate_boxes": {
+          "script": {
+            "width": 0.398613,
+            "height": 0.45111100000000004,
+            "depth": 0
+          },
+          "scriptscript": {
+            "width": 0.340283,
+            "height": 0.322221,
+            "depth": 0
+          }
+        }
+      },
       "mathml": null
     },
     {
@@ -427,7 +470,7 @@
       "source": {
         "engine": "latex",
         "version": "Tectonic 0.17.0",
-        "command": "node scripts/oracle/emit-latex-boxes.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -448,6 +491,37 @@
       "rule_thickness": null,
       "delimiter_size": null,
       "script_positions": null,
+      "degree": {
+        "style": "scriptscript",
+        "anchor_x": 0.277771,
+        "anchor_y": 0.394916,
+        "advance_box": {
+          "width": 0.340283,
+          "height": 0.322221,
+          "depth": 0
+        },
+        "ink_bbox": null,
+        "kern_before": 0.277771,
+        "kern_after": -0.555542,
+        "advance_total": 0.06251200000000012,
+        "naked_box": {
+          "width": 1.404863,
+          "height": 0.849092,
+          "depth": 0.19090400000000002
+        },
+        "candidate_boxes": {
+          "script": {
+            "width": 0.398613,
+            "height": 0.45111100000000004,
+            "depth": 0
+          },
+          "scriptscript": {
+            "width": 0.340283,
+            "height": 0.322221,
+            "depth": 0
+          }
+        }
+      },
       "mathml": null
     },
     {
@@ -458,7 +532,7 @@
       "source": {
         "engine": "latex",
         "version": "Tectonic 0.17.0",
-        "command": "node scripts/oracle/emit-latex-boxes.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -479,6 +553,7 @@
       "rule_thickness": null,
       "delimiter_size": null,
       "script_positions": null,
+      "degree": null,
       "mathml": null
     },
     {
@@ -489,7 +564,7 @@
       "source": {
         "engine": "latex",
         "version": "Tectonic 0.17.0",
-        "command": "node scripts/oracle/emit-latex-boxes.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -510,6 +585,7 @@
       "rule_thickness": null,
       "delimiter_size": null,
       "script_positions": null,
+      "degree": null,
       "mathml": null
     },
     {
@@ -520,7 +596,7 @@
       "source": {
         "engine": "latex",
         "version": "Tectonic 0.17.0",
-        "command": "node scripts/oracle/emit-latex-boxes.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -541,6 +617,7 @@
       "rule_thickness": null,
       "delimiter_size": null,
       "script_positions": null,
+      "degree": null,
       "mathml": null
     },
     {
@@ -551,7 +628,7 @@
       "source": {
         "engine": "latex",
         "version": "Tectonic 0.17.0",
-        "command": "node scripts/oracle/emit-latex-boxes.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -572,6 +649,7 @@
       "rule_thickness": null,
       "delimiter_size": null,
       "script_positions": null,
+      "degree": null,
       "mathml": null
     },
     {
@@ -582,7 +660,7 @@
       "source": {
         "engine": "latex",
         "version": "Tectonic 0.17.0",
-        "command": "node scripts/oracle/emit-latex-boxes.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -603,6 +681,7 @@
       "rule_thickness": null,
       "delimiter_size": null,
       "script_positions": null,
+      "degree": null,
       "mathml": null
     },
     {
@@ -613,7 +692,7 @@
       "source": {
         "engine": "latex",
         "version": "Tectonic 0.17.0",
-        "command": "node scripts/oracle/emit-latex-boxes.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -634,6 +713,7 @@
       "rule_thickness": null,
       "delimiter_size": null,
       "script_positions": null,
+      "degree": null,
       "mathml": null
     },
     {
@@ -644,7 +724,7 @@
       "source": {
         "engine": "latex",
         "version": "Tectonic 0.17.0",
-        "command": "node scripts/oracle/emit-latex-boxes.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -665,6 +745,7 @@
       "rule_thickness": null,
       "delimiter_size": null,
       "script_positions": null,
+      "degree": null,
       "mathml": null
     },
     {
@@ -675,7 +756,7 @@
       "source": {
         "engine": "latex",
         "version": "Tectonic 0.17.0",
-        "command": "node scripts/oracle/emit-latex-boxes.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -696,6 +777,7 @@
       "rule_thickness": null,
       "delimiter_size": null,
       "script_positions": null,
+      "degree": null,
       "mathml": null
     },
     {
@@ -706,7 +788,7 @@
       "source": {
         "engine": "latex",
         "version": "Tectonic 0.17.0",
-        "command": "node scripts/oracle/emit-latex-boxes.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -727,6 +809,7 @@
       "rule_thickness": null,
       "delimiter_size": null,
       "script_positions": null,
+      "degree": null,
       "mathml": null
     },
     {
@@ -737,7 +820,7 @@
       "source": {
         "engine": "latex",
         "version": "Tectonic 0.17.0",
-        "command": "node scripts/oracle/emit-latex-boxes.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -758,6 +841,7 @@
       "rule_thickness": null,
       "delimiter_size": null,
       "script_positions": null,
+      "degree": null,
       "mathml": null
     },
     {
@@ -768,7 +852,7 @@
       "source": {
         "engine": "latex",
         "version": "Tectonic 0.17.0",
-        "command": "node scripts/oracle/emit-latex-boxes.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -789,6 +873,7 @@
       "rule_thickness": null,
       "delimiter_size": null,
       "script_positions": null,
+      "degree": null,
       "mathml": null
     },
     {
@@ -799,7 +884,7 @@
       "source": {
         "engine": "latex",
         "version": "Tectonic 0.17.0",
-        "command": "node scripts/oracle/emit-latex-boxes.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -820,6 +905,7 @@
       "rule_thickness": null,
       "delimiter_size": null,
       "script_positions": null,
+      "degree": null,
       "mathml": null
     }
   ]

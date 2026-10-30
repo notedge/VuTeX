@@ -50,6 +50,7 @@ const NULLABLE_RECORD_FIELDS: &[&str] = &[
     "rule_thickness",
     "delimiter_size",
     "script_positions",
+    "degree",
 ];
 
 /// Fixture directory of the `vutex-layout` crate.
@@ -171,7 +172,7 @@ fn schema_keeps_every_measurement_nullable() {
     }
 
     let definitions = schema["definitions"].as_object().expect("record schema must define its sub-objects");
-    for definition in ["source", "font", "atom", "bbox", "scriptPosition"] {
+    for definition in ["source", "font", "atom", "bbox", "scriptPosition", "degreeBox", "radicalDegree"] {
         assert!(definitions.contains_key(definition), "record schema must define `{definition}`");
     }
 

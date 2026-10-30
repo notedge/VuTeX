@@ -159,6 +159,8 @@ const PROCEDURE = [
   "Emit box dimensions to the log with explicit markers: `\\typeout{BOXMETRIC: <inline|display> <corpus_id> \\the\\wd0 \\the\\ht0 \\the\\dp0}`.",
   "Parse the log, convert TeX points to em: `em = pt / 10.0` (normalsize = 10pt, so 1em == 10pt).",
   "Only `width`, `height`, `depth` are reliable: `ink_bounds`, `script_positions`, `delimiter_size` stay null.",
+  "For every formula carrying a radical degree (`\\sqrt[...]{...}`), also measure the naked radical and the degree content in both superscript-demoted candidate styles with `\\typeout{NAKED: ...}` / `\\typeout{DEGBOX: ...}`.",
+  "Then run one dedicated `\\showbox` pass per degree entry (with `\\showboxdepth` and `\\showboxbreadth` raised): the engine's box-structure dump reveals the degree assembly `kern, shifted degree box, kern`, so the degree anchor, box and kerns are engine output, not reconstruction. `\\showbox` halts the engine (Tectonic treats it as an error), hence the dedicated pass and `--keep-logs`.",
 ];
 
 function blockedReason(probes, primary) {
@@ -205,7 +207,161 @@ function recordBlocked(formula, displayMode, reason, command) {
     rule_thickness: null,
     delimiter_size: null,
     script_positions: null,
+    degree: null,
     mathml: null,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Radical-degree helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Split `\sqrt[<degree>]{<radicand>}` into its parts.
+ *
+ * Only flat-brace corpus sources are expected; a formula that does not match
+ * carries no degree and gets a null `degree` record.
+ */
+function degreeParts(tex) {
+  const m = tex.match(/\\sqrt\[([^\]]*)\]\{([^}]*)\}/u);
+  return m ? { degree: m[1], radicand: m[2] } : null;
+}
+
+/** One `\hbox(w+h)xd` dump line at a given indent depth (number of leading dots). */
+function showboxBoxLine(line, dots) {
+  const indent = `(?:\\.){${dots}}`;
+  const m = line.match(new RegExp(`^${indent}\\\\(?:h|v)box\\(([\\d.]+)\\+([\\d.]+)\\)x([\\d.]+)(, shifted (-?[\\d.]+))?$`));
+  if (!m) return null;
+  return { height_pt: parseFloat(m[1]), depth_pt: parseFloat(m[2]), width_pt: parseFloat(m[3]), shift_pt: m[5] === undefined ? null : parseFloat(m[5]) };
+}
+
+/** One `\kern <value>` dump line at a given indent depth. */
+function showboxKernLine(line, dots) {
+  const indent = `(?:\\.){${dots}}`;
+  const m = line.match(new RegExp(`^${indent}\\\\kern\\s*(-?[\\d.]+)`));
+  return m ? parseFloat(m[1]) : null;
+}
+
+/**
+ * Parse the `\showbox` dump of `$\sqrt[n]{rad}$` and return the degree assembly.
+ *
+ * The engine prints the radical as an hlist whose first shifted box is the
+ * degree: `kern…, degree box (shifted up), kern…, surd, radicand`.  We take the
+ * first `, shifted -` box (negative shift = raised, verified against
+ * `\raise`), then sum the same-level kern lines immediately before and after
+ * it.  The degree's left edge is therefore the before-kern sum relative to the
+ * assembly's parent box, which starts at the formula's own left edge.
+ *
+ * Returns null when the dump carries no shifted box (engine changed shape).
+ */
+function parseDegreeAssembly(log) {
+  const lines = log.split(/\r?\n/);
+  let start = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].trim() === "> \\box0=") {
+      start = i;
+      break;
+    }
+  }
+  if (start < 0) return null;
+
+  // Region runs until the `! OK.` / `l.` trailer that ends the dump.
+  const region = [];
+  for (let i = start + 1; i < lines.length; i++) {
+    const line = lines[i];
+    if (/^(!|l\.)/.test(line)) break;
+    region.push(line);
+  }
+
+  let boxIdx = -1;
+  let box = null;
+  let dots = 0;
+  for (let i = 0; i < region.length; i++) {
+    const m = region[i].match(/^(\.+)?\\(?:h|v)box\([\d.]+\+[\d.]+\)x[\d.]+, shifted -[\d.]+$/);
+    if (!m) continue;
+    boxIdx = i;
+    dots = m[1] === undefined ? 0 : m[1].length;
+    box = showboxBoxLine(region[i], dots);
+    break;
+  }
+  if (boxIdx < 0 || box === null || box.shift_pt === null) return null;
+
+  let kernBefore = 0;
+  for (let i = boxIdx - 1; i >= 0; i--) {
+    const k = showboxKernLine(region[i], dots);
+    if (k === null) break;
+    kernBefore += k;
+  }
+  let kernAfter = 0;
+  for (let i = boxIdx + 1; i < region.length; i++) {
+    // The degree box's own children (mathon, font line, mathoff) are printed
+    // at a deeper indent before the after-kerns — skip them, stop only at a
+    // same-level line that is not a kern.
+    const dm = region[i].match(/^\.+/);
+    if (dm && dm[0].length > dots) continue;
+    const k = showboxKernLine(region[i], dots);
+    if (k === null) break;
+    kernAfter += k;
+  }
+
+  return {
+    width_pt: box.width_pt,
+    height_pt: box.height_pt,
+    depth_pt: box.depth_pt,
+    anchor_y_pt: -box.shift_pt, // negative shift = raised above the baseline
+    anchor_x_pt: kernBefore,
+    kern_before_pt: kernBefore,
+    kern_after_pt: kernAfter,
+  };
+}
+
+/**
+ * Build the `degree` object for one record from the pass-A companions and the
+ * pass-B assembly.  Every field stays null when its source measurement is
+ * missing — the harness never reconstructs what the engine did not report.
+ */
+function buildDegreeRecord(parts, fullWidthEm, naked, candidates, assembly) {
+  if (!parts) return null;
+
+  let style = null;
+  let advanceBox = null;
+  let anchorX = null;
+  let anchorY = null;
+  let kernBefore = null;
+  let kernAfter = null;
+  if (assembly) {
+    advanceBox = {
+      width: ptToEm(assembly.width_pt),
+      height: ptToEm(assembly.height_pt),
+      depth: ptToEm(assembly.depth_pt),
+    };
+    anchorX = ptToEm(assembly.anchor_x_pt);
+    anchorY = ptToEm(assembly.anchor_y_pt);
+    kernBefore = ptToEm(assembly.kern_before_pt);
+    kernAfter = ptToEm(assembly.kern_after_pt);
+    // Style is decided by matching the assembled box against the engine's own
+    // candidate boxes, so `style` is a measurement, not an assumption.
+    const dScript = candidates?.script ? Math.abs(advanceBox.width - candidates.script.width) : Infinity;
+    const dScriptscript = candidates?.scriptscript ? Math.abs(advanceBox.width - candidates.scriptscript.width) : Infinity;
+    if (dScript <= dScriptscript && candidates?.script) style = "script";
+    else if (Number.isFinite(dScriptscript)) style = "scriptscript";
+  }
+
+  const advanceTotal = naked && typeof fullWidthEm === "number" ? fullWidthEm - naked.width : null;
+  return {
+    style,
+    anchor_x: anchorX,
+    anchor_y: anchorY,
+    advance_box: advanceBox,
+    ink_bbox: null, // TeX box metrics are advance boxes; the engine reports no ink extent here.
+    kern_before: kernBefore,
+    kern_after: kernAfter,
+    advance_total: advanceTotal,
+    naked_box: naked ?? null,
+    candidate_boxes: {
+      script: candidates?.script ?? null,
+      scriptscript: candidates?.scriptscript ?? null,
+    },
   };
 }
 
@@ -240,6 +396,23 @@ function buildTexDocument(corpus) {
     lines.push(`% --- display ${formula.id} ---`);
     lines.push(`\\setbox0=\\hbox{$\\displaystyle ${texEscaped}$}`);
     lines.push(`\\typeout{BOXMETRIC: display ${formula.id} \\the\\wd0 \\the\\ht0 \\the\\dp0}`);
+
+    // Degree companions: the naked radical (for the advance the degree adds)
+    // and the degree content in each superscript-demoted candidate style (so
+    // the recorded style is matched from engine output, not assumed).
+    const parts = degreeParts(formula.tex);
+    if (parts) {
+      const nakedTex = `\\sqrt{${parts.radicand}}`;
+      lines.push(`% --- degree companions ${formula.id} ---`);
+      lines.push(`\\setbox1=\\hbox{$${nakedTex}$}`);
+      lines.push(`\\typeout{NAKED: inline ${formula.id} \\the\\wd1 \\the\\ht1 \\the\\dp1}`);
+      lines.push(`\\setbox1=\\hbox{$\\displaystyle ${nakedTex}$}`);
+      lines.push(`\\typeout{NAKED: display ${formula.id} \\the\\wd1 \\the\\ht1 \\the\\dp1}`);
+      lines.push(`\\setbox2=\\hbox{$\\scriptstyle ${parts.degree}$}`);
+      lines.push(`\\typeout{DEGBOX: ${formula.id} script \\the\\wd2 \\the\\ht2 \\the\\dp2}`);
+      lines.push(`\\setbox3=\\hbox{$\\scriptscriptstyle ${parts.degree}$}`);
+      lines.push(`\\typeout{DEGBOX: ${formula.id} scriptscript \\the\\wd3 \\the\\ht3 \\the\\dp3}`);
+    }
     lines.push("");
   }
 
@@ -295,6 +468,59 @@ function compile(engineName, texPath, workDir) {
   };
 }
 
+/**
+ * Build a .tex document that dumps the box structure of one degree formula.
+ *
+ * `\showbox` prints the assembly (kerns, shifted degree box, surd, radicand)
+ * and then raises `! OK.`, halting the engine — hence each entry runs in its
+ * own dedicated pass with `--keep-logs`.  `\showboxbreadth` is raised so the
+ * level-2 list is not truncated with `etc.`, and `\showboxdepth` is raised so
+ * the degree box is visible at all.
+ */
+function buildShowboxDocument(tex, displayMode) {
+  const style = displayMode ? "\\displaystyle " : "";
+  return [
+    "\\documentclass[10pt]{article}",
+    "\\usepackage{amsmath}",
+    "\\pagestyle{empty}",
+    "\\showboxdepth=10",
+    "\\showboxbreadth=50",
+    "\\begin{document}",
+    `\\setbox0=\\hbox{$${style}${tex}$}`,
+    "\\showbox0",
+    "\\end{document}",
+  ].join("\n");
+}
+
+/**
+ * Run one dedicated `\showbox` compile.  A non-zero exit is expected (the
+ * dump is followed by the `! OK.` error), so only the kept log matters.
+ */
+function compileShowbox(engineName, texPath, workDir) {
+  let args;
+  if (engineName === "tectonic") {
+    args = ["--keep-logs", texPath];
+  } else {
+    args = ["-interaction=nonstopmode", "-halt-on-error", "-no-shell-escape", texPath];
+  }
+  const result = spawnSync(engineName, args, {
+    cwd: workDir,
+    encoding: "utf8",
+    timeout: 300_000,
+    windowsHide: true,
+  });
+  const logPath = resolve(workDir, "degree_showbox.log");
+  let logContent = "";
+  if (existsSync(logPath)) {
+    try {
+      logContent = readFileSync(logPath, "utf8");
+    } catch (_e) {
+      logContent = "";
+    }
+  }
+  return { exit_code: result.status, stderr: result.stderr || "", log: logContent };
+}
+
 // ---------------------------------------------------------------------------
 // Log parsing
 // ---------------------------------------------------------------------------
@@ -323,6 +549,45 @@ function parseBoxMetrics(log) {
   return out;
 }
 
+/** Parse `\typeout{NAKED: <inline|display> <id> <wd>pt<ht>pt<dp>pt}` lines. */
+const NAKED_RE =
+  /NAKED:\s+(inline|display)\s+(\S+)\s+([\d.]+)pt\s*([\d.]+)pt\s*([\d.]+)pt/gu;
+
+/** Parse `\typeout{DEGBOX: <id> <style> <wd>pt<ht>pt<dp>pt}` lines. */
+const DEGBOX_RE =
+  /DEGBOX:\s+(\S+)\s+(scriptscript|script)\s+([\d.]+)pt\s*([\d.]+)pt\s*([\d.]+)pt/gu;
+
+function parseNakedBoxes(log) {
+  const out = new Map(); // key = "<corpus_id>|<inline|display>"
+  let m;
+  NAKED_RE.lastIndex = 0;
+  while ((m = NAKED_RE.exec(log)) !== null) {
+    const [, mode, id, wPt, hPt, dPt] = m;
+    out.set(`${id}|${mode}`, {
+      width: ptToEm(parseFloat(wPt)),
+      height: ptToEm(parseFloat(hPt)),
+      depth: ptToEm(parseFloat(dPt)),
+    });
+  }
+  return out;
+}
+
+function parseDegreeCandidateBoxes(log) {
+  const out = new Map(); // key = corpus_id → { script?, scriptscript? }
+  let m;
+  DEGBOX_RE.lastIndex = 0;
+  while ((m = DEGBOX_RE.exec(log)) !== null) {
+    const [, id, style, wPt, hPt, dPt] = m;
+    if (!out.has(id)) out.set(id, {});
+    out.get(id)[style] = {
+      width: ptToEm(parseFloat(wPt)),
+      height: ptToEm(parseFloat(hPt)),
+      depth: ptToEm(parseFloat(dPt)),
+    };
+  }
+  return out;
+}
+
 /** Convert TeX pt to em (BASE_SIZE_PT = 10, normalsize = 10pt → 1em). */
 function ptToEm(pt) {
   return pt / BASE_SIZE_PT;
@@ -332,7 +597,7 @@ function ptToEm(pt) {
 // Available record (engine produced numbers)
 // ---------------------------------------------------------------------------
 
-function recordAvailable(formula, displayMode, metrics, fontInfo, engineVersion, command) {
+function recordAvailable(formula, displayMode, metrics, fontInfo, engineVersion, command, degree = null) {
   const key = `${formula.id}|${displayMode ? "display" : "inline"}`;
   const m = metrics.get(key);
   if (!m) return null;
@@ -361,6 +626,7 @@ function recordAvailable(formula, displayMode, metrics, fontInfo, engineVersion,
     rule_thickness: null,
     delimiter_size: null,
     script_positions: null,
+    degree,
     mathml: null,
   };
 }
@@ -444,7 +710,10 @@ function main() {
     // only fall back to blocked when *zero* BOXMETRIC lines exist.
     // Tectonic's `\typeout` goes to stderr (terminal), lualatex's goes to the
     // .log file — so we parse both.
-    const metrics = parseBoxMetrics(log + "\n" + stderr);
+    const combined = log + "\n" + stderr;
+    const metrics = parseBoxMetrics(combined);
+    const nakedBoxes = parseNakedBoxes(combined);
+    const candidateBoxes = parseDegreeCandidateBoxes(combined);
     const anyMetrics = metrics.size > 0;
 
     if (!anyMetrics) {
@@ -486,10 +755,45 @@ function main() {
     const fontInfo = defaultFontInfo(primary.family);
     const engineVersion = primary.version_line;
 
+    // Pass B: dedicated `\showbox` runs for every degree-carrying formula.
+    // The dump reveals the assembly the engine itself built (kerns, shifted
+    // degree box, surd, radicand), so the degree anchor/box/kerns are engine
+    // output.  `\showbox` halts the engine, so each run lives in its own
+    // directory and a non-zero exit is expected.
+    const assemblies = new Map(); // key = "<corpus_id>|<inline|display>"
+    for (const formula of corpus.formulas) {
+      if (/\\begin\{/.test(formula.tex)) continue;
+      if (!degreeParts(formula.tex)) continue;
+      for (const displayMode of [false, true]) {
+        const mode = displayMode ? "display" : "inline";
+        const subDir = resolve(workDir, `show_${formula.id}_${mode}`);
+        mkdirSync(subDir, { recursive: true });
+        const sbTexPath = resolve(subDir, "degree_showbox.tex");
+        writeFileSync(sbTexPath, buildShowboxDocument(formula.tex, displayMode), "utf8");
+        const sb = compileShowbox(primary.name, sbTexPath, subDir);
+        const assembly = parseDegreeAssembly(sb.log + "\n" + sb.stderr);
+        if (assembly) assemblies.set(`${formula.id}|${mode}`, assembly);
+        else console.log(`warning: showbox pass produced no degree assembly for ${formula.id} (${mode})`);
+      }
+    }
+
     const records = [];
     let missingKeys = [];
     for (const formula of corpus.formulas) {
       for (const displayMode of [false, true]) {
+        const key = `${formula.id}|${displayMode ? "display" : "inline"}`;
+        const m = metrics.get(key);
+        const parts = degreeParts(formula.tex);
+        let degree = null;
+        if (m && parts) {
+          degree = buildDegreeRecord(
+            parts,
+            ptToEm(m.width_pt),
+            nakedBoxes.get(key) ?? null,
+            candidateBoxes.get(formula.id) ?? null,
+            assemblies.get(key) ?? null,
+          );
+        }
         const rec = recordAvailable(
           formula,
           displayMode,
@@ -497,9 +801,10 @@ function main() {
           fontInfo,
           engineVersion,
           COMMAND,
+          degree,
         );
         if (rec) records.push(rec);
-        else missingKeys.push(`${formula.id}|${displayMode ? "display" : "inline"}`);
+        else missingKeys.push(key);
       }
     }
 
