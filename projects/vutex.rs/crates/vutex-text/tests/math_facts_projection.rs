@@ -9,7 +9,7 @@
 
 use std::collections::HashMap;
 
-use vutex_text::math::{GlyphId, MathFontFacts, StretchAxis, opentype_font_metrics};
+use vutex_text::math::{GlyphId, MathFontFacts, MathFontFamily, StretchAxis, opentype_font_metrics};
 use vutex_types::math::{Fixed, FontStyle, GlyphKey, MathConstant};
 
 /// The projection is checked against the same default face both sides resolve:
@@ -183,6 +183,51 @@ fn every_projected_design_glyph_is_a_glyph_the_facts_name() {
         designs += 1;
     }
     assert!(designs > 20, "the projection must carry the font's designs, found {designs}");
+}
+
+/// An accent's identity, metrics and outline come from one font's facts.
+///
+/// The mark a formula names must be a glyph the selected math font itself maps
+/// (identity), the cache numbers must be that glyph's `MathGlyphInfo` values
+/// (metrics) and the painted outline must be that glyph's own design (outline).
+/// Both embedded families are checked so switching the font can never leave an
+/// accent reading one family's numbers while painting another's shape.
+#[test]
+fn accent_identity_metrics_and_outlines_share_one_font_across_families() {
+    // Marks `layout_accent` paints; `¯` is routed to the overbar rule instead.
+    const PAINTED_ACCENTS: [char; 5] = ['ˆ', '→', '˜', '˙', '¨'];
+
+    for family in [MathFontFamily::XitsMath, MathFontFamily::LmMath] {
+        let data = opentype_font_metrics(family).expect("the family's font parses");
+        let facts = MathFontFacts::for_family(family).expect("the family's font carries a MATH table");
+
+        for ch in PAINTED_ACCENTS {
+            let glyph = facts
+                .glyph_for_char(ch)
+                .unwrap_or_else(|| panic!("`{ch}`: the accent identity must come from `{}`'s character map", family.label()));
+
+            let key = GlyphKey::from_char(ch, Some(family.label().to_string()), FontStyle::Normal);
+            let metrics = data.glyphs.get(&key).unwrap_or_else(|| panic!("`{ch}`: the accent carries no metrics"));
+            // A glyph outside the font's `MathGlyphInfo` coverage publishes no
+            // correction and no attachment; the cache must read that absence
+            // as zero rather than as a number from another glyph.
+            let math = facts.glyph_math(glyph);
+            close(
+                metrics.italic_correction,
+                math.and_then(|info| info.italic_correction()).unwrap_or(Fixed::ZERO),
+                &format!("`{ch}` italic correction"),
+            );
+            close(
+                metrics.top_accent_attachment,
+                math.and_then(|info| info.top_accent_attachment()).unwrap_or(Fixed::ZERO),
+                &format!("`{ch}` top accent attachment"),
+            );
+
+            let path =
+                data.glyph_paths.get(&key).unwrap_or_else(|| panic!("`{ch}`: the accent outline must come from the same font"));
+            assert!(path.contains('M'), "`{ch}`: the outline should start with a move: {path}");
+        }
+    }
 }
 
 /// The cache keys its base entries by the same characters the facts map, so a
