@@ -144,13 +144,21 @@ impl MathFontFacts {
         Some(Self { units_per_em, char_glyphs, variants, constants, kerns, glyph_math, extended_shapes })
     }
 
+    /// Read the `MATH` facts of one builtin family.
+    ///
+    /// Returns `None` when the family ships no embedded bytes or its font file
+    /// carries no `MATH` table, exactly as [`Self::from_bytes`] does.
+    pub fn for_family(family: MathFontFamily) -> Option<Self> {
+        Self::from_bytes(family.bytes()?)
+    }
+
     /// Read the `MATH` facts of the font embedded with this crate.
     ///
     /// This resolves the same default family as [`super::font_metrics::builtin_font_metrics`]
     /// so the engine's constant lookups and glyph facts always describe the font
     /// the metrics cache is keyed on.
     pub fn embedded() -> Option<Self> {
-        Self::from_bytes(MathFontFamily::builtin_default()?.bytes()?)
+        Self::for_family(MathFontFamily::builtin_default()?)
     }
 
     /// Font units per em, the divisor behind every em-relative value here.

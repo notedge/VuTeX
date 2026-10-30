@@ -1,6 +1,6 @@
 //! Formula parse and layout pipeline.
 
-use vutex_text::math::builtin_font_metrics;
+use vutex_text::math::{MathFontFacts, MathFontFamily, builtin_font_metrics, builtin_font_metrics_for};
 use vutex_types::{
     Diagnostic,
     math::{FormulaLayoutResult, MathResult, MathSemanticTree, MathStyle, SemanticNode},
@@ -47,10 +47,26 @@ pub fn layout_formula_with_result(
     display: bool,
     base_size: f64,
 ) -> MathResult<(FormulaLayoutResult, LayoutNode, Vec<Diagnostic>)> {
+    let family = MathFontFamily::builtin_default().expect("a builtin math font is embedded");
+    layout_formula_with_result_for(source, display, base_size, family)
+}
+
+/// Parse TeX math once and lay it out with one explicit builtin font family.
+///
+/// The metrics cache and the `MATH` facts are both resolved from `family`, so
+/// constants, glyph facts and delimiter assemblies all describe that one font.
+/// A family whose asset is not embedded falls back to the synthetic metrics,
+/// matching [`builtin_font_metrics`]'s behavior for an unparsable font.
+pub fn layout_formula_with_result_for(
+    source: &str,
+    display: bool,
+    base_size: f64,
+    family: MathFontFamily,
+) -> MathResult<(FormulaLayoutResult, LayoutNode, Vec<Diagnostic>)> {
     let style = if display { MathStyle::Display } else { MathStyle::Text };
     let (tree, mut diagnostics) = parse_math_with_diagnostics(source)?;
-    let font_system = builtin_font_metrics();
-    let engine = LayoutEngine::new(font_system).with_base_size(base_size);
+    let font_system = builtin_font_metrics_for(family);
+    let engine = LayoutEngine::with_facts(font_system, MathFontFacts::for_family(family)).with_base_size(base_size);
     let root = engine.layout_node(&tree.root, style)?;
     let nodes: &[SemanticNode] = match &tree.root {
         // The parser always roots a formula in a sequence, and a sequence is a

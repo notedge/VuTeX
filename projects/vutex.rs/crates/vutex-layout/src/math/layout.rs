@@ -403,39 +403,58 @@ const THIN_MUSIP_EM: f64 = 3.0 / 18.0;
 /// The facts answer the questions the metrics cache cannot: which prepared
 /// design covers a target size, how an assembly repeats its connectors, and
 /// what a `MathKernInfo` corner publishes at a correction height. Parsing the
-/// font is expensive enough that it must not happen per formula.
+/// font is expensive enough that it must not happen per formula, so an engine
+/// built without explicit facts shares this one parse.
 fn font_facts() -> Option<&'static MathFontFacts> {
     static FACTS: OnceLock<Option<MathFontFacts>> = OnceLock::new();
     FACTS.get_or_init(MathFontFacts::embedded).as_ref()
-}
-
-/// The embedded font's glyph for a layout key.
-///
-/// `None` for a key that names another family or a character the font does not
-/// publish, so a caller can keep its metrics-cache route instead of guessing.
-fn font_facts_glyph(key: &GlyphKey) -> Option<GlyphId> {
-    let family = key.font_family.as_deref().unwrap_or("default");
-    if family != "default" {
-        return None;
-    }
-    match (key.glyph_id, key.char) {
-        (Some(glyph_id), _) => Some(GlyphId::new(glyph_id)),
-        (None, Some(c)) => font_facts()?.glyph_for_char(c),
-        (None, None) => None,
-    }
 }
 
 /// Lowers [`SemanticNode`] trees into [`LayoutNode`] boxes.
 #[derive(Debug)]
 pub struct LayoutEngine {
     font_system: FontMetricsSystem,
+    facts: Option<MathFontFacts>,
     base_size: Fixed,
 }
 
 impl LayoutEngine {
     /// Create an engine with a base em size of `1.0`.
+    ///
+    /// The `MATH` facts come from the process-wide embedded default font, the
+    /// same family [`builtin_font_metrics`](vutex_text::math::builtin_font_metrics)
+    /// resolves, so a caller that built the metrics cache that way gets facts
+    /// describing the very same font.
     pub fn new(font_system: FontMetricsSystem) -> Self {
-        Self { font_system, base_size: Fixed::ONE }
+        Self { font_system, facts: font_facts().cloned(), base_size: Fixed::ONE }
+    }
+
+    /// Create an engine whose `MATH` facts come from `facts`.
+    ///
+    /// A caller selecting one font family passes that family's
+    /// [`MathFontFacts`] here together with the metrics cache built from the
+    /// same family, so constants, glyph facts and delimiter assemblies all
+    /// describe one font. `None` keeps the engine on the metrics cache's
+    /// synthetic answers.
+    pub fn with_facts(font_system: FontMetricsSystem, facts: Option<MathFontFacts>) -> Self {
+        Self { font_system, facts, base_size: Fixed::ONE }
+    }
+
+    /// The facts font's glyph for a layout key.
+    ///
+    /// `None` for a key that names another family or a character the font does
+    /// not publish, so a caller can keep its metrics-cache route instead of
+    /// guessing.
+    fn facts_glyph(&self, key: &GlyphKey) -> Option<GlyphId> {
+        let family = key.font_family.as_deref().unwrap_or("default");
+        if family != "default" {
+            return None;
+        }
+        match (key.glyph_id, key.char) {
+            (Some(glyph_id), _) => Some(GlyphId::new(glyph_id)),
+            (None, Some(c)) => self.facts.as_ref()?.glyph_for_char(c),
+            (None, None) => None,
+        }
     }
 
     /// Set the base em size in pixels.
@@ -511,8 +530,8 @@ impl LayoutEngine {
     /// base baseline, in the same units. Returns `None` when the font publishes no
     /// kern at that corner, which is different from a published zero.
     fn math_kern(&self, key: &GlyphKey, corner: KernCorner, correction_height: Fixed, size: Fixed) -> Option<Fixed> {
-        let facts = font_facts()?;
-        let glyph = font_facts_glyph(key)?;
+        let facts = self.facts.as_ref()?;
+        let glyph = self.facts_glyph(key)?;
         let kerns = facts.kerns();
         kerns.corner(glyph, corner).is_some().then(|| kerns.math_kern(glyph, corner, correction_height / size) * size)
     }
@@ -539,8 +558,8 @@ impl LayoutEngine {
     /// `MATH` table is the only place an italic correction can be taken from
     /// without inventing one.
     fn facts_italic_correction(&self, key: &GlyphKey) -> Option<Fixed> {
-        let facts = font_facts()?;
-        facts.italic_correction(font_facts_glyph(key)?)
+        let facts = self.facts.as_ref()?;
+        facts.italic_correction(self.facts_glyph(key)?)
     }
 
     /// First atom of `node` that takes part in math spacing, skipping the
@@ -1107,7 +1126,7 @@ impl LayoutEngine {
     /// measurement. [`Self::script_scale_diagnostics`] reports every such
     /// substitution.
     fn math_constant(&self, constant: MathConstant, size: Fixed) -> Option<Fixed> {
-        if let Some(em) = font_facts().and_then(|facts| facts.constants().resolve(constant).value()) {
+        if let Some(em) = self.facts.as_ref().and_then(|facts| facts.constants().resolve(constant).value()) {
             return Some(em * size);
         }
         self.font_system.font_math_constant("default", constant).map(|em| em * size)
@@ -1542,8 +1561,8 @@ impl LayoutEngine {
     /// an outline there is not paintable yet and the base sign is used as-is:
     /// stretching the base outline would invent a design the font never drew.
     fn radical_sign(&self, key: &GlyphKey, target: Fixed, size: Fixed) -> MathResult<LayoutNode> {
-        if let Some(facts) = font_facts() {
-            if let Some(glyph) = font_facts_glyph(key) {
+        if let Some(facts) = self.facts.as_ref() {
+            if let Some(glyph) = self.facts_glyph(key) {
                 if let Some(StretchPlan::Variant(variant)) =
                     facts.variants().stretch(glyph, StretchAxis::Vertical, target / size)
                 {
@@ -1788,7 +1807,7 @@ impl LayoutEngine {
         let extended_base = match base {
             SemanticNode::Symbol { glyph_key, .. } => {
                 !class.is_large_operator()
-                    && match (font_facts(), font_facts_glyph(glyph_key)) {
+                    && match (self.facts.as_ref(), self.facts_glyph(glyph_key)) {
                         (Some(facts), Some(glyph)) => facts.is_extended_shape(glyph),
                         _ => false,
                     }
@@ -2339,8 +2358,10 @@ impl LayoutEngine {
         // design covers the target and how an assembly repeats its connectors,
         // while the metrics cache supplies the outlines those pieces are drawn
         // with. Never scale a delimiter: a font publishes larger designs instead.
-        if let Some(plan) = font_facts()
-            .and_then(|facts| font_facts_glyph(key).map(|glyph| (facts, glyph)))
+        if let Some(plan) = self
+            .facts
+            .as_ref()
+            .and_then(|facts| self.facts_glyph(key).map(|glyph| (facts, glyph)))
             .and_then(|(facts, glyph)| facts.variants().stretch(glyph, StretchAxis::Vertical, target_height / size))
         {
             if let Some(node) = self.draw_stretch_plan(&plan, &construction.variants, &construction.components, size)? {
@@ -2537,7 +2558,7 @@ impl LayoutEngine {
             LayoutNode::Glyph(glyph) => {
                 let facts_attachment = glyph
                     .glyph_id
-                    .and_then(|glyph_id| font_facts()?.top_accent_attachment(GlyphId::new(glyph_id)))
+                    .and_then(|glyph_id| self.facts.as_ref()?.top_accent_attachment(GlyphId::new(glyph_id)))
                     .map(|em| em * glyph.size);
                 facts_attachment.filter(|attachment| *attachment > Fixed::ZERO).or_else(|| {
                     (glyph.metrics.top_accent_attachment > Fixed::ZERO).then_some(glyph.metrics.top_accent_attachment)

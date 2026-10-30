@@ -9,5 +9,5 @@ pub use facts::{
     MathConstantValue, MathConstants, MathFontFacts, MathGlyphFacts, MathKernInfo, MathVariant, MathVariants, StretchAxis,
     StretchPlan,
 };
-pub use font_metrics::{FontMetricsSystem, builtin_font_metrics};
+pub use font_metrics::{FontMetricsSystem, builtin_font_metrics, builtin_font_metrics_for};
 pub use opentype::{MathFontFamily, opentype_font_metrics};

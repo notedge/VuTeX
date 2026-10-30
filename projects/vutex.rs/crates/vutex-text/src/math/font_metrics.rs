@@ -464,13 +464,31 @@ fn rekey_delimiters(
 /// paths are still seeded for delimiter/path characters that the font did not
 /// provide.
 pub fn builtin_font_metrics() -> FontMetricsSystem {
-    let family_str = "default".to_string();
-
     // Prefer XITS Math (KaTeX lineage), fall back to LM Math (Computer Modern).
     // The same list gates `MathFontFacts::embedded`, so the engine's facts and
     // this cache always describe one font.
     let opentype_data =
         MathFontFamily::BUILTIN_PREFERENCE.into_iter().find_map(|fam| super::opentype::opentype_font_metrics(fam));
+    builtin_font_metrics_from(opentype_data)
+}
+
+/// Builtin metrics resolved from exactly one family.
+///
+/// A family whose asset is not embedded (or whose font file cannot be parsed)
+/// yields the pure synthetic cache, the same shape
+/// [`builtin_font_metrics`] falls back to. Pair with
+/// [`MathFontFacts::for_family`](super::facts::MathFontFacts::for_family) so
+/// the metrics cache and the `MATH` facts describe one font.
+pub fn builtin_font_metrics_for(family: MathFontFamily) -> FontMetricsSystem {
+    builtin_font_metrics_from(super::opentype::opentype_font_metrics(family))
+}
+
+/// Assemble the builtin metrics cache around one family's projected data.
+///
+/// `opentype_data` is the chosen font's metrics or `None` for the pure
+/// synthetic path; everything the font publishes is re-keyed under "default".
+fn builtin_font_metrics_from(opentype_data: Option<FontMetricsData>) -> FontMetricsSystem {
+    let family_str = "default".to_string();
 
     let mut data = if let Some(opentype_data) = opentype_data {
         // Opentype data comes with its own family name ("latin-modern-math");
