@@ -68,7 +68,7 @@ impl MathFontFamily {
     ///
     /// The metrics cache and the font facts must resolve the default face
     /// through this list so they always describe the same font.
-    pub const BUILTIN_PREFERENCE: [Self; 2] = [Self::XitsMath, Self::LmMath];
+    pub const BUILTIN_PREFERENCE: [Self; 2] = [Self::LmMath, Self::XitsMath];
 
     /// The first embedded family, i.e. the builtin default face.
     pub fn builtin_default() -> Option<Self> {
