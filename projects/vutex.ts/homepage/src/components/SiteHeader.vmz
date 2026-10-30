@@ -1,48 +1,29 @@
 <template>
-    <header class="site-header">
+    <header class="site-header" data-vmz-fixture="site-header">
         <div class="container site-header__inner">
-            <a href="/" class="site-brand" aria-label="VuTeX 首页">
-                <span>VuTeX</span>
-                <span aria-hidden="true" class="site-brand__dot">·</span>
-            </a>
-            <nav class="site-nav" aria-label="主导航">
-                <div class="site-nav__links">
-                    <a href="/" :data-active="isActive('index')">概览</a>
-                    <a href="/gallery" :data-active="isActive('gallery')">画廊</a>
-                    <a href="/playground" :data-active="isActive('playground')">试验台</a>
+            <a :href="href('/')" class="site-brand" aria-label="VuTeX"><span>VuTeX</span><span class="site-brand__descriptor" lang="en">TYPESETTING ATELIER</span></a>
+            <nav class="site-nav" :aria-label="t('overview')">
+                <div class="site-nav__links"><a :href="href('/')" :aria-current="page === 'index' ? 'page' : null">{{ t('overview') }}</a><a :href="href('/gallery')" :aria-current="page === 'gallery' ? 'page' : null">{{ t('gallery') }}</a><a :href="href('/playground')" :aria-current="page === 'playground' ? 'page' : null">{{ t('playground') }}</a><a :href="href('/install')">{{ t('install') }}</a><a :href="href('/d')">{{ t('docs') }}</a></div>
+                <div class="site-nav__tools">
+                    <details class="site-language"><summary class="icon-button" :aria-label="t('language')" :title="t('language')"><Icon name="nav.language" size="md" decorative /></summary><div class="site-popover"><a :href="localeHref('zh-hans')" lang="zh-CN" :aria-current="locale === 'zh-hans' ? 'true' : null">简体中文<span>ZH</span></a><a :href="localeHref('en-us')" lang="en" :aria-current="locale === 'en-us' ? 'true' : null">English<span>EN</span></a></div></details>
+                    <a class="site-nav__github" href="https://github.com/notedge/VuTeX" target="_blank" rel="noreferrer noopener">GitHub<span aria-hidden="true">↗</span></a>
+                    <details class="site-menu"><summary class="icon-button" :aria-label="t('menu')"><Icon name="action.menu" size="md" decorative /></summary><div class="site-popover"><a :href="href('/')">{{ t('overview') }}</a><a :href="href('/gallery')">{{ t('gallery') }}</a><a :href="href('/playground')">{{ t('playground') }}</a><a :href="href('/install')">{{ t('install') }}</a><a :href="href('/d')">{{ t('docs') }}</a><a href="https://github.com/notedge/VuTeX" target="_blank" rel="noreferrer noopener">GitHub ↗</a></div></details>
                 </div>
-                <div class="site-nav__meta">
-                    <span class="site-nav__version">{{ version }}</span>
-                    <a
-                        href="https://github.com/notedge/VuTeX"
-                        target="_blank"
-                        rel="noreferrer noopener"
-                        class="site-nav__github"
-                    >
-                        <span>GitHub</span>
-                        <span aria-hidden="true">↗</span>
-                    </a>
-                </div>
-                <details class="site-menu">
-                    <summary>菜单</summary>
-                    <div class="site-menu__panel">
-                        <a href="/" :data-active="isActive('index')">概览</a>
-                        <a href="/gallery" :data-active="isActive('gallery')">画廊</a>
-                        <a href="/playground" :data-active="isActive('playground')">试验台</a>
-                    </div>
-                </details>
             </nav>
         </div>
     </header>
 </template>
 <script client>
+import { copy, readLocale, localizedHref } from "../lib/locale.ts";
 export default class SiteHeader {
     page = "";
-    version = "wetex 0.0.12";
-
-    isActive(name) {
-        if (name === "index") return this.page === "index" ? "true" : "false";
-        return this.page === name ? "true" : "false";
+    locale = "zh-hans";
+    onMount() { this.locale = readLocale(); }
+    t(key) { return copy(key, this.locale); }
+    href(path) { return localizedHref(path, this.locale); }
+    localeHref(locale) {
+        const path = { index: "/", gallery: "/gallery", playground: "/playground", install: "/install", welcome: "/welcome" }[this.page] || "/";
+        return localizedHref(path, locale);
     }
 }
 </script>

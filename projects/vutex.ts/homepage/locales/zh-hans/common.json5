@@ -1,0 +1,4 @@
+{
+  nav: { overview: '概览', gallery: '公式画廊', playground: '试验台', install: '安装', docs: '文档' },
+  language: { label: '选择语言', zh: '简体中文', en: 'English' },
+}

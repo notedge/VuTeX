@@ -1,0 +1,26 @@
+<template>
+    <SiteShell page="install">
+        <section class="install-page container">
+            <p class="eyebrow"><span class="eyebrow__line"></span>{{ t('installEyebrow') }}</p>
+            <h1>{{ t('installTitle') }}</h1>
+            <p class="install-page__lede">{{ t('installLead') }}</p>
+            <div class="install-page__rule"></div>
+            <div class="install-page__grid">
+                <article><span class="install-page__index">01 / FORMULA</span><h2>{{ t('installWetex') }}</h2><p>{{ t('installWetexText') }}</p><pre><code>pnpm add @vutex/wetex</code></pre></article>
+                <article><span class="install-page__index">02 / RUNTIME + CLI</span><h2>{{ t('installRuntime') }}</h2><p>{{ t('installRuntimeText') }}</p><pre><code>pnpm add @vutex/vutex
+pnpm exec vutex --help</code></pre></article>
+            </div>
+            <div class="install-page__note"><span class="install-page__index">REQUIREMENTS</span><p>{{ t('installRequirements') }}</p></div>
+            <a :href="href('/d/guide/install')" class="text-link">{{ t('installDocsLink') }}<span class="link-arrow" aria-hidden="true">↗</span></a>
+        </section>
+    </SiteShell>
+</template>
+<script client>
+import { copy, readLocale, localizedHref } from "../lib/locale.ts";
+export default class InstallPage {
+    locale = "zh-hans";
+    onMount() { this.locale = readLocale(); }
+    t(key) { return copy(key, this.locale); }
+    href(path) { return localizedHref(path, this.locale); }
+}
+</script>

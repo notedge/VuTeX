@@ -1,0 +1,11 @@
+{
+  schemaVersion: 1,
+  defaultLocale: 'zh-hans',
+  locales: [
+    { id: 'zh-hans', label: '简体中文', direction: 'ltr' },
+    { id: 'en-us', label: 'English', direction: 'ltr' },
+  ],
+  fallback: { 'en-us': ['zh-hans'] },
+  routing: { strategy: 'prefix', defaultPrefix: 'omit' },
+  missing: 'warning',
+}

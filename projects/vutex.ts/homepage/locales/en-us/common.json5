@@ -1,0 +1,4 @@
+{
+  nav: { overview: 'Overview', gallery: 'Gallery', playground: 'Playground', install: 'Install', docs: 'Documentation' },
+  language: { label: 'Select language', zh: '简体中文', en: 'English' },
+}

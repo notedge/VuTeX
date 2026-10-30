@@ -1,0 +1,12 @@
+<template>
+    <div class="site site--docs">
+        <SiteHeader page="docs" />
+        <main id="main" class="site-main document-main">
+            <slot />
+        </main>
+        <SiteFooter />
+    </div>
+</template>
+<script client>
+export default class DocumentLayout {}
+</script>

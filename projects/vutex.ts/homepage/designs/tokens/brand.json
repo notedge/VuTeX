@@ -1,34 +1,34 @@
 {
     "brand": {
-        "primary": "#D6D6DE",
-        "ink": "#F4F4F6"
+        "primary": "#E5E2DC",
+        "ink": "#F1F0ED"
     },
     "surface": {
-        "paper": "#0E0E11",
-        "page": "#0A0A0C",
-        "mist": "#16161A",
-        "card": "#121216",
-        "ink": "#F4F4F6",
-        "night": "#050506",
-        "code": "#08080A"
+        "paper": "#111111",
+        "page": "#0C0C0C",
+        "mist": "#181818",
+        "card": "#141414",
+        "ink": "#F1F0ED",
+        "night": "#090909",
+        "code": "#101010"
     },
     "text": {
-        "ink": "#F4F4F6",
-        "steel": "#A6A6B0",
-        "muted": "#71717C",
-        "faint": "#4C4C56",
-        "on-brand": "#0B0B0D",
-        "on-night": "#E9E9EC"
+        "ink": "#F1F0ED",
+        "steel": "#B8B6B2",
+        "muted": "#96948F",
+        "faint": "#7D7B76",
+        "on-brand": "#141414",
+        "on-night": "#F1F0ED"
     },
     "line": {
-        "default": "#26262D",
-        "subtle": "#1C1C21",
-        "strong": "#3A3A44"
+        "default": "#30302E",
+        "subtle": "#242423",
+        "strong": "#55534F"
     },
     "font": {
-        "display": "\"VuTeX Math\", \"Latin Modern Math\", \"Songti SC\", \"Noto Serif CJK SC\", \"Source Han Serif SC\", STSong, serif",
-        "serif": "\"VuTeX Math\", \"Songti SC\", \"Noto Serif CJK SC\", \"Source Han Serif SC\", STSong, Georgia, serif",
-        "sans": "\"PingFang SC\", \"Noto Sans CJK SC\", \"Microsoft YaHei\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif",
+        "display": "\"Atelier Display\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans CJK SC\", sans-serif",
+        "serif": "\"Atelier Serif\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans CJK SC\", sans-serif",
+        "sans": "\"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans CJK SC\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
         "mono": "ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace"
     }
 }

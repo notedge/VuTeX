@@ -1,133 +1,99 @@
 <template>
     <SiteShell page="index">
-        <section class="container hero">
-            <div class="hero__copy">
-                <p class="label label--accent">VuTeX · WeTeX</p>
-                <h1>
-                    公式排版是计算问题，
-                    <br />
-                    <em>不是样式问题。</em>
-                </h1>
-                <p class="lede">
-                    WeTeX 是 VuTeX 的公式排版内核：Rust 实现，编译为 WebAssembly，在浏览器中直接计算每个字形的宽度、高度与基线深度，输出 HTML、SVG 或 MathML。本站所有公式均由内核现场排版。
-                </p>
-                <div class="hero__actions">
-                    <a href="/gallery" class="btn btn--primary">查看画廊</a>
-                    <a href="/playground" class="btn">
-                        打开试验台
-                        <span aria-hidden="true">→</span>
-                    </a>
+        <section class="atelier-hero container">
+            <div class="atelier-hero__copy">
+                <p class="eyebrow"><span class="eyebrow__line"></span>{{ t('eyebrow') }}</p>
+                <h1 lang="en">The art of<br /><em>precision.</em></h1>
+                <p class="atelier-hero__intro">{{ t('intro') }}</p>
+                <p class="atelier-hero__description">{{ t('description') }}</p>
+                <div class="atelier-hero__actions">
+                    <a :href="href('/gallery')" class="btn btn--primary">{{ t('explore') }}<span class="link-arrow" aria-hidden="true">↗</span></a>
+                    <a :href="href('/playground')" class="text-link">{{ t('try') }}<span class="link-arrow" aria-hidden="true">→</span></a>
+                </div>
+                <p class="atelier-hero__signature" lang="en">A typesetting atelier <span>by VuTeX</span></p>
+            </div>
+            <div class="atelier-art">
+                <svg class="atelier-orbit" viewBox="0 0 640 640" fill="none" aria-hidden="true">
+                    <defs><linearGradient id="orbit-silver" x1="0" y1="0" x2="640" y2="640" gradientUnits="userSpaceOnUse"><stop stop-color="#fafafa" stop-opacity=".6" /><stop offset=".5" stop-color="#fafafa" stop-opacity=".02" /><stop offset="1" stop-color="#fafafa" stop-opacity=".3" /></linearGradient></defs>
+                    <circle class="orbit-track" cx="320" cy="320" r="274" />
+                    <circle class="orbit-track orbit-track--inner" cx="320" cy="320" r="224" />
+                    <ellipse class="orbit-ellipse" cx="320" cy="320" rx="310" ry="116" transform="rotate(-36 320 320)" />
+                    <g class="orbit-turn"><circle cx="320" cy="46" r="3" fill="#e9e9e9" /><path d="M308 46h24M320 34v24" stroke="#999" stroke-width=".6" /></g>
+                    <path class="orbit-measure" d="M32 320h576M320 32v576" />
+                </svg>
+                <span class="art-coordinate art-coordinate--top" lang="en">FORM / 001</span>
+                <div class="specimen-sheet">
+                    <div class="specimen-sheet__heading"><span>V.</span><span lang="en">THE MATHEMATICS<br />OF BEAUTY</span></div>
+                    <div class="specimen-sheet__body">
+                        <p class="specimen-sheet__eyebrow" lang="en">Selected expressions</p>
+                        <div class="specimen-sheet__formula" :aria-label="t(selectedKey())" v-html="heroMarkup"></div>
+                        <p class="specimen-sheet__status" role="status">{{ statusText() }}</p>
+                        <p class="specimen-sheet__name">{{ t(selectedKey()) }}</p>
+                    </div>
+                    <div class="specimen-sheet__foot"><span lang="en">WeTeX / SVG</span><span>{{ position() }} — 03</span></div>
+                </div>
+                <span class="art-coordinate art-coordinate--bottom" lang="en">THOUGHT, IN FORM.</span>
+                <div class="specimen-selector" role="group" :aria-label="t('select')">
+                    <button type="button" :aria-label="t('euler')" :aria-pressed="selected === 0" @click="pick(0)"><span>01</span><span class="specimen-selector__line" :data-active="selected === 0"></span></button>
+                    <button type="button" :aria-label="t('gauss')" :aria-pressed="selected === 1" @click="pick(1)"><span>02</span><span class="specimen-selector__line" :data-active="selected === 1"></span></button>
+                    <button type="button" :aria-label="t('quadratic')" :aria-pressed="selected === 2" @click="pick(2)"><span>03</span><span class="specimen-selector__line" :data-active="selected === 2"></span></button>
                 </div>
             </div>
-            <div class="hero__specimen">
-                <div class="hero__canvas" v-html="heroMarkup"></div>
-                <p class="hero__caption">
-                    <span class="meta">WeTeX · SVG</span>
-                    <span class="hero__metric">{{ heroMetric }}</span>
-                </p>
+            <div class="atelier-hero__bottom"><a href="#details" class="scroll-cue"><span aria-hidden="true">↓</span>{{ t('scroll') }}</a><span lang="en">LANGUAGE-NEUTRAL. DETAIL-OBSESSED.</span></div>
+        </section>
+        <div class="format-ribbon"><div class="container format-ribbon__inner"><span lang="en">THE EXPRESSION IS YOURS.</span><p><span>SVG</span><i></i><span>HTML</span><i></i><span>MathML</span></p><span lang="en">THE DETAILS ARE OURS.</span></div></div>
+        <section class="container detail-section" id="details">
+            <div class="detail-section__heading"><p class="eyebrow" lang="en">01 / THE FINER THINGS</p><div><h2>{{ t('collection') }}</h2><p>{{ t('collectionText') }}</p></div><a :href="href('/gallery')" class="text-link">{{ t('gallery') }} <span class="link-arrow" aria-hidden="true">↗</span></a></div>
+            <div class="detail-grid">
+                <article class="detail-card">
+                    <div class="detail-card__visual glyph-study" aria-hidden="true"><span lang="en">ƒ</span><svg viewBox="0 0 300 190" fill="none"><path d="M30 42h240M30 140h240M118 16v158M188 16v158" /><circle cx="188" cy="42" r="4" /><circle cx="118" cy="140" r="4" /></svg><span class="study-label">Aa / 𝑓</span></div>
+                    <span class="detail-card__index">01 — GLYPH</span><h3>{{ t('detail1') }}</h3><p>{{ t('detail1Text') }}</p>
+                </article>
+                <article class="detail-card">
+                    <div class="detail-card__visual spacing-study" aria-hidden="true"><span class="spacing-study__symbol">a</span><span class="spacing-study__plus">+</span><span class="spacing-study__symbol">b</span><svg viewBox="0 0 300 190" fill="none"><path class="spacing-guide" d="M64 40v110M116 40v110M181 40v110M233 40v110M64 152h52M181 152h52" /><path d="m70 148-6 4 6 4m40-8 6 4-6 4m77-8-6 4 6 4m40-8 6 4-6 4" /></svg></div>
+                    <span class="detail-card__index">02 — RHYTHM</span><h3>{{ t('detail2') }}</h3><p>{{ t('detail2Text') }}</p>
+                </article>
+                <article class="detail-card">
+                    <div class="detail-card__visual output-study" aria-hidden="true"><div class="output-page output-page--back"></div><div class="output-page output-page--middle"></div><div class="output-page output-page--front"><span>∑</span><i></i><i></i><i></i></div><span class="study-label">ONE IDEA. MANY FORMS.</span></div>
+                    <span class="detail-card__index">03 — EXPRESSION</span><h3>{{ t('detail3') }}</h3><p>{{ t('detail3Text') }}</p>
+                </article>
             </div>
         </section>
-
-        <section class="section">
-            <div class="container">
-                <p class="label">设计原则</p>
-                <div class="principles">
-                    <article class="principle">
-                        <span class="meta">01</span>
-                        <h2>先有度量，再有显示</h2>
-                        <p>
-                            宽度、高度、基线与深度由内核直接返回。分页、对齐、换行因此可以基于数值求解，而不必依赖 CSS 近似。
-                        </p>
-                    </article>
-                    <article class="principle">
-                        <span class="meta">02</span>
-                        <h2>一份语义，多种产物</h2>
-                        <p>
-                            同一棵公式树可落为 HTML、SVG 路径或 MathML 语义树。输出格式是交付决定，不需要重写公式。
-                        </p>
-                    </article>
-                    <article class="principle">
-                        <span class="meta">03</span>
-                        <h2>以成熟实现为参照</h2>
-                        <p>
-                            KaTeX 与 MathJax 仅作为参照组：同一份 TeX 渲染三遍，逐条核验 WeTeX 的正确性。差异记录在画廊，不写进宣传。
-                        </p>
-                    </article>
-                </div>
-            </div>
-        </section>
-
-        <section class="section">
-            <div class="container">
-                <p class="label">输出格式</p>
-                <h2 class="section__title">WeTeX 输出 HTML、SVG 与 MathML</h2>
-                <table class="matrix">
-                    <thead>
-                        <tr>
-                            <th scope="col">引擎</th>
-                            <th scope="col" v-for="backend in backends" :key="backend.id">{{ backend.label }}</th>
-                            <th scope="col">来源</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr v-for="engine in engines" :key="engine.id">
-                            <td>
-                                <span class="matrix__name">{{ engine.name }}</span>
-                            </td>
-                            <td v-for="backend in backends" :key="backend.id">
-                                <span :data-on="supports(engine.id, backend.id) ? 'true' : 'false'">
-                                    {{ mark(engine.id, backend.id) }}
-                                </span>
-                            </td>
-                            <td class="meta">{{ engine.vendor }}</td>
-                        </tr>
-                    </tbody>
-                </table>
-                <p class="matrix__note">
-                    WeTeX 同时提供 HTML、SVG 与 MathML。参照组中，KaTeX 支持 HTML 与 MathML，MathJax 支持 SVG 与 MathML。
-                </p>
-            </div>
-        </section>
-
-        <section class="section">
-            <div class="container closing">
-                <p class="label label--accent">下一步</p>
-                <h2 class="closing__title">从 14 组画廊样例开始，或直接输入你自己的 TeX。</h2>
-                <div class="closing__actions">
-                    <a href="/welcome" class="btn btn--primary">全屏展示</a>
-                    <a href="/playground" class="btn">打开试验台</a>
-                </div>
-            </div>
-        </section>
+        <section class="atelier-closing container"><span class="atelier-closing__mark" aria-hidden="true">V.</span><p class="eyebrow" lang="en">MAKE ROOM FOR YOUR IDEAS</p><h2>{{ t('closing') }}</h2><p>{{ t('closingText') }}</p><a :href="href('/playground')" class="btn btn--primary">{{ t('try') }}<span class="link-arrow" aria-hidden="true">↗</span></a></section>
     </SiteShell>
 </template>
 <script client>
-import { BACKENDS, ENGINES, renderFormula, supportsBackend } from "../lib/engines.ts";
+import { renderFormula } from "../lib/engines.ts";
 import { SPECIMENS } from "../lib/formulas.ts";
-
+import { copy, readLocale, localizedHref } from "../lib/locale.ts";
 export default class Index {
-    backends = BACKENDS.slice();
-    engines = ENGINES.slice();
+    locale = "zh-hans";
+    selected = 0;
     heroMarkup = "";
-    heroMetric = "编译中";
-
+    loading = false;
+    failed = false;
+    request = 0;
+    t(key) { return copy(key, this.locale); }
+    href(path) { return localizedHref(path, this.locale); }
+    selectedKey() { return ["euler", "gauss", "quadratic"][this.selected]; }
+    position() { return String(this.selected + 1).padStart(2, "0"); }
+    statusText() { return this.loading ? this.t("loading") : this.failed ? this.t("error") : this.t("live"); }
     onMount() {
+        this.locale = readLocale();
+        document.documentElement.lang = this.locale === "en-us" ? "en" : "zh-CN";
+        document.title = "VuTeX — The art of precision";
         this.renderHero();
     }
-
-    supports(engineId, backendId) {
-        return supportsBackend(engineId, backendId);
-    }
-
-    mark(engineId, backendId) {
-        return supportsBackend(engineId, backendId) ? "✓" : "—";
-    }
-
+    onDestroy() { this.request += 1; }
+    pick(index) { if (index === this.selected) return; this.selected = index; this.renderHero(); }
     async renderHero() {
-        const item = SPECIMENS[6];
-        const result = await renderFormula("wetex", "svg", item.tex, true);
+        const request = ++this.request;
+        this.failed = false;
+        const result = await renderFormula("wetex", "svg", SPECIMENS[this.selected].tex, true);
+        if (request !== this.request) return;
         this.heroMarkup = result.ok ? result.markup : "";
-        this.heroMetric = `${item.name} · ${result.ms} ms`;
+        this.failed = !result.ok;
+        this.loading = false;
     }
 }
 </script>
