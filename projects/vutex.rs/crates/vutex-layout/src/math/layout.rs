@@ -493,32 +493,46 @@ impl LayoutEngine {
         }
     }
 
-    /// The first [`GlyphKey`] reachable from a semantic node.
+    /// The first [`GlyphKey`] reachable from a semantic node, in the face the
+    /// font actually draws.
+    ///
+    /// Font facts — `MATH` kern corners and the extents that set their
+    /// correction heights — belong to the glyph that gets painted, not to the
+    /// letter the source spells. A math variable is drawn from the math-italic
+    /// alphabet, so the key every facts query runs on resolves through the same
+    /// [`Self::alphalect_key`] contract [`Self::layout_scaled_symbol`] uses to
+    /// pick the face. Digits, operators and letters a font ships no italic
+    /// face for keep their authored key.
+    fn first_glyph_key(&self, node: &SemanticNode) -> Option<GlyphKey> {
+        Self::authored_glyph_key(node).map(|key| self.alphalect_key(&key))
+    }
+
+    /// The authored [`GlyphKey`] of the first character `node` reaches.
     ///
     /// Walks the tree skipping `Sequence`, style commands, delimiters and
     /// script wrappers until it hits a `Symbol` or `Text` with at least one
     /// character.  Returns `None` for purely structural nodes (fractions,
     /// radicals, matrices, …) that don't directly own a glyph key.
-    fn first_glyph_key(node: &SemanticNode) -> Option<GlyphKey> {
+    fn authored_glyph_key(node: &SemanticNode) -> Option<GlyphKey> {
         match node {
             SemanticNode::Symbol { glyph_key, .. } => Some(glyph_key.clone()),
-            SemanticNode::Sequence(items) => items.iter().find_map(Self::first_glyph_key),
+            SemanticNode::Sequence(items) => items.iter().find_map(Self::authored_glyph_key),
             SemanticNode::Text { text, font_style } => text.chars().next().map(|c| GlyphKey::from_char(c, None, *font_style)),
             SemanticNode::Subscript { base, .. }
             | SemanticNode::Superscript { base, .. }
-            | SemanticNode::SubSuperscript { base, .. } => Self::first_glyph_key(base),
-            SemanticNode::Fraction { num, .. } => Self::first_glyph_key(num),
-            SemanticNode::Radical { radicand, .. } => Self::first_glyph_key(radicand),
-            SemanticNode::Delimited { content, .. } => Self::first_glyph_key(content),
-            SemanticNode::Accent { base, .. } => Self::first_glyph_key(base),
-            SemanticNode::OverSet { base, .. } | SemanticNode::UnderSet { base, .. } => Self::first_glyph_key(base),
-            SemanticNode::Relation(inner) => Self::first_glyph_key(inner),
-            SemanticNode::HorizontalBox { content, .. } => content.iter().find_map(Self::first_glyph_key),
-            SemanticNode::Paragraph { content, .. } => content.iter().find_map(Self::first_glyph_key),
-            SemanticNode::VerticalBox { content, .. } => content.iter().find_map(Self::first_glyph_key),
-            SemanticNode::Matrix { rows, .. } => rows.iter().flatten().find_map(Self::first_glyph_key),
+            | SemanticNode::SubSuperscript { base, .. } => Self::authored_glyph_key(base),
+            SemanticNode::Fraction { num, .. } => Self::authored_glyph_key(num),
+            SemanticNode::Radical { radicand, .. } => Self::authored_glyph_key(radicand),
+            SemanticNode::Delimited { content, .. } => Self::authored_glyph_key(content),
+            SemanticNode::Accent { base, .. } => Self::authored_glyph_key(base),
+            SemanticNode::OverSet { base, .. } | SemanticNode::UnderSet { base, .. } => Self::authored_glyph_key(base),
+            SemanticNode::Relation(inner) => Self::authored_glyph_key(inner),
+            SemanticNode::HorizontalBox { content, .. } => content.iter().find_map(Self::authored_glyph_key),
+            SemanticNode::Paragraph { content, .. } => content.iter().find_map(Self::authored_glyph_key),
+            SemanticNode::VerticalBox { content, .. } => content.iter().find_map(Self::authored_glyph_key),
+            SemanticNode::Matrix { rows, .. } => rows.iter().flatten().find_map(Self::authored_glyph_key),
             SemanticNode::Environment(environment) => {
-                environment.rows.iter().flat_map(|row| row.cells.iter()).find_map(Self::first_glyph_key)
+                environment.rows.iter().flat_map(|row| row.cells.iter()).find_map(Self::authored_glyph_key)
             }
             SemanticNode::Space { .. } | SemanticNode::SetMathStyle(_) | SemanticNode::LimitsSpec(_) => None,
         }
@@ -903,7 +917,7 @@ impl LayoutEngine {
                 let right_nucleus = noad.nucleus.as_deref();
                 if let (Some(left_node), Some(right_node)) = (left_nucleus, right_nucleus) {
                     if let (Some(left_key), Some(right_key)) =
-                        (Self::first_glyph_key(left_node), Self::first_glyph_key(right_node))
+                        (self.first_glyph_key(left_node), self.first_glyph_key(right_node))
                     {
                         if let Some(kern) = self.math_kern_between(&left_key, &right_key, size) {
                             if kern != Fixed::ZERO {
@@ -1823,11 +1837,11 @@ impl LayoutEngine {
         // while a plain glyph keeps its own shift minima. A large operator
         // instead follows the `op` atom rules `layout_limits` and the shift
         // minima below already encode, so it is not treated as extended here.
-        let base_key = Self::first_glyph_key(base);
+        let base_key = self.first_glyph_key(base);
         let extended_base = match base {
             SemanticNode::Symbol { glyph_key, .. } => {
                 !class.is_large_operator()
-                    && match (self.facts.as_ref(), self.facts_glyph(glyph_key)) {
+                    && match (self.facts.as_ref(), self.facts_glyph(&self.alphalect_key(glyph_key))) {
                         (Some(facts), Some(glyph)) => facts.is_extended_shape(glyph),
                         _ => false,
                     }

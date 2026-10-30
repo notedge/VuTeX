@@ -3047,3 +3047,41 @@ fn mathsf_mathit_textit_and_mathit_variants_are_accepted() {
     accepts_face_command(r"\textit{z}", r"\textit{z}");
     accepts_face_command(r"\mathit{w}", r"\mathit{w}");
 }
+
+/// A script's `MathKern` corner is read from the face that actually draws.
+///
+/// XITS publishes a `TopRight` step on upright `λ` and `Δ` and nothing on the
+/// math-italic 𝜆 the alphalect contract redirects `\\lambda` onto, so the
+/// italic base must take no kern while the upright one keeps its own.
+#[test]
+fn script_kern_follows_the_drawn_alphalect_face() {
+    fn horizontal_kerns(node: &LayoutNode, out: &mut Vec<Fixed>) {
+        match node {
+            LayoutNode::HBox(hbox) => {
+                for child in &hbox.children {
+                    if let LayoutNode::Kern(kern) = child {
+                        out.push(*kern);
+                    }
+                    horizontal_kerns(child, out);
+                }
+            }
+            LayoutNode::VBox(vbox) => {
+                for child in &vbox.children {
+                    horizontal_kerns(child, out);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let (italic, _) = layout_formula("\\lambda^2", false).expect("the formula should lay out");
+    let mut italic_kerns = Vec::new();
+    horizontal_kerns(&italic, &mut italic_kerns);
+    assert!(italic_kerns.is_empty(), "upright λ's `TopRight` step must not leak onto the drawn 𝜆: {italic_kerns:?}");
+
+    let (upright, _) = layout_formula("\\Delta^2", false).expect("the formula should lay out");
+    let mut upright_kerns = Vec::new();
+    horizontal_kerns(&upright, &mut upright_kerns);
+    assert_eq!(upright_kerns.len(), 1, "the drawn upright Δ keeps its own `TopRight` kern: {upright_kerns:?}");
+    assert!(upright_kerns[0] < Fixed::ZERO, "the step is a negative kern: {}", upright_kerns[0].to_f64());
+}
