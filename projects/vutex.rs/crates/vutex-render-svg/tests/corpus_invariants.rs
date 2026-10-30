@@ -264,6 +264,12 @@ fn total_extent(source: &str, display: bool) -> f64 {
     metrics.height + metrics.depth
 }
 
+/// Vertical extents `(height, depth)` of a formula.
+fn extents(source: &str, display: bool) -> (f64, f64) {
+    let (_, metrics) = layout_formula(source, display).unwrap_or_else(|e| panic!("`{source}` must lay out: {e}"));
+    (metrics.height, metrics.depth)
+}
+
 /// The gate must implement every invariant the corpus claims, or the fixture
 /// and the checks drift apart silently.
 #[test]
@@ -408,12 +414,17 @@ fn script_fraction_is_shorter_than_the_text_fraction() {
     );
 }
 
-/// A stretched delimiter is sized from the body it wraps, so the delimited
-/// formula's extent must clear the bare body by a visible margin instead of
-/// collapsing onto the one-em minimum.
+/// A stretched delimiter is sized from the body it wraps: TeX centers it on
+/// the math axis and takes the smallest design covering
+/// `2 * max(body_height - axis, body_depth + axis)`, so the delimited formula
+/// must reach the body's extremes on both sides and each delimiter's own span
+/// must be at least the body's full extent. A total-extent ratio margin is
+/// not the contract: for a body that is nearly symmetric about the axis, TeX
+/// itself covers it with a margin approaching zero, and a pair that collapsed
+/// onto the one-em minimum still fails the span check.
 #[test]
 fn stretched_delimiters_cover_their_body() {
-    const MIN_COVER: f64 = 1.05;
+    const COVER_TOLERANCE: f64 = 1e-6;
 
     let corpus = load_corpus();
     let mut violations = Vec::new();
@@ -425,16 +436,36 @@ fn stretched_delimiters_cover_their_body() {
         }
         let body = case.body.as_deref().expect("`delimiter_covers_body` records the body");
         let display = is_display(case);
-        let wrapped = total_extent(&case.src, display);
-        let bare = total_extent(body, display);
+        let (root, wrapped) =
+            layout_formula(&case.src, display).unwrap_or_else(|e| panic!("`{}` ({}) must lay out: {e}", case.src, case.style));
+        let (bare_height, bare_depth) = extents(body, display);
+        let bare_total = bare_height + bare_depth;
+        let label = format!("`{}` ({})", case.src, case.style);
         checked += 1;
-        if wrapped < bare * MIN_COVER {
+
+        if wrapped.height < bare_height - COVER_TOLERANCE || wrapped.depth < bare_depth - COVER_TOLERANCE {
             violations.push(format!(
-                "`{}` ({}) wraps `{body}` in {wrapped} but the body alone is {bare} (ratio {:.3} < {MIN_COVER})",
-                case.src,
-                case.style,
-                wrapped / bare.max(f64::EPSILON),
+                "{label}: the delimited formula reaches {} above and {} below the baseline but the body alone is {bare_height} x {bare_depth}",
+                wrapped.height, wrapped.depth,
             ));
+        }
+
+        // The fence hbox lists the two delimiters first and last.
+        let LayoutNode::HBox(fence) = &root
+        else {
+            violations.push(format!("{label}: a `\\left…\\right` pair must lower to an hbox: {root:?}"));
+            continue;
+        };
+        for (name, delimiter) in [("left", fence.children.first()), ("right", fence.children.last())] {
+            let Some(delimiter) = delimiter
+            else {
+                violations.push(format!("{label}: the fence hbox holds no {name} delimiter"));
+                continue;
+            };
+            let span = (delimiter.height() + delimiter.depth()).to_f64();
+            if span < bare_total - COVER_TOLERANCE {
+                violations.push(format!("{label}: the {name} delimiter spans {span} but the body alone is {bare_total}"));
+            }
         }
     }
 
