@@ -9,7 +9,7 @@
 //! is the font facts and how a measured value and an absence stay
 //! distinguishable.
 
-use vutex_text::math::{GlyphId, KernCorner, MathFontFamily, MathFontFacts};
+use vutex_text::math::{GlyphId, KernCorner, MathFontFacts, MathFontFamily};
 use vutex_types::math::Fixed;
 
 /// Absolute tolerance for an em-relative font fact, generous enough for the

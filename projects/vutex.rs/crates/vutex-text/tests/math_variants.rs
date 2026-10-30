@@ -5,7 +5,7 @@
 //! recipes. A size the font does not publish must be reported as missing rather
 //! than replaced with a scaled-up copy of the base glyph.
 
-use vutex_text::math::{GlyphId, MathFontFamily, MathFontFacts, StretchAxis, StretchPlan};
+use vutex_text::math::{GlyphId, MathFontFacts, MathFontFamily, StretchAxis, StretchPlan};
 use vutex_types::math::Fixed;
 
 fn em(value: f64) -> Fixed {

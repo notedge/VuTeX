@@ -7,7 +7,7 @@
 //! font said nothing is `MathConstantValue::SyntheticFallback`. A caller can
 //! therefore audit a layout that fell back without reading the font itself.
 
-use vutex_text::math::{MathConstantValue, MathConstants, MathFontFamily, MathFontFacts};
+use vutex_text::math::{MathConstantValue, MathConstants, MathFontFacts, MathFontFamily};
 use vutex_types::math::MathConstant;
 
 /// Absolute tolerance for an em-relative constant, covering the 1/65536 `Fixed`

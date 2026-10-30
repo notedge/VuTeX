@@ -1,6 +1,9 @@
 //! Integration tests for the math parse/layout pipeline.
 
-use vutex_layout::math::{Glyph, LayoutEngine, LayoutNode, default_base_size, layout_formula_with_result, layout_formula_with_result_for, parse_formula};
+use vutex_layout::math::{
+    Glyph, LayoutEngine, LayoutNode, default_base_size, layout_formula_with_result, layout_formula_with_result_for,
+    parse_formula,
+};
 use vutex_text::math::{FontMetricsSystem, builtin_font_metrics};
 use vutex_types::{
     Severity,
@@ -3319,15 +3322,15 @@ fn script_kern_follows_the_drawn_alphalect_face() {
     }
 
     let family = vutex_text::math::MathFontFamily::XitsMath;
-    let (_, italic, _) =
-        layout_formula_with_result_for("\\lambda^2", false, default_base_size(false), family).expect("the formula should lay out");
+    let (_, italic, _) = layout_formula_with_result_for("\\lambda^2", false, default_base_size(false), family)
+        .expect("the formula should lay out");
     let mut italic_kerns = Vec::new();
     horizontal_kerns(&italic, &mut italic_kerns);
     let italic_corners: Vec<Fixed> = italic_kerns.into_iter().filter(|kern| *kern < Fixed::ZERO).collect();
     assert!(italic_corners.is_empty(), "upright λ's `TopRight` step must not leak onto the drawn 𝜆: {italic_corners:?}");
 
-    let (_, upright, _) =
-        layout_formula_with_result_for("\\Delta^2", false, default_base_size(false), family).expect("the formula should lay out");
+    let (_, upright, _) = layout_formula_with_result_for("\\Delta^2", false, default_base_size(false), family)
+        .expect("the formula should lay out");
     let mut upright_kerns = Vec::new();
     horizontal_kerns(&upright, &mut upright_kerns);
     let upright_corners: Vec<Fixed> = upright_kerns.into_iter().filter(|kern| *kern < Fixed::ZERO).collect();
