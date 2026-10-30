@@ -31,6 +31,18 @@ impl FontMetricsSystem {
         self.metrics_cache.get_mut(&family).unwrap().glyphs.insert(key, metrics);
     }
 
+    /// Whether the font facts actually carry a glyph for `key`.
+    ///
+    /// Layout uses this to confirm a math-alphabet redirect ships a real face
+    /// before swapping the authored character for its dedicated codepoint;
+    /// `get_metrics` cannot answer the question because it falls back to
+    /// synthetic defaults on a miss.
+    pub fn has_glyph(&self, key: &GlyphKey) -> bool {
+        let family = key.font_family.as_deref().unwrap_or("default");
+        let normalized = GlyphKey { font_family: Some(family.to_string()), ..key.clone() };
+        self.metrics_cache.get(family).is_some_and(|data| data.glyphs.contains_key(&normalized))
+    }
+
     pub fn get_metrics(&self, key: &GlyphKey) -> MathResult<GlyphMetrics> {
         let family = key.font_family.as_deref().unwrap_or("default");
         // Normalize key: layout passes None family, but rekey_family stores

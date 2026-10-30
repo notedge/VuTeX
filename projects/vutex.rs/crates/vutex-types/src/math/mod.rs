@@ -1,5 +1,6 @@
 //! Math formula semantic types (ported from RuTeX).
 
+mod alphalect;
 mod error;
 pub mod formula_layout;
 pub mod math_kern;
@@ -8,6 +9,7 @@ mod metrics;
 pub mod operator;
 mod semantic;
 
+pub use alphalect::{alphalect_sources, alphalect_styles, math_alphalect};
 pub use error::{MathError, MathErrorKind, MathResult};
 pub use formula_layout::{
     BBox, FontAxis, FontFaceSnapshot, FontMetricsSnapshot, FormulaLayoutResult, FormulaMetrics, PaintNode,

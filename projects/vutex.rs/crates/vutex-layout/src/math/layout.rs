@@ -11,7 +11,7 @@ use vutex_types::{
         Alignment, AlignmentAnchors, BBox, DelimiterComponent, DelimiterVariant, Fixed, FontMetricsSnapshot, FontStyle,
         FormulaLayoutResult, FormulaMetrics, GlyphKey, GlyphMetrics, LimitsPolicy, LineStyle, MathConstant, MathEnvironment,
         MathItem, MathList, MathResult, MathStyle, MathStyleState, Noad, NoadKind, Numbering, OperatorClass, PaintNode,
-        SemanticNode, SpacingRule, SymbolRole, normalize_math_list, project_semantic_with_state,
+        SemanticNode, SpacingRule, SymbolRole, math_alphalect, normalize_math_list, project_semantic_with_state,
     },
 };
 
@@ -1059,7 +1059,27 @@ impl LayoutEngine {
         Ok(tallest.map(|(_, glyph)| glyph))
     }
 
+    /// The font face that actually draws `key`.
+    ///
+    /// TeX sets a math variable in the math-italic alphabet, not the upright
+    /// letter the source spells, and `\mathbb` / `\mathcal` / `\mathfrak` and
+    /// friends each own their own alphabet. The alphalect contract names the
+    /// dedicated codepoint for a styled letter; the font has the final say, so
+    /// the swap only happens when the loaded font ships that face and the
+    /// authored glyph stands otherwise. Digits, operators and upright text
+    /// resolve to themselves.
+    fn alphalect_key(&self, key: &GlyphKey) -> GlyphKey {
+        let Some(mapped) = key.char.and_then(|c| math_alphalect(key.style, c))
+        else {
+            return key.clone();
+        };
+        let redirected = GlyphKey::from_char(mapped, key.font_family.clone(), FontStyle::Math);
+        if self.font_system.has_glyph(&redirected) { redirected } else { key.clone() }
+    }
+
     fn layout_scaled_symbol(&self, key: &GlyphKey, size: Fixed) -> MathResult<LayoutNode> {
+        let authored_style = key.style;
+        let key = &self.alphalect_key(key);
         let metrics = self.font_system.get_metrics(key)?;
         let path_data = self.font_system.get_glyph_path(key).ok();
         let font_family = key.font_family.clone().unwrap_or_else(|| "default".to_string());
@@ -1072,7 +1092,7 @@ impl LayoutEngine {
         Ok(LayoutNode::Glyph(Glyph {
             char: key.char,
             font_family,
-            font_style: key.style,
+            font_style: authored_style,
             size,
             metrics: GlyphMetrics {
                 width: metrics.width * size.to_f64(),

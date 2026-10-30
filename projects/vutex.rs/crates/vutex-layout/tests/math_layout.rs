@@ -9,7 +9,7 @@ use vutex_types::{
     Severity,
     math::{
         EnvironmentKind, EnvironmentRow, Fixed, FontMetricsData, FontStyle, GlyphKey, MathConstant, MathEnvironment, MathStyle,
-        Numbering, SemanticNode, SymbolRole,
+        Numbering, SemanticNode, SymbolRole, math_alphalect,
     },
 };
 
@@ -56,9 +56,25 @@ fn glyphs(node: &LayoutNode) -> Vec<(f64, f64, Glyph)> {
     out
 }
 
+/// The codepoint that draws an authored math letter.
+///
+/// Layout redirects a styled letter onto its dedicated alphalect face when the
+/// font ships it, so the authored `x` is painted by the math-italic glyph.
+/// Tests locate a variable by the character the source spells; resolve it
+/// through the same contract before matching.
+fn drawn_char(char: char) -> char {
+    math_alphalect(FontStyle::Math, char).unwrap_or(char)
+}
+
 /// All glyphs carrying `char`, in tree order.
+///
+/// Matches the authored spelling and its alphalect redirect alike.
 fn glyphs_of(node: &LayoutNode, char: char) -> Vec<(f64, f64, Glyph)> {
-    glyphs(node).into_iter().filter(|(_, _, glyph)| glyph.char == Some(char)).collect()
+    let redirect = math_alphalect(FontStyle::Math, char);
+    glyphs(node)
+        .into_iter()
+        .filter(|(_, _, glyph)| glyph.char == Some(char) || (redirect.is_some() && glyph.char == redirect))
+        .collect()
 }
 
 /// Position of the only glyph carrying `char`.
@@ -204,9 +220,10 @@ fn math_italic_face_keeps_positive_italic_correction() {
     // invented for it.
     let (tree, _) = layout_formula("\\mathit{x}^2", false).expect("mathit x^2");
     let (_, _, italic_x) = glyph_at(&tree, 'x');
+    let drawn = italic_x.char.expect("drawn glyph carries its character");
     let published = system
-        .get_metrics(&GlyphKey::from_char('x', Some(family.to_string()), FontStyle::Italic))
-        .expect("italic x metrics")
+        .get_metrics(&GlyphKey::from_char(drawn, Some(family.to_string()), FontStyle::Math))
+        .expect("drawn face metrics")
         .italic_correction
         .to_f64();
     let expected = published * italic_x.size.to_f64();
@@ -661,7 +678,7 @@ fn overset_base_not_forced_to_axis() {
     let (tree, _) = layout_formula("\\overset{x}{\\sum}", false).expect("overset on large op must parse");
     let gs = glyphs(&tree);
     let chars: Vec<char> = gs.iter().filter_map(|(_, _, g)| g.char).collect();
-    assert!(chars.contains(&'x'), "overset top must paint");
+    assert!(chars.contains(&drawn_char('x')), "overset top must paint");
     assert!(chars.contains(&'∑'), "overset base must paint");
 }
 

@@ -21,7 +21,7 @@ use acorn_ttf::{FontFace, OutlineBuilder};
 
 use vutex_types::math::{
     DelimiterComponent, DelimiterConstruction, DelimiterVariant, Fixed, FontMetricsData, FontStyle, GlyphKey, GlyphMetrics,
-    MathKern,
+    MathKern, alphalect_sources, alphalect_styles, math_alphalect,
 };
 
 use super::facts::{KernCorner, MathFontFacts, StretchAxis};
@@ -203,6 +203,25 @@ const TARGET_SYMBOLS: &[char] = &[
 /// host-font `<text>` run when the font does ship the mark.
 const ACCENT_SYMBOLS: &[char] = &['ˆ', '¯', '˜', '˙', '¨', '˘', 'ˇ', '˚', '\u{20D7}'];
 
+/// The dedicated math-alphabet codepoints the alphalect contract can redirect
+/// an authored letter to (math italic, bold, script, double-struck, fraktur,
+/// sans-serif, monospace).
+///
+/// Layout swaps a variable's key onto these codepoints only when the font
+/// actually ships them, so they must be inside the glyph scope the projection
+/// extracts — otherwise the real italic face would never be found and every
+/// variable would fall back to the upright cmap entry of the authored letter.
+fn alphalect_targets() -> Vec<char> {
+    let mut targets: Vec<char> = alphalect_styles()
+        .iter()
+        .flat_map(|style| alphalect_sources().iter().map(move |c| math_alphalect(*style, *c)))
+        .flatten()
+        .collect();
+    targets.sort_unstable();
+    targets.dedup();
+    targets
+}
+
 /// Delimiter characters whose MATH Variants constructions we pull from the font.
 const DELIMITER_CHARS: &[char] = &['(', ')', '[', ']', '{', '}', '|', '‖', '⟨', '⟩', '/'];
 
@@ -323,7 +342,8 @@ fn extract_glyph_metrics_and_outlines(
 ) {
     let family = Some(family.to_string());
 
-    for ch in ('!'..='~').chain(TARGET_SYMBOLS.iter().copied()).chain(ACCENT_SYMBOLS.iter().copied()) {
+    for ch in ('!'..='~').chain(TARGET_SYMBOLS.iter().copied()).chain(ACCENT_SYMBOLS.iter().copied()).chain(alphalect_targets())
+    {
         let Some(glyph) = facts.glyph_for_char(ch)
         else {
             continue;
