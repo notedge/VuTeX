@@ -2,9 +2,9 @@
     <SiteShell page="playground">
         <section class="container playground">
             <p class="label">Playground</p>
-            <h1>写下你的 TeX，看 WeTeX 排成什么样</h1>
+            <h1>输入 TeX，实时对照三个引擎</h1>
             <p class="lede">
-                输入即渲染，全在本地算完，不上传任何内容。WeTeX 走 WASM，是主要结果；KaTeX 与 MathJax 并列在旁边，方便你对照。
+                输入即渲染，所有计算在本地完成，不上传任何内容。WeTeX 经 WebAssembly 输出主要结果，KaTeX 与 MathJax 并排显示，作为参照。
             </p>
 
             <div class="playground__controls">
@@ -70,7 +70,7 @@ export default class Playground {
     backends = BACKENDS.slice();
     engines = ENGINES.slice();
     presets = SPECIMENS.slice(0, 8);
-    active = "mathml";
+    active = "html";
     display = true;
     tex = String(DEFAULT_TEX);
     status = "渲染中";

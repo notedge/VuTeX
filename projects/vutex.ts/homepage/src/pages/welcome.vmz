@@ -1,46 +1,51 @@
 <template>
-    <SiteShell page="welcome">
-        <section class="welcome">
-            <div class="welcome__stage">
-                <p class="welcome__index">
-                    <span>{{ position() }}</span>
-                    <span aria-hidden="true">/</span>
-                    <span>{{ total() }}</span>
-                </p>
-                <div class="welcome__canvas" v-html="markup"></div>
-                <p class="welcome__caption">
-                    <span class="meta">WeTeX</span>
-                    <span class="welcome__name">{{ name }}</span>
-                    <span class="welcome__note">{{ note }}</span>
-                </p>
+    <div class="welcome">
+        <header class="welcome__bar">
+            <a class="welcome__back" href="/">← 概览</a>
+            <span class="meta">WeTeX · 全屏展示</span>
+        </header>
+        <div class="welcome__stage">
+            <p class="welcome__index">
+                <span>{{ position() }}</span>
+                <span aria-hidden="true">/</span>
+                <span>{{ total() }}</span>
+            </p>
+            <div class="welcome__canvas" v-html="markup"></div>
+            <p class="welcome__caption">
+                <span class="welcome__name">{{ name }}</span>
+                <span class="welcome__note">{{ note }}</span>
+            </p>
+        </div>
+        <div class="welcome__footer">
+            <div class="segmented" role="group" aria-label="输出格式">
+                <button
+                    v-for="backend in backends"
+                    :key="backend.id"
+                    :data-active="backend.id === active ? 'true' : 'false'"
+                    @click="pick(backend.id)"
+                >
+                    {{ backend.label }}
+                </button>
             </div>
-            <div class="welcome__footer">
-                <div class="segmented" role="group" aria-label="输出格式">
-                    <button
-                        v-for="backend in backends"
-                        :key="backend.id"
-                        :data-active="backend.id === active ? 'true' : 'false'"
-                        @click="pick(backend.id)"
-                    >
-                        {{ backend.label }}
-                    </button>
-                </div>
-                <div class="welcome__nav">
-                    <button class="welcome__step" @click="step(-1)" aria-label="上一份">←</button>
-                    <button class="welcome__step" @click="step(1)" aria-label="下一份">→</button>
-                </div>
+            <div class="welcome__nav">
+                <button class="welcome__step" @click="step(-1)" aria-label="上一份">←</button>
+                <button class="welcome__step" @click="step(1)" aria-label="下一份">→</button>
             </div>
-        </section>
-    </SiteShell>
+        </div>
+    </div>
 </template>
 <script client>
 import { BACKENDS, renderFormula } from "../lib/engines.ts";
 import { SPECIMENS } from "../lib/formulas.ts";
 
+/**
+ * Standalone fullscreen specimen viewer — intentionally outside <SiteShell>:
+ * this page is a display surface, so it carries no site header or footer.
+ */
 export default class Welcome {
     backends = BACKENDS.slice();
     items = SPECIMENS.slice();
-    active = "svg";
+    active = "html";
     index = 0;
     markup = "";
     name = "";

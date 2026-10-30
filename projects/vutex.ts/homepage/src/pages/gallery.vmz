@@ -2,9 +2,9 @@
     <SiteShell page="gallery">
         <section class="container gallery__head">
             <p class="label">Gallery</p>
-            <h1>WeTeX 排出来的每一行，旁边放两份参照</h1>
+            <h1>同一份 TeX，三个引擎并排渲染</h1>
             <p class="lede">
-                全部是真实的 display 公式，由浏览器现场渲染。第一列是 WeTeX 的结果，后两列是 KaTeX 与 MathJax，只用来核对：同一份 TeX，WeTeX 排得对不对。
+                画廊收录 14 组 display 公式，全部由浏览器现场渲染。WeTeX 的结果与 KaTeX、MathJax 并排对照，用于核验排版正确性；每个单元格标注各自的渲染耗时。
             </p>
             <div class="gallery__controls">
                 <div class="segmented" role="group" aria-label="输出格式">
@@ -53,10 +53,10 @@ export default class Gallery {
     backends = BACKENDS.slice();
     engines = ENGINES.slice();
     specimens = SPECIMENS.slice();
-    active = "mathml";
+    active = "html";
     outputs = {};
 
-    hint = "WeTeX 支持 SVG 与 MathML。参照组的范围更窄：KaTeX 只有 HTML 与 MathML，MathJax 只有 SVG 与 MathML。";
+    hint = "WeTeX 支持 HTML、SVG 与 MathML 三种后端。参照组的范围更窄：KaTeX 只有 HTML 与 MathML，MathJax 只有 SVG 与 MathML。";
 
     onMount() {
         this.run();

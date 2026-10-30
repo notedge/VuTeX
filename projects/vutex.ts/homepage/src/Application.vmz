@@ -3,8 +3,9 @@
 </template>
 <script client>
 /**
- * Root application surface. Routing resolves `src/pages/*.vmz`; each page owns
- * its own `<SiteShell>` so the chrome stays a single shared implementation.
+ * Root application surface. Routing resolves `src/pages/*.vmz`; content pages
+ * wrap themselves in `<SiteShell>`. `/welcome` is a standalone fullscreen
+ * display surface and intentionally carries no site chrome.
  */
 export default class Application {}
 </script>

@@ -8,7 +8,6 @@
             <nav class="site-nav" aria-label="主导航">
                 <div class="site-nav__links">
                     <a href="/" :data-active="isActive('index')">概览</a>
-                    <a href="/welcome" :data-active="isActive('welcome')">全屏</a>
                     <a href="/gallery" :data-active="isActive('gallery')">画廊</a>
                     <a href="/playground" :data-active="isActive('playground')">试验台</a>
                 </div>
@@ -28,7 +27,6 @@
                     <summary>菜单</summary>
                     <div class="site-menu__panel">
                         <a href="/" :data-active="isActive('index')">概览</a>
-                        <a href="/welcome" :data-active="isActive('welcome')">全屏</a>
                         <a href="/gallery" :data-active="isActive('gallery')">画廊</a>
                         <a href="/playground" :data-active="isActive('playground')">试验台</a>
                     </div>

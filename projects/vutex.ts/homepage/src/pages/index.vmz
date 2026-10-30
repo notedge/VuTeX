@@ -4,17 +4,17 @@
             <div class="hero__copy">
                 <p class="label label--accent">VuTeX · WeTeX</p>
                 <h1>
-                    公式排版，
+                    公式排版是计算问题，
                     <br />
-                    <em>本来该算出来，不该拿 CSS 猜。</em>
+                    <em>不是样式问题。</em>
                 </h1>
                 <p class="lede">
-                    WeTeX 是 VuTeX 的排版内核：Rust 实现，编译成 WASM，在浏览器里算出每个字形的宽度、高度与基线深度，再落成 SVG 或 MathML。这个页面上的公式，都是它当场排出来的。
+                    WeTeX 是 VuTeX 的公式排版内核：Rust 实现，编译为 WebAssembly，在浏览器中直接计算每个字形的宽度、高度与基线深度，输出 HTML、SVG 或 MathML。本站所有公式均由内核现场排版。
                 </p>
                 <div class="hero__actions">
-                    <a href="/gallery" class="btn btn--primary">看它排得怎么样</a>
+                    <a href="/gallery" class="btn btn--primary">查看画廊</a>
                     <a href="/playground" class="btn">
-                        自己写一段
+                        打开试验台
                         <span aria-hidden="true">→</span>
                     </a>
                 </div>
@@ -30,27 +30,27 @@
 
         <section class="section">
             <div class="container">
-                <p class="label">为什么重写一遍</p>
+                <p class="label">设计原则</p>
                 <div class="principles">
                     <article class="principle">
                         <span class="meta">01</span>
-                        <h2>度量，而不只是显示</h2>
+                        <h2>先有度量，再有显示</h2>
                         <p>
-                            宽、高、基线深度与深度（depth）由内核直接返回。分页、对齐、自动换行这些排版问题因此可以用数字解决，而不是用 CSS 猜。
+                            宽度、高度、基线与深度由内核直接返回。分页、对齐、换行因此可以基于数值求解，而不必依赖 CSS 近似。
                         </p>
                     </article>
                     <article class="principle">
                         <span class="meta">02</span>
-                        <h2>一份语义，两种产物</h2>
+                        <h2>一份语义，多种产物</h2>
                         <p>
-                            同一棵公式树可以落到 SVG 路径，也可以落到 MathML 语义。选择格式是交付决定，不是重写公式。
+                            同一棵公式树可落为 HTML、SVG 路径或 MathML 语义树。输出格式是交付决定，不需要重写公式。
                         </p>
                     </article>
                     <article class="principle">
                         <span class="meta">03</span>
-                        <h2>拿成熟实现做参照</h2>
+                        <h2>以成熟实现为参照</h2>
                         <p>
-                            KaTeX 与 MathJax 在这里只当参照组：同一份 TeX 跑三遍，逐条看 WeTeX 排得对不对。差异写进画廊，不写进宣传语。
+                            KaTeX 与 MathJax 仅作为参照组：同一份 TeX 渲染三遍，逐条核验 WeTeX 的正确性。差异记录在画廊，不写进宣传。
                         </p>
                     </article>
                 </div>
@@ -60,7 +60,7 @@
         <section class="section">
             <div class="container">
                 <p class="label">输出格式</p>
-                <h2 class="section__title">WeTeX 给的是 SVG 与 MathML</h2>
+                <h2 class="section__title">WeTeX 输出 HTML、SVG 与 MathML</h2>
                 <table class="matrix">
                     <thead>
                         <tr>
@@ -84,17 +84,17 @@
                     </tbody>
                 </table>
                 <p class="matrix__note">
-                    WeTeX 同时出 SVG 与 MathML。表里另外两行是参照：KaTeX 出 HTML 与 MathML，MathJax 出 SVG 与 MathML；HTML 只有 KaTeX 提供。
+                    WeTeX 同时提供 HTML、SVG 与 MathML。参照组中，KaTeX 支持 HTML 与 MathML，MathJax 支持 SVG 与 MathML。
                 </p>
             </div>
         </section>
 
         <section class="section">
             <div class="container closing">
-                <p class="label label--accent">继续</p>
-                <h2 class="closing__title">先看这 14 条公式，再拿自己的 TeX 试一遍。</h2>
+                <p class="label label--accent">下一步</p>
+                <h2 class="closing__title">从 14 组画廊样例开始，或直接输入你自己的 TeX。</h2>
                 <div class="closing__actions">
-                    <a href="/welcome" class="btn btn--primary">全屏逐条看</a>
+                    <a href="/welcome" class="btn btn--primary">全屏展示</a>
                     <a href="/playground" class="btn">打开试验台</a>
                 </div>
             </div>

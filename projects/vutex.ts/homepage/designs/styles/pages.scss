@@ -437,12 +437,31 @@
 
 /* ---------- welcome ---------- */
 
+/* Standalone page: no site chrome, owns its own full-height column. */
 .welcome {
     display: flex;
-    flex: 1 0 auto;
     flex-direction: column;
-    min-height: calc(100vh - var(--vmz-layout-header-height) - 2px);
-    padding-block: var(--vmz-space-7) var(--vmz-space-6);
+    min-height: 100vh;
+    padding-block: var(--vmz-space-6) var(--vmz-space-6);
+    background: var(--vmz-surface-page);
+}
+
+.welcome__bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-inline: var(--vmz-layout-gutter);
+}
+
+.welcome__back {
+    color: var(--vmz-text-muted);
+    font-size: var(--vmz-type-caption);
+    letter-spacing: 0.04em;
+    transition: color 120ms ease;
+}
+
+.welcome__back:hover {
+    color: var(--vmz-text-ink);
 }
 
 .welcome__stage {

@@ -8,7 +8,7 @@
                         <span aria-hidden="true" class="site-brand__dot">·</span>
                     </a>
                     <p>
-                        WeTeX 是 VuTeX 的排版内核：Rust + WASM，输出 SVG 与 MathML，度量公式的宽、高与基线深度，而不是拼一段 DOM。
+                        WeTeX 是 VuTeX 的公式排版内核：Rust 实现，编译为 WebAssembly，输出 HTML、SVG 与 MathML，并直接回报公式的宽度、高度与基线深度。
                     </p>
                 </div>
                 <div class="site-footer__group">
