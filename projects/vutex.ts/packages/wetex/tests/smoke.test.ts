@@ -14,6 +14,7 @@ const stub: WeTeXBindings = {
             baseline: 18,
         },
         svg: "",
+        html: "",
         diagnostics: source.trim() ? [] : [
             {
                 code: "WETEX_EMPTY_SOURCE",
@@ -25,6 +26,10 @@ const stub: WeTeXBindings = {
     renderSvg: (source, options) => ({
         ...stub.measureFormula(source, options),
         svg: source.trim() ? `<svg data-wetex="stub">${source}</svg>` : "",
+    }),
+    renderHtml: (source, options) => ({
+        ...stub.measureFormula(source, options),
+        html: source.trim() ? `<span data-wetex="stub">${source}</span>` : "",
     }),
     renderMathml: (source, options) => ({
         ...stub.measureFormula(source, options),
