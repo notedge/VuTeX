@@ -217,7 +217,7 @@ mod tests {
     fn faces_land_in_their_own_blocks() {
         assert_eq!(math_alphalect(FontStyle::Bold, 'A'), Some('\u{1D400}'));
         assert_eq!(math_alphalect(FontStyle::SansSerif, 'a'), Some('\u{1D5BA}'));
-        assert_eq!(math_alphalect(FontStyle::Monospace, 'z'), Some('\u{1D6A1}'));
+        assert_eq!(math_alphalect(FontStyle::Monospace, 'z'), Some('\u{1D6A3}'));
         assert_eq!(math_alphalect(FontStyle::Calligraphic, 'L'), Some('\u{2112}'));
         assert_eq!(math_alphalect(FontStyle::Calligraphic, 'a'), None);
         assert_eq!(math_alphalect(FontStyle::DoubleStruck, 'R'), Some('\u{211D}'));
