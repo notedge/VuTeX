@@ -8,8 +8,10 @@ use vutex_types::{
     math::{FormulaLayoutResult, MathError},
 };
 
-use crate::html::HtmlBackend;
-use crate::types::{DisplayMode, FontFamily, FormulaDiagnostic, FormulaMetrics, FormulaRender, RenderOptions};
+use crate::{
+    html::HtmlBackend,
+    types::{DisplayMode, FontFamily, FormulaDiagnostic, FormulaMetrics, FormulaRender, RenderOptions},
+};
 
 const UNSUPPORTED_COMMANDS: &[&str] = &["usepackage", "input", "include", "write", "openout"];
 

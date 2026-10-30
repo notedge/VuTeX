@@ -169,10 +169,12 @@ impl HtmlBackend {
     /// stretched delimiters) only when the cmap entry for the char is that
     /// very glyph — otherwise the text run would paint the wrong outline.
     fn text_faithful(&mut self, glyph: &Glyph, ch: char) -> bool {
-        let Some(family) = embedded_family_for(&glyph.font_family, self.fallback_family) else {
+        let Some(family) = embedded_family_for(&glyph.font_family, self.fallback_family)
+        else {
             return false;
         };
-        let Some(data) = self.face_mut(family) else {
+        let Some(data) = self.face_mut(family)
+        else {
             return false;
         };
         match glyph.glyph_id {
@@ -320,7 +322,10 @@ fn visit_path_points(d: &str, visit: &mut impl FnMut(f64, f64)) {
     let mut args: Vec<f64> = Vec::new();
     let mut chars = d.chars().peekable();
     loop {
-        let Some(c) = chars.peek().copied() else { break };
+        let Some(c) = chars.peek().copied()
+        else {
+            break;
+        };
         if c.is_ascii_alphabetic() {
             emit_points(op, &args, visit);
             args.clear();
