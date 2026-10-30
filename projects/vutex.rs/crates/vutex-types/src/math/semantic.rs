@@ -234,7 +234,9 @@ pub enum AlignmentAnchors {
     /// No anchors: every row is one centred cell (`gather`, `equation`).
     Centered,
     /// `split`: the rows are fragments of one equation and meet at a single
-    /// alignment point rather than being independent column grids.
+    /// alignment point rather than being independent column grids.  The point
+    /// is the environment's own [`MathEnvironment::alignment_point`], which
+    /// layout consumes instead of assuming a repeating pair alternation.
     SingleEquation,
     /// `multline`: no anchors, but the first row is flush left, the last row
     /// flush right and the rows between are centred.  The rule is per row, so
@@ -375,6 +377,20 @@ impl MathEnvironment {
         }
     }
 
+    /// The single column where a `split`'s rows meet, when it is a `split`.
+    ///
+    /// `split` breaks one equation over its rows, so they are not independent
+    /// column pairs: they share one alignment point — the boundary the first
+    /// `&` opens.  Cells are split at every anchor, so that boundary is column
+    /// 1: everything before it is the right-aligned side of the relation and
+    /// everything from it on is the left-aligned side, however many `&` a
+    /// stray row types.  A row without a `&` sits entirely on the
+    /// right-aligned side, exactly like TeX packs an unanchored `split` row.
+    /// Every other kind answers `None`: its rows repeat pairs or centre whole.
+    pub fn alignment_point(&self) -> Option<usize> {
+        (self.kind == EnvironmentKind::Split).then_some(1)
+    }
+
     /// Per-column alignment this environment's rows use.
     ///
     /// Derived from [`EnvironmentKind::anchors`], never from the author's row
@@ -384,11 +400,15 @@ impl MathEnvironment {
     pub fn column_alignment(&self) -> Vec<Alignment> {
         let columns = self.columns();
         match self.kind.anchors() {
-            // `split` rows meet at one alignment point, so the relation that
-            // opens a row sits in the right column and its tail in the left one,
-            // the same right/left alternation `aligned` and `align` use.
-            AlignmentAnchors::ColumnPairs | AlignmentAnchors::SingleEquation => {
+            AlignmentAnchors::ColumnPairs => {
                 (0..columns).map(|column| if column % 2 == 0 { Alignment::Right } else { Alignment::Left }).collect()
+            }
+            // `split` meets at its single structured point rather than at a
+            // repeating alternation: every column before the point is
+            // right-aligned and every column from the point on is left-aligned.
+            AlignmentAnchors::SingleEquation => {
+                let point = self.alignment_point().unwrap_or(1);
+                (0..columns).map(|column| if column < point { Alignment::Right } else { Alignment::Left }).collect()
             }
             AlignmentAnchors::Centered | AlignmentAnchors::Spread => vec![Alignment::Center; columns],
         }
@@ -1025,6 +1045,41 @@ mod tests {
         {
             let grid = env(kind, vec![cell(), cell()]);
             assert_eq!(grid.row_placements(), None, "{kind:?} positions its rows through the column grid");
+        }
+    }
+
+    #[test]
+    fn split_meets_at_one_structured_alignment_point() {
+        // `split` rows are fragments of one equation meeting at a single point,
+        // not a repeating pair alternation: the point is a structured attribute
+        // and the column alignment follows it even when a stray row types more
+        // cells than the anchor.
+        let split = env(
+            EnvironmentKind::Split,
+            vec![
+                vec![sym('a', SymbolRole::Ordinary), sym('=', SymbolRole::Relation)],
+                vec![sym('c', SymbolRole::Ordinary), sym('=', SymbolRole::Relation), sym('d', SymbolRole::Ordinary)],
+            ],
+        );
+        assert_eq!(split.alignment_point(), Some(1), "the rows meet at the boundary the first `&` opens");
+        assert_eq!(split.columns(), 3, "the stray third cell stays in the grid");
+        assert_eq!(
+            split.column_alignment(),
+            vec![Alignment::Right, Alignment::Left, Alignment::Left],
+            "columns past the single point stay on the left-aligned side"
+        );
+
+        for kind in [
+            EnvironmentKind::Aligned,
+            EnvironmentKind::AlignedAt { pairs: 1 },
+            EnvironmentKind::Align,
+            EnvironmentKind::Equation,
+            EnvironmentKind::Gather,
+            EnvironmentKind::Gathered,
+            EnvironmentKind::Multline,
+        ] {
+            let other = env(kind, vec![vec![sym('a', SymbolRole::Ordinary)]]);
+            assert_eq!(other.alignment_point(), None, "{kind:?} has no single alignment point");
         }
     }
 

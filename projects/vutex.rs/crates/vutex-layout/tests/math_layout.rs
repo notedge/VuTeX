@@ -2935,6 +2935,25 @@ fn split_has_no_two_row_cap() {
     }
 }
 
+/// A `split` meets at its single structured alignment point, so cells past the
+/// first `&` stay on the left-aligned side of that point.  The repeating pair
+/// grid of `aligned` would flip the third column right-aligned; the split grid
+/// reads the environment's `alignment_point` instead and must not.
+#[test]
+fn split_rows_share_one_alignment_point_beyond_the_anchor() {
+    let split = "\\begin{split} m &= a & z \\\\ n &= b & wq \\end{split}";
+    let (tree, _) = layout_formula(split, false).expect("a split with an extra anchor should lay out");
+    let z = glyph_at(&tree, 'z').0;
+    let w = glyph_at(&tree, 'w').0;
+    assert!((z - w).abs() < 0.01, "the cells past the point start at the same column edge: {z} vs {w}");
+
+    let aligned = "\\begin{aligned} m &= a & z \\\\ n &= b & wq \\end{aligned}";
+    let (tree, _) = layout_formula(aligned, false).expect("the same body in `aligned` should lay out");
+    let z = glyph_at(&tree, 'z').0;
+    let w = glyph_at(&tree, 'w').0;
+    assert!((z - w).abs() >= 0.01, "the pair grid right-aligns the third column: {z} vs {w}");
+}
+
 /// `multline` flushes its first row left, its last row right and centres the
 /// rows between.
 #[test]

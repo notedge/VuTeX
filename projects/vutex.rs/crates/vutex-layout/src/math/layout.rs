@@ -2034,9 +2034,11 @@ impl LayoutEngine {
     /// - `aligned`, `alignedat` and `align` alternate a right-aligned and a
     ///   left-aligned column at every `&` anchor, exactly like `alignedat{n}`
     ///   pins its grid to `2n` columns.
-    /// - `split` rows are fragments of one equation that meet at a single
-    ///   alignment point, so they use the same right/left anchor grid with no
-    ///   two-row cap.
+    /// - `split` rows are fragments of one equation that meet at the
+    ///   environment's single structured alignment point
+    ///   ([`MathEnvironment::alignment_point`]), with no two-row cap: the
+    ///   columns on its left side are right-aligned and the columns from the
+    ///   point on are left-aligned.
     /// - `equation`, `gather` and `gathered` have no anchors and centre every
     ///   row over the widest one.
     /// - `multline` flushes its first row left, its last row right and centres
@@ -2090,56 +2092,48 @@ impl LayoutEngine {
 
         let mut row_boxes: Vec<LayoutNode> = Vec::with_capacity(environment.rows.len());
         match anchors {
-            // `aligned`, `alignedat`, `align` and `split`: every `&` closes a
+            // `aligned`, `alignedat` and `align`: every `&` closes a
             // right-aligned column and opens a left-aligned one.  A relation
             // that opens the left column has no left neighbour inside its own
             // cell, so the grid supplies the thick muskip TeX puts on both sides
             // of a relation.  These grids carry no intercolumn gutter, so
             // `col_spacing` is the environment's own value (zero for them).
-            //
-            // # split is NOT a real column-pair grid (deferred)
-            //
-            // TeX treats `split` as *one* equation broken over multiple rows —
-            // the rows are fragments of the same relation, each meeting at a
-            // single alignment point (the `=`).  `AlignmentAnchors::SingleEquation`
-            // exists to encode that intent, but layout currently lowers it
-            // through the same right/left column-packing path as
-            // `AlignmentAnchors::ColumnPairs`.  The right effect is preserved
-            // (all rows line up at the same alignment point; `split_has_no_two_row_cap`
-            // in tests locks this), but split-specific TeX semantics — the
-            // "pretend this is one equation for numbering purposes" rule and
-            // the restriction that split only lives inside `equation` (already
-            // a diagnostic) — are deferred to a later pass where layout learns
-            // about document-level equation numbering.
-            AlignmentAnchors::ColumnPairs | AlignmentAnchors::SingleEquation => {
-                let mut col_widths = vec![Fixed::ZERO; columns];
-                for cells in &cell_layouts {
-                    for (column, cell) in cells.iter().enumerate() {
-                        col_widths[column] = col_widths[column].max(cell.width());
-                    }
-                }
+            AlignmentAnchors::ColumnPairs => {
+                let col_widths = Self::anchor_column_widths(&cell_layouts, columns);
                 for (row_index, cells) in cell_layouts.into_iter().enumerate() {
-                    let mut children = Vec::new();
-                    for (column, cell) in cells.into_iter().enumerate() {
-                        let diff = col_widths[column] - cell.width();
-                        let cell_box = if column % 2 == 0 {
-                            self.pack_hbox(vec![LayoutNode::Kern(diff), cell], Some(col_widths[column]))
-                        }
-                        else {
-                            self.pack_hbox(vec![cell, LayoutNode::Kern(diff)], Some(col_widths[column]))
-                        };
-                        if column > 0
-                            && environment.rows[row_index].cells.get(column).and_then(Self::leading_role)
-                                == Some(SymbolRole::Relation)
-                        {
-                            children.push(LayoutNode::Kern(Fixed::from_f64(THICK_MUSIP_EM) * size));
-                        }
-                        children.push(cell_box);
-                        if column + 1 < columns && col_spacing > Fixed::ZERO {
-                            children.push(LayoutNode::Kern(col_spacing));
-                        }
-                    }
-                    row_boxes.push(self.pack_hbox(children, None));
+                    row_boxes.push(self.pack_anchor_row(
+                        cells,
+                        &col_widths,
+                        &environment.rows[row_index].cells,
+                        size,
+                        col_spacing,
+                        |column| column % 2 == 0,
+                        |column| column > 0,
+                    ));
+                }
+            }
+            // `split`: one equation broken over its rows.  The rows are not
+            // independent column pairs — they meet at the environment's single
+            // structured alignment point (`MathEnvironment::alignment_point`),
+            // so every column on its left side is right-aligned, every column
+            // from the point on is left-aligned, and the relation space sits
+            // only at the point.  Whether the block numbers as one equation
+            // stays with the row anchors for the document layer — VuTeX emits
+            // the structure and assigns no numbers — and the restriction that a
+            // `split` belongs in an `equation` body is the IR's diagnostic.
+            AlignmentAnchors::SingleEquation => {
+                let point = environment.alignment_point().unwrap_or(1);
+                let col_widths = Self::anchor_column_widths(&cell_layouts, columns);
+                for (row_index, cells) in cell_layouts.into_iter().enumerate() {
+                    row_boxes.push(self.pack_anchor_row(
+                        cells,
+                        &col_widths,
+                        &environment.rows[row_index].cells,
+                        size,
+                        col_spacing,
+                        |column| column < point,
+                        |column| column == point,
+                    ));
                 }
             }
             // `equation`, `gather`, `gathered` and `multline`: no anchors, so
@@ -2199,6 +2193,54 @@ impl LayoutEngine {
 
         let block = self.pack_vbox(stacked, Alignment::Center);
         Ok(self.centre_block_on_axis(block, size))
+    }
+
+    /// Column widths of an anchor grid: every column is as wide as its widest cell.
+    fn anchor_column_widths(cell_layouts: &[Vec<LayoutNode>], columns: usize) -> Vec<Fixed> {
+        let mut col_widths = vec![Fixed::ZERO; columns];
+        for cells in cell_layouts {
+            for (column, cell) in cells.iter().enumerate() {
+                col_widths[column] = col_widths[column].max(cell.width());
+            }
+        }
+        col_widths
+    }
+
+    /// Pack one row of an anchor grid.
+    ///
+    /// `right_side` gives each column its alignment side and `relation_space`
+    /// marks the column whose leading relation takes the thick muskip TeX puts
+    /// on both sides of a relation.  A column-pair grid alternates the side at
+    /// every `&`; a `split` grid places every column on one side of its single
+    /// structured alignment point.
+    fn pack_anchor_row(
+        &self,
+        cells: Vec<LayoutNode>,
+        col_widths: &[Fixed],
+        authored: &[SemanticNode],
+        size: Fixed,
+        col_spacing: Fixed,
+        right_side: impl Fn(usize) -> bool,
+        relation_space: impl Fn(usize) -> bool,
+    ) -> LayoutNode {
+        let mut children = Vec::new();
+        for (column, cell) in cells.into_iter().enumerate() {
+            let diff = col_widths[column] - cell.width();
+            let cell_box = if right_side(column) {
+                self.pack_hbox(vec![LayoutNode::Kern(diff), cell], Some(col_widths[column]))
+            }
+            else {
+                self.pack_hbox(vec![cell, LayoutNode::Kern(diff)], Some(col_widths[column]))
+            };
+            if relation_space(column) && authored.get(column).and_then(Self::leading_role) == Some(SymbolRole::Relation) {
+                children.push(LayoutNode::Kern(Fixed::from_f64(THICK_MUSIP_EM) * size));
+            }
+            children.push(cell_box);
+            if column + 1 < col_widths.len() && col_spacing > Fixed::ZERO {
+                children.push(LayoutNode::Kern(col_spacing));
+            }
+        }
+        self.pack_hbox(children, None)
     }
 
     /// Centre a stacked block on the `MATH` axis.
