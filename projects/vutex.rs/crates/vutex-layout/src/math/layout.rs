@@ -2798,9 +2798,14 @@ fn lower_layout_to_paint(node: &LayoutNode, x: Fixed, y: Fixed) -> Option<PaintN
                 path_data: vec![glyph.path_data.clone()],
             })
         }
-        LayoutNode::Rule { width, height, depth } => {
-            Some(PaintNode::Rect { x, y: y - *height, width: *width, height: *height + *depth, stroke_width: Fixed::ZERO })
-        }
+        LayoutNode::Rule { width, height, depth } => Some(PaintNode::Rect {
+            x,
+            y: y - *height,
+            width: *width,
+            height: *height + *depth,
+            stroke_width: Fixed::ZERO,
+            baseline: y,
+        }),
         LayoutNode::Path(path) => Some(PaintNode::VectorPath {
             d: path.d.clone(),
             x,

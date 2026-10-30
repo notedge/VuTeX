@@ -87,8 +87,11 @@ pub enum PaintNode {
     },
     /// A filled rectangle (rule bar, fraction line, underline, ...).
     /// `(x, y)` is the top-left corner relative to the group origin, canvas
-    /// pixels with y growing downward.
-    Rect { x: Fixed, y: Fixed, width: Fixed, height: Fixed, stroke_width: Fixed },
+    /// pixels with y growing downward.  `baseline` is the rule's own baseline
+    /// in the same group-relative space: the bar spans `baseline - height`
+    /// down to `baseline + depth`, so a plan consumer can re-emit the bar as a
+    /// centred stroke above the baseline or a full box when it descends.
+    Rect { x: Fixed, y: Fixed, width: Fixed, height: Fixed, stroke_width: Fixed, baseline: Fixed },
     /// A raw vector path for complex outlines that cannot be represented
     /// as a [`PaintNode::GlyphRun`].
     VectorPath {
@@ -218,6 +221,7 @@ mod tests {
             width: Fixed::ONE,
             height: Fixed::ONE,
             stroke_width: Fixed::ZERO,
+            baseline: Fixed::ONE,
         };
         let b = PaintNode::Rect {
             x: Fixed::from_f64(2.0),
@@ -225,6 +229,7 @@ mod tests {
             width: Fixed::ONE,
             height: Fixed::ONE,
             stroke_width: Fixed::ZERO,
+            baseline: Fixed::ONE,
         };
         let group = PaintNode::Group { children: vec![a, b], translate_x: Fixed::ZERO, translate_y: Fixed::ZERO };
         let bbox = group.bbox();
@@ -239,6 +244,7 @@ mod tests {
             width: Fixed::ONE,
             height: Fixed::ONE,
             stroke_width: Fixed::ZERO,
+            baseline: Fixed::ONE,
         };
         let group = PaintNode::Group {
             children: vec![PaintNode::Group {

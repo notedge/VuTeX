@@ -69,7 +69,7 @@ fn render_paint_pdf(out: &mut String, node: &PaintNode, ox: f64, oy: f64, baseli
                 render_paint_pdf(out, child, nx, ny, baseline_y, height);
             }
         }
-        PaintNode::Rect { x, y, width, height: rect_height, stroke_width } => {
+        PaintNode::Rect { x, y, width, height: rect_height, stroke_width, baseline: _ } => {
             let rx = 4.0 + ox + x.to_f64();
             let rw = width.to_f64();
             let rh = rect_height.to_f64();
@@ -335,6 +335,7 @@ mod tests {
                     width: Fixed::from_f64(80.0),
                     height: Fixed::from_f64(15.0),
                     stroke_width: Fixed::ZERO,
+                    baseline: Fixed::from_f64(15.0),
                 }],
                 translate_x: Fixed::ZERO,
                 translate_y: Fixed::ZERO,

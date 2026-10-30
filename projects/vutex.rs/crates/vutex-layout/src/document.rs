@@ -16,7 +16,7 @@ use vutex_types::{
 use crate::{
     diagram::Diagrams,
     hint::LayoutHint,
-    math::{LayoutNode, collect_layout_with_diagnostics, layout_formula_with_diagnostics},
+    math::{collect_paint, layout_formula_with_result},
     plan::{Graphic, ImagePlaceholder, LayoutItem, LayoutPage, LayoutPlan, Rect, Rule, TextRun},
 };
 
@@ -309,9 +309,13 @@ struct LineMetrics {
 }
 
 /// A formula box carried alongside the paragraph flow.
+///
+/// The atom holds the single immutable layout result every backend consumes;
+/// the flat `width`/`height`/`depth` are its metrics in points for line
+/// assembly.
 #[derive(Debug, Clone)]
 struct MathAtom {
-    node: LayoutNode,
+    result: vutex_types::math::FormulaLayoutResult,
     width: f64,
     height: f64,
     depth: f64,
@@ -549,15 +553,13 @@ impl<'a> PageBuilder<'a> {
                 }
                 Inline::InlineMath { content, .. } => {
                     flow.pending.flush(&mut flow.atoms);
-                    match layout_formula_with_diagnostics(content, false, size) {
-                        Ok((node, formula, math_diagnostics)) => {
+                    match layout_formula_with_result(content, false, size) {
+                        Ok((result, _root, math_diagnostics)) => {
                             self.diagnostics.extend(math_diagnostics);
-                            flow.atoms.push(InlineAtom::Math(MathAtom {
-                                node,
-                                width: formula.width,
-                                height: formula.height,
-                                depth: formula.depth,
-                            }));
+                            let metrics = &result.metrics;
+                            let (width, height, depth) =
+                                (metrics.width.to_f64(), metrics.height.to_f64(), metrics.depth.to_f64());
+                            flow.atoms.push(InlineAtom::Math(MathAtom { result, width, height, depth }));
                         }
                         Err(_) => flow.atoms.extend(split_inline_atoms(content, face, href, title)),
                     }
@@ -700,7 +702,7 @@ impl<'a> PageBuilder<'a> {
     /// Paint a formula at the inline baseline, clamped to the content width.
     fn emit_inline_math(&mut self, math: &MathAtom, x: f64, baseline: f64, max_width: f64) {
         let scale = if math.width > max_width && math.width > 0.0 { (max_width / math.width).max(0.0) } else { 1.0 };
-        let items = collect_layout_with_diagnostics(&math.node, x, baseline, &mut self.diagnostics);
+        let items = collect_paint(&math.result, x, baseline, &mut self.diagnostics);
         for item in items {
             self.push(clamp_inline_item(item, x, baseline, scale));
         }
@@ -910,22 +912,24 @@ impl<'a> PageBuilder<'a> {
     /// keeps the formula visible instead of dropping it.
     fn emit_math(&mut self, content: &str, indent: f64, preceding_line_right: Option<f64>) {
         let size = self.body_size();
-        match layout_formula_with_diagnostics(content, true, size) {
-            Ok((node, formula, math_diagnostics)) => {
+        match layout_formula_with_result(content, true, size) {
+            Ok((result, _root, math_diagnostics)) => {
                 self.diagnostics.extend(math_diagnostics);
+                let metrics = &result.metrics;
+                let (width, height, depth) = (metrics.width.to_f64(), metrics.height.to_f64(), metrics.depth.to_f64());
                 let left = self.left(indent);
-                let offset = ((self.content_width(indent) - formula.width) / 2.0).max(0.0);
+                let offset = ((self.content_width(indent) - width) / 2.0).max(0.0);
                 let short = preceding_line_right.is_some_and(|right| right + SHORT_DISPLAY_MARGIN_EM * size <= left + offset);
                 let (above, below) = display_skips(size, short);
-                let (above_space, below_space) = self.fit_display(formula.height + formula.depth, above, below);
-                self.ensure_space(above_space + formula.height + formula.depth + below_space);
+                let (above_space, below_space) = self.fit_display(height + depth, above, below);
+                self.ensure_space(above_space + height + depth + below_space);
                 self.pad(above_space);
-                let baseline = self.cursor + formula.height;
-                let items = collect_layout_with_diagnostics(&node, left + offset, baseline, &mut self.diagnostics);
+                let baseline = self.cursor + height;
+                let items = collect_paint(&result, left + offset, baseline, &mut self.diagnostics);
                 for item in items {
                     self.push(item);
                 }
-                self.cursor = baseline + formula.depth;
+                self.cursor = baseline + depth;
                 self.pad(below_space);
             }
             Err(_) => self.emit_math_text_fallback(content, indent),

@@ -126,10 +126,10 @@ pub fn render_html(source: &str, options: &RenderOptions) -> FormulaRender {
     }
 
     match layout_formula(source, options) {
-        Ok((result, root, math_diagnostics)) => {
+        Ok((result, _root, math_diagnostics)) => {
             diagnostics.extend(math_diagnostics.into_iter().map(FormulaDiagnostic::from));
             let family = embedded_family(options.font_family).expect("entries reject unsupported families before layout");
-            let html = HtmlBackend::new(family).render(&root);
+            let html = HtmlBackend::new(family).render(&result);
             FormulaRender {
                 metrics: result_metrics(&result.metrics),
                 svg: String::new(),
@@ -154,14 +154,14 @@ pub fn render(source: &str, options: &RenderOptions) -> FormulaRender {
     }
 
     match layout_formula(source, options) {
-        Ok((result, root, math_diagnostics)) => {
+        Ok((result, _root, math_diagnostics)) => {
             diagnostics.extend(math_diagnostics.into_iter().map(FormulaDiagnostic::from));
             match render_svg_markup(&result, options.outline.unwrap_or(true)) {
                 Ok((svg, outline_diagnostics)) => {
                     diagnostics.extend(outline_diagnostics.into_iter().map(FormulaDiagnostic::from));
                     let family =
                         embedded_family(options.font_family).expect("entries reject unsupported families before layout");
-                    let html = HtmlBackend::new(family).render(&root);
+                    let html = HtmlBackend::new(family).render(&result);
                     let mathml = render_mathml_result(&result);
                     FormulaRender {
                         metrics: result_metrics(&result.metrics),

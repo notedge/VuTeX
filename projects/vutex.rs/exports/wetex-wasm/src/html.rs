@@ -1,23 +1,23 @@
 //! HTML backend for formula rendering.
 //!
-//! Paints the laid-out box tree as absolutely positioned CSS boxes inside one
-//! inline-block container — the same flow model KaTeX uses, so the formula
-//! aligns with surrounding text through `vertical-align` and scales with the
-//! page. Glyphs the selected face reaches through its character map are
-//! emitted as real text (selectable, accessible, no embedded outlines);
+//! Paints the laid-out formula result as absolutely positioned CSS boxes
+//! inside one inline-block container — the same flow model KaTeX uses, so the
+//! formula aligns with surrounding text through `vertical-align` and scales
+//! with the page. Glyphs the selected face reaches through its character map
+//! are emitted as real text (selectable, accessible, no embedded outlines);
 //! variant-selected or assembled glyphs that text cannot express fall back to
 //! tiny inline SVG fragments, so no ink is ever dropped.
 //!
-//! The traversal mirrors `vutex_layout::math::render_layout_node` exactly,
-//! with one addition: the text/path choice per glyph. That choice needs the
-//! glyph's `char`/`glyph_id` pair, which the `LayoutBackend` trait does not
-//! expose, so this backend walks the tree itself instead of implementing it.
+//! The traversal walks the [`PaintNode`] tree from the single
+//! [`FormulaLayoutResult`], the same canvas-space geometry the SVG and PDF
+//! backends emit. The text/path choice per glyph needs the glyph's
+//! `char`/`glyph_id` pair, which the paint tree carries directly.
 
 use std::collections::HashMap;
 
 use acorn_ttf::FontFace;
-use vutex_layout::math::{Glyph, LayoutNode};
 use vutex_text::math::MathFontFamily;
+use vutex_types::math::{Fixed, FormulaLayoutResult, PaintNode};
 
 /// Per-face data the HTML backend reads from an embedded math font.
 #[derive(Debug)]
@@ -58,7 +58,7 @@ fn embedded_family_for(label: &str, fallback: MathFontFamily) -> Option<MathFont
     }
 }
 
-/// Renders a [`LayoutNode`] tree into an HTML fragment.
+/// Renders a [`FormulaLayoutResult`] paint tree into an HTML fragment.
 #[derive(Debug)]
 pub struct HtmlBackend {
     buffer: String,
@@ -79,13 +79,16 @@ impl HtmlBackend {
 
     /// Close the walk and return the complete container markup.
     ///
-    /// The container is sized by the root box extents: `height` above the
+    /// The container is sized by the result metrics: `height` above the
     /// baseline, `depth` below, with `vertical-align` dropping the baseline
-    /// into the host text line exactly like a text glyph would.
-    pub fn render(mut self, root: &LayoutNode) -> String {
-        let width = root.width().to_f64();
-        let height = root.height().to_f64();
-        let depth = root.depth().to_f64();
+    /// into the host text line exactly like a text glyph would. The paint
+    /// tree's canvas origin is the box top-left, so the walk starts at
+    /// `(0, 0)` and the root group already carries the baseline offset.
+    pub fn render(mut self, result: &FormulaLayoutResult) -> String {
+        let metrics = &result.metrics;
+        let width = metrics.width.to_f64();
+        let height = metrics.height.to_f64();
+        let depth = metrics.depth.to_f64();
         use std::fmt::Write;
         let _ = write!(
             self.buffer,
@@ -94,7 +97,7 @@ impl HtmlBackend {
             num(height + depth),
             num(depth)
         );
-        self.walk(root, 0.0, height).expect("HTML emission cannot fail");
+        self.walk(&result.paint, 0.0, 0.0);
         let mut buffer = self.buffer;
         for _ in 0..self.group_depth {
             buffer.push_str("</span>");
@@ -103,73 +106,59 @@ impl HtmlBackend {
         buffer
     }
 
-    /// Recursively paint one layout node at the given baseline position.
-    fn walk(&mut self, node: &LayoutNode, x: f64, y: f64) -> Result<(), ()> {
+    /// Recursively paint one paint node at the given canvas offset.
+    fn walk(&mut self, node: &PaintNode, ox: f64, oy: f64) {
         match node {
-            LayoutNode::HBox(hbox) => {
-                if !hbox.children.iter().any(paints) {
-                    return Ok(());
-                }
-                self.start_group(x, y + hbox.shift.to_f64());
-                let mut current_x = 0.0;
-                for child in &hbox.children {
-                    self.walk(child, current_x, 0.0)?;
-                    current_x += child.width().to_f64();
+            PaintNode::Group { children, translate_x, translate_y } => {
+                let nx = ox + translate_x.to_f64();
+                let ny = oy + translate_y.to_f64();
+                self.start_group(nx, ny);
+                for child in children {
+                    self.walk(child, nx, ny);
                 }
                 self.end_group();
             }
-            LayoutNode::VBox(vbox) => {
-                if !vbox.children.iter().any(paints) {
-                    return Ok(());
+            PaintNode::GlyphRun { glyph_ids, chars, family, positions, size, path_data, .. } => {
+                let size = size.to_f64();
+                for (i, d_opt) in path_data.iter().enumerate() {
+                    let (px, py) = positions.get(i).copied().unwrap_or((Fixed::ZERO, Fixed::ZERO));
+                    let (x, y) = (ox + px.to_f64(), oy + py.to_f64());
+                    let text = match chars.get(i).copied().flatten() {
+                        Some(c) if !c.is_whitespace() => Some(c),
+                        _ => None,
+                    };
+                    if let Some(c) = text {
+                        if self.text_faithful(c, glyph_ids.get(i).copied(), family) {
+                            self.text(c, x, y, size, family);
+                            continue;
+                        }
+                    }
+                    if let Some(d) = d_opt {
+                        self.path(d, x, y, size);
+                    }
+                    else if let Some(c) = text {
+                        // A text-only key with no outline still has to paint.
+                        self.text(c, x, y, size, family);
+                    }
                 }
-                self.start_group(x + vbox.shift.to_f64(), y);
-                let mut current_y = -vbox.height.to_f64();
-                for child in &vbox.children {
-                    self.walk(child, 0.0, current_y + child.height().to_f64())?;
-                    current_y += child.height().to_f64() + child.depth().to_f64();
-                }
-                self.end_group();
             }
-            LayoutNode::Glyph(glyph) => self.walk_glyph(glyph, x, y),
-            LayoutNode::Rule { width, height, depth } => {
-                self.rect(x, y - height.to_f64(), width.to_f64(), height.to_f64() + depth.to_f64());
+            PaintNode::Rect { x, y, width, height, .. } => {
+                self.rect(ox + x.to_f64(), oy + y.to_f64(), width.to_f64(), height.to_f64());
             }
-            LayoutNode::Path(path) => self.path(&path.d, x, y, 1.0),
-            LayoutNode::Kern(_) | LayoutNode::Glue(_) | LayoutNode::Penalty { .. } | LayoutNode::Anchor { .. } => {}
-        }
-        Ok(())
-    }
-
-    /// Paint one glyph: real text when the face's cmap reaches the very glyph
-    /// the layout selected, an inline SVG outline otherwise.
-    fn walk_glyph(&mut self, glyph: &Glyph, x: f64, y: f64) {
-        let size = glyph.size.to_f64();
-        let text = match glyph.char {
-            Some(c) if !c.is_whitespace() => Some(c),
-            _ => None,
-        };
-        if let Some(c) = text {
-            if self.text_faithful(glyph, c) {
-                self.text(c, x, y, size, &glyph.font_family);
-                return;
+            PaintNode::VectorPath { d, x, y, scale, .. } => {
+                self.path(d, ox + x.to_f64(), oy + y.to_f64(), scale.to_f64());
             }
-        }
-        if let Some(ref path) = glyph.path_data {
-            self.path(path, x, y, size);
-        }
-        else if let Some(c) = text {
-            // A text-only key with no outline still has to paint.
-            self.text(c, x, y, size, &glyph.font_family);
         }
     }
 
     /// Whether emitting `ch` as text reproduces the glyph the layout chose.
     ///
-    /// Char-only keys always do. Variant-selected keys (large operators,
-    /// stretched delimiters) only when the cmap entry for the char is that
-    /// very glyph — otherwise the text run would paint the wrong outline.
-    fn text_faithful(&mut self, glyph: &Glyph, ch: char) -> bool {
-        let Some(family) = embedded_family_for(&glyph.font_family, self.fallback_family)
+    /// Char-only keys (no resolved id) always do. Variant-selected keys (large
+    /// operators, stretched delimiters) only when the cmap entry for the char
+    /// is that very glyph — otherwise the text run would paint the wrong
+    /// outline.
+    fn text_faithful(&mut self, ch: char, glyph_id: Option<u16>, label: &str) -> bool {
+        let Some(family) = embedded_family_for(label, self.fallback_family)
         else {
             return false;
         };
@@ -177,7 +166,7 @@ impl HtmlBackend {
         else {
             return false;
         };
-        match glyph.glyph_id {
+        match glyph_id {
             None => true,
             Some(id) => data.cmap_glyph(ch) == Some(id),
         }
@@ -277,21 +266,6 @@ impl HtmlBackend {
     fn end_group(&mut self) {
         self.buffer.push_str("</span>");
         self.group_depth -= 1;
-    }
-}
-
-/// Whether painting this node puts any ink on the page.
-///
-/// Mirrors the layout traversal's rule: glue, kerns and penalties only
-/// advance, and a glyph the font carries neither a character nor an outline
-/// for paints nothing.
-fn paints(node: &LayoutNode) -> bool {
-    match node {
-        LayoutNode::Glyph(glyph) => glyph.path_data.is_some() || glyph.char.is_some(),
-        LayoutNode::Rule { .. } | LayoutNode::Path(_) => true,
-        LayoutNode::HBox(hbox) => hbox.children.iter().any(paints),
-        LayoutNode::VBox(vbox) => vbox.children.iter().any(paints),
-        LayoutNode::Glue(_) | LayoutNode::Kern(_) | LayoutNode::Penalty { .. } | LayoutNode::Anchor { .. } => false,
     }
 }
 

@@ -116,7 +116,7 @@ impl SvgWalk {
                     self.text(&text, ox + rx, oy + ry, rx, ry, scale, family);
                 }
             }
-            PaintNode::Rect { x, y, width, height, stroke_width } => {
+            PaintNode::Rect { x, y, width, height, stroke_width, baseline: _ } => {
                 let rx = x.to_f64();
                 let ry = y.to_f64();
                 let rw = width.to_f64();
@@ -339,6 +339,7 @@ mod tests {
                     width: Fixed::from_f64(80.0),
                     height: Fixed::from_f64(15.0),
                     stroke_width: Fixed::ZERO,
+                    baseline: Fixed::from_f64(15.0),
                 }],
                 translate_x: Fixed::ZERO,
                 translate_y: Fixed::ZERO,
@@ -369,6 +370,7 @@ mod tests {
                     width: Fixed::from_f64(3.0),
                     height: Fixed::from_f64(4.0),
                     stroke_width: Fixed::ZERO,
+                    baseline: Fixed::from_f64(6.0),
                 }],
                 translate_x: Fixed::from_f64(10.0),
                 translate_y: Fixed::from_f64(20.0),
