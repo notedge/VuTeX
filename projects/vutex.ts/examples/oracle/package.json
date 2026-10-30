@@ -1,15 +1,20 @@
 {
-  "name": "vutex-oracle-tools",
+  "name": "@vutex/oracle-tools",
   "version": "0.0.0",
   "private": true,
-  "description": "External-oracle generators for the VuTeX layout corpus. Not part of the pnpm workspace.",
+  "description": "External-oracle generators for the VuTeX layout corpus.",
   "type": "module",
   "scripts": {
     "katex:mathml": "node emit-katex-mathml.mjs",
     "mathjax:mathml": "node emit-mathjax-mathml.mjs",
     "mathjax:svg": "node emit-mathjax-svg.mjs",
     "latex:probe": "node probe-latex.mjs",
-    "latex:boxes": "node emit-latex-boxes.mjs"
+    "latex:boxes": "node emit-latex-boxes.mjs",
+    "render:wetex": "pnpm --filter @vutex/wetex build && node render-wetex.mjs"
+  },
+  "dependencies": {
+    "@vutex/vutex-unknown-wasm32": "workspace:*",
+    "@vutex/wetex": "workspace:*"
   },
   "devDependencies": {
     "katex": "0.16.22",

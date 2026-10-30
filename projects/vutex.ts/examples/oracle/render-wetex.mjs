@@ -1,12 +1,21 @@
-// Render oracle corpus formulas to SVG via @vutex/wetex WASM (pre-built).
-//   node projects/vutex.ts/examples/oracle/render-wetex.mjs [--display] [--outdir PATH]
+// Render oracle corpus formulas to SVG via the workspace `@vutex/wetex` API.
+//   pnpm --filter @vutex/oracle-tools render:wetex [--display] [--outdir PATH]
+// (the script builds `@vutex/wetex` first, so its `dist` entry is current)
 
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { renderSvg } from "@vutex/wetex";
+
 const here = dirname(fileURLToPath(import.meta.url));
-const repo = resolve(here, "..", "..");
+const repo = resolve(here, "..", "..", "..", "..");
+
+// Node hosts cannot fetch the web-target artifact, so read its bytes and
+// hand them to the standard `@vutex/wetex` loader (WeTeXWasmOptions.bytes).
+const wasmEntry = fileURLToPath(import.meta.resolve("@vutex/vutex-unknown-wasm32"));
+const wasmBytes = readFileSync(resolve(dirname(wasmEntry), "wetex_wasm_bg.wasm"));
+const wasmOptions = { bytes: new Uint8Array(wasmBytes) };
 
 let displayMode = false;
 let outdir = resolve(repo, "out-wetex");
@@ -19,20 +28,6 @@ for (let i = 0; i < args.length; i++) {
   else if (a === "--outdir") outdir = resolve(args[++i]);
 }
 
-// Load pre-built WASM binding directly (no TS, no tsx needed).
-const wasmPkg = resolve(repo, "projects", "packages", "vutex-unknown-wasm32", "lib");
-const wasmBytes = readFileSync(resolve(wasmPkg, "wetex_wasm_bg.wasm"));
-const wetexBinding = await import(`file://${resolve(wasmPkg, "wetex_wasm.js")}`);
-await wetexBinding.initSync(wasmBytes); // sync init with bytes
-
-const renderSvg = (source, display, fontSize) => {
-  const options = JSON.stringify({
-    displayMode: display ? "block" : "inline",
-    fontSize: fontSize ?? null,
-  });
-  return JSON.parse(wetexBinding.renderSvg(source, options));
-};
-
 const corpus = JSON.parse(
   readFileSync(resolve(repo, "projects/vutex.rs/crates/vutex-layout/tests/fixtures/oracle/corpus.json"), "utf8")
 );
@@ -41,13 +36,20 @@ mkdirSync(outdir, { recursive: true });
 
 // KaTeX default body is 16px × 1.21em ≈ 19.36px for inline formulas.
 // Match that so side-by-side visual comparison is size-fair.
-const KA_TEX_DEFAULT_PX = 19.36;
+const KATEX_DEFAULT_PX = 19.36;
 
 let ok = 0, fail = 0, skip = 0;
 for (const formula of corpus.formulas) {
   if (formula.tex.includes("\\begin{")) { skip++; continue; }
   try {
-    const res = renderSvg(formula.tex, displayMode, KA_TEX_DEFAULT_PX);
+    const res = await renderSvg(
+      formula.tex,
+      {
+        displayMode: displayMode ? "block" : "inline",
+        fontSize: KATEX_DEFAULT_PX,
+      },
+      wasmOptions,
+    );
     if (!res.svg) {
       console.log(`FAIL  ${formula.id}  empty svg`);
       fail++;

@@ -1,4 +1,5 @@
 packages:
     - projects/vutex.ts/packages/*
     - projects/vutex.ts/platforms/*
+    - projects/vutex.ts/examples/*
     - projects/vutex.ts/homepage

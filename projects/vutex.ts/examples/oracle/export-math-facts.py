@@ -38,7 +38,7 @@ import fontTools
 from fontTools.pens.boundsPen import BoundsPen
 from fontTools.ttLib import TTFont
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = Path(__file__).resolve().parents[4]
 DEFAULT_FONT = REPO_ROOT / "projects/vutex.rs/crates/vutex-text/assets/LatinModernMath-Regular.otf"
 DEFAULT_OUT = REPO_ROOT / "projects/vutex.rs/crates/vutex-layout/tests/fixtures/oracle/latinmodern-math-facts.json"
 

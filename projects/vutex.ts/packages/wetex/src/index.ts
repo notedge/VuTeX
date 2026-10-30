@@ -3,6 +3,7 @@ import type { FormulaRender, RenderOptions, WeTeXBindings, WeTeXWasmOptions } fr
 
 export type {
     DisplayMode,
+    FontFamily,
     FormulaDiagnostic,
     FormulaMetrics,
     FormulaRender,

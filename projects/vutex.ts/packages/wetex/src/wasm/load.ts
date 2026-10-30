@@ -1,7 +1,7 @@
 import type { FormulaRender, RenderOptions, WeTeXBindings, WeTeXWasmOptions } from "../types.js";
 
 type WasmBinding = {
-    default: (input?: { module_or_path?: string | URL }) => Promise<unknown>;
+    default: (input?: { module_or_path?: string | URL | Uint8Array }) => Promise<unknown>;
     wetexVersion: () => string;
     measureFormula: (source: string, optionsJson?: string) => string;
     renderSvg: (source: string, optionsJson?: string) => string;
@@ -37,7 +37,9 @@ function wrap(binding: WasmBinding): WeTeXBindings {
 /** Load the WASM artifact from `@vutex/vutex-unknown-wasm32`. */
 export async function loadWeTeX(options: WeTeXWasmOptions = {}): Promise<WeTeXBindings> {
     const binding = (await import("@vutex/vutex-unknown-wasm32")) as WasmBinding;
-    if (options.url) {
+    if (options.bytes) {
+        await binding.default({ module_or_path: options.bytes });
+    } else if (options.url) {
         await binding.default({ module_or_path: options.url });
     } else {
         await binding.default();
