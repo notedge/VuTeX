@@ -201,3 +201,44 @@ fn semantics_are_absent_when_the_formula_fails() {
     assert!(value["semantics"].is_null(), "failed render: {value}");
     assert!(value["diagnostics"].as_array().map(|items| !items.is_empty()).unwrap_or(false), "{value}");
 }
+
+/// `fontFamily` must reach the layout, not be silently ignored: the two
+/// embedded faces draw this formula with different outlines and extents.
+#[test]
+fn font_family_option_changes_the_render() {
+    let source = "\\frac{x}{y} + \\sqrt{x}";
+    let options = |family: &str| Some(format!("{{\"displayMode\":\"block\",\"fontFamily\":\"{family}\"}}"));
+
+    let xits = parse(&render_svg_wasm(source, options("xits-math")));
+    let lm = parse(&render_svg_wasm(source, options("lm-math")));
+    assert_eq!(xits["diagnostics"].as_array().map(Vec::len), Some(0), "{xits}");
+    assert_eq!(lm["diagnostics"].as_array().map(Vec::len), Some(0), "{lm}");
+
+    assert_ne!(xits["svg"].as_str(), lm["svg"].as_str(), "the family option must change the SVG");
+    assert_ne!(xits["metrics"], lm["metrics"], "the family option must change the metrics");
+
+    // Omitting the option resolves to the builtin default face, XITS Math.
+    let default = parse(&render_svg_wasm(source, Some("{\"displayMode\":\"block\"}".to_string())));
+    assert_eq!(default["svg"].as_str(), xits["svg"].as_str(), "the default must render as XITS Math: {default}");
+}
+
+/// A family whose asset is not embedded fails with a clear code instead of
+/// quietly rendering synthetic stand-ins.
+#[test]
+fn unsupported_font_family_reports_a_diagnostic() {
+    for render in [
+        render_svg_wasm("\\frac{x}{y}", Some("{\"fontFamily\":\"stix-two-math\"}".to_string())),
+        render_formula("\\frac{x}{y}", Some("{\"fontFamily\":\"stix-two-math\"}".to_string())),
+        render_mathml_wasm("\\frac{x}{y}", Some("{\"fontFamily\":\"stix-two-math\"}".to_string())),
+        measure_formula("\\frac{x}{y}", Some("{\"fontFamily\":\"stix-two-math\"}".to_string())),
+    ] {
+        let value = parse(&render);
+        assert_eq!(value["svg"].as_str(), Some(""), "an unsupported family must not emit a render: {value}");
+        assert!(value["mathml"].is_null(), "an unsupported family must not emit mathml: {value}");
+
+        let diagnostics = value["diagnostics"].as_array().expect("diagnostics");
+        assert_eq!(diagnostics.len(), 1, "one unsupported family, one diagnostic: {value}");
+        assert_eq!(diagnostics[0]["code"].as_str(), Some("WETEX_UNSUPPORTED_FONT_FAMILY"));
+        assert_eq!(diagnostics[0]["severity"].as_str(), Some("error"));
+    }
+}

@@ -16,19 +16,19 @@ pub enum DisplayMode {
 ///
 /// Each family requires an OpenType MATH table — wetex reads
 /// `MathConstants`, `MathVariants`, and `MathKern` from it to drive the
-/// TeXbook layout engine. Only [`FontFamily::LmMath`] ships as an embedded
-/// asset today; the remaining variants are declared here so hosts can opt
-/// into them once the font-loader layer lands.
+/// TeXbook layout engine. [`FontFamily::XitsMath`] and [`FontFamily::LmMath`]
+/// ship as embedded assets; [`FontFamily::StixTwoMath`] reports a
+/// `WETEX_UNSUPPORTED_FONT_FAMILY` diagnostic until its asset lands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum FontFamily {
-    /// Latin Modern Math — Computer Modern's OpenType successor, the default
-    /// and only family with a complete embedded MATH table.
-    LmMath,
-    /// XITS Math — Times-based, shares the same MATH table schema as LM Math.
-    /// Embedding planned.
+    /// XITS Math — Times-based, same lineage as KaTeX_Main. The embedded
+    /// default when `fontFamily` is omitted.
     XitsMath,
-    /// STIX Two Math — STIX-based, full MATH table. Embedding planned.
+    /// Latin Modern Math — Computer Modern's OpenType successor, also embedded.
+    LmMath,
+    /// STIX Two Math — full MATH table upstream, asset not embedded yet, so
+    /// renders fail with a `WETEX_UNSUPPORTED_FONT_FAMILY` diagnostic.
     StixTwoMath,
 }
 
@@ -47,11 +47,10 @@ pub struct RenderOptions {
     /// `default_base_size(display_mode)` — 14px for inline, 16px for display.
     #[serde(default)]
     pub font_size: Option<f64>,
-    /// Math font family. Defaults to [`FontFamily::LmMath`] when omitted —
-    /// the only family with an embedded OpenType MATH table today.
-    /// [`FontFamily::XitsMath`] and [`FontFamily::StixTwoMath`] are declared
-    /// for forward compatibility but return a diagnostic until their font
-    /// assets ship.
+    /// Math font family. Defaults to [`FontFamily::XitsMath`] when omitted —
+    /// the builtin default embedded face. [`FontFamily::LmMath`] is also
+    /// embedded; [`FontFamily::StixTwoMath`] returns a
+    /// `WETEX_UNSUPPORTED_FONT_FAMILY` diagnostic until its font asset ships.
     #[serde(default)]
     pub font_family: Option<FontFamily>,
 }

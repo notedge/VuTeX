@@ -1,19 +1,23 @@
 use vutex_layout::math::{
-    LayoutNode, collect_layout_with_diagnostics, default_base_size, layout_formula_with_result, render_layout_node,
+    LayoutNode, collect_layout_with_diagnostics, default_base_size, layout_formula_with_result_for, render_layout_node,
 };
 use vutex_render_svg::math::{SvgBackend, render_mathml_result};
+use vutex_text::math::MathFontFamily;
 use vutex_types::{
     Diagnostic, Severity,
     math::{FormulaLayoutResult, MathError},
 };
 
-use crate::types::{DisplayMode, FormulaDiagnostic, FormulaMetrics, FormulaRender, RenderOptions};
+use crate::types::{DisplayMode, FontFamily, FormulaDiagnostic, FormulaMetrics, FormulaRender, RenderOptions};
 
 const UNSUPPORTED_COMMANDS: &[&str] = &["usepackage", "input", "include", "write", "openout"];
 
 /// Measure a formula without emitting a full render payload.
 pub fn measure(source: &str, options: &RenderOptions) -> FormulaRender {
     let mut diagnostics = collect_diagnostics(source);
+    if let Some(diagnostic) = font_family_diagnostic(options) {
+        diagnostics.push(diagnostic);
+    }
     if has_error(&diagnostics) {
         return failed(diagnostics);
     }
@@ -42,6 +46,9 @@ pub fn measure(source: &str, options: &RenderOptions) -> FormulaRender {
 /// dependency is never silent.
 pub fn render_svg(source: &str, options: &RenderOptions) -> FormulaRender {
     let mut diagnostics = collect_diagnostics(source);
+    if let Some(diagnostic) = font_family_diagnostic(options) {
+        diagnostics.push(diagnostic);
+    }
     if has_error(&diagnostics) {
         return failed(diagnostics);
     }
@@ -76,6 +83,9 @@ pub fn render_svg(source: &str, options: &RenderOptions) -> FormulaRender {
 /// tree the layout pass itself consumed, so the source is never parsed twice.
 pub fn render_mathml(source: &str, options: &RenderOptions) -> FormulaRender {
     let mut diagnostics = collect_diagnostics(source);
+    if let Some(diagnostic) = font_family_diagnostic(options) {
+        diagnostics.push(diagnostic);
+    }
     if has_error(&diagnostics) {
         return failed(diagnostics);
     }
@@ -98,6 +108,9 @@ pub fn render_mathml(source: &str, options: &RenderOptions) -> FormulaRender {
 /// Full render with SVG and MathML taken from one laid-out formula.
 pub fn render(source: &str, options: &RenderOptions) -> FormulaRender {
     let mut diagnostics = collect_diagnostics(source);
+    if let Some(diagnostic) = font_family_diagnostic(options) {
+        diagnostics.push(diagnostic);
+    }
     if has_error(&diagnostics) {
         return failed(diagnostics);
     }
@@ -137,7 +150,37 @@ fn layout_formula(
 ) -> Result<(FormulaLayoutResult, LayoutNode, Vec<Diagnostic>), MathError> {
     let display = options.display_mode == DisplayMode::Block;
     let base = options.font_size.unwrap_or_else(|| default_base_size(display));
-    layout_formula_with_result(source, display, base)
+    let family = embedded_family(options.font_family).expect("entries reject unsupported families before layout");
+    layout_formula_with_result_for(source, display, base, family)
+}
+
+/// Map the host's `fontFamily` choice onto an embedded layout family.
+///
+/// An omitted choice resolves to the builtin default face. `None` means the
+/// requested family ships no embedded asset yet; the public entries report
+/// that with `WETEX_UNSUPPORTED_FONT_FAMILY` before layout runs.
+fn embedded_family(family: Option<FontFamily>) -> Option<MathFontFamily> {
+    match family {
+        None => MathFontFamily::builtin_default(),
+        Some(FontFamily::LmMath) => Some(MathFontFamily::LmMath),
+        Some(FontFamily::XitsMath) => Some(MathFontFamily::XitsMath),
+        Some(FontFamily::StixTwoMath) => None,
+    }
+}
+
+/// The error a host sees when it asks for a family whose asset is not embedded.
+fn font_family_diagnostic(options: &RenderOptions) -> Option<FormulaDiagnostic> {
+    let unsupported = match options.font_family {
+        Some(FontFamily::StixTwoMath) => "stix-two-math",
+        _ => return None,
+    };
+    Some(FormulaDiagnostic {
+        code: "WETEX_UNSUPPORTED_FONT_FAMILY".into(),
+        severity: severity_name(Severity::Error),
+        message: format!("font family `{unsupported}` is not embedded yet"),
+        start: None,
+        end: None,
+    })
 }
 
 /// Render the SVG markup of one laid-out formula.

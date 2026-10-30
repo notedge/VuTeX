@@ -17,5 +17,6 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 vutex-layout = { workspace = true }
 vutex-render-svg = { workspace = true }
+vutex-text = { workspace = true }
 vutex-types = { workspace = true, features = ["serde"] }
 wasm-bindgen = { workspace = true }
