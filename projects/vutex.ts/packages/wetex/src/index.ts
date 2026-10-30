@@ -43,6 +43,16 @@ export async function renderSvg(
     return wetex.renderSvg(source, options);
 }
 
+/** Render a formula to an HTML fragment through the default WASM binding. */
+export async function renderHtml(
+    source: string,
+    options?: RenderOptions,
+    wasmOptions?: WeTeXWasmOptions,
+): Promise<FormulaRender> {
+    const wetex = await bindings(wasmOptions);
+    return wetex.renderHtml(source, options);
+}
+
 /** Render a formula to MathML through the default WASM binding. */
 export async function renderMathml(
     source: string,
@@ -78,6 +88,14 @@ export function renderSvgWith(
     options?: RenderOptions,
 ): FormulaRender {
     return wetex.renderSvg(source, options);
+}
+
+export function renderHtmlWith(
+    wetex: WeTeXBindings,
+    source: string,
+    options?: RenderOptions,
+): FormulaRender {
+    return wetex.renderHtml(source, options);
 }
 
 export function renderMathmlWith(

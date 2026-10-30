@@ -30,9 +30,9 @@ export interface EngineOutput {
 }
 
 export const BACKENDS: BackendMeta[] = [
-    { id: "mathml", label: "MathML" },
-    { id: "svg", label: "SVG" },
     { id: "html", label: "HTML" },
+    { id: "svg", label: "SVG" },
+    { id: "mathml", label: "MathML" },
 ];
 
 export const ENGINES: EngineMeta[] = [
@@ -40,8 +40,8 @@ export const ENGINES: EngineMeta[] = [
         id: "wetex",
         name: "WeTeX",
         vendor: "VuTeX",
-        detail: "Rust/WASM 内核，直接产出 SVG 与 MathML，并回报宽度、高度与基线深度。",
-        backends: ["svg", "mathml"],
+        detail: "Rust/WASM 内核，产出 HTML、SVG 与 MathML 三种后端，并回报宽度、高度与基线深度。",
+        backends: ["html", "svg", "mathml"],
     },
     {
         id: "katex",
@@ -159,10 +159,17 @@ export async function renderFormula(
         if (engine === "wetex") {
             const wetex = await loadWetex();
             const render =
-                backend === "svg"
-                    ? wetex.renderSvg(tex, displayOptions(display))
-                    : wetex.renderMathml(tex, displayOptions(display));
-            const markup = backend === "svg" ? render.svg : render.mathml || render.svg;
+                backend === "html"
+                    ? wetex.renderHtml(tex, displayOptions(display))
+                    : backend === "svg"
+                      ? wetex.renderSvg(tex, displayOptions(display))
+                      : wetex.renderMathml(tex, displayOptions(display));
+            const markup =
+                backend === "html"
+                    ? render.html
+                    : backend === "svg"
+                      ? render.svg
+                      : render.mathml || render.svg;
             return done(String(markup || "").trim().length > 0, markup || "", wetexNote(render));
         }
         if (engine === "katex") {

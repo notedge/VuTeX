@@ -8,6 +8,7 @@ use vutex_types::{
     math::{FormulaLayoutResult, MathError},
 };
 
+use crate::html::HtmlBackend;
 use crate::types::{DisplayMode, FontFamily, FormulaDiagnostic, FormulaMetrics, FormulaRender, RenderOptions};
 
 const UNSUPPORTED_COMMANDS: &[&str] = &["usepackage", "input", "include", "write", "openout"];
@@ -28,6 +29,7 @@ pub fn measure(source: &str, options: &RenderOptions) -> FormulaRender {
             FormulaRender {
                 metrics: node_metrics(&root),
                 svg: String::new(),
+                html: String::new(),
                 mathml: None,
                 semantics: Some(result.semantics),
                 diagnostics,
@@ -62,6 +64,7 @@ pub fn render_svg(source: &str, options: &RenderOptions) -> FormulaRender {
                     FormulaRender {
                         metrics: node_metrics(&root),
                         svg,
+                        html: String::new(),
                         mathml: None,
                         semantics: Some(result.semantics),
                         diagnostics,
@@ -96,7 +99,40 @@ pub fn render_mathml(source: &str, options: &RenderOptions) -> FormulaRender {
             FormulaRender {
                 metrics: node_metrics(&root),
                 svg: String::new(),
+                html: String::new(),
                 mathml: Some(render_mathml_result(&result)),
+                semantics: Some(result.semantics),
+                diagnostics,
+            }
+        }
+        Err(err) => failed(vec![math_error_to_diagnostic(&err)]),
+    }
+}
+
+/// Render a formula to an HTML fragment.
+///
+/// The fragment is one inline-block container holding absolutely positioned
+/// text runs and outline paths, laid out by the same box tree the SVG backend
+/// paints, so the two agree on geometry while the HTML flows with host text
+/// and stays selectable wherever the selected face reaches the glyph.
+pub fn render_html(source: &str, options: &RenderOptions) -> FormulaRender {
+    let mut diagnostics = collect_diagnostics(source);
+    if let Some(diagnostic) = font_family_diagnostic(options) {
+        diagnostics.push(diagnostic);
+    }
+    if has_error(&diagnostics) {
+        return failed(diagnostics);
+    }
+
+    match layout_formula(source, options) {
+        Ok((result, root, math_diagnostics)) => {
+            diagnostics.extend(math_diagnostics.into_iter().map(FormulaDiagnostic::from));
+            let family = embedded_family(options.font_family).expect("entries reject unsupported families before layout");
+            FormulaRender {
+                metrics: node_metrics(&root),
+                svg: String::new(),
+                html: HtmlBackend::new(family).render(&root),
+                mathml: None,
                 semantics: Some(result.semantics),
                 diagnostics,
             }
@@ -121,9 +157,12 @@ pub fn render(source: &str, options: &RenderOptions) -> FormulaRender {
             match render_svg_markup(&root, options.outline.unwrap_or(true)) {
                 Ok((svg, outline_diagnostics)) => {
                     diagnostics.extend(outline_diagnostics.into_iter().map(FormulaDiagnostic::from));
+                    let family =
+                        embedded_family(options.font_family).expect("entries reject unsupported families before layout");
                     FormulaRender {
                         metrics: node_metrics(&root),
                         svg,
+                        html: HtmlBackend::new(family).render(&root),
                         mathml: Some(render_mathml_result(&result)),
                         semantics: Some(result.semantics),
                         diagnostics,
@@ -206,7 +245,14 @@ fn node_metrics(root: &LayoutNode) -> FormulaMetrics {
 
 /// An empty payload carrying only the diagnostics of a failed render.
 fn failed(diagnostics: Vec<FormulaDiagnostic>) -> FormulaRender {
-    FormulaRender { metrics: FormulaMetrics::default(), svg: String::new(), mathml: None, semantics: None, diagnostics }
+    FormulaRender {
+        metrics: FormulaMetrics::default(),
+        svg: String::new(),
+        html: String::new(),
+        mathml: None,
+        semantics: None,
+        diagnostics,
+    }
 }
 
 fn collect_diagnostics(source: &str) -> Vec<FormulaDiagnostic> {

@@ -105,6 +105,8 @@ pub struct FormulaRender {
     pub metrics: FormulaMetrics,
     /// SVG document, empty when only measuring.
     pub svg: String,
+    /// HTML fragment, empty unless the HTML backend produced it.
+    pub html: String,
     /// Presentation MathML, present only when requested.
     pub mathml: Option<String>,
     /// Structured math semantics the layout consumed, absent when the formula

@@ -13,6 +13,7 @@ repository = "https://github.com/notedge/VuTeX"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+acorn-ttf = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 vutex-layout = { workspace = true }

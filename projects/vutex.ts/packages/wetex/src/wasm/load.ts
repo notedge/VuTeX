@@ -5,6 +5,7 @@ type WasmBinding = {
     wetexVersion: () => string;
     measureFormula: (source: string, optionsJson?: string) => string;
     renderSvg: (source: string, optionsJson?: string) => string;
+    renderHtml: (source: string, optionsJson?: string) => string;
     renderMathml: (source: string, optionsJson?: string) => string;
     renderFormula: (source: string, optionsJson?: string) => string;
 };
@@ -27,6 +28,8 @@ function wrap(binding: WasmBinding): WeTeXBindings {
             decodeResult(binding.measureFormula(source, encodeOptions(options))),
         renderSvg: (source, options) =>
             decodeResult(binding.renderSvg(source, encodeOptions(options))),
+        renderHtml: (source, options) =>
+            decodeResult(binding.renderHtml(source, encodeOptions(options))),
         renderMathml: (source, options) =>
             decodeResult(binding.renderMathml(source, encodeOptions(options))),
         renderFormula: (source, options) =>

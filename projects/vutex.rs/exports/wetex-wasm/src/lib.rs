@@ -3,9 +3,10 @@
 #![doc = include_str!("../readme.md")]
 
 mod formula;
+mod html;
 mod types;
 
-pub use formula::{measure, render, render_mathml, render_svg};
+pub use formula::{measure, render, render_html, render_mathml, render_svg};
 pub use types::{DisplayMode, FormulaDiagnostic, FormulaMetrics, FormulaRender, RenderOptions};
 
 use wasm_bindgen::prelude::*;
@@ -37,6 +38,12 @@ pub fn measure_formula(source: &str, options_json: Option<String>) -> String {
 #[wasm_bindgen(js_name = renderSvg)]
 pub fn render_svg_wasm(source: &str, options_json: Option<String>) -> String {
     to_json(&render_svg(source, &parse_options(options_json)))
+}
+
+/// Render a formula to an HTML fragment.
+#[wasm_bindgen(js_name = renderHtml)]
+pub fn render_html_wasm(source: &str, options_json: Option<String>) -> String {
+    to_json(&render_html(source, &parse_options(options_json)))
 }
 
 /// Render a formula to Presentation MathML.

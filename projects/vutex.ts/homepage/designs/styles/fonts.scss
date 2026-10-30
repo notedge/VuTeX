@@ -7,3 +7,21 @@
     font-weight: 400;
     font-display: swap;
 }
+
+/* The wetex HTML backend emits these exact family labels; the gallery must
+   register them or the text runs fall back to a host font. */
+@font-face {
+    font-family: "xits-math";
+    src: url("/fonts/XITSMath-Regular.otf") format("opentype");
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "latin-modern-math";
+    src: url("/fonts/LatinModernMath-Regular.otf") format("opentype");
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+}

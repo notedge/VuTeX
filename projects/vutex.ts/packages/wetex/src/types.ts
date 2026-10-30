@@ -16,7 +16,7 @@ export type RenderOptions = {
      * its display-mode default (14px inline, 16px block).
      */
     fontSize?: number;
-    /** Math font family. Defaults to `"lm-math"` — the only embedded family today. */
+    /** Math font family. Defaults to `"xits-math"` — the builtin embedded face. */
     fontFamily?: FontFamily;
 };
 
@@ -38,6 +38,8 @@ export type FormulaDiagnostic = {
 export type FormulaRender = {
     metrics: FormulaMetrics;
     svg: string;
+    /** HTML fragment from the HTML backend; empty unless it produced one. */
+    html: string;
     mathml?: string;
     diagnostics: FormulaDiagnostic[];
 };
@@ -56,6 +58,7 @@ export type WeTeXBindings = {
     wetexVersion: () => string;
     measureFormula: (source: string, options?: RenderOptions) => FormulaRender;
     renderSvg: (source: string, options?: RenderOptions) => FormulaRender;
+    renderHtml: (source: string, options?: RenderOptions) => FormulaRender;
     renderMathml: (source: string, options?: RenderOptions) => FormulaRender;
     renderFormula: (source: string, options?: RenderOptions) => FormulaRender;
 };
