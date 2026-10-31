@@ -6,12 +6,6 @@ export type FontFamily = "lm-math" | "xits-math" | "stix-two-math";
 export type RenderOptions = {
     displayMode?: DisplayMode;
     /**
-     * Strict path-only SVG output. Defaults to `true` on the Rust side, so
-     * the public render path never falls back to a host-font `<text>` run.
-     * Passing `false` opts into that fallback explicitly.
-     */
-    outline?: boolean;
-    /**
      * Explicit base font size in CSS pixels. When omitted the renderer uses
      * its display-mode default (14px inline, 16px block).
      */

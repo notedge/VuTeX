@@ -70,7 +70,6 @@ test("measureWith delegates to measureFormula and passes the options object by r
     const { bindings, calls } = recordingStub();
     const options: RenderOptions = {
         displayMode: "block",
-        outline: false,
         fontSize: 20,
         fontFamily: "lm-math",
     };
@@ -84,7 +83,6 @@ test("measureWith delegates to measureFormula and passes the options object by r
     assert.equal(result, calls[0].returned);
     assert.deepEqual(options, {
         displayMode: "block",
-        outline: false,
         fontSize: 20,
         fontFamily: "lm-math",
     });

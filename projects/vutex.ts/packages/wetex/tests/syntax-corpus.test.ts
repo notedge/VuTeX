@@ -106,8 +106,8 @@ test("renderFormula mathml always carries display=\"block\" even for inline mode
     assert.equal(block.mathml, inline.mathml);
 });
 
-test("outline:false still renders a usable result for a path-heavy formula", () => {
-    const result = wetex.renderFormula("\\sqrt[3]{x+y}", { outline: false });
+test("a path-heavy formula renders through the single outline path", () => {
+    const result = wetex.renderFormula("\\sqrt[3]{x+y}");
     assert.equal(result.diagnostics.filter((d) => d.severity === "error").length, 0);
     assert.ok(result.metrics.width > 0);
     assert.ok(result.svg.length > 0);
