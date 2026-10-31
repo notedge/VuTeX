@@ -83,11 +83,20 @@ impl SvgWalk {
             PaintNode::Group { children, translate_x, translate_y } => {
                 let nx = ox + translate_x.to_f64();
                 let ny = oy + translate_y.to_f64();
+                let pre = self.buffer.len();
                 let _ = write!(self.buffer, r#"<g transform="translate({}, {})">"#, translate_x.to_f64(), translate_y.to_f64());
+                let after_open = self.buffer.len();
                 for child in children {
                     self.walk(child, nx, ny);
                 }
-                self.buffer.push_str("</g>");
+                if self.buffer.len() == after_open {
+                    // The whole subtree painted nothing: drop the group
+                    // instead of leaving an empty `<g>` in the document.
+                    self.buffer.truncate(pre);
+                }
+                else {
+                    self.buffer.push_str("</g>");
+                }
             }
             PaintNode::GlyphRun { glyph_ids: _, chars, family, positions, size, path_data, font_id: _ } => {
                 let scale = size.to_f64();
@@ -108,7 +117,16 @@ impl SvgWalk {
                 let ry = y.to_f64();
                 let rw = width.to_f64();
                 let rh = height.to_f64();
-                let rect = Bounds { min_x: ox + rx, min_y: oy + ry, max_x: ox + rx + rw, max_y: oy + ry + rh };
+                // A stroke is drawn centred on the box edge, so half of it
+                // paints outside: the tracked ink must cover the overhang or
+                // the viewport clips it.
+                let half = (stroke_width.to_f64() / 2.0).max(0.0);
+                let rect = Bounds {
+                    min_x: ox + rx - half,
+                    min_y: oy + ry - half,
+                    max_x: ox + rx + rw + half,
+                    max_y: oy + ry + rh + half,
+                };
                 self.ink.get_or_insert(rect).include_bounds(&rect);
                 if stroke_width.to_f64() > 0.0 {
                     let _ = write!(
@@ -439,5 +457,69 @@ mod tests {
         assert_eq!(out.diagnostics.len(), 1);
         assert_eq!(out.diagnostics[0].code, "vutex.layout.math.outline_missing");
         assert_eq!(out.diagnostics[0].severity, Severity::Warning);
+    }
+
+    /// A group whose whole subtree paints nothing is dropped instead of
+    /// reaching the document as an empty `<g>`.
+    #[test]
+    fn group_without_painted_children_is_dropped() {
+        let mut res = rect_result();
+        res.paint = PaintNode::Group {
+            children: vec![PaintNode::Group {
+                children: vec![PaintNode::GlyphRun {
+                    font_id: "lmr".to_string(),
+                    glyph_ids: vec![0],
+                    chars: vec![Some(' ')],
+                    family: "latin-modern-math".to_string(),
+                    positions: vec![(Fixed::from_f64(3.0), Fixed::from_f64(4.0))],
+                    size: Fixed::from_f64(16.0),
+                    path_data: vec![None],
+                }],
+                translate_x: Fixed::from_f64(7.0),
+                translate_y: Fixed::from_f64(8.0),
+            }],
+            translate_x: Fixed::ZERO,
+            translate_y: Fixed::ZERO,
+        };
+        let out = render_formula_result(&res);
+        assert!(!out.markup.contains("<g"), "empty groups must not reach the document:\n{}", out.markup);
+        assert_eq!(out.diagnostics.len(), 1, "the unoutlined entry is still reported: {:?}", out.diagnostics);
+    }
+
+    /// A stroked rule paints half its stroke outside the rect box, so the
+    /// viewport must grow past the canvas box to cover the overhang.
+    #[test]
+    fn stroked_rect_covers_its_stroke_overhang() {
+        // Canvas 10 x 5: the rect sits flush with the right edge and its
+        // stroke paints to x = 11, past the canvas box and its padding.
+        let mut res = rect_result();
+        res.metrics.width = Fixed::from_f64(10.0);
+        res.metrics.height = Fixed::from_f64(5.0);
+        res.metrics.depth = Fixed::ZERO;
+        res.paint = PaintNode::Group {
+            children: vec![PaintNode::Rect {
+                x: Fixed::from_f64(9.0),
+                y: Fixed::from_f64(2.0),
+                width: Fixed::from_f64(1.0),
+                height: Fixed::from_f64(1.0),
+                stroke_width: Fixed::from_f64(2.0),
+                baseline: Fixed::from_f64(3.0),
+            }],
+            translate_x: Fixed::ZERO,
+            translate_y: Fixed::ZERO,
+        };
+        let svg = render_formula_result(&res).markup;
+        let (min_x, _min_y, view_w, _view_h) = parse_view_box(&svg);
+        assert!(min_x + view_w >= 11.0 - 1e-6, "right stroke overhang escaped the viewport: {svg}");
+    }
+
+    /// Read the root `viewBox` as `(min_x, min_y, width, height)`.
+    fn parse_view_box(svg: &str) -> (f64, f64, f64, f64) {
+        let needle = "viewBox=\"";
+        let start = svg.find(needle).expect("viewBox") + needle.len();
+        let end = start + svg[start..].find('"').expect("viewBox terminator");
+        let values: Vec<f64> = svg[start..end].split_whitespace().map(|value| value.parse().expect("viewBox number")).collect();
+        assert_eq!(values.len(), 4, "viewBox needs four numbers: {svg}");
+        (values[0], values[1], values[2], values[3])
     }
 }
