@@ -374,6 +374,7 @@ function buildTexDocument(corpus) {
   const lines = [
     "\\documentclass[10pt]{article}",
     "\\usepackage{amsmath}",
+    "\\usepackage{amsfonts}",
     "\\pagestyle{empty}",
     "\\begin{document}",
     "",
@@ -482,6 +483,7 @@ function buildShowboxDocument(tex, displayMode) {
   return [
     "\\documentclass[10pt]{article}",
     "\\usepackage{amsmath}",
+    "\\usepackage{amsfonts}",
     "\\pagestyle{empty}",
     "\\showboxdepth=10",
     "\\showboxbreadth=50",

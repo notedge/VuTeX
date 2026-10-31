@@ -50,10 +50,10 @@ pub enum SemanticNode {
     },
     /// Plain text atoms with an explicit font face.
     ///
-    /// `\text` / `\textrm` emit `FontStyle::Normal`; `\mathbf` / `\mathit`
-    /// emit their respective faces so the layout engine can render them
-    /// differently from math-italic symbols.  `\mathrm` is a face switch: its
-    /// body stays a math tree with the symbols' faces overridden, not text.
+    /// `\text` / `\textrm` / `\textit` and `\operatorname` bodies are authored
+    /// text.  The `\math…` face switches are not text: their bodies stay math
+    /// trees whose symbol atoms carry the overridden face, so an identifier
+    /// keeps its `mi` meaning and gains the MathML `mathvariant` the face names.
     Text {
         text: String,
         font_style: FontStyle,
@@ -590,7 +590,11 @@ pub enum MathSemNode {
     /// Group of siblings — `mrow`.
     Row(Vec<MathSemNode>),
     /// Alphabetic atom — `mi`.
-    Identifier(String),
+    ///
+    /// `mathvariant` carries the authored math face an identifier keeps as
+    /// structure (`\mathbf`, `\mathbb`, …); the italic default of math mode
+    /// and faces MathML cannot name lower to `None` and stay a bare `mi`.
+    Identifier { text: String, mathvariant: Option<MathVariant> },
     /// Numeric atom — `mn`.
     Number(String),
     /// Operator or fence atom — `mo`.
@@ -643,6 +647,62 @@ pub enum AccentPosition {
     Below,
 }
 
+/// Math alphabetic face an identifier keeps as structure — the MathML
+/// `mathvariant` value of an `mi`.
+///
+/// Only faces MathML can name appear here; the italic default of math mode and
+/// text-only faces lower to `None` so the identifier stays a bare `mi`.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "kebab-case")]
+pub enum MathVariant {
+    /// Upright — `\mathrm`.
+    Normal,
+    /// Bold — `\mathbf`.
+    Bold,
+    /// Double-struck — `\mathbb`.
+    DoubleStruck,
+    /// Script (calligraphic) — `\mathcal`.
+    Script,
+    /// Sans-serif — `\mathsf`.
+    SansSerif,
+    /// Monospace — `\mathtt`.
+    Monospace,
+    /// Fraktur — `\mathfrak`.
+    Fraktur,
+}
+
+impl MathVariant {
+    /// The MathML variant an authored [`FontStyle`] selects, if any.
+    ///
+    /// `Math` and `Italic` are the italic default of math mode and `Strike` is
+    /// a text face, so none of the three names a `mathvariant`.
+    pub fn from_style(style: FontStyle) -> Option<Self> {
+        match style {
+            FontStyle::Normal => Some(Self::Normal),
+            FontStyle::Bold => Some(Self::Bold),
+            FontStyle::DoubleStruck => Some(Self::DoubleStruck),
+            FontStyle::Calligraphic => Some(Self::Script),
+            FontStyle::SansSerif => Some(Self::SansSerif),
+            FontStyle::Monospace => Some(Self::Monospace),
+            FontStyle::Fraktur => Some(Self::Fraktur),
+            FontStyle::Math | FontStyle::Italic | FontStyle::Strike => None,
+        }
+    }
+
+    /// The MathML `mathvariant` attribute value.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Normal => "normal",
+            Self::Bold => "bold",
+            Self::DoubleStruck => "double-struck",
+            Self::Script => "script",
+            Self::SansSerif => "sans-serif",
+            Self::Monospace => "monospace",
+            Self::Fraktur => "fraktur",
+        }
+    }
+}
+
 impl MathSemNode {
     /// Lower one [`SemanticNode`] into its structured form.
     ///
@@ -665,7 +725,9 @@ impl MathSemNode {
             }
             SemanticNode::Symbol { glyph_key, .. } => match glyph_key.char {
                 Some(c) if c.is_numeric() => MathSemNode::Number(c.to_string()),
-                Some(c) if c.is_alphabetic() => MathSemNode::Identifier(c.to_string()),
+                Some(c) if c.is_alphabetic() => {
+                    MathSemNode::Identifier { text: c.to_string(), mathvariant: MathVariant::from_style(glyph_key.style) }
+                }
                 Some(c) => MathSemNode::Operator(c.to_string()),
                 None => MathSemNode::Empty,
             },
@@ -823,8 +885,8 @@ mod tests {
         };
         match lower(&frac) {
             MathSemNode::Fraction { numerator, denominator, line } => {
-                assert_eq!(*numerator, MathSemNode::Identifier("a".into()));
-                assert_eq!(*denominator, MathSemNode::Identifier("b".into()));
+                assert_eq!(*numerator, MathSemNode::Identifier { text: "a".into(), mathvariant: None });
+                assert_eq!(*denominator, MathSemNode::Identifier { text: "b".into(), mathvariant: None });
                 assert_eq!(line, LineStyle::Solid);
             }
             other => panic!("expected Fraction, got {other:?}"),
@@ -839,7 +901,7 @@ mod tests {
         };
         match lower(&rad) {
             MathSemNode::Radical { radicand, degree } => {
-                assert_eq!(*radicand, MathSemNode::Identifier("x".into()));
+                assert_eq!(*radicand, MathSemNode::Identifier { text: "x".into(), mathvariant: None });
                 assert_eq!(degree.as_deref(), Some(&MathSemNode::Number("3".into())));
             }
             other => panic!("expected Radical, got {other:?}"),
@@ -864,11 +926,11 @@ mod tests {
         };
         match lower(&sup) {
             MathSemNode::Sup { base, sup } => {
-                assert_eq!(*base, MathSemNode::Identifier("x".into()));
+                assert_eq!(*base, MathSemNode::Identifier { text: "x".into(), mathvariant: None });
                 match *sup {
                     MathSemNode::Sub { base, sub } => {
-                        assert_eq!(*base, MathSemNode::Identifier("a".into()));
-                        assert_eq!(*sub, MathSemNode::Identifier("b".into()));
+                        assert_eq!(*base, MathSemNode::Identifier { text: "a".into(), mathvariant: None });
+                        assert_eq!(*sub, MathSemNode::Identifier { text: "b".into(), mathvariant: None });
                     }
                     other => panic!("expected nested Sub, got {other:?}"),
                 }
@@ -886,9 +948,9 @@ mod tests {
         };
         match lower(&node) {
             MathSemNode::SubSup { base, sub, sup } => {
-                assert_eq!(*base, MathSemNode::Identifier("x".into()));
-                assert_eq!(*sub, MathSemNode::Identifier("a".into()));
-                assert_eq!(*sup, MathSemNode::Identifier("b".into()));
+                assert_eq!(*base, MathSemNode::Identifier { text: "x".into(), mathvariant: None });
+                assert_eq!(*sub, MathSemNode::Identifier { text: "a".into(), mathvariant: None });
+                assert_eq!(*sup, MathSemNode::Identifier { text: "b".into(), mathvariant: None });
             }
             other => panic!("expected SubSup, got {other:?}"),
         }
@@ -909,10 +971,10 @@ mod tests {
         match lower(&matrix) {
             MathSemNode::Table { rows, columnalign } => {
                 assert_eq!(rows.len(), 2);
-                assert_eq!(rows[0][0], MathSemNode::Identifier("a".into()));
-                assert_eq!(rows[0][1], MathSemNode::Identifier("b".into()));
-                assert_eq!(rows[1][0], MathSemNode::Identifier("c".into()));
-                assert_eq!(rows[1][1], MathSemNode::Identifier("d".into()));
+                assert_eq!(rows[0][0], MathSemNode::Identifier { text: "a".into(), mathvariant: None });
+                assert_eq!(rows[0][1], MathSemNode::Identifier { text: "b".into(), mathvariant: None });
+                assert_eq!(rows[1][0], MathSemNode::Identifier { text: "c".into(), mathvariant: None });
+                assert_eq!(rows[1][1], MathSemNode::Identifier { text: "d".into(), mathvariant: None });
                 assert!(columnalign.is_empty(), "a matrix authors no column alignment: {columnalign:?}");
             }
             other => panic!("expected Table, got {other:?}"),
@@ -927,7 +989,7 @@ mod tests {
         };
         match lower(&accent) {
             MathSemNode::Accent { base, accent, position } => {
-                assert_eq!(*base, MathSemNode::Identifier("f".into()));
+                assert_eq!(*base, MathSemNode::Identifier { text: "f".into(), mathvariant: None });
                 assert_eq!(accent, "ˆ");
                 assert_eq!(position, AccentPosition::Above);
             }
@@ -946,7 +1008,7 @@ mod tests {
             MathSemNode::Delimited { left, right, body } => {
                 assert_eq!(left.as_deref(), Some("("));
                 assert_eq!(right.as_deref(), Some(")"));
-                assert_eq!(*body, MathSemNode::Identifier("x".into()));
+                assert_eq!(*body, MathSemNode::Identifier { text: "x".into(), mathvariant: None });
             }
             other => panic!("expected Delimited, got {other:?}"),
         }
@@ -954,13 +1016,38 @@ mod tests {
 
     #[test]
     fn atoms_split_by_character_class() {
-        assert_eq!(lower(&sym('x', SymbolRole::Ordinary)), MathSemNode::Identifier("x".into()));
+        assert_eq!(lower(&sym('x', SymbolRole::Ordinary)), MathSemNode::Identifier { text: "x".into(), mathvariant: None });
         assert_eq!(lower(&sym('7', SymbolRole::Ordinary)), MathSemNode::Number("7".into()));
         assert_eq!(lower(&sym('+', SymbolRole::Binary)), MathSemNode::Operator("+".into()));
         assert_eq!(
             lower(&SemanticNode::Text { text: "sin".into(), font_style: FontStyle::Normal }),
             MathSemNode::Text("sin".into())
         );
+    }
+
+    #[test]
+    fn a_math_face_lowers_to_the_identifier_variant_it_names() {
+        // A `\math…` face switch rewrites the face of its symbol atoms, so the
+        // lowered identifier keeps the MathML `mathvariant` the face names.
+        let face = |c: char, style: FontStyle| SemanticNode::Symbol {
+            glyph_key: GlyphKey::from_char(c, None, style),
+            role: SymbolRole::Ordinary,
+        };
+        assert_eq!(
+            lower(&face('R', FontStyle::DoubleStruck)),
+            MathSemNode::Identifier { text: "R".into(), mathvariant: Some(MathVariant::DoubleStruck) }
+        );
+        assert_eq!(
+            lower(&face('A', FontStyle::Bold)),
+            MathSemNode::Identifier { text: "A".into(), mathvariant: Some(MathVariant::Bold) }
+        );
+        assert_eq!(
+            lower(&face('L', FontStyle::Calligraphic)),
+            MathSemNode::Identifier { text: "L".into(), mathvariant: Some(MathVariant::Script) }
+        );
+        // The italic default of math mode names no variant: the `mi` stays bare.
+        assert_eq!(lower(&face('x', FontStyle::Math)), MathSemNode::Identifier { text: "x".into(), mathvariant: None });
+        assert_eq!(lower(&face('x', FontStyle::Italic)), MathSemNode::Identifier { text: "x".into(), mathvariant: None });
     }
 
     #[test]
@@ -978,7 +1065,7 @@ mod tests {
             SemanticNode::LimitsSpec(LimitsPolicy::Limits),
         ];
         let semantics = MathSemantics::from_nodes(&nodes);
-        assert_eq!(semantics.nodes, vec![MathSemNode::Identifier("x".into())]);
+        assert_eq!(semantics.nodes, vec![MathSemNode::Identifier { text: "x".into(), mathvariant: None }]);
     }
 
     #[test]
@@ -990,7 +1077,10 @@ mod tests {
             ]),
         };
         let semantics = MathSemantics::from_semantic_tree(&tree);
-        assert_eq!(semantics.nodes, vec![MathSemNode::Identifier("x".into()), MathSemNode::Operator("+".into())]);
+        assert_eq!(
+            semantics.nodes,
+            vec![MathSemNode::Identifier { text: "x".into(), mathvariant: None }, MathSemNode::Operator("+".into())]
+        );
     }
 
     // ── AMS environments ──────────────────────────────────────────────
@@ -1119,8 +1209,8 @@ mod tests {
         match lower(&node) {
             MathSemNode::Table { rows, columnalign } => {
                 assert_eq!(rows.len(), 2, "a split has no two-row limit");
-                assert_eq!(rows[0], vec![MathSemNode::Identifier("x".into())]);
-                assert_eq!(rows[1], vec![MathSemNode::Identifier("y".into())]);
+                assert_eq!(rows[0], vec![MathSemNode::Identifier { text: "x".into(), mathvariant: None }]);
+                assert_eq!(rows[1], vec![MathSemNode::Identifier { text: "y".into(), mathvariant: None }]);
                 // A split meets at one alignment point, so its single column is
                 // the right-hand side of that point.
                 assert_eq!(columnalign, vec![Alignment::Right], "the table carries the environment's alignment");

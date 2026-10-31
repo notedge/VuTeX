@@ -84,14 +84,14 @@ const corpus: CorpusEntry[] = [
     { source: "a\\;b", mathml: ["<mspace"] },
     { source: "a\\quad b", mathml: ["<mspace"] },
     { source: "a\\qquad b", mathml: ["<mspace"] },
-    // fonts — the engine really emits `<mtext>` without any `mathvariant`
-    // attribute for the style commands; `<mi>` is asserted as the real shape.
-    { source: "\\mathbf{Ax}", mathml: ["<mtext"] },
-    { source: "\\mathbb{R}", mathml: ["<mtext"] },
-    { source: "\\mathcal{L}", mathml: ["<mtext"] },
-    { source: "\\mathsf{s}", mathml: ["<mtext"] },
-    { source: "\\mathit{x}", mathml: ["<mtext"] },
-    { source: "\\mathrm{d}x", mathml: ["<mi"] },
+    // fonts — a `\math…` face switch keeps its body math: alphabetic atoms
+    // lower to `<mi>` carrying the MathML `mathvariant` the face names.
+    { source: "\\mathbf{Ax}", mathml: ['<mi mathvariant="bold">'] },
+    { source: "\\mathbb{R}", mathml: ['<mi mathvariant="double-struck">'] },
+    { source: "\\mathcal{L}", mathml: ['<mi mathvariant="script">'] },
+    { source: "\\mathsf{s}", mathml: ['<mi mathvariant="sans-serif">'] },
+    { source: "\\mathit{x}", mathml: ["<mi>x</mi>"] },
+    { source: "\\mathrm{d}x", mathml: ['<mi mathvariant="normal">'] },
     // relations and symbols
     { source: "\\alpha\\beta\\gamma", mathml: ["<mi"] },
     { source: "x \\le y \\ge z", mathml: ["<mo"] },

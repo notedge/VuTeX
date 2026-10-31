@@ -346,6 +346,8 @@ fn expected_core_tag_families(corpus_id: &str) -> &'static [&'static [&'static s
         "fraction-sum-radical" => &[&["mfrac"], &["munderover", "msubsup"], &["msqrt"]],
         // ——— grouped-number family ——— //
         "script-tower" => &[&["msup"]],
+        // ——— math-face families ——— //
+        "font-bold" | "font-double-struck" | "font-script" | "font-sans-serif" | "font-italic" => &[&["mi"]],
         other => panic!("unknown corpus id `{other}` in expected_core_tag_families"),
     }
 }

@@ -363,38 +363,17 @@ impl Parser {
                 Ok(SemanticNode::Text { text, font_style: FontStyle::Normal })
             }
             "mathrm" => self.parse_face_group(FontStyle::Normal),
-            "mathit" => {
-                let text = self.read_text_group()?;
-                Ok(SemanticNode::Text { text, font_style: FontStyle::Italic })
-            }
-            "mathbf" => {
-                let text = self.read_text_group()?;
-                Ok(SemanticNode::Text { text, font_style: FontStyle::Bold })
-            }
+            "mathit" => self.parse_face_group(FontStyle::Italic),
+            "mathbf" => self.parse_face_group(FontStyle::Bold),
             "textit" => {
                 let text = self.read_text_group()?;
                 Ok(SemanticNode::Text { text, font_style: FontStyle::Italic })
             }
-            "mathcal" => {
-                let text = self.read_text_group()?;
-                Ok(SemanticNode::Text { text, font_style: FontStyle::Calligraphic })
-            }
-            "mathbb" => {
-                let text = self.read_text_group()?;
-                Ok(SemanticNode::Text { text, font_style: FontStyle::DoubleStruck })
-            }
-            "mathfrak" => {
-                let text = self.read_text_group()?;
-                Ok(SemanticNode::Text { text, font_style: FontStyle::Fraktur })
-            }
-            "mathsf" => {
-                let text = self.read_text_group()?;
-                Ok(SemanticNode::Text { text, font_style: FontStyle::SansSerif })
-            }
-            "mathtt" => {
-                let text = self.read_text_group()?;
-                Ok(SemanticNode::Text { text, font_style: FontStyle::Monospace })
-            }
+            "mathcal" => self.parse_face_group(FontStyle::Calligraphic),
+            "mathbb" => self.parse_face_group(FontStyle::DoubleStruck),
+            "mathfrak" => self.parse_face_group(FontStyle::Fraktur),
+            "mathsf" => self.parse_face_group(FontStyle::SansSerif),
+            "mathtt" => self.parse_face_group(FontStyle::Monospace),
             "big" | "Big" | "bigg" | "Bigg" | "bigm" | "Bigm" | "biggm" | "Biggm" => self.parse_big_delimiter(),
             "hat" | "widehat" => self.parse_accent('ˆ'),
             "bar" | "overline" => self.parse_accent('¯'),

@@ -73,6 +73,11 @@ const REQUIRED_CORPUS_IDS: &[&str] = &[
     "text-inline",
     "fraction-sum-radical",
     "script-tower",
+    "font-bold",
+    "font-double-struck",
+    "font-script",
+    "font-sans-serif",
+    "font-italic",
 ];
 
 /// Per-record fields whose absence must be recorded as `null`, never as zero.

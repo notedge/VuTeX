@@ -21,6 +21,6 @@ pub use metrics::{DelimiterComponent, DelimiterConstruction, DelimiterVariant, F
 pub use operator::{LimitsPolicy, OperatorClass};
 pub use semantic::{
     AccentPosition, Alignment, AlignmentAnchors, EnvironmentContext, EnvironmentKind, EnvironmentRow, Fixed, FontStyle,
-    GlyphKey, LineStyle, MathEnvironment, MathSemNode, MathSemanticTree, MathSemantics, MathStyle, Numbering, RowPlacement,
-    SemanticNode, SpacingRule, SymbolRole,
+    GlyphKey, LineStyle, MathEnvironment, MathSemNode, MathSemanticTree, MathSemantics, MathStyle, MathVariant, Numbering,
+    RowPlacement, SemanticNode, SpacingRule, SymbolRole,
 };

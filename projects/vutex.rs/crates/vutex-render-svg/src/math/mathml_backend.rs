@@ -56,7 +56,13 @@ fn render_nodes(out: &mut String, nodes: &[MathSemNode]) {
 fn render_node(out: &mut String, node: &MathSemNode) {
     match node {
         MathSemNode::Row(children) => wrap(out, "mrow", |out| render_nodes(out, children)),
-        MathSemNode::Identifier(text) => push_element(out, "mi", text),
+        MathSemNode::Identifier { text, mathvariant } => match mathvariant {
+            Some(variant) => {
+                let attrs = format!(r#" mathvariant="{}""#, variant.as_str());
+                push_element_with_attrs(out, "mi", &attrs, text);
+            }
+            None => push_element(out, "mi", text),
+        },
         MathSemNode::Number(text) => push_element(out, "mn", text),
         MathSemNode::Operator(text) => push_element(out, "mo", text),
         MathSemNode::Text(text) => push_element(out, "mtext", text),
@@ -237,7 +243,7 @@ mod tests {
     fn sparse_atoms_emit_their_own_elements() {
         let semantics = MathSemantics {
             nodes: vec![
-                MathSemNode::Identifier("x".into()),
+                MathSemNode::Identifier { text: "x".into(), mathvariant: None },
                 MathSemNode::Number("7".into()),
                 MathSemNode::Operator("+".into()),
                 MathSemNode::Text("sin".into()),
@@ -259,12 +265,12 @@ mod tests {
         let semantics = MathSemantics {
             nodes: vec![
                 MathSemNode::Accent {
-                    base: Box::new(MathSemNode::Identifier("x".into())),
+                    base: Box::new(MathSemNode::Identifier { text: "x".into(), mathvariant: None }),
                     accent: "ˆ".into(),
                     position: AccentPosition::Above,
                 },
                 MathSemNode::Accent {
-                    base: Box::new(MathSemNode::Identifier("y".into())),
+                    base: Box::new(MathSemNode::Identifier { text: "y".into(), mathvariant: None }),
                     accent: "‾".into(),
                     position: AccentPosition::Below,
                 },
@@ -287,12 +293,12 @@ mod tests {
         let semantics = MathSemantics {
             nodes: vec![
                 MathSemNode::StackAbove {
-                    base: Box::new(MathSemNode::Identifier("b".into())),
-                    over: Box::new(MathSemNode::Identifier("a".into())),
+                    base: Box::new(MathSemNode::Identifier { text: "b".into(), mathvariant: None }),
+                    over: Box::new(MathSemNode::Identifier { text: "a".into(), mathvariant: None }),
                 },
                 MathSemNode::StackBelow {
-                    base: Box::new(MathSemNode::Identifier("d".into())),
-                    under: Box::new(MathSemNode::Identifier("c".into())),
+                    base: Box::new(MathSemNode::Identifier { text: "d".into(), mathvariant: None }),
+                    under: Box::new(MathSemNode::Identifier { text: "c".into(), mathvariant: None }),
                 },
             ],
         };
@@ -311,13 +317,13 @@ mod tests {
                 MathSemNode::Delimited {
                     left: Some("(".into()),
                     right: Some(")".into()),
-                    body: Box::new(MathSemNode::Identifier("x".into())),
+                    body: Box::new(MathSemNode::Identifier { text: "x".into(), mathvariant: None }),
                 },
                 // `\left( … \right.` keeps only the authored fence.
                 MathSemNode::Delimited {
                     left: Some("[".into()),
                     right: None,
-                    body: Box::new(MathSemNode::Identifier("y".into())),
+                    body: Box::new(MathSemNode::Identifier { text: "y".into(), mathvariant: None }),
                 },
                 // An ordinary operator is never a fence.
                 MathSemNode::Operator("+".into()),

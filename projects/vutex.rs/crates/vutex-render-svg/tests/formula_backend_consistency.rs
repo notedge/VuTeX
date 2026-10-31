@@ -55,8 +55,8 @@ const CASES: &[(&str, &str, &str)] = &[
     ("\\underset{\\alpha}{\\rightarrow}", "stack-below", "<munder"),
     // ——— spacing, faces, dots and text ——— //
     ("a\\,b", "identifier", "<mspace"),
-    ("\\mathbb{R}", "text", "<mtext"),
-    ("\\mathbf{Ax}", "text", "<mtext"),
+    ("\\mathbb{R}", "identifier", "<mi"),
+    ("\\mathbf{Ax}", "identifier", "<mi"),
     ("\\mathrm{d}x", "identifier", "<mi"),
     ("x, \\ldots, y", "identifier", "<mo"),
     ("\\text{hello world}", "text", "<mtext"),
@@ -108,15 +108,15 @@ fn every_backend_reads_one_layout_result() {
 fn semantics_keep_the_authored_nesting() {
     let json = serde_json::to_value(&layout("\\frac{a}{b}")).expect("result must serialize");
     let fraction = &json["semantics"]["nodes"][0]["fraction"];
-    assert_eq!(fraction["numerator"]["identifier"], "a", "{json}");
-    assert_eq!(fraction["denominator"]["identifier"], "b", "{json}");
+    assert_eq!(fraction["numerator"]["identifier"]["text"], "a", "{json}");
+    assert_eq!(fraction["denominator"]["identifier"]["text"], "b", "{json}");
     assert_eq!(fraction["line"], "solid", "{json}");
 
     let json = serde_json::to_value(&layout("x_a^b")).expect("result must serialize");
     let sub_sup = &json["semantics"]["nodes"][0]["sub-sup"];
-    assert_eq!(sub_sup["base"]["identifier"], "x", "{json}");
-    assert_eq!(sub_sup["sub"]["identifier"], "a", "{json}");
-    assert_eq!(sub_sup["sup"]["identifier"], "b", "{json}");
+    assert_eq!(sub_sup["base"]["identifier"]["text"], "x", "{json}");
+    assert_eq!(sub_sup["sub"]["identifier"]["text"], "a", "{json}");
+    assert_eq!(sub_sup["sup"]["identifier"]["text"], "b", "{json}");
 }
 
 /// Metrics belong to the same result as the paint tree and the semantics, so the
@@ -145,7 +145,7 @@ fn semantics_serialize_in_crate_naming() {
     let json = serde_json::to_value(&layout("\\hat{f}")).expect("result must serialize");
     let accent = &json["semantics"]["nodes"][0]["accent"];
     assert_eq!(accent["position"], "above", "{json}");
-    assert_eq!(accent["base"]["identifier"], "f", "{json}");
+    assert_eq!(accent["base"]["identifier"]["text"], "f", "{json}");
 
     let json = serde_json::to_value(&layout("\\,x")).expect("result must serialize");
     let width = json["semantics"]["nodes"][0]["space"]["widthEm"].as_f64().expect("widthEm");

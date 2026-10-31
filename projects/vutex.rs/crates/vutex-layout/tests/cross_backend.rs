@@ -174,12 +174,12 @@ const STRUCTURE_CASES: &[(&str, &str, &str)] = &[
     ("a\\quad b", "identifier", "<mspace"),
     ("a\\qquad b", "identifier", "<mspace"),
     // ——— math faces ——— //
-    ("\\mathbf{Ax}", "text", "<mtext"),
-    ("\\mathbb{R}", "text", "<mtext"),
-    ("\\mathcal{L}", "text", "<mtext"),
+    ("\\mathbf{Ax}", "identifier", "<mi"),
+    ("\\mathbb{R}", "identifier", "<mi"),
+    ("\\mathcal{L}", "identifier", "<mi"),
     ("\\mathrm{d}x", "identifier", "<mi"),
-    ("\\mathsf{s}", "text", "<mtext"),
-    ("\\mathit{x}", "text", "<mtext"),
+    ("\\mathsf{s}", "identifier", "<mi"),
+    ("\\mathit{x}", "identifier", "<mi"),
     // ——— relations and operators ——— //
     ("x \\le y \\ge z", "identifier", "<mo"),
     ("p \\Rightarrow q", "identifier", "<mo"),
