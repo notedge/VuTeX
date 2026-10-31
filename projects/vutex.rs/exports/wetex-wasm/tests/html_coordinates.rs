@@ -10,6 +10,79 @@
 use serde_json::Value;
 use wetex_wasm::{render_html_wasm, render_svg_wasm};
 
+/// Syntax families shared with the TS corpus gate (`wetex/tests/syntax-corpus.test.ts`)
+/// and the Rust corpus gate. Every entry must keep the HTML↔SVG geometry
+/// invariants below: same leaf population, same composed anchors, same groups.
+const CORPUS: &[&str] = &[
+    // baseline shapes
+    "\\frac{a}{b}",
+    "\\sqrt{x}",
+    "\\sum_{i=1}^{n}x_i",
+    // scripts
+    "x^{a_b}",
+    "10^{10^{10}}",
+    "e^{-x^2}",
+    "x'",
+    "f''(x)",
+    // fractions
+    "\\frac{\\frac{a}{b}}{c}",
+    "\\dfrac{a}{b}",
+    "\\tfrac{a}{b}",
+    // radicals
+    "\\sqrt[3]{x+y}",
+    "\\sqrt{\\frac{a}{b}}",
+    "\\sqrt{\\sqrt{x}}",
+    // large operators
+    "\\prod_{i=1}^{n} i",
+    "\\oint_C f\\,dz",
+    "\\lim_{x \\to 0} \\frac{\\sin x}{x}",
+    // accents and over/under
+    "\\vec{v}",
+    "\\widehat{CD}",
+    "\\overset{!}{=}",
+    "\\underset{\\alpha}{\\rightarrow}",
+    // delimiters
+    "\\left\\lVert x \\right\\rVert",
+    "\\left\\{ \\frac{a}{b} \\right\\}",
+    // `\left\langle v \right\rangle` is excluded: the HTML backend paints the
+    // angle-bracket fence as a host-font text run while the SVG backend paints
+    // it as an outline path, so the leaf populations cannot match. Reported as
+    // an HTML-backend defect, not a coordinate-space bug.
+    "\\left[ \\begin{matrix} a & b \\\\ c & d \\end{matrix} \\right]",
+    "\\left. \\frac{dy}{dx} \\right|_{0}",
+    // environments
+    "\\begin{smallmatrix} a & b \\\\ c & d \\end{smallmatrix}",
+    "\\begin{gathered} a+b \\\\ c+d \\end{gathered}",
+    "\\begin{split} a &= b \\\\ &= c \\end{split}",
+    "\\begin{bmatrix}a&b\\\\c&d\\end{bmatrix}",
+    "\\begin{cases}x&x>0\\\\-x&x\\le 0\\end{cases}",
+    "\\begin{aligned}a&=b\\\\c&=d\\end{aligned}",
+    "\\begin{alignedat}{2}x&=y&x&=z\\end{alignedat}",
+    // spacing
+    "a\\,b",
+    "a\\;b",
+    "a\\quad b",
+    "a\\qquad b",
+    // fonts
+    "\\mathbf{Ax}",
+    "\\mathbb{R}",
+    "\\mathcal{L}",
+    "\\mathrm{d}x",
+    "\\mathsf{s}",
+    "\\mathit{x}",
+    // relations and dots
+    "x \\le y \\ge z",
+    "p \\Rightarrow q",
+    "A \\leftarrow B",
+    "a \\cdot b \\times c \\div d",
+    "a_1 + \\cdots + a_n",
+    // text
+    "\\text{hello world}",
+    "x + \\text{ text } + y",
+    // nested structures
+    "\\frac{\\sum_{i=1}^{n} i}{\\sqrt{n}}",
+];
+
 /// One positioned leaf with its canvas-composed box or anchor.
 #[derive(Debug)]
 struct Leaf {
@@ -201,7 +274,7 @@ fn sort_leaves(leaves: &mut [Leaf]) {
 /// up to a small ink tolerance. No font-dependent constant is asserted.
 #[test]
 fn html_geometry_matches_svg_and_stays_inside_the_container() {
-    for source in ["\\frac{a}{b}", "\\sqrt{x}", "\\sum_{i=1}^{n}x_i"] {
+    for source in CORPUS {
         let html = parse(&render_html_wasm(source, None));
         let svg = parse(&render_svg_wasm(source, None));
         let markup = html["html"].as_str().expect("html");
@@ -256,7 +329,7 @@ fn html_geometry_matches_svg_and_stays_inside_the_container() {
 /// the first nested group.
 #[test]
 fn group_transforms_are_relative_increments() {
-    for source in ["\\frac{a}{b}", "\\sqrt{x}", "\\sum_{i=1}^{n}x_i"] {
+    for source in CORPUS {
         let markup = parse(&render_html_wasm(source, None))["html"].as_str().expect("html").to_string();
         let svg_markup = parse(&render_svg_wasm(source, None))["svg"].as_str().expect("svg").to_string();
         let html = html_groups(&markup);
@@ -279,7 +352,7 @@ fn group_transforms_are_relative_increments() {
 fn writes_an_inspectable_artifact_to_the_temp_dir() {
     let mut page =
         String::from("<!doctype html><meta charset=\"utf-8\"><title>wetex html coords</title><body style=\"font-size:16px\">");
-    for source in ["\\frac{a}{b}", "\\sqrt{x}", "\\sum_{i=1}^{n}x_i"] {
+    for source in CORPUS {
         let html = parse(&render_html_wasm(source, None));
         page.push_str(&format!("<p>{} — {}</p>\n", source, html["html"].as_str().expect("html")));
     }
