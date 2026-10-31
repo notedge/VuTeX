@@ -386,6 +386,7 @@ impl LayoutEngine {
             | SemanticNode::Paragraph { .. } => SymbolRole::Inner,
             SemanticNode::Relation(inner) => Self::role_of(inner),
             SemanticNode::Sequence(_)
+            | SemanticNode::Number { .. }
             | SemanticNode::Text { .. }
             | SemanticNode::Space { .. }
             | SemanticNode::SetMathStyle(_)
@@ -421,6 +422,7 @@ impl LayoutEngine {
         match node {
             SemanticNode::Symbol { glyph_key, .. } => Some(glyph_key.clone()),
             SemanticNode::Sequence(items) => items.iter().find_map(Self::authored_glyph_key),
+            SemanticNode::Number { text } => text.chars().next().map(|c| GlyphKey::from_char(c, None, FontStyle::Normal)),
             SemanticNode::Text { text, font_style } => text.chars().next().map(|c| GlyphKey::from_char(c, None, *font_style)),
             SemanticNode::Subscript { base, .. }
             | SemanticNode::Superscript { base, .. }
@@ -634,6 +636,17 @@ impl LayoutEngine {
                         children.push(self.layout_node_state(node, state)?);
                     }
                     Ok(self.pack_vbox(children, *alignment))
+                }
+                // A number is one ordinary atom of upright digits: every digit
+                // is laid out in the font's normal face, exactly as a single
+                // digit symbol reached through `char_node` would be.
+                SemanticNode::Number { text } => {
+                    let mut children = Vec::new();
+                    for c in text.chars() {
+                        let key = GlyphKey::from_char(c, None, FontStyle::Normal);
+                        children.push(self.layout_symbol(&key, state.style)?);
+                    }
+                    Ok(self.pack_hbox(children, None))
                 }
                 SemanticNode::Text { text, font_style } => {
                     let mut children = Vec::new();
@@ -1808,7 +1821,7 @@ impl LayoutEngine {
                         _ => false,
                     }
             }
-            SemanticNode::Text { .. } => false,
+            SemanticNode::Number { .. } | SemanticNode::Text { .. } => false,
             _ => true,
         };
 

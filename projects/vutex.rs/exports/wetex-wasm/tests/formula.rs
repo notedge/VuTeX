@@ -156,6 +156,7 @@ fn json_semantics_match_the_mathml_structure() {
         ("x_a^b", "sub-sup", "<msubsup"),
         ("\\prod_{i=1}^{n} i", "sub-sup", "<msubsup"),
         ("x^{a_b}", "sup", "<msup"),
+        ("10^{10^{10}}", "sup", "<msup"),
         ("\\oint_C f\\,dz", "sub", "<msub"),
         // accents and over/under
         ("\\hat{f}", "accent", "<mover"),

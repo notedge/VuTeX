@@ -2764,6 +2764,58 @@
       "delimiter_size": null,
       "script_positions": null,
       "mathml": "<math xmlns=\"http://www.w3.org/1998/Math/MathML\" display=\"block\">\n  <mfrac>\n    <mrow>\n      <munderover>\n        <mo data-mjx-texclass=\"OP\">&#x2211;</mo>\n        <mrow data-mjx-texclass=\"ORD\">\n          <mi>i</mi>\n          <mo>=</mo>\n          <mn>1</mn>\n        </mrow>\n        <mrow data-mjx-texclass=\"ORD\">\n          <mi>n</mi>\n        </mrow>\n      </munderover>\n      <mi>i</mi>\n    </mrow>\n    <msqrt>\n      <mi>n</mi>\n    </msqrt>\n  </mfrac>\n</math>"
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "script-tower",
+      "tex": "10^{10^{10}}",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-mathml.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": "<math xmlns=\"http://www.w3.org/1998/Math/MathML\">\n  <msup>\n    <mn>10</mn>\n    <mrow data-mjx-texclass=\"ORD\">\n      <msup>\n        <mn>10</mn>\n        <mrow data-mjx-texclass=\"ORD\">\n          <mn>10</mn>\n        </mrow>\n      </msup>\n    </mrow>\n  </msup>\n</math>"
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "script-tower",
+      "tex": "10^{10^{10}}",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-mathml.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": "<math xmlns=\"http://www.w3.org/1998/Math/MathML\" display=\"block\">\n  <msup>\n    <mn>10</mn>\n    <mrow data-mjx-texclass=\"ORD\">\n      <msup>\n        <mn>10</mn>\n        <mrow data-mjx-texclass=\"ORD\">\n          <mn>10</mn>\n        </mrow>\n      </msup>\n    </mrow>\n  </msup>\n</math>"
     }
   ]
 }

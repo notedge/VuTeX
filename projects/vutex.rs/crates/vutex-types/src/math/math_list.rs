@@ -466,7 +466,9 @@ fn project_one(
             noad.nucleus = Some(Box::new(node.clone()));
             push_noad(list, noad, pending_limits);
         }
-        SemanticNode::Text { .. } => {
+        // A number is one ordinary atom: the same spacing class a digit symbol
+        // carries, so Appendix G reads it as `Ord` whatever its digit count.
+        SemanticNode::Number { .. } | SemanticNode::Text { .. } => {
             let mut noad = Noad::new(NoadKind::Atom, state.style, state.cramped);
             noad.nucleus = Some(Box::new(node.clone()));
             push_noad(list, noad, pending_limits);

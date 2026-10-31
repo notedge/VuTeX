@@ -2764,6 +2764,58 @@
       "delimiter_size": null,
       "script_positions": null,
       "mathml": "<span class=\"katex\"><math xmlns=\"http://www.w3.org/1998/Math/MathML\" display=\"block\"><semantics><mrow><mfrac><mrow><munderover><mo>∑</mo><mrow><mi>i</mi><mo>=</mo><mn>1</mn></mrow><mi>n</mi></munderover><mi>i</mi></mrow><msqrt><mi>n</mi></msqrt></mfrac></mrow><annotation encoding=\"application/x-tex\">\\frac{\\sum_{i=1}^{n} i}{\\sqrt{n}}</annotation></semantics></math></span>"
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "script-tower",
+      "tex": "10^{10^{10}}",
+      "display_mode": false,
+      "source": {
+        "engine": "katex",
+        "version": "0.16.22",
+        "command": "node projects/vutex.ts/examples/oracle/emit-katex-mathml.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": "<span class=\"katex\"><math xmlns=\"http://www.w3.org/1998/Math/MathML\"><semantics><mrow><msup><mn>10</mn><msup><mn>10</mn><mn>10</mn></msup></msup></mrow><annotation encoding=\"application/x-tex\">10^{10^{10}}</annotation></semantics></math></span>"
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "script-tower",
+      "tex": "10^{10^{10}}",
+      "display_mode": true,
+      "source": {
+        "engine": "katex",
+        "version": "0.16.22",
+        "command": "node projects/vutex.ts/examples/oracle/emit-katex-mathml.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": "<span class=\"katex\"><math xmlns=\"http://www.w3.org/1998/Math/MathML\" display=\"block\"><semantics><mrow><msup><mn>10</mn><msup><mn>10</mn><mn>10</mn></msup></msup></mrow><annotation encoding=\"application/x-tex\">10^{10^{10}}</annotation></semantics></math></span>"
     }
   ]
 }

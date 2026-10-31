@@ -245,11 +245,32 @@ impl Parser {
                 Ok(sequence(items))
             }
             '\\' => self.parse_command(),
+            '0'..='9' => Ok(self.parse_number()),
             _ => {
                 self.bump();
                 Ok(char_node(c))
             }
         }
+    }
+
+    /// Consume a run of consecutive digits as one [`SemanticNode::Number`].
+    ///
+    /// TeX keeps a number in a single Ord atom and Presentation MathML expects
+    /// one `mn` for `10`, not two for `1` and `0`.  A digit that stands alone
+    /// as a required argument (a script nucleus, a root degree) still parses
+    /// through [`Self::parse_argument`] as a one-character atom; TeX attaches
+    /// `^` / `_` to that single digit anyway, so grouping it here would change
+    /// which nucleus the script binds to.
+    fn parse_number(&mut self) -> SemanticNode {
+        let mut text = String::new();
+        while let Some(c) = self.peek() {
+            if !c.is_ascii_digit() {
+                break;
+            }
+            text.push(c);
+            self.bump();
+        }
+        SemanticNode::Number { text }
     }
 
     /// Parse a required argument: a braced group, a command, or a single atom.
@@ -945,7 +966,8 @@ fn apply_symbol_face(node: &mut SemanticNode, style: FontStyle) {
             apply_symbol_face(base, style);
         }
         SemanticNode::Relation(inner) => apply_symbol_face(inner, style),
-        SemanticNode::Text { .. }
+        SemanticNode::Number { .. }
+        | SemanticNode::Text { .. }
         | SemanticNode::Space { .. }
         | SemanticNode::SetMathStyle(_)
         | SemanticNode::LimitsSpec(_) => {}

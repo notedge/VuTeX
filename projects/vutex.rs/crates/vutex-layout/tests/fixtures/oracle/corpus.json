@@ -114,6 +114,7 @@
     { "id": "cdots-sum", "tex": "a_1 + \\cdots + a_n", "group": "dots", "notes": "elliptic sum between scripted terms" },
     { "id": "text-phrase", "tex": "\\text{hello world}", "group": "text", "notes": "authored text run with a word space" },
     { "id": "text-inline", "tex": "x + \\text{ text } + y", "group": "text", "notes": "text run embedded between math atoms" },
-    { "id": "fraction-sum-radical", "tex": "\\frac{\\sum_{i=1}^{n} i}{\\sqrt{n}}", "group": "nested", "notes": "large operator over a radical in one fraction" }
+    { "id": "fraction-sum-radical", "tex": "\\frac{\\sum_{i=1}^{n} i}{\\sqrt{n}}", "group": "nested", "notes": "large operator over a radical in one fraction" },
+    { "id": "script-tower", "tex": "10^{10^{10}}", "group": "script", "notes": "superscript whose base and body are multi-digit numbers" }
   ]
 }

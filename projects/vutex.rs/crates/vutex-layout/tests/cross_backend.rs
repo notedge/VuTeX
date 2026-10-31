@@ -131,11 +131,9 @@ const STRUCTURE_CASES: &[(&str, &str, &str)] = &[
     // ——— scripts ——— //
     ("x_n^2", "sub-sup", "<msubsup"),
     ("x^{a_b}", "sup", "<msup"),
-    // The parser atomizes digits one by one, so a multi-digit base leaves a
-    // leading `number` node and the script binds to the final digit only.
-    // Assert the emitted structure as-is; the grouping gap is reported, not
-    // papered over.
-    ("10^{10^{10}}", "number", "<msup"),
+    // The parser groups a run of digits into one `number` atom, so the script
+    // binds to the whole base and the top node is the superscript itself.
+    ("10^{10^{10}}", "sup", "<msup"),
     ("e^{-x^2}", "sup", "<msup"),
     // ——— large operators ——— //
     ("\\sum_{i=1}^{n}", "sub-sup", "<msubsup"),

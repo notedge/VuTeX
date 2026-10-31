@@ -6290,6 +6290,100 @@
       "delimiter_size": null,
       "script_positions": null,
       "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "script-tower",
+      "tex": "10^{10^{10}}",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 2348.8,
+        "height": 1026,
+        "depth": 1004
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 252
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 329
+        }
+      ],
+      "rules": [],
+      "paths_count": 2,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "script-tower",
+      "tex": "10^{10^{10}}",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 2348.8,
+        "height": 1045.9,
+        "depth": 1023.9
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 252
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 329
+        }
+      ],
+      "rules": [],
+      "paths_count": 2,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
     }
   ]
 }

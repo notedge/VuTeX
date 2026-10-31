@@ -37,6 +37,17 @@ pub enum SemanticNode {
         glyph_key: GlyphKey,
         role: SymbolRole,
     },
+    /// One numeric atom — a run of digits grouped the way TeX reads a number.
+    ///
+    /// TeX keeps consecutive digits in one Ord atom (`\mathrm` by class), and
+    /// Presentation MathML expects a multi-digit number inside a single `mn`,
+    /// not one `mn` per digit.  The parser groups an unbraced run of ASCII
+    /// digits into this node; a digit reached as a single-argument atom (the
+    /// nucleus of a script, an optional root degree) stays a [`Symbol`](SemanticNode::Symbol)
+    /// and lowers to the same `mn`.
+    Number {
+        text: String,
+    },
     /// Plain text atoms with an explicit font face.
     ///
     /// `\text` / `\textrm` emit `FontStyle::Normal`; `\mathbf` / `\mathit`
@@ -658,6 +669,7 @@ impl MathSemNode {
                 Some(c) => MathSemNode::Operator(c.to_string()),
                 None => MathSemNode::Empty,
             },
+            SemanticNode::Number { text } => MathSemNode::Number(text.clone()),
             SemanticNode::Text { text, .. } => MathSemNode::Text(text.clone()),
             SemanticNode::Space { width } => MathSemNode::Space { width_em: width.to_f64() },
             SemanticNode::Subscript { base, sub } => MathSemNode::Sub { base: child(base), sub: child(sub) },
@@ -949,6 +961,13 @@ mod tests {
             lower(&SemanticNode::Text { text: "sin".into(), font_style: FontStyle::Normal }),
             MathSemNode::Text("sin".into())
         );
+    }
+
+    #[test]
+    fn a_grouped_number_lowers_to_one_mn_atom() {
+        // `10` is one numeric atom, not two digits: the whole run stays inside
+        // a single `mn`, matching TeX and KaTeX.
+        assert_eq!(lower(&SemanticNode::Number { text: "10".into() }), MathSemNode::Number("10".into()));
     }
 
     #[test]
