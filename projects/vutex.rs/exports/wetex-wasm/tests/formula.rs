@@ -145,11 +145,31 @@ fn render_svg_is_path_only() {
 #[test]
 fn json_semantics_match_the_mathml_structure() {
     let cases: &[(&str, &str, &str)] = &[
+        // fractions
         ("\\frac{a}{b}", "fraction", "<mfrac"),
+        ("\\frac{\\frac{a}{b}}{c}", "fraction", "<mfrac"),
+        ("\\dfrac{a}{b}", "fraction", "<mfrac"),
+        // radicals
         ("\\sqrt[3]{x}", "radical", "<mroot"),
+        ("\\sqrt{\\frac{a}{b}}", "radical", "<msqrt"),
+        // scripts
         ("x_a^b", "sub-sup", "<msubsup"),
+        ("\\prod_{i=1}^{n} i", "sub-sup", "<msubsup"),
+        ("x^{a_b}", "sup", "<msup"),
+        ("\\oint_C f\\,dz", "sub", "<msub"),
+        // accents and over/under
         ("\\hat{f}", "accent", "<mover"),
+        ("\\vec{v}", "accent", "<mover"),
+        ("\\overset{!}{=}", "stack-above", "<mover"),
+        ("\\underset{\\alpha}{\\rightarrow}", "stack-below", "<munder"),
+        // delimited structures
+        ("\\left\\{ \\frac{a}{b} \\right\\}", "delimited", "<mfrac"),
+        ("\\left[ \\begin{matrix} a & b \\\\ c & d \\end{matrix} \\right]", "delimited", "<mtable"),
+        // tables
         ("\\begin{aligned}a&=b\\\\c&=d\\end{aligned}", "table", "<mtable"),
+        ("\\begin{smallmatrix} a & b \\\\ c & d \\end{smallmatrix}", "table", "<mtable"),
+        // text
+        ("\\text{hello world}", "text", "<mtext"),
     ];
 
     for (source, kind, element) in cases {
