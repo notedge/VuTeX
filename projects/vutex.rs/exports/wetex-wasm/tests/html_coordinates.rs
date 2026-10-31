@@ -123,7 +123,13 @@ fn html_leaves(markup: &str) -> ((f64, f64), Vec<Leaf>, Vec<Leaf>) {
                 });
             }
             else if tag.contains("font-family:") {
-                leaves.push(Leaf { kind: "text", x: sum.0 + css_px(&tag, "left:"), y: sum.1 + css_px(&tag, "top:"), w: 0.0, h: 0.0 });
+                leaves.push(Leaf {
+                    kind: "text",
+                    x: sum.0 + css_px(&tag, "left:"),
+                    y: sum.1 + css_px(&tag, "top:"),
+                    w: 0.0,
+                    h: 0.0,
+                });
             }
         }
         else if tag.starts_with("</span") {
@@ -131,7 +137,14 @@ fn html_leaves(markup: &str) -> ((f64, f64), Vec<Leaf>, Vec<Leaf>) {
         }
         else if tag.starts_with("<svg") {
             let sum: (f64, f64) = stack.iter().skip(1).fold((0.0, 0.0), |a, b| (a.0 + b.0, a.1 + b.1));
-            pending_svg = Some((sum.0, sum.1, css_px(&tag, "left:"), css_px(&tag, "top:"), css_px(&tag, "width:"), css_px(&tag, "height:")));
+            pending_svg = Some((
+                sum.0,
+                sum.1,
+                css_px(&tag, "left:"),
+                css_px(&tag, "top:"),
+                css_px(&tag, "width:"),
+                css_px(&tag, "height:"),
+            ));
         }
         else if tag.starts_with("<path") {
             // The path anchor is group-local; the svg box only frames the ink.
@@ -162,7 +175,13 @@ fn svg_leaves(markup: &str) -> Vec<Leaf> {
                     let rest = tag.split_once(key).expect("missing rect attr").1;
                     rest.split_once('"').expect("bad rect attr").0.parse().expect("bad rect number")
                 };
-                leaves.push(Leaf { kind: "rect", x: sum.0 + attr("x=\""), y: sum.1 + attr("y=\""), w: attr("width=\""), h: attr("height=\"") });
+                leaves.push(Leaf {
+                    kind: "rect",
+                    x: sum.0 + attr("x=\""),
+                    y: sum.1 + attr("y=\""),
+                    w: attr("width=\""),
+                    h: attr("height=\""),
+                });
             }
             else if tag.starts_with("<path") {
                 let (ax, ay) = translate_pair(&tag);
@@ -218,7 +237,10 @@ fn html_geometry_matches_svg_and_stays_inside_the_container() {
         let slack = 2.0;
         for leaf in leaves.iter().chain(ink.iter()) {
             assert!(
-                leaf.x >= -slack && leaf.x + leaf.w <= m.width + slack && leaf.y >= -slack && leaf.y + leaf.h <= m.height + m.depth + slack,
+                leaf.x >= -slack
+                    && leaf.x + leaf.w <= m.width + slack
+                    && leaf.y >= -slack
+                    && leaf.y + leaf.h <= m.height + m.depth + slack,
                 "{source}: leaf {leaf:?} outside container {}x{}",
                 m.width,
                 m.height + m.depth
@@ -242,7 +264,10 @@ fn group_transforms_are_relative_increments() {
         assert!(!html.is_empty(), "{source}: html emitted no groups");
         assert_eq!(html.len(), svg.len(), "{source}: group count differs between backends");
         for (i, (h, s)) in html.iter().zip(&svg).enumerate() {
-            assert!((h.0 - s.0).abs() < 2e-3 && (h.1 - s.1).abs() < 2e-3, "{source}: group {i}: html translate {h:?} != svg translate {s:?}");
+            assert!(
+                (h.0 - s.0).abs() < 2e-3 && (h.1 - s.1).abs() < 2e-3,
+                "{source}: group {i}: html translate {h:?} != svg translate {s:?}"
+            );
         }
     }
 }
@@ -252,7 +277,8 @@ fn group_transforms_are_relative_increments() {
 /// gate; this file is the human-visible artifact.
 #[test]
 fn writes_an_inspectable_artifact_to_the_temp_dir() {
-    let mut page = String::from("<!doctype html><meta charset=\"utf-8\"><title>wetex html coords</title><body style=\"font-size:16px\">");
+    let mut page =
+        String::from("<!doctype html><meta charset=\"utf-8\"><title>wetex html coords</title><body style=\"font-size:16px\">");
     for source in ["\\frac{a}{b}", "\\sqrt{x}", "\\sum_{i=1}^{n}x_i"] {
         let html = parse(&render_html_wasm(source, None));
         page.push_str(&format!("<p>{} — {}</p>\n", source, html["html"].as_str().expect("html")));

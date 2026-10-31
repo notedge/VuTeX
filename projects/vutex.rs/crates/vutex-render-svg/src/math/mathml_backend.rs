@@ -274,7 +274,10 @@ mod tests {
         backend.render_semantics(&semantics);
         let mathml = backend.finish();
         assert!(mathml.contains(r#"<mover accent="true"><mi>x</mi><mo>ˆ</mo></mover>"#), "an over-accent is marked: {mathml}");
-        assert!(mathml.contains(r#"<munder accent="true"><mi>y</mi><mo>‾</mo></munder>"#), "an under-accent is marked: {mathml}");
+        assert!(
+            mathml.contains(r#"<munder accent="true"><mi>y</mi><mo>‾</mo></munder>"#),
+            "an under-accent is marked: {mathml}"
+        );
     }
 
     #[test]
@@ -323,7 +326,10 @@ mod tests {
         let mut backend = MathmlBackend::new();
         backend.render_semantics(&semantics);
         let mathml = backend.finish();
-        assert!(mathml.contains(r#"<mrow><mo fence="true">(</mo><mi>x</mi><mo fence="true">)</mo></mrow>"#), "both fences marked: {mathml}");
+        assert!(
+            mathml.contains(r#"<mrow><mo fence="true">(</mo><mi>x</mi><mo fence="true">)</mo></mrow>"#),
+            "both fences marked: {mathml}"
+        );
         assert!(mathml.contains(r#"<mo fence="true">[</mo><mi>y</mi>"#), "the lone fence is marked: {mathml}");
         assert!(mathml.contains("<mo>+</mo>"), "an infix operator stays bare: {mathml}");
     }

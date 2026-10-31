@@ -66,7 +66,12 @@ fn render(case: &GateCase) -> (LayoutNode, FormulaLayoutResult, String) {
     let (result, root, _) = layout_formula_with_result(&case.src, display, default_base_size(display))
         .unwrap_or_else(|e| panic!("`{}` ({}) must lay out: {e}", case.src, case.style));
     let out = render_formula_result(&result);
-    assert!(out.diagnostics.is_empty(), "`{}`: the SVG backend found a glyph without an outline: {:?}", case.src, out.diagnostics);
+    assert!(
+        out.diagnostics.is_empty(),
+        "`{}`: the SVG backend found a glyph without an outline: {:?}",
+        case.src,
+        out.diagnostics
+    );
     (root, result, out.markup)
 }
 

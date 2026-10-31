@@ -7,7 +7,10 @@
 
 use vutex_layout::math::{LayoutNode, default_base_size, layout_formula_with_result, parse_formula};
 use vutex_render_svg::math::{MathmlBackend, render_formula_result};
-use vutex_types::{Severity, math::{Fixed, FormulaLayoutResult, MathSemantics}};
+use vutex_types::{
+    Severity,
+    math::{Fixed, FormulaLayoutResult, MathSemantics},
+};
 
 /// A curated list of representative formulas that exercise every major node
 /// kind in the layout engine: plain atoms, fractions, radicals, sub/super-

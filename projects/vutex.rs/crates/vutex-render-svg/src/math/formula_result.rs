@@ -103,7 +103,8 @@ impl SvgWalk {
                 for (i, d_opt) in path_data.iter().enumerate() {
                     let (px, py) = positions.get(i).copied().unwrap_or((Fixed::ZERO, Fixed::ZERO));
                     let (rx, ry) = (px.to_f64(), py.to_f64());
-                    let Some(d) = d_opt else {
+                    let Some(d) = d_opt
+                    else {
                         // No outline: the entry is reported whether or not it
                         // paints, matching the document collector this mirrors.
                         self.diagnostics.push(outline_missing(chars.get(i).copied().flatten(), family));
