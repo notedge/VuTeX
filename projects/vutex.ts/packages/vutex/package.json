@@ -31,7 +31,7 @@
     },
     "scripts": {
         "typecheck": "tsc --noEmit",
-        "test": "tsx --test tests/package-manager.test.ts tests/render-runtime.test.ts tests/runtime.test.ts"
+        "test": "tsx --test tests/manifest-lockfile.test.ts tests/package-manager.test.ts tests/render-runtime.test.ts tests/runtime.test.ts"
     },
     "dependencies": {
         "@iarna/toml": "^2.2.5",
