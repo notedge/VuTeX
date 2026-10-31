@@ -40,7 +40,7 @@ pub fn alphalect_sources() -> &'static [char] {
         'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x',
         'y', 'z', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V',
         'W', 'X', 'Y', 'Z', 'α', 'β', 'γ', 'δ', 'ε', 'ζ', 'η', 'θ', 'ι', 'κ', 'λ', 'μ', 'ν', 'ξ', 'ο', 'π', 'ρ', 'ς', 'σ', 'τ',
-        'υ', 'φ', 'χ', 'ψ', 'ω', 'ϵ', 'ϑ', 'ϖ', 'ϱ',
+        'υ', 'φ', 'χ', 'ψ', 'ω', 'ϵ', 'ϑ', 'ϕ', 'ϖ', 'ϱ',
     ]
 }
 
@@ -85,35 +85,36 @@ fn italic(c: char) -> Option<char> {
         'i' => cp(0x1D456, 0),
         'j' => cp(0x1D457, 0),
         'k'..='z' => cp(0x1D458, (c as u32) - ('k' as u32)),
-        'α' => cp(0x1D6FC, 0),
-        'β' => cp(0x1D6FC, 1),
-        'γ' => cp(0x1D6FC, 2),
-        'δ' => cp(0x1D6FC, 3),
-        'ε' => cp(0x1D6FC, 4),
-        'ζ' => cp(0x1D6FC, 5),
-        'η' => cp(0x1D6FC, 6),
-        'θ' => cp(0x1D6FC, 7),
-        'ι' => cp(0x1D6FC, 8),
-        'κ' => cp(0x1D6FC, 9),
-        'λ' => cp(0x1D6FC, 10),
-        'μ' => cp(0x1D6FC, 11),
-        'ν' => cp(0x1D6FC, 12),
-        'ξ' => cp(0x1D6FC, 13),
-        'ο' => cp(0x1D6FC, 14),
-        'π' => cp(0x1D6FC, 15),
-        'ρ' => cp(0x1D6FC, 16),
-        'ς' => cp(0x1D71B, 0),
-        'σ' => cp(0x1D6FC, 17),
-        'τ' => cp(0x1D6FC, 18),
-        'υ' => cp(0x1D6FC, 19),
-        'φ' => cp(0x1D6FC, 20),
-        'χ' => cp(0x1D6FC, 21),
-        'ψ' => cp(0x1D6FC, 22),
-        'ω' => cp(0x1D6FC, 23),
-        'ϵ' => cp(0x1D716, 0),
-        'ϑ' => cp(0x1D717, 0),
-        'ϱ' => cp(0x1D71A, 0),
-        'ϖ' => cp(0x1D71C, 0),
+        'α' => Some('\u{1D6FC}'),
+        'β' => Some('\u{1D6FD}'),
+        'γ' => Some('\u{1D6FE}'),
+        'δ' => Some('\u{1D6FF}'),
+        'ε' => Some('\u{1D700}'),
+        'ζ' => Some('\u{1D701}'),
+        'η' => Some('\u{1D702}'),
+        'θ' => Some('\u{1D703}'),
+        'ι' => Some('\u{1D704}'),
+        'κ' => Some('\u{1D705}'),
+        'λ' => Some('\u{1D706}'),
+        'μ' => Some('\u{1D707}'),
+        'ν' => Some('\u{1D708}'),
+        'ξ' => Some('\u{1D709}'),
+        'ο' => Some('\u{1D70A}'),
+        'π' => Some('\u{1D70B}'),
+        'ρ' => Some('\u{1D70C}'),
+        'ς' => Some('\u{1D70D}'),
+        'σ' => Some('\u{1D70E}'),
+        'τ' => Some('\u{1D70F}'),
+        'υ' => Some('\u{1D710}'),
+        'φ' => Some('\u{1D711}'),
+        'χ' => Some('\u{1D712}'),
+        'ψ' => Some('\u{1D713}'),
+        'ω' => Some('\u{1D714}'),
+        'ϵ' => Some('\u{1D716}'),
+        'ϑ' => Some('\u{1D717}'),
+        'ϕ' => Some('\u{1D719}'),
+        'ϱ' => Some('\u{1D71A}'),
+        'ϖ' => Some('\u{1D71B}'),
         _ => None,
     }
 }
@@ -193,9 +194,48 @@ mod tests {
     #[test]
     fn greek_italicizes_lowercase_only() {
         assert_eq!(math_alphalect(FontStyle::Math, 'α'), Some('\u{1D6FC}'));
-        assert_eq!(math_alphalect(FontStyle::Math, 'ω'), Some('\u{1D713}'));
+        assert_eq!(math_alphalect(FontStyle::Math, 'ω'), Some('\u{1D714}'));
         assert_eq!(math_alphalect(FontStyle::Math, 'Γ'), None);
         assert_eq!(math_alphalect(FontStyle::Math, 'ϵ'), Some('\u{1D716}'));
+    }
+
+    #[test]
+    fn greek_lowercase_sequence_is_pinned() {
+        let expected = [
+            ('α', '\u{1D6FC}'),
+            ('β', '\u{1D6FD}'),
+            ('γ', '\u{1D6FE}'),
+            ('δ', '\u{1D6FF}'),
+            ('ε', '\u{1D700}'),
+            ('ζ', '\u{1D701}'),
+            ('η', '\u{1D702}'),
+            ('θ', '\u{1D703}'),
+            ('ι', '\u{1D704}'),
+            ('κ', '\u{1D705}'),
+            ('λ', '\u{1D706}'),
+            ('μ', '\u{1D707}'),
+            ('ν', '\u{1D708}'),
+            ('ξ', '\u{1D709}'),
+            ('ο', '\u{1D70A}'),
+            ('π', '\u{1D70B}'),
+            ('ρ', '\u{1D70C}'),
+            ('ς', '\u{1D70D}'),
+            ('σ', '\u{1D70E}'),
+            ('τ', '\u{1D70F}'),
+            ('υ', '\u{1D710}'),
+            ('φ', '\u{1D711}'),
+            ('χ', '\u{1D712}'),
+            ('ψ', '\u{1D713}'),
+            ('ω', '\u{1D714}'),
+            ('ϵ', '\u{1D716}'),
+            ('ϑ', '\u{1D717}'),
+            ('ϕ', '\u{1D719}'),
+            ('ϱ', '\u{1D71A}'),
+            ('ϖ', '\u{1D71B}'),
+        ];
+        for (source, face) in expected {
+            assert_eq!(math_alphalect(FontStyle::Math, source), Some(face), "{source:?}");
+        }
     }
 
     #[test]
