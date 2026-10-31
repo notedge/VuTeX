@@ -1,6 +1,6 @@
 {
     "name": "@vutex/vutex",
-    "version": "0.0.13",
+    "version": "0.0.14",
     "description": "VuTeX: language-neutral document typesetting runtime and official CLI",
     "type": "module",
     "license": "MPL-2.0",
