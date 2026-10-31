@@ -19,7 +19,7 @@
 use std::{collections::BTreeMap, fs, path::Path};
 
 use serde::Deserialize;
-use vutex_layout::math::parse_formula;
+use vutex_layout::math::lower_formula;
 use vutex_render_svg::math::MathmlBackend;
 use vutex_types::math::MathSemantics;
 
@@ -199,7 +199,7 @@ fn structures_match_katex_for_inline_style() {
         }
         let katex_mathml = record.mathml.as_deref().expect("available records carry MathML");
 
-        let tree = parse_formula(&record.tex).unwrap_or_else(|e| panic!("corpus `{}` must parse: {e}", record.corpus_id));
+        let tree = lower_formula(&record.tex, false).map(|(tree, _)| tree).unwrap_or_else(|e| panic!("corpus `{}` must parse: {e}", record.corpus_id));
         let mut backend = MathmlBackend::new();
         backend.render_semantics(&MathSemantics::from_semantic_tree(&tree));
         let vutex_mathml = backend.finish();

@@ -92,10 +92,13 @@ fn empty_source_reports_a_diagnostic() {
 }
 
 #[test]
-fn unsupported_command_reports_a_diagnostic() {
+fn unsupported_command_degraded_to_text_is_reported() {
+    // Unsupported commands are no longer pre-scanned by substring in the
+    // facade. Notedown lowers them to unsupported fragments and the formula
+    // keeps the authored text visible with a warning instead of a fake error.
     let value = parse(&render_svg_wasm("\\usepackage{amsmath}", None));
     let diagnostics = value["diagnostics"].as_array().expect("diagnostics");
-    assert!(diagnostics.iter().any(|item| item["code"] == "WETEX_UNSUPPORTED_COMMAND"));
+    assert!(diagnostics.iter().any(|item| item["code"] == "vutex.math.unsupported_expression"));
 }
 
 #[test]

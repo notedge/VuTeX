@@ -1,8 +1,8 @@
 //! Integration tests for the math parse/layout pipeline.
 
 use vutex_layout::math::{
-    Glyph, LayoutEngine, LayoutNode, default_base_size, layout_formula_with_result, layout_formula_with_result_for,
-    parse_formula,
+    Glyph, LayoutEngine, LayoutNode, default_base_size, layout_formula_source, layout_formula_source_for,
+    lower_formula,
 };
 use vutex_text::math::{FontMetricsSystem, builtin_font_metrics};
 use vutex_types::{
@@ -33,7 +33,7 @@ fn extents(result: &vutex_types::math::FormulaLayoutResult) -> Extents {
 }
 
 fn layout(source: &str) -> Extents {
-    let (result, _, _) = layout_formula_with_result(source, false, default_base_size(false)).expect("formula should lay out");
+    let (result, _, _) = layout_formula_source(source, false, default_base_size(false)).expect("formula should lay out");
     extents(&result)
 }
 
@@ -150,39 +150,26 @@ fn nested_fraction_grows_monotonically() {
 #[test]
 fn display_style_is_larger_than_text_style() {
     let inline =
-        extents(&layout_formula_with_result("\\frac{a}{b}", false, default_base_size(false)).expect("inline layout").0);
+        extents(&layout_formula_source("\\frac{a}{b}", false, default_base_size(false)).expect("inline layout").0);
     let display =
-        extents(&layout_formula_with_result("\\frac{a}{b}", true, default_base_size(true)).expect("display layout").0);
+        extents(&layout_formula_source("\\frac{a}{b}", true, default_base_size(true)).expect("display layout").0);
     assert!(display.width > inline.width, "display style should use a larger base size: {} vs {}", display.width, inline.width);
 }
 
 #[test]
-fn missing_fraction_argument_is_a_parse_error() {
-    let error =
-        layout_formula_with_result("\\frac{a}", false, default_base_size(false)).expect_err("missing denominator must fail");
-    let message = error.to_string();
-    assert!(message.contains("Parse Error"), "unexpected diagnostic: {message}");
-    assert!(message.contains("missing argument"), "unexpected diagnostic: {message}");
-}
-
-#[test]
-fn unbalanced_group_is_a_parse_error() {
-    let error = layout_formula_with_result("{a + b", false, default_base_size(false)).expect_err("unclosed group must fail");
-    assert!(error.to_string().contains("Parse Error"));
-}
-
-#[test]
-fn unknown_command_is_a_parse_error() {
-    let error =
-        layout_formula_with_result("\\notacommand{x}", false, default_base_size(false)).expect_err("unknown command must fail");
-    let message = error.to_string();
-    assert!(message.contains("unknown command"), "unexpected diagnostic: {message}");
-}
-
-#[test]
-fn stray_script_is_a_parse_error() {
-    let error = layout_formula_with_result("^2", false, default_base_size(false)).expect_err("script without base must fail");
-    assert!(error.to_string().contains("without a base"));
+fn malformed_or_unknown_math_degrades_to_text_with_a_diagnostic() {
+    // Syntax and semantics now live in Oak + Notedown. A fragment the lowering
+    // cannot express stays visible as text and is reported, instead of making
+    // the layout abort or silently dropping the source.
+    for source in ["\\frac{a}", "{a + b", "\\notacommand{x}", "^2"] {
+        let (result, _, diagnostics) = layout_formula_source(source, false, default_base_size(false))
+            .unwrap_or_else(|error| panic!("`{source}` must degrade instead of failing: {error}"));
+        assert!(
+            diagnostics.iter().any(|diagnostic| diagnostic.code == "vutex.math.unsupported_expression"),
+            "`{source}` must report its unsupported fragment: {diagnostics:?}"
+        );
+        assert!(result.metrics.width.to_f64() > 0.0, "`{source}` must keep the remaining text visible");
+    }
 }
 
 #[test]
@@ -241,7 +228,7 @@ fn math_italic_face_keeps_positive_italic_correction() {
     // `w + italic_correction` rule reads it from the glyph. A font that
     // publishes no correction for `x` (XITS does not) must not have one
     // invented for it.
-    let (_, tree, _) = layout_formula_with_result("\\mathit{x}^2", false, default_base_size(false)).expect("mathit x^2");
+    let (_, tree, _) = layout_formula_source("\\mathit{x}^2", false, default_base_size(false)).expect("mathit x^2");
     let (_, _, italic_x) = glyph_at(&tree, 'x');
     let drawn = italic_x.char.expect("drawn glyph carries its character");
     let published = system
@@ -269,11 +256,11 @@ fn math_italic_face_keeps_positive_italic_correction() {
 fn delimited_box_is_body_plus_the_delimiter_advances() {
     let system = builtin_font_metrics();
     for display in [false, true] {
-        let (__r1, tree, _) = layout_formula_with_result("\\left(\\frac{a}{b}\\right)", display, default_base_size(display))
+        let (__r1, tree, _) = layout_formula_source("\\left(\\frac{a}{b}\\right)", display, default_base_size(display))
             .expect("delimited layout");
         let delimited = extents(&__r1);
         let body =
-            extents(&layout_formula_with_result("\\frac{a}{b}", display, default_base_size(display)).expect("body layout").0);
+            extents(&layout_formula_source("\\frac{a}{b}", display, default_base_size(display)).expect("body layout").0);
 
         let (left_x, _, left) = glyph_at(&tree, '(');
         let (right_x, _, right) = glyph_at(&tree, ')');
@@ -353,9 +340,9 @@ fn delimited_box_is_body_plus_the_delimiter_advances() {
 #[test]
 fn fence_delimiters_ignore_the_preceding_atom() {
     for display in [false, true] {
-        let (_, bare, _) = layout_formula_with_result("\\left(\\frac{a}{b}\\right)", display, default_base_size(display))
+        let (_, bare, _) = layout_formula_source("\\left(\\frac{a}{b}\\right)", display, default_base_size(display))
             .expect("bare fence should lay out");
-        let (_, prefixed, _) = layout_formula_with_result("x+\\left(\\frac{a}{b}\\right)", display, default_base_size(display))
+        let (_, prefixed, _) = layout_formula_source("x+\\left(\\frac{a}{b}\\right)", display, default_base_size(display))
             .expect("prefixed fence should lay out");
 
         let (bare_x, _, bare_open) = glyph_at(&bare, '(');
@@ -422,7 +409,7 @@ fn radical_index_follows_superscript_style_and_the_math_constants() {
         ("text radical degree", false, vertical_gap, "\\sqrt[3]{x}"),
     ] {
         let (_, tree, _) =
-            layout_formula_with_result(src, display, default_base_size(display)).expect("{label}: radical should lay out");
+            layout_formula_source(src, display, default_base_size(display)).expect("{label}: radical should lay out");
         let (index_x, index_y, index) = glyph_at(&tree, '3');
         let (surd_x, _, surd) = glyph_at(&tree, '√');
         let (_, base_y, base) = glyph_at(&tree, 'x');
@@ -463,7 +450,7 @@ fn radical_index_follows_superscript_style_and_the_math_constants() {
     // asserted here because the whole radical box is subject to the superscript
     // placement of the enclosing sub/sup layout.
     {
-        let (_, tree, _) = layout_formula_with_result("y^{\\sqrt[3]{x}}", true, default_base_size(true))
+        let (_, tree, _) = layout_formula_source("y^{\\sqrt[3]{x}}", true, default_base_size(true))
             .expect("nested radical should lay out");
         let (_, _, index) = glyph_at(&tree, '3');
         let (_, _, surd) = glyph_at(&tree, '√');
@@ -493,7 +480,7 @@ fn radical_index_follows_superscript_style_and_the_math_constants() {
 fn stacked_limits_keep_the_math_table_gap_minima() {
     let system = builtin_font_metrics();
     let constant = |name: MathConstant| system.get_math_constant("default", name).expect("font constant").to_f64();
-    let (_, tree, _) = layout_formula_with_result("\\sum_{i=1}^{n}", true, default_base_size(true)).expect("display limits");
+    let (_, tree, _) = layout_formula_source("\\sum_{i=1}^{n}", true, default_base_size(true)).expect("display limits");
 
     let (_, op_y, op) = glyph_at(&tree, '∑');
     let em = op.size.to_f64();
@@ -554,7 +541,7 @@ fn stacked_limits_keep_the_math_table_gap_minima() {
     // A script-style operator demotes its limits one style further, to
     // scriptscript, instead of leaving them at the operator's script size.
     // 14 px is the inline base em from `default_base_size(false)`.
-    let (_, tree, _) = layout_formula_with_result("\\scriptstyle\\sum\\limits_{j}^{k}", false, default_base_size(false))
+    let (_, tree, _) = layout_formula_source("\\scriptstyle\\sum\\limits_{j}^{k}", false, default_base_size(false))
         .expect("script limits");
     let (_, _, op) = glyph_at(&tree, '∑');
     let em = op.size.to_f64();
@@ -583,7 +570,7 @@ fn integral_limits_use_the_stacked_math_constants() {
     let system = builtin_font_metrics();
     let constant = |name: MathConstant| system.get_math_constant("default", name).expect("font constant").to_f64();
 
-    let (_, tree, _) = layout_formula_with_result("\\int\\limits_{0}^{1}", true, default_base_size(true))
+    let (_, tree, _) = layout_formula_source("\\int\\limits_{0}^{1}", true, default_base_size(true))
         .expect("display integral with limits");
     let (_, op_y, op) = glyph_at(&tree, '∫');
     let em = op.size.to_f64();
@@ -640,7 +627,7 @@ fn overset_stacks_text_above_base() {
     // top is script-sized, and the top glyph's baseline is strictly above
     // the base glyph's baseline.
     let (_, tree, _) =
-        layout_formula_with_result("\\overset{x}{y}", false, default_base_size(false)).expect("overset must parse");
+        layout_formula_source("\\overset{x}{y}", false, default_base_size(false)).expect("overset must parse");
     let glyphs = glyphs(&tree);
     assert_eq!(glyphs.len(), 2, "overset must paint exactly two glyphs, got {glyphs:?}");
 
@@ -668,7 +655,7 @@ fn underset_stacks_text_below_base() {
     // bot is script-sized, and the bot glyph's baseline is strictly below
     // the base glyph's baseline.
     let (_, tree, _) =
-        layout_formula_with_result("\\underset{x}{y}", false, default_base_size(false)).expect("underset must parse");
+        layout_formula_source("\\underset{x}{y}", false, default_base_size(false)).expect("underset must parse");
     let glyphs = glyphs(&tree);
     assert_eq!(glyphs.len(), 2, "underset must paint exactly two glyphs, got {glyphs:?}");
 
@@ -696,7 +683,7 @@ fn stackrel_makes_relation() {
     // test: it parses, lays out without panicking, paints glyphs, and the
     // base `=` carries the Relation spacing role on its nucleus.
     let (_, tree, _) =
-        layout_formula_with_result("\\stackrel{def}{=}", false, default_base_size(false)).expect("stackrel must parse");
+        layout_formula_source("\\stackrel{def}{=}", false, default_base_size(false)).expect("stackrel must parse");
     let gs = glyphs(&tree);
     assert!(!gs.is_empty(), "stackrel must paint at least one glyph");
 
@@ -710,7 +697,7 @@ fn overset_base_not_forced_to_axis() {
     // `\overset{x}{\sum}` — unlike `\sum\limits`, overset does *not* centre
     // its base on the axis.  The sum sign keeps its natural baseline.  We
     // check that the result has nonzero height and paint.
-    let (_, tree, _) = layout_formula_with_result("\\overset{x}{\\sum}", false, default_base_size(false))
+    let (_, tree, _) = layout_formula_source("\\overset{x}{\\sum}", false, default_base_size(false))
         .expect("overset on large op must parse");
     let gs = glyphs(&tree);
     let chars: Vec<char> = gs.iter().filter_map(|(_, _, g)| g.char).collect();
@@ -734,7 +721,7 @@ fn beside_scripts_sit_on_the_shift_and_drop_minima() {
     for (source, display, base_char, sup_char, sub_char) in
         [("\\int_0^1", false, '∫', '1', '0'), ("x_i^j", false, 'x', 'j', 'i')]
     {
-        let (_, tree, _) = layout_formula_with_result(source, display, default_base_size(display)).expect(source);
+        let (_, tree, _) = layout_formula_source(source, display, default_base_size(display)).expect(source);
         let (base_x, base_y, base) = glyph_at(&tree, base_char);
         let (sup_x, sup_y, sup) = glyph_at(&tree, sup_char);
         let (sub_x, sub_y, sub) = glyph_at(&tree, sub_char);
@@ -815,7 +802,7 @@ fn spacing_binary_takes_medium_four_mu_per_side() {
     let em = default_base_size(false);
     let tol = 2.0 * em / Fixed::SCALE as f64;
 
-    let (_, tree, _) = layout_formula_with_result("a+b", false, default_base_size(false)).unwrap();
+    let (_, tree, _) = layout_formula_source("a+b", false, default_base_size(false)).unwrap();
     let plus_gap = mu_gap_between(&tree, 'a', '+');
     let b_gap = mu_gap_between(&tree, '+', 'b');
     assert!((plus_gap - 4.0 / 18.0 * em).abs() < tol, "Ord→Bin must be 4mu, got {plus_gap}");
@@ -828,7 +815,7 @@ fn spacing_relation_takes_thick_five_mu_per_side() {
     let em = default_base_size(false);
     let tol = 2.0 * em / Fixed::SCALE as f64;
 
-    let (_, tree, _) = layout_formula_with_result("a=b", false, default_base_size(false)).unwrap();
+    let (_, tree, _) = layout_formula_source("a=b", false, default_base_size(false)).unwrap();
     let eq_left = mu_gap_between(&tree, 'a', '=');
     let eq_right = mu_gap_between(&tree, '=', 'b');
     assert!((eq_left - 5.0 / 18.0 * em).abs() < tol, "Ord→Rel must be 5mu, got {eq_left}");
@@ -904,7 +891,7 @@ fn spacing_fraction_after_ordinary_takes_thin_three_mu() {
     // `\frac{a}{b}c` — Inner→Ord = 1 = Thin 3mu.
     let em = default_base_size(false);
     let (_, tree, _) =
-        layout_formula_with_result("\\frac{a}{b}c", false, default_base_size(false)).expect("formula should lay out");
+        layout_formula_source("\\frac{a}{b}c", false, default_base_size(false)).expect("formula should lay out");
     assert_glues(&glue_widths(&tree), &[3.0], em, "frac c");
 }
 
@@ -915,11 +902,11 @@ fn spacing_radical_neighbours_take_thin_three_mu() {
     let em = default_base_size(false);
 
     let (_, left, _) =
-        layout_formula_with_result("x\\sqrt{y}", false, default_base_size(false)).expect("formula should lay out");
+        layout_formula_source("x\\sqrt{y}", false, default_base_size(false)).expect("formula should lay out");
     assert_glues(&glue_widths(&left), &[3.0], em, "x sqrt");
 
     let (_, right, _) =
-        layout_formula_with_result("\\sqrt{y}z", false, default_base_size(false)).expect("formula should lay out");
+        layout_formula_source("\\sqrt{y}z", false, default_base_size(false)).expect("formula should lay out");
     assert_glues(&glue_widths(&right), &[3.0], em, "sqrt z");
 }
 
@@ -929,7 +916,7 @@ fn spacing_closed_group_before_fraction_takes_thin_three_mu() {
     // 4mu, and Close→Inner = 1 = Thin 3mu after `)`.
     let em = default_base_size(false);
     let (_, tree, _) =
-        layout_formula_with_result("(a+b)\\frac{c}{d}", false, default_base_size(false)).expect("formula should lay out");
+        layout_formula_source("(a+b)\\frac{c}{d}", false, default_base_size(false)).expect("formula should lay out");
     assert_glues(&glue_widths(&tree), &[4.0, 4.0, 3.0], em, "(a+b) frac");
 }
 
@@ -940,17 +927,17 @@ fn spacing_fenced_fraction_uses_the_open_close_columns() {
     // glue against surrounding ordinaries either (Ord→Open = 0, Close→Ord = 0).
     let em = default_base_size(false);
 
-    let (_, fence, _) = layout_formula_with_result("\\left(\\frac{a}{b}\\right)", false, default_base_size(false))
+    let (_, fence, _) = layout_formula_source("\\left(\\frac{a}{b}\\right)", false, default_base_size(false))
         .expect("formula should lay out");
     assert_glues(&glue_widths(&fence), &[], em, "left( frac right)");
 
-    let (_, tree, _) = layout_formula_with_result("x\\left(\\frac{a}{b}\\right)y", false, default_base_size(false))
+    let (_, tree, _) = layout_formula_source("x\\left(\\frac{a}{b}\\right)y", false, default_base_size(false))
         .expect("formula should lay out");
     assert_glues(&glue_widths(&tree), &[], em, "x left( frac right) y");
 
     // The fence's left delimiter is an Open atom, so a neighbouring Inner
     // (fraction) takes Thin 3mu: Inner→Open = 1.
-    let (_, inner_open, _) = layout_formula_with_result("\\frac{a}{b}\\left(c\\right)", false, default_base_size(false))
+    let (_, inner_open, _) = layout_formula_source("\\frac{a}{b}\\left(c\\right)", false, default_base_size(false))
         .expect("formula should lay out");
     assert_glues(&glue_widths(&inner_open), &[3.0], em, "frac left( c right)");
 }
@@ -966,7 +953,7 @@ fn binary_inside_parentheses_keeps_medium_glues() {
     let em = default_base_size(false);
     let tol = 2.0 * em / Fixed::SCALE as f64;
 
-    let (_, tree, _) = layout_formula_with_result("(a+b)", false, default_base_size(false)).unwrap();
+    let (_, tree, _) = layout_formula_source("(a+b)", false, default_base_size(false)).unwrap();
     let a_plus = mu_gap_between(&tree, 'a', '+');
     let plus_b = mu_gap_between(&tree, '+', 'b');
     assert!((a_plus - 4.0 / 18.0 * em).abs() < tol, "Ord→Bin inside parens stays 4mu, got {a_plus}");
@@ -982,7 +969,7 @@ fn binary_demotes_before_relation() {
     let em = default_base_size(false);
     let tol = 2.0 * em / Fixed::SCALE as f64;
 
-    let (_, tree, _) = layout_formula_with_result("a+=b", false, default_base_size(false)).unwrap();
+    let (_, tree, _) = layout_formula_source("a+=b", false, default_base_size(false)).unwrap();
     // a → + : both Ordinary after demote → NoGlue (must be within small float noise of 0)
     let a_plus = mu_gap_between(&tree, 'a', '+');
     assert!(a_plus.abs() < tol, "a→demoted + must be NoGlue, got {a_plus}");
@@ -998,7 +985,7 @@ fn binary_demotes_after_open() {
     let em = default_base_size(false);
     let tol = 2.0 * em / Fixed::SCALE as f64;
 
-    let (_, tree, _) = layout_formula_with_result("(+a)", false, default_base_size(false)).unwrap();
+    let (_, tree, _) = layout_formula_source("(+a)", false, default_base_size(false)).unwrap();
     // `(` → +(Ord) : NoGlue
     let (open_x, _, open_g) = glyph_at(&tree, '(');
     let plus_x = glyph_at(&tree, '+').0;
@@ -1020,7 +1007,7 @@ fn relation_after_open_keeps_its_class() {
     let em = default_base_size(false);
     let tol = 2.0 * em / Fixed::SCALE as f64;
 
-    let (_, tree, _) = layout_formula_with_result("(=a)", false, default_base_size(false)).unwrap();
+    let (_, tree, _) = layout_formula_source("(=a)", false, default_base_size(false)).unwrap();
     let (open_x, _, open_g) = glyph_at(&tree, '(');
     let eq_x = glyph_at(&tree, '=').0;
     let open_tail = open_x + open_g.metrics.width.to_f64() + open_g.metrics.italic_correction.to_f64();
@@ -1040,9 +1027,9 @@ fn nested_group_keeps_the_same_atom_classes() {
     let em = default_base_size(false);
     let tol = 2.0 * em / Fixed::SCALE as f64;
 
-    let (_, top, _) = layout_formula_with_result("(=b", false, default_base_size(false)).unwrap();
-    let (_, braced, _) = layout_formula_with_result("{(=b}", false, default_base_size(false)).unwrap();
-    let (_, radical, _) = layout_formula_with_result("\\sqrt{(=b)}", false, default_base_size(false)).unwrap();
+    let (_, top, _) = layout_formula_source("(=b", false, default_base_size(false)).unwrap();
+    let (_, braced, _) = layout_formula_source("{(=b}", false, default_base_size(false)).unwrap();
+    let (_, radical, _) = layout_formula_source("\\sqrt{(=b)}", false, default_base_size(false)).unwrap();
 
     for (label, tree) in [("top level", &top), ("brace group", &braced), ("nested group", &radical)] {
         let (open_x, _, open_g) = glyph_at(tree, '(');
@@ -1067,7 +1054,7 @@ fn spacing_commands_advance_by_mu_multiples() {
     // `mu` is quantized once into `Fixed` and then scaled to pixels.
     let tolerance = 2.0 * em / Fixed::SCALE as f64;
 
-    let (_, plain, _) = layout_formula_with_result("ab", false, default_base_size(false)).expect("`ab` should lay out");
+    let (_, plain, _) = layout_formula_source("ab", false, default_base_size(false)).expect("`ab` should lay out");
     let (plain_a, _, _) = glyph_at(&plain, 'a');
     let (plain_b, _, _) = glyph_at(&plain, 'b');
     let base_gap = plain_b - plain_a;
@@ -1075,7 +1062,7 @@ fn spacing_commands_advance_by_mu_multiples() {
     for (source, mu) in
         [("a\\,b", 3.0), ("a\\:b", 4.0), ("a\\;b", 5.0), ("a\\ b", 6.0), ("a\\quad b", 18.0), ("a\\qquad b", 36.0)]
     {
-        let (_, tree, _) = layout_formula_with_result(source, false, default_base_size(false)).expect(source);
+        let (_, tree, _) = layout_formula_source(source, false, default_base_size(false)).expect(source);
         let (a_x, _, _) = glyph_at(&tree, 'a');
         let (b_x, _, _) = glyph_at(&tree, 'b');
         let gap = b_x - a_x - base_gap;
@@ -1087,8 +1074,8 @@ fn spacing_commands_advance_by_mu_multiples() {
 /// A literal space in math mode is ignored, so `a b` keeps the plain advance.
 #[test]
 fn literal_math_space_adds_no_advance() {
-    let plain = extents(&layout_formula_with_result("ab", false, default_base_size(false)).expect("`ab` should lay out").0);
-    let spaced = extents(&layout_formula_with_result("a b", false, default_base_size(false)).expect("`a b` should lay out").0);
+    let plain = extents(&layout_formula_source("ab", false, default_base_size(false)).expect("`ab` should lay out").0);
+    let spaced = extents(&layout_formula_source("a b", false, default_base_size(false)).expect("`a b` should lay out").0);
     assert!(
         (spaced.width - plain.width).abs() < 1e-4,
         "a literal space must not change the width: {} vs {}",
@@ -1109,9 +1096,9 @@ fn explicit_space_adds_its_width_without_changing_atom_spacing() {
     let em = default_base_size(false);
     let tol = 2.0 * em / Fixed::SCALE as f64;
 
-    let (_, plain, _) = layout_formula_with_result("a+b", false, default_base_size(false)).expect("`a+b` should lay out");
+    let (_, plain, _) = layout_formula_source("a+b", false, default_base_size(false)).expect("`a+b` should lay out");
     let (_, spaced, _) =
-        layout_formula_with_result("a\\,+b", false, default_base_size(false)).expect("`a\\,+b` should lay out");
+        layout_formula_source("a\\,+b", false, default_base_size(false)).expect("`a\\,+b` should lay out");
 
     let plain_left = mu_gap_between(&plain, 'a', '+');
     let plain_right = mu_gap_between(&plain, '+', 'b');
@@ -1138,8 +1125,8 @@ fn explicit_space_between_ordinary_atoms_adds_only_its_width() {
     let em = default_base_size(false);
     let tol = 2.0 * em / Fixed::SCALE as f64;
 
-    let (_, plain, _) = layout_formula_with_result("xy", false, default_base_size(false)).expect("`xy` should lay out");
-    let (_, spaced, _) = layout_formula_with_result("x\\,y", false, default_base_size(false)).expect("`x\\,y` should lay out");
+    let (_, plain, _) = layout_formula_source("xy", false, default_base_size(false)).expect("`xy` should lay out");
+    let (_, spaced, _) = layout_formula_source("x\\,y", false, default_base_size(false)).expect("`x\\,y` should lay out");
 
     let plain_gap = mu_gap_between(&plain, 'x', 'y');
     let spaced_gap = mu_gap_between(&spaced, 'x', 'y');
@@ -1180,7 +1167,7 @@ fn bmatrix_supported() {
 #[test]
 fn hat_accent_centres_on_base_top_accent_attachment() {
     let (_, tree, _) =
-        layout_formula_with_result("\\hat{f}", false, default_base_size(false)).expect("\\hat{f} should lay out");
+        layout_formula_source("\\hat{f}", false, default_base_size(false)).expect("\\hat{f} should lay out");
     // A laid-out formula is always the packed list box; a single accent noad
     // fills it alone, so the accent stack is its only child.
     let LayoutNode::HBox(root_box) = &tree
@@ -1279,7 +1266,7 @@ fn rules(node: &LayoutNode) -> Vec<(f64, f64, f64, f64)> {
 #[test]
 fn hat_accent_paints_font_ink_on_the_base_attachment() {
     let (_, tree, _) =
-        layout_formula_with_result("\\hat{x}", false, default_base_size(false)).expect("\\hat{x} should lay out");
+        layout_formula_source("\\hat{x}", false, default_base_size(false)).expect("\\hat{x} should lay out");
     let LayoutNode::HBox(root_box) = &tree
     else {
         panic!("a formula packs into an hbox: {tree:?}")
@@ -1315,7 +1302,7 @@ fn hat_accent_paints_font_ink_on_the_base_attachment() {
 #[test]
 fn bar_accent_is_a_rule_covering_the_base() {
     let (_, tree, _) =
-        layout_formula_with_result("\\bar{x}", false, default_base_size(false)).expect("\\bar{x} should lay out");
+        layout_formula_source("\\bar{x}", false, default_base_size(false)).expect("\\bar{x} should lay out");
     let bars = rules(&tree);
     assert_eq!(bars.len(), 1, "`\\bar` must paint exactly one overbar rule: {tree:?}");
     let (bar_x, bar_top, bar_width, bar_height) = bars[0];
@@ -1360,7 +1347,7 @@ fn glyph_accents_clear_the_base_ink_by_the_rule_thickness() {
         system.get_math_constant("default", MathConstant::FlattenedAccentBaseHeight).expect("font constant").to_f64();
 
     for (source, accent_char, base_char) in [("\\hat{f}", 'ˆ', 'f'), ("\\tilde{x}", '˜', 'x')] {
-        let (_, tree, _) = layout_formula_with_result(source, false, default_base_size(false)).expect(source);
+        let (_, tree, _) = layout_formula_source(source, false, default_base_size(false)).expect(source);
         let (_, accent_y, accent) = glyph_at(&tree, accent_char);
         let (_, base_y, base) = glyph_at(&tree, base_char);
 
@@ -1385,7 +1372,7 @@ fn glyph_accents_clear_the_base_ink_by_the_rule_thickness() {
 
     // `\bar` is a rule, not a glyph, and keeps the overbar gap.
     let (_, tree, _) =
-        layout_formula_with_result("\\bar{x}", false, default_base_size(false)).expect("\\bar{x} should lay out");
+        layout_formula_source("\\bar{x}", false, default_base_size(false)).expect("\\bar{x} should lay out");
     let (_, base_y, base) = glyph_at(&tree, 'x');
     let base_top = base_y - base.metrics.height.to_f64();
     let bars = rules(&tree);
@@ -1419,7 +1406,7 @@ fn fraction_rule_sits_on_the_math_axis() {
         // and scaled to `em` is exact to well under a thousandth of a pixel.
         let tolerance = 8.0 * em / Fixed::SCALE as f64;
 
-        let (__r2, tree, _) = layout_formula_with_result("\\frac{a}{b}", display, default_base_size(display))
+        let (__r2, tree, _) = layout_formula_source("\\frac{a}{b}", display, default_base_size(display))
             .expect("`\\frac{a}{b}` should lay out");
         let metrics = extents(&__r2);
         let bars = rules(&tree);
@@ -1501,7 +1488,7 @@ fn fraction_stays_on_the_surrounding_baseline() {
         let axis = axis_em * em;
         let tolerance = 8.0 * em / Fixed::SCALE as f64;
 
-        let (_, tree, _) = layout_formula_with_result("x+\\frac{a}{b}+y", display, default_base_size(display))
+        let (_, tree, _) = layout_formula_source("x+\\frac{a}{b}+y", display, default_base_size(display))
             .expect("`x+\\frac{a}{b}+y` should lay out");
         let (_, x_y, _) = glyph_at(&tree, 'x');
         let (_, y_y, _) = glyph_at(&tree, 'y');
@@ -1543,7 +1530,7 @@ fn delimited_and_matrix_bodies_are_centred_on_the_math_axis() {
         let axis = axis_em * em;
         let tolerance = 8.0 * em / Fixed::SCALE as f64;
 
-        let (__r3, tree, _) = layout_formula_with_result("\\left(\\frac{a}{b}\\right)", display, default_base_size(display))
+        let (__r3, tree, _) = layout_formula_source("\\left(\\frac{a}{b}\\right)", display, default_base_size(display))
             .expect("`\\left(\\frac{a}{b}\\right)` should lay out");
         let metrics = extents(&__r3);
         let box_centre = (metrics.height - metrics.depth) / 2.0;
@@ -1585,7 +1572,7 @@ fn delimited_and_matrix_bodies_are_centred_on_the_math_axis() {
         let axis = axis_em * em;
         let tolerance = 8.0 * em / Fixed::SCALE as f64;
 
-        let (__r4, tree, _) = layout_formula_with_result(source, false, default_base_size(false)).expect(source);
+        let (__r4, tree, _) = layout_formula_source(source, false, default_base_size(false)).expect(source);
         let metrics = extents(&__r4);
         let box_centre = (metrics.height - metrics.depth) / 2.0;
         assert!((box_centre - axis).abs() < tolerance, "`{source}` box centre {box_centre} must sit on the axis {axis}");
@@ -1616,10 +1603,10 @@ fn display_selection_command_expands_fraction_geometry() {
     let script_em = em * math_constant(&system, MathConstant::ScriptPercentScaleDown);
 
     let (__r5, text_tree, _) =
-        layout_formula_with_result("\\frac{a}{b}", false, default_base_size(false)).expect("text fraction");
+        layout_formula_source("\\frac{a}{b}", false, default_base_size(false)).expect("text fraction");
     let text = extents(&__r5);
     let (__r6, display_tree, _) =
-        layout_formula_with_result("\\displaystyle \\frac{a}{b}", false, default_base_size(false)).expect("display fraction");
+        layout_formula_source("\\displaystyle \\frac{a}{b}", false, default_base_size(false)).expect("display fraction");
     let display = extents(&__r6);
 
     let (_, _, text_num) = glyph_at(&text_tree, 'a');
@@ -1651,9 +1638,9 @@ fn display_selection_command_expands_fraction_geometry() {
 /// by the display pipeline (larger em), which is the document-facing path.
 #[test]
 fn display_mode_fraction_is_taller_than_text_mode() {
-    let text = extents(&layout_formula_with_result("\\frac{a}{b}", false, default_base_size(false)).expect("inline layout").0);
+    let text = extents(&layout_formula_source("\\frac{a}{b}", false, default_base_size(false)).expect("inline layout").0);
     let display =
-        extents(&layout_formula_with_result("\\frac{a}{b}", true, default_base_size(true)).expect("display layout").0);
+        extents(&layout_formula_source("\\frac{a}{b}", true, default_base_size(true)).expect("display layout").0);
 
     let text_total = text.height + text.depth;
     let display_total = display.height + display.depth;
@@ -1709,7 +1696,7 @@ fn nested_scripts_use_the_font_script_ratios() {
     let scriptscript_scale = scale(MathConstant::ScriptScriptPercentScaleDown);
 
     let (_, tree, _) =
-        layout_formula_with_result("x^{y^{z}}", false, default_base_size(false)).expect("nested scripts should lay out");
+        layout_formula_source("x^{y^{z}}", false, default_base_size(false)).expect("nested scripts should lay out");
     let (_, _, base) = glyph_at(&tree, 'x');
     let (_, _, script) = glyph_at(&tree, 'y');
     let (_, _, scriptscript) = glyph_at(&tree, 'z');
@@ -1734,7 +1721,7 @@ fn nested_scripts_use_the_font_script_ratios() {
 fn display_and_text_styles_keep_the_base_em() {
     for display in [false, true] {
         let (_, tree, _) =
-            layout_formula_with_result("x", display, default_base_size(display)).expect("single symbol should lay out");
+            layout_formula_source("x", display, default_base_size(display)).expect("single symbol should lay out");
         let (_, _, glyph) = glyph_at(&tree, 'x');
         let em = default_base_size(display);
         assert!(
@@ -1750,7 +1737,7 @@ fn display_and_text_styles_keep_the_base_em() {
 #[test]
 fn embedded_font_needs_no_script_scale_fallback() {
     let (_, _, diagnostics) =
-        layout_formula_with_result("x^{y^{z}}", false, default_base_size(false)).expect("nested scripts should lay out");
+        layout_formula_source("x^{y^{z}}", false, default_base_size(false)).expect("nested scripts should lay out");
     assert!(
         !diagnostics.iter().any(|d| d.code == "vutex.layout.math.script_scale_fallback"),
         "the embedded font publishes both ratios, so no fallback warning is expected: {diagnostics:?}"
@@ -1816,7 +1803,7 @@ fn fraction_arguments_demote_one_style_further() {
         ("\\scriptstyle \\frac{a}{b}", 14.0 * scriptscript_scale),
         ("\\scriptscriptstyle \\frac{a}{b}", 14.0 * scriptscript_scale),
     ] {
-        let (_, tree, _) = layout_formula_with_result(source, false, default_base_size(false)).expect(source);
+        let (_, tree, _) = layout_formula_source(source, false, default_base_size(false)).expect(source);
         let sizes = glyph_sizes(&tree);
         assert!(!sizes.is_empty(), "`{source}` must lay out glyphs");
         for size in sizes {
@@ -1831,10 +1818,10 @@ fn fraction_arguments_demote_one_style_further() {
 #[test]
 fn limits_override_stacks_scripts_over_the_operator() {
     let (__r7, beside_tree, _) =
-        layout_formula_with_result("\\sum\\nolimits_{i=1}^{n}", false, default_base_size(false)).expect("scripts beside");
+        layout_formula_source("\\sum\\nolimits_{i=1}^{n}", false, default_base_size(false)).expect("scripts beside");
     let beside = extents(&__r7);
     let (__r8, stacked_tree, _) =
-        layout_formula_with_result("\\sum\\limits_{i=1}^{n}", false, default_base_size(false)).expect("stacked limits");
+        layout_formula_source("\\sum\\limits_{i=1}^{n}", false, default_base_size(false)).expect("stacked limits");
     let stacked = extents(&__r8);
 
     assert!(
@@ -1911,14 +1898,14 @@ fn integral_limits_follow_the_override() {
 #[test]
 fn operator_default_limits_follow_tex() {
     let sum_default =
-        extents(&layout_formula_with_result("\\sum_{i=1}^{n}", true, default_base_size(true)).expect("display sum").0);
+        extents(&layout_formula_source("\\sum_{i=1}^{n}", true, default_base_size(true)).expect("display sum").0);
     let sum_limits = extents(
-        &layout_formula_with_result("\\sum\\limits_{i=1}^{n}", true, default_base_size(true))
+        &layout_formula_source("\\sum\\limits_{i=1}^{n}", true, default_base_size(true))
             .expect("display sum with limits")
             .0,
     );
     let sum_beside = extents(
-        &layout_formula_with_result("\\sum\\nolimits_{i=1}^{n}", true, default_base_size(true))
+        &layout_formula_source("\\sum\\nolimits_{i=1}^{n}", true, default_base_size(true))
             .expect("display sum without limits")
             .0,
     );
@@ -1934,14 +1921,14 @@ fn operator_default_limits_follow_tex() {
     );
 
     let int_default =
-        extents(&layout_formula_with_result("\\int_{0}^{1}", true, default_base_size(true)).expect("display integral").0);
+        extents(&layout_formula_source("\\int_{0}^{1}", true, default_base_size(true)).expect("display integral").0);
     let int_nolimits = extents(
-        &layout_formula_with_result("\\int\\nolimits_{0}^{1}", true, default_base_size(true))
+        &layout_formula_source("\\int\\nolimits_{0}^{1}", true, default_base_size(true))
             .expect("display integral without limits")
             .0,
     );
     let int_limits = extents(
-        &layout_formula_with_result("\\int\\limits_{0}^{1}", true, default_base_size(true))
+        &layout_formula_source("\\int\\limits_{0}^{1}", true, default_base_size(true))
             .expect("display integral with limits")
             .0,
     );
@@ -1969,9 +1956,9 @@ fn operator_default_limits_follow_tex() {
 #[test]
 fn named_operators_follow_their_own_limits_table() {
     let lim_base =
-        extents(&layout_formula_with_result("\\lim", false, default_base_size(false)).expect("`\\lim` should lay out").0);
+        extents(&layout_formula_source("\\lim", false, default_base_size(false)).expect("`\\lim` should lay out").0);
     let lim_limits =
-        extents(&layout_formula_with_result("\\lim_{x}", false, default_base_size(false)).expect("`\\lim` with a subscript").0);
+        extents(&layout_formula_source("\\lim_{x}", false, default_base_size(false)).expect("`\\lim` with a subscript").0);
     assert!(
         (lim_limits.width - lim_base.width).abs() < 0.5,
         "a stacked `\\lim` subscript is centred under the name, so the atom must not grow: {} vs {}",
@@ -1986,9 +1973,9 @@ fn named_operators_follow_their_own_limits_table() {
     );
 
     let log_base =
-        extents(&layout_formula_with_result("\\log", false, default_base_size(false)).expect("`\\log` should lay out").0);
+        extents(&layout_formula_source("\\log", false, default_base_size(false)).expect("`\\log` should lay out").0);
     let log_beside =
-        extents(&layout_formula_with_result("\\log_{x}", false, default_base_size(false)).expect("`\\log` with a subscript").0);
+        extents(&layout_formula_source("\\log_{x}", false, default_base_size(false)).expect("`\\log` with a subscript").0);
     assert!(
         log_beside.width > log_base.width,
         "`\\log` keeps its subscript beside the text, which advances the box: {} vs {}",
@@ -1998,9 +1985,9 @@ fn named_operators_follow_their_own_limits_table() {
 
     // The name table also accepts the spellings the parser used to reject.
     let limsup =
-        extents(&layout_formula_with_result("\\limsup", false, default_base_size(false)).expect("`\\limsup` should lay out").0);
+        extents(&layout_formula_source("\\limsup", false, default_base_size(false)).expect("`\\limsup` should lay out").0);
     let limsup_sub = extents(
-        &layout_formula_with_result("\\limsup_{n}", false, default_base_size(false)).expect("`\\limsup` with a subscript").0,
+        &layout_formula_source("\\limsup_{n}", false, default_base_size(false)).expect("`\\limsup` with a subscript").0,
     );
     assert!(
         (limsup_sub.width - limsup.width).abs() < 0.5,
@@ -2015,9 +2002,9 @@ fn named_operators_follow_their_own_limits_table() {
 #[test]
 fn sum_limits_default_only_in_display_style() {
     let text_default =
-        extents(&layout_formula_with_result("\\sum_{i=1}^{n}", false, default_base_size(false)).expect("text sum").0);
+        extents(&layout_formula_source("\\sum_{i=1}^{n}", false, default_base_size(false)).expect("text sum").0);
     let text_nolimits = extents(
-        &layout_formula_with_result("\\sum\\nolimits_{i=1}^{n}", false, default_base_size(false))
+        &layout_formula_source("\\sum\\nolimits_{i=1}^{n}", false, default_base_size(false))
             .expect("text sum without limits")
             .0,
     );
@@ -2027,7 +2014,7 @@ fn sum_limits_default_only_in_display_style() {
     );
 
     let display_default =
-        extents(&layout_formula_with_result("\\sum_{i=1}^{n}", true, default_base_size(true)).expect("display sum").0);
+        extents(&layout_formula_source("\\sum_{i=1}^{n}", true, default_base_size(true)).expect("display sum").0);
     assert!(
         display_default.width + 1.0 < text_default.width,
         "display `\\sum` must stack while text `\\sum` keeps its scripts beside the operator: {} vs {}",
@@ -2058,7 +2045,7 @@ fn display_style_uses_the_fonts_display_size_operator() {
     // Height plus depth and the box centre, both in em of the operator's size.
     let measure = |source: &str, display: bool| {
         let (_, tree, _) =
-            layout_formula_with_result(source, display, default_base_size(display)).expect("the operator should lay out");
+            layout_formula_source(source, display, default_base_size(display)).expect("the operator should lay out");
         let glyph = glyph_at(&tree, '∑').2;
         let em = glyph.size.to_f64();
         let total = (glyph.metrics.height + glyph.metrics.depth).to_f64() / em;
@@ -2088,7 +2075,7 @@ fn display_style_uses_the_fonts_display_size_operator() {
     // engine rule is that an operator carrying `\limits` is centred on the
     // axis by `layout_limits`, so that is what stays pinned here.
     let (_, limits_tree, _) =
-        layout_formula_with_result("\\sum\\limits_{i=1}^{n}", true, default_base_size(true)).expect("`\\sum\\limits`");
+        layout_formula_source("\\sum\\limits_{i=1}^{n}", true, default_base_size(true)).expect("`\\sum\\limits`");
     let (_, sum_y, sum_glyph) = glyph_at(&limits_tree, '∑');
     let sum_centre_em = ((sum_glyph.metrics.height - sum_glyph.metrics.depth).to_f64() / 2.0 - sum_y) / sum_glyph.size.to_f64();
     assert!(
@@ -2116,7 +2103,7 @@ fn display_style_uses_the_fonts_display_size_operator() {
 #[test]
 fn cases_left_aligns_its_columns() {
     let (_, tree, _) =
-        layout_formula_with_result("\\begin{cases} q & a \\\\ xyz & b \\end{cases}", false, default_base_size(false))
+        layout_formula_source("\\begin{cases} q & a \\\\ xyz & b \\end{cases}", false, default_base_size(false))
             .expect("cases should lay out");
 
     let (expression_x, _, _) = glyph_at(&tree, 'q');
@@ -2141,7 +2128,7 @@ fn aligned_alternates_right_and_left_columns() {
     for source in
         ["\\begin{aligned} q &= a \\\\ xyz &= b \\end{aligned}", "\\begin{alignedat}{2} q &= a \\\\ xyz &= b \\end{alignedat}"]
     {
-        let (_, tree, _) = layout_formula_with_result(source, false, default_base_size(false)).expect(source);
+        let (_, tree, _) = layout_formula_source(source, false, default_base_size(false)).expect(source);
 
         let (short_x, _, _) = glyph_at(&tree, 'q');
         let (wide_x, _, _) = glyph_at(&tree, 'x');
@@ -2171,7 +2158,7 @@ fn aligned_relation_takes_thick_muskip_on_both_sides() {
     let thick = 5.0 / 18.0 * em;
 
     for source in ["\\begin{aligned}q&=a\\end{aligned}", "\\begin{align}q&=a\\end{align}"] {
-        let (_, tree, _) = layout_formula_with_result(source, false, default_base_size(false)).expect(source);
+        let (_, tree, _) = layout_formula_source(source, false, default_base_size(false)).expect(source);
         let (q_x, _, q) = glyph_at(&tree, 'q');
         let (eq_x, _, eq) = glyph_at(&tree, '=');
         let (a_x, _, _) = glyph_at(&tree, 'a');
@@ -2193,7 +2180,7 @@ fn aligned_relation_takes_thick_muskip_on_both_sides() {
 #[test]
 fn gathered_centres_each_row() {
     let (_, tree, _) =
-        layout_formula_with_result("\\begin{gathered} q \\\\ xyz \\end{gathered}", false, default_base_size(false))
+        layout_formula_source("\\begin{gathered} q \\\\ xyz \\end{gathered}", false, default_base_size(false))
             .expect("gathered");
 
     let (narrow_x, _, _) = glyph_at(&tree, 'q');
@@ -2211,7 +2198,7 @@ fn gathered_centres_each_row() {
 #[test]
 fn split_aligns_rows_at_the_relation() {
     let (_, tree, _) =
-        layout_formula_with_result("\\begin{split} q &= a \\\\ xyz &= b \\end{split}", false, default_base_size(false))
+        layout_formula_source("\\begin{split} q &= a \\\\ xyz &= b \\end{split}", false, default_base_size(false))
             .expect("split");
 
     let relations = glyphs_of(&tree, '=');
@@ -2240,7 +2227,7 @@ fn split_aligns_rows_at_the_relation() {
 #[test]
 fn plain_matrix_keeps_centred_cells() {
     let (_, tree, _) =
-        layout_formula_with_result("\\begin{matrix} q & a \\\\ xyz & b \\end{matrix}", false, default_base_size(false))
+        layout_formula_source("\\begin{matrix} q & a \\\\ xyz & b \\end{matrix}", false, default_base_size(false))
             .expect("matrix");
 
     let (short_x, _, _) = glyph_at(&tree, 'q');
@@ -2253,7 +2240,7 @@ fn plain_matrix_keeps_centred_cells() {
 #[test]
 fn alignedat_fixes_the_grid_to_the_declared_column_pairs() {
     let source = "\\begin{alignedat}{2} q &= a & r &= b \\\\ xyz &= c & s &= d \\end{alignedat}";
-    let (__r10, tree, diagnostics) = layout_formula_with_result(source, false, 14.0).expect("alignedat should lay out");
+    let (__r10, tree, diagnostics) = layout_formula_source(source, false, 14.0).expect("alignedat should lay out");
     let metrics = extents(&__r10);
     assert!(diagnostics.is_empty(), "a body that fills the declared pairs must not warn: {diagnostics:?}");
 
@@ -2336,13 +2323,13 @@ fn alignedat_pads_missing_columns_and_reports_the_mismatch() {
     let padded = "\\begin{alignedat}{2} q &= a \\\\ xyz &= b \\end{alignedat}";
     let one_pair = "\\begin{alignedat}{1} q &= a \\\\ xyz &= b \\end{alignedat}";
 
-    let (__r11, padded_tree, diagnostics) = layout_formula_with_result(padded, false, 14.0).expect("alignedat should lay out");
+    let (__r11, padded_tree, diagnostics) = layout_formula_source(padded, false, 14.0).expect("alignedat should lay out");
     let padded_metrics = extents(&__r11);
     assert_eq!(diagnostics.len(), 1, "the column mismatch must be reported once: {diagnostics:?}");
     assert_eq!(diagnostics[0].code, "vutex.layout.math.alignedat_columns");
     assert_eq!(diagnostics[0].severity, Severity::Warning);
 
-    let (__r12, one_pair_tree, clean) = layout_formula_with_result(one_pair, false, 14.0).expect("alignedat should lay out");
+    let (__r12, one_pair_tree, clean) = layout_formula_source(one_pair, false, 14.0).expect("alignedat should lay out");
     let one_pair_metrics = extents(&__r12);
     assert!(clean.is_empty(), "a body that fills its pair must not warn: {clean:?}");
 
@@ -2374,13 +2361,13 @@ fn alignedat_overflowing_body_keeps_the_full_grid() {
     let declared = format!("\\begin{{alignedat}}{{2}}{body}\\end{{alignedat}}");
 
     let (__r13, overflow_tree, diagnostics) =
-        layout_formula_with_result(&overflow, false, 14.0).expect("overflowing alignedat should lay out");
+        layout_formula_source(&overflow, false, 14.0).expect("overflowing alignedat should lay out");
     let overflow_metrics = extents(&__r13);
     assert_eq!(diagnostics.len(), 1, "the mismatch is still reported: {diagnostics:?}");
     assert_eq!(diagnostics[0].code, "vutex.layout.math.alignedat_columns");
 
     let (__r14, declared_tree, clean) =
-        layout_formula_with_result(&declared, false, 14.0).expect("matching alignedat should lay out");
+        layout_formula_source(&declared, false, 14.0).expect("matching alignedat should lay out");
     let declared_metrics = extents(&__r14);
     assert!(clean.is_empty(), "a body that fills its pairs must not warn: {clean:?}");
 
@@ -2403,7 +2390,7 @@ fn alignedat_overflowing_body_keeps_the_full_grid() {
 #[test]
 fn align_lays_out_the_display_rl_grid() {
     let source = "\\begin{align} q &= a \\\\ xyz &= b \\end{align}";
-    let (__r15, tree, diagnostics) = layout_formula_with_result(source, false, 14.0).expect("align should lay out");
+    let (__r15, tree, diagnostics) = layout_formula_source(source, false, 14.0).expect("align should lay out");
     let metrics = extents(&__r15);
     assert!(diagnostics.is_empty(), "a plain `align` body must not warn: {diagnostics:?}");
 
@@ -2461,7 +2448,7 @@ fn align_and_aligned_share_the_grid() {
     ];
     let mut reference: Option<(f64, Vec<f64>)> = None;
     for source in sources {
-        let (__r16, tree, diagnostics) = layout_formula_with_result(source, false, 14.0).expect(source);
+        let (__r16, tree, diagnostics) = layout_formula_source(source, false, 14.0).expect(source);
         let metrics = extents(&__r16);
         assert!(diagnostics.is_empty(), "`{source}` must not warn: {diagnostics:?}");
         let xs: Vec<f64> = glyphs(&tree).into_iter().map(|(x, _, _)| x).collect();
@@ -2483,10 +2470,10 @@ fn align_and_aligned_share_the_grid() {
 #[test]
 fn align_ignores_an_enclosing_script_style() {
     let (align_result, align_tree, _) =
-        layout_formula_with_result("\\scriptstyle \\begin{align} q &= a \\end{align}", false, 14.0).expect("align");
+        layout_formula_source("\\scriptstyle \\begin{align} q &= a \\end{align}", false, 14.0).expect("align");
     let align_metrics = extents(&align_result);
     let (aligned_result, aligned_tree, _) =
-        layout_formula_with_result("\\scriptstyle \\begin{aligned} q &= a \\end{aligned}", false, 14.0).expect("aligned");
+        layout_formula_source("\\scriptstyle \\begin{aligned} q &= a \\end{aligned}", false, 14.0).expect("aligned");
     let aligned_metrics = extents(&aligned_result);
 
     let script_em = 14.0 * math_constant(&builtin_font_metrics(), MathConstant::ScriptPercentScaleDown);
@@ -2523,14 +2510,14 @@ fn align_ignores_an_enclosing_script_style() {
 #[test]
 fn limits_after_a_plain_atom_warns_and_keeps_the_scripts_beside_it() {
     let (__r17, plain_tree, plain_diagnostics) =
-        layout_formula_with_result("x_1", false, 14.0).expect("plain `x_1` should lay out");
+        layout_formula_source("x_1", false, 14.0).expect("plain `x_1` should lay out");
     let plain_metrics = extents(&__r17);
     assert!(plain_diagnostics.is_empty(), "plain `x_1` must not warn: {plain_diagnostics:?}");
     let plain: Vec<(char, f64, f64)> =
         glyphs(&plain_tree).into_iter().map(|(x, y, glyph)| (glyph.char.unwrap_or('?'), x, y)).collect();
 
     for source in ["x\\limits_1", "x\\nolimits_1"] {
-        let (__r18, tree, diagnostics) = layout_formula_with_result(source, false, 14.0).expect(source);
+        let (__r18, tree, diagnostics) = layout_formula_source(source, false, 14.0).expect(source);
         let metrics = extents(&__r18);
         assert_eq!(diagnostics.len(), 1, "`{source}` must report the misuse once: {diagnostics:?}");
         assert_eq!(diagnostics[0].code, "vutex.layout.math.limits_misuse");
@@ -2564,7 +2551,7 @@ fn limits_after_a_plain_atom_warns_and_keeps_the_scripts_beside_it() {
 #[test]
 fn limits_on_a_large_operator_does_not_warn() {
     for source in ["\\sum\\limits_1", "\\sum\\nolimits_1"] {
-        let (_, _, diagnostics) = layout_formula_with_result(source, false, 14.0).expect(source);
+        let (_, _, diagnostics) = layout_formula_source(source, false, 14.0).expect(source);
         assert!(diagnostics.is_empty(), "`{source}` is a valid use and must not warn: {diagnostics:?}");
     }
 }
@@ -2576,9 +2563,9 @@ fn starred_alignedat_keeps_the_unstarred_geometry() {
     let plain = "\\begin{alignedat}{2} q &= a & r &= b \\\\ xyz &= c & s &= d \\end{alignedat}";
     let starred = "\\begin{alignedat*}{2} q &= a & r &= b \\\\ xyz &= c & s &= d \\end{alignedat*}";
 
-    let (__r19, plain_tree, plain_diagnostics) = layout_formula_with_result(plain, false, 14.0).expect("alignedat");
+    let (__r19, plain_tree, plain_diagnostics) = layout_formula_source(plain, false, 14.0).expect("alignedat");
     let plain_metrics = extents(&__r19);
-    let (__r20, starred_tree, starred_diagnostics) = layout_formula_with_result(starred, false, 14.0).expect("alignedat*");
+    let (__r20, starred_tree, starred_diagnostics) = layout_formula_source(starred, false, 14.0).expect("alignedat*");
     let starred_metrics = extents(&__r20);
     assert!(plain_diagnostics.is_empty() && starred_diagnostics.is_empty(), "both bodies fill their pairs");
 
@@ -2602,10 +2589,10 @@ fn starred_alignedat_keeps_the_unstarred_geometry() {
 #[test]
 fn limits_misuse_does_not_reach_a_later_operator() {
     let (__r9, plain_tree, _) =
-        layout_formula_with_result("x_1\\sum^2 y", false, default_base_size(false)).expect("plain `x_1\\sum^2 y`");
+        layout_formula_source("x_1\\sum^2 y", false, default_base_size(false)).expect("plain `x_1\\sum^2 y`");
     let plain = extents(&__r9);
     let (__r21, misused_tree, diagnostics) =
-        layout_formula_with_result("x\\limits_1\\sum^2 y", false, 14.0).expect("misused `x\\limits_1\\sum^2 y`");
+        layout_formula_source("x\\limits_1\\sum^2 y", false, 14.0).expect("misused `x\\limits_1\\sum^2 y`");
     let misused = extents(&__r21);
     assert_eq!(diagnostics.len(), 1, "`x\\limits_1` must warn once: {diagnostics:?}");
     assert_eq!(diagnostics[0].code, "vutex.layout.math.limits_misuse");
@@ -2641,17 +2628,17 @@ fn limits_misuse_does_not_reach_a_later_operator() {
 #[test]
 fn consecutive_limits_settle_on_the_last_policy() {
     let settled = extents(
-        &layout_formula_with_result("\\sum\\limits\\nolimits x", false, default_base_size(false))
+        &layout_formula_source("\\sum\\limits\\nolimits x", false, default_base_size(false))
             .expect("`\\sum\\limits\\nolimits x`")
             .0,
     );
-    let plain = extents(&layout_formula_with_result("\\sum x", false, default_base_size(false)).expect("`\\sum x`").0);
+    let plain = extents(&layout_formula_source("\\sum x", false, default_base_size(false)).expect("`\\sum x`").0);
     assert!(
         (settled.width - plain.width).abs() < 0.01 && (settled.height - plain.height).abs() < 0.01,
         "`\\limits` before `\\nolimits` must cancel out: {settled:?} vs {plain:?}"
     );
     for source in ["\\sum\\limits\\nolimits x", "\\sum\\limits x"] {
-        let (_, _, diagnostics) = layout_formula_with_result(source, false, 14.0).expect(source);
+        let (_, _, diagnostics) = layout_formula_source(source, false, 14.0).expect(source);
         assert!(diagnostics.is_empty(), "`{source}` is a valid use of limit controls: {diagnostics:?}");
     }
 }
@@ -2661,10 +2648,10 @@ fn consecutive_limits_settle_on_the_last_policy() {
 #[test]
 fn limits_inside_a_group_do_not_reach_the_operator_after_it() {
     let grouped = extents(
-        &layout_formula_with_result("{\\sum\\limits_1}\\int^2", false, default_base_size(false)).expect("grouped limits").0,
+        &layout_formula_source("{\\sum\\limits_1}\\int^2", false, default_base_size(false)).expect("grouped limits").0,
     );
     let explicit_beside = extents(
-        &layout_formula_with_result("{\\sum\\limits_1}\\int\\nolimits^2", false, default_base_size(false))
+        &layout_formula_source("{\\sum\\limits_1}\\int\\nolimits^2", false, default_base_size(false))
             .expect("explicit nolimits")
             .0,
     );
@@ -2681,10 +2668,10 @@ fn limits_inside_a_group_do_not_reach_the_operator_after_it() {
 #[test]
 fn empty_nucleus_keeps_scripts_beside_and_leaves_no_policy() {
     let plain = extents(
-        &layout_formula_with_result("{}^2\\sum^2 x", false, default_base_size(false)).expect("plain `{}^2\\sum^2 x`").0,
+        &layout_formula_source("{}^2\\sum^2 x", false, default_base_size(false)).expect("plain `{}^2\\sum^2 x`").0,
     );
     let (__r22, _, diagnostics) =
-        layout_formula_with_result("{}\\limits^2\\sum^2 x", false, 14.0).expect("`\\limits` after an empty group");
+        layout_formula_source("{}\\limits^2\\sum^2 x", false, 14.0).expect("`\\limits` after an empty group");
     let misused = extents(&__r22);
     assert_eq!(diagnostics.len(), 1, "`\\limits` after an empty group is a misuse: {diagnostics:?}");
     assert_eq!(diagnostics[0].code, "vutex.layout.math.limits_misuse");
@@ -2725,8 +2712,8 @@ fn radical_radicand_takes_the_cramped_superscript_shift() {
     let cramped = math_constant(&system, MathConstant::SuperscriptShiftUpCramped) * em;
     assert!(cramped < regular, "the cramped minimum must be smaller: {cramped} vs {regular}");
 
-    let (_, plain, _) = layout_formula_with_result(".^2", false, default_base_size(false)).expect("plain `\\.^2`");
-    let (_, rooted, _) = layout_formula_with_result("\\sqrt{.^2}", false, default_base_size(false)).expect("`\\sqrt{.^2}`");
+    let (_, plain, _) = layout_formula_source(".^2", false, default_base_size(false)).expect("plain `\\.^2`");
+    let (_, rooted, _) = layout_formula_source("\\sqrt{.^2}", false, default_base_size(false)).expect("`\\sqrt{.^2}`");
 
     assert!((sup_rise(&plain, '.', '2') - regular).abs() < 0.01, "an uncramped base keeps the regular shift");
     assert!((sup_rise(&rooted, '.', '2') - cramped).abs() < 0.01, "a radicand base takes the cramped shift");
@@ -2743,9 +2730,9 @@ fn fraction_denominator_is_cramped_and_the_numerator_inherits() {
     let cramped = math_constant(&system, MathConstant::SuperscriptShiftUpCramped) * script_em;
 
     let (_, numerator, _) =
-        layout_formula_with_result("\\frac{.^2}{x}", false, default_base_size(false)).expect("`\\frac{.^2}{x}`");
+        layout_formula_source("\\frac{.^2}{x}", false, default_base_size(false)).expect("`\\frac{.^2}{x}`");
     let (_, denominator, _) =
-        layout_formula_with_result("\\frac{x}{.^2}", false, default_base_size(false)).expect("`\\frac{x}{.^2}`");
+        layout_formula_source("\\frac{x}{.^2}", false, default_base_size(false)).expect("`\\frac{x}{.^2}`");
 
     let num_rise = sup_rise(&numerator, '.', '2');
     let den_rise = sup_rise(&denominator, '.', '2');
@@ -2764,8 +2751,8 @@ fn cramped_is_inherited_by_superscripts_and_forced_by_subscripts() {
     let regular = math_constant(&system, MathConstant::SuperscriptShiftUp) * script_em;
     let cramped = math_constant(&system, MathConstant::SuperscriptShiftUpCramped) * script_em;
 
-    let (_, sup_side, _) = layout_formula_with_result("x^{.^2}", false, default_base_size(false)).expect("`x^{.^2}`");
-    let (_, sub_side, _) = layout_formula_with_result("x_{.^2}", false, default_base_size(false)).expect("`x_{.^2}`");
+    let (_, sup_side, _) = layout_formula_source("x^{.^2}", false, default_base_size(false)).expect("`x^{.^2}`");
+    let (_, sub_side, _) = layout_formula_source("x_{.^2}", false, default_base_size(false)).expect("`x_{.^2}`");
 
     let sup_rise_in_script = sup_rise(&sup_side, '.', '2');
     let sub_rise_in_script = sup_rise(&sub_side, '.', '2');
@@ -2789,7 +2776,7 @@ fn cramped_leaves_the_insensitive_formulas_unchanged() {
     let drop_max = math_constant(&system, MathConstant::SuperscriptBaselineDropMax) * em;
     let regular = math_constant(&system, MathConstant::SuperscriptShiftUp) * em;
 
-    let (_, tree, _) = layout_formula_with_result("\\frac{a}{b}^2", false, default_base_size(false)).expect("`\\frac{a}{b}^2`");
+    let (_, tree, _) = layout_formula_source("\\frac{a}{b}^2", false, default_base_size(false)).expect("`\\frac{a}{b}^2`");
     let base_height = layout("\\frac{a}{b}").height;
     assert!(base_height - drop_max > regular, "the box nucleus is tall enough to make the shift constant irrelevant");
     let (_, sup_y, sup) = glyph_at(&tree, '2');
@@ -2804,7 +2791,7 @@ fn cramped_leaves_the_insensitive_formulas_unchanged() {
     // over both shift constants, so the flag cannot reach the geometry. The
     // radical shifts the whole content box, so the check is the script's rise
     // above the numerator — identical to the uncramped layout.
-    let (_, rooted, _) = layout_formula_with_result("\\sqrt{\\frac{a}{b}^2}", false, default_base_size(false))
+    let (_, rooted, _) = layout_formula_source("\\sqrt{\\frac{a}{b}^2}", false, default_base_size(false))
         .expect("`\\sqrt{\\frac{a}{b}^2}`");
     let (_, rooted_sup_y, _) = glyph_at(&rooted, '2');
     let (_, rooted_num_y, _) = glyph_at(&rooted, 'a');
@@ -2872,7 +2859,7 @@ fn gather_environment_centres_its_rows() {
     // the author's cells.  Each row is one cell here: splitting `qrs` over three
     // cells would make it three columns instead of one wide row.
     //
-    // The engine's base em is 14pt, the same as `layout_formula_with_result(source, false, default_base_size(false))`
+    // The engine's base em is 14pt, the same as `layout_formula_source(source, false, default_base_size(false))`
     // uses, so glyph positions and formula widths share one unit.
     let engine = LayoutEngine::new(builtin_font_metrics()).with_base_size(14.0);
     let sequence = |source: &str| SemanticNode::Sequence(source.chars().map(cell).collect());
@@ -2933,7 +2920,7 @@ fn display_level_environments_pin_display_style() {
 #[test]
 fn gathered_follows_an_enclosing_script_style() {
     let (_, gathered_tree, _) =
-        layout_formula_with_result("\\scriptstyle \\begin{gathered} q \\\\ x \\end{gathered}", false, 14.0)
+        layout_formula_source("\\scriptstyle \\begin{gathered} q \\\\ x \\end{gathered}", false, 14.0)
             .expect("a `gathered` block should lay out");
     let script_em = 14.0 * math_constant(&builtin_font_metrics(), MathConstant::ScriptPercentScaleDown);
     let (_, _, gathered_q) = glyph_at(&gathered_tree, 'q');
@@ -2943,7 +2930,7 @@ fn gathered_follows_an_enclosing_script_style() {
         gathered_q.size.to_f64()
     );
 
-    let (_, gather_tree, _) = layout_formula_with_result("\\scriptstyle \\begin{gather} q \\\\ x \\end{gather}", false, 14.0)
+    let (_, gather_tree, _) = layout_formula_source("\\scriptstyle \\begin{gather} q \\\\ x \\end{gather}", false, 14.0)
         .expect("a `gather` block should lay out");
     let (_, _, gather_q) = glyph_at(&gather_tree, 'q');
     assert!((gather_q.size.to_f64() - 14.0).abs() < 0.01, "`gather` keeps the 14 px display size: {}", gather_q.size.to_f64());
@@ -2954,7 +2941,7 @@ fn gathered_follows_an_enclosing_script_style() {
 #[test]
 fn row_numbering_commands_become_row_metadata() {
     let source = "\\begin{align} a &= b \\tag{1} \\\\ c &= d \\notag \\end{align}";
-    let tree = parse_formula(source).unwrap_or_else(|error| panic!("`{source}`: {error}"));
+    let tree = lower_formula(source, false).map(|(tree, _)| tree).unwrap_or_else(|error| panic!("`{source}`: {error}"));
     let environment = first_environment(&tree.root).expect("an align environment");
     assert_eq!(environment.rows.len(), 2, "the tag and the notag stay on their own rows");
     assert_eq!(environment.rows[0].numbering, Numbering::Tag("1".into()));
@@ -2968,9 +2955,9 @@ fn row_numbering_commands_become_row_metadata() {
     // spelling: both stay numbering intent instead of becoming glyphs.
     let source = "\\begin{gather} a \\tag*{2a} \\\\ b \\nonumber \\end{gather}";
     let (_, _, diagnostics) =
-        layout_formula_with_result(source, false, 14.0).unwrap_or_else(|error| panic!("`{source}`: {error}"));
+        layout_formula_source(source, false, 14.0).unwrap_or_else(|error| panic!("`{source}`: {error}"));
     assert!(diagnostics.is_empty(), "`{source}` must not warn: {diagnostics:?}");
-    let tree = parse_formula(source).unwrap_or_else(|error| panic!("`{source}`: {error}"));
+    let tree = lower_formula(source, false).map(|(tree, _)| tree).unwrap_or_else(|error| panic!("`{source}`: {error}"));
     let environment = first_environment(&tree.root).expect("a gather environment");
     assert_eq!(environment.rows[0].numbering, Numbering::Tag("2a".into()));
     assert_eq!(environment.rows[1].numbering, Numbering::Suppressed);
@@ -2982,7 +2969,7 @@ fn row_numbering_commands_become_row_metadata() {
 #[test]
 fn tag_label_keeps_its_source_text_verbatim() {
     let source = "\\begin{align} a &= b \\tag{\\ref{eq:x}} \\\\ c &= d \\end{align}";
-    let tree = parse_formula(source).unwrap_or_else(|error| panic!("`{source}`: {error}"));
+    let tree = lower_formula(source, false).map(|(tree, _)| tree).unwrap_or_else(|error| panic!("`{source}`: {error}"));
     let environment = first_environment(&tree.root).expect("an align environment");
     assert_eq!(
         environment.rows[0].numbering,
@@ -2994,30 +2981,29 @@ fn tag_label_keeps_its_source_text_verbatim() {
     // The starred form keeps its label the same way, and a nested group inside
     // the label does not end it early.
     let source = "\\begin{align} a &= b \\tag*{a{b}c} \\\\ c &= d \\end{align}";
-    let tree = parse_formula(source).unwrap_or_else(|error| panic!("`{source}`: {error}"));
+    let tree = lower_formula(source, false).map(|(tree, _)| tree).unwrap_or_else(|error| panic!("`{source}`: {error}"));
     let environment = first_environment(&tree.root).expect("an align environment");
     assert_eq!(environment.rows[0].numbering, Numbering::Tag("a{b}c".into()), "nested braces stay in the label");
 }
 
-/// `\tag` decides a row that also carries `\notag`: the explicit label wins and
-/// the contradiction is reported rather than silently resolved either way.
+/// `\tag` decides a row that also carries `\notag`: the explicit label wins.
 #[test]
-fn tag_wins_over_notag_with_a_warning() {
+fn tag_wins_over_notag() {
     let source = "\\begin{align} a &= b \\tag{1} \\notag \\end{align}";
-    let (_, _, diagnostics) =
-        layout_formula_with_result(source, false, 14.0).unwrap_or_else(|error| panic!("`{source}`: {error}"));
-    let tree = parse_formula(source).unwrap_or_else(|error| panic!("`{source}`: {error}"));
+    let tree = lower_formula(source, false).map(|(tree, _)| tree).unwrap_or_else(|error| panic!("`{source}`: {error}"));
     let environment = first_environment(&tree.root).expect("an align environment");
     assert_eq!(environment.rows[0].numbering, Numbering::Tag("1".into()));
-    assert_eq!(diagnostics.len(), 1, "one contradictory row, one warning: {diagnostics:?}");
-    assert_eq!(diagnostics[0].code, "vutex.layout.math.tag_and_notag");
 }
 
-/// A bare formula has no row to number, so `\tag` stays an unknown command
-/// there instead of being silently swallowed.
+/// A bare formula has no row to number, so `\tag` stays an unsupported
+/// fragment and the rest of the formula keeps its layout.
 #[test]
-fn tag_outside_an_environment_is_still_rejected() {
-    assert!(parse_formula("x \\tag{1}").is_err(), "`\\tag` needs an environment row to describe");
+fn tag_outside_an_environment_is_unsupported() {
+    let (_, _, diagnostics) = layout_formula_source("x \\tag{1}", false, 14.0).expect("`x \\tag{1}` still lays out");
+    assert!(
+        diagnostics.iter().any(|diagnostic| diagnostic.code == "vutex.math.unsupported_expression"),
+        "`\\tag` outside a row must be reported: {diagnostics:?}"
+    );
 }
 
 /// The first environment in a parsed semantic tree.
@@ -3047,7 +3033,7 @@ fn ams_environments_parse_to_their_own_ir_nodes() {
         ("\\begin{multline} q \\\\ xyz \\end{multline}", EnvironmentKind::Multline, false),
     ];
     for (source, kind, starred) in cases {
-        let tree = parse_formula(source).unwrap_or_else(|error| panic!("`{source}`: {error}"));
+        let tree = lower_formula(source, false).map(|(tree, _)| tree).unwrap_or_else(|error| panic!("`{source}`: {error}"));
         let environment = first_environment(&tree.root).unwrap_or_else(|| panic!("`{source}` must parse to an environment"));
         assert_eq!(environment.kind, kind, "`{source}`");
         assert_eq!(environment.starred, starred, "`{source}`");
@@ -3059,7 +3045,7 @@ fn ams_environments_parse_to_their_own_ir_nodes() {
     }
 
     for source in ["\\begin{matrix} q & a \\end{matrix}", "\\begin{cases} q & a \\end{cases}"] {
-        let tree = parse_formula(source).unwrap_or_else(|error| panic!("`{source}`: {error}"));
+        let tree = lower_formula(source, false).map(|(tree, _)| tree).unwrap_or_else(|error| panic!("`{source}`: {error}"));
         assert!(first_environment(&tree.root).is_none(), "`{source}` is a matrix-like grid, not an AMS environment");
     }
 }
@@ -3070,7 +3056,7 @@ fn ams_environments_parse_to_their_own_ir_nodes() {
 fn split_has_no_two_row_cap() {
     let source = "\\begin{split} q &= a \\\\ xyz &= b \\\\ c &= d \\end{split}";
     let (_, tree, _) =
-        layout_formula_with_result(source, false, default_base_size(false)).expect("a three-row split should lay out");
+        layout_formula_source(source, false, default_base_size(false)).expect("a three-row split should lay out");
 
     let relations = glyphs_of(&tree, '=');
     assert_eq!(relations.len(), 3, "three rows carry three relations");
@@ -3091,14 +3077,14 @@ fn split_has_no_two_row_cap() {
 #[test]
 fn split_rows_share_one_alignment_point_beyond_the_anchor() {
     let split = "\\begin{split} m &= a & z \\\\ n &= b & wq \\end{split}";
-    let (_, tree, _) = layout_formula_with_result(split, false, default_base_size(false))
+    let (_, tree, _) = layout_formula_source(split, false, default_base_size(false))
         .expect("a split with an extra anchor should lay out");
     let z = glyph_at(&tree, 'z').0;
     let w = glyph_at(&tree, 'w').0;
     assert!((z - w).abs() < 0.01, "the cells past the point start at the same column edge: {z} vs {w}");
 
     let aligned = "\\begin{aligned} m &= a & z \\\\ n &= b & wq \\end{aligned}";
-    let (_, tree, _) = layout_formula_with_result(aligned, false, default_base_size(false))
+    let (_, tree, _) = layout_formula_source(aligned, false, default_base_size(false))
         .expect("the same body in `aligned` should lay out");
     let z = glyph_at(&tree, 'z').0;
     let w = glyph_at(&tree, 'w').0;
@@ -3110,7 +3096,7 @@ fn split_rows_share_one_alignment_point_beyond_the_anchor() {
 #[test]
 fn multline_spreads_its_rows_across_the_block() {
     let source = "\\begin{multline} q \\\\ xyz \\\\ ab \\\\ c \\end{multline}";
-    let (__r23, tree, diagnostics) = layout_formula_with_result(source, false, 14.0).expect(source);
+    let (__r23, tree, diagnostics) = layout_formula_source(source, false, 14.0).expect(source);
     let metrics = extents(&__r23);
     assert!(diagnostics.is_empty(), "a multline body must not warn: {diagnostics:?}");
 
@@ -3192,7 +3178,7 @@ fn equation_starred_rows_carry_no_numbering_but_still_have_anchors() {
     // — they simply carry Numbering::Default, which downstream interprets as
     // "don't number this row in a starred block".
     let source = "\\begin{align*} a &= b \\\\ c &= d \\end{align*}";
-    let (_, tree, _) = layout_formula_with_result(source, false, default_base_size(false)).expect("align* lays out");
+    let (_, tree, _) = layout_formula_source(source, false, default_base_size(false)).expect("align* lays out");
 
     let mut anchors = Vec::new();
     anchors_of(&tree, &mut anchors);
@@ -3214,7 +3200,7 @@ fn anchor_width_is_zero() {
 // ── 数学字体家族：新命令解析并能跑通 layout ────────────────────────
 
 fn accepts_face_command(source: &str, description: &str) {
-    let (_, tree, diagnostics) = layout_formula_with_result(source, false, default_base_size(false))
+    let (_, tree, diagnostics) = layout_formula_source(source, false, default_base_size(false))
         .unwrap_or_else(|e| panic!("{description} (`{source}`) must parse and lay out: {e}"));
 
     // Layout 完成即通过，不硬性要求有 outline——LM Math 对某些扩展字体
@@ -3257,7 +3243,7 @@ fn mathsf_mathit_textit_and_mathit_variants_are_accepted() {
 #[test]
 fn greek_variant_commands_keep_their_unicode_symbols() {
     for (source, expected) in [(r"\epsilon", 'ϵ'), (r"\varepsilon", 'ε'), (r"\phi", 'ϕ'), (r"\varphi", 'φ')] {
-        let tree = parse_formula(source).unwrap_or_else(|error| panic!("`{source}`: {error}"));
+        let tree = lower_formula(source, false).map(|(tree, _)| tree).unwrap_or_else(|error| panic!("`{source}`: {error}"));
         let SemanticNode::Symbol { glyph_key, role } = &tree.root
         else {
             panic!("`{source}` must parse to one symbol, got {:?}", tree.root)
@@ -3272,7 +3258,7 @@ fn greek_variant_commands_keep_their_unicode_symbols() {
 /// the Greek glyph instead of the command name's letters.
 #[test]
 fn mathrm_switches_the_face_without_leaving_math_mode() {
-    let tree = parse_formula(r"\mathrm{\lambda}").expect("`\\mathrm{\\lambda}` parses");
+    let tree = lower_formula(r"\mathrm{\lambda}", false).map(|(tree, _)| tree).expect("`\\mathrm{\\lambda}` parses");
     let SemanticNode::Symbol { glyph_key, role } = &tree.root
     else {
         panic!("`\\mathrm{{\\lambda}}` must stay a symbol node, got {:?}", tree.root)
@@ -3282,7 +3268,7 @@ fn mathrm_switches_the_face_without_leaving_math_mode() {
     assert_eq!(*role, SymbolRole::Ordinary);
 
     // The face reaches every atom of the group, including nested structure.
-    let tree = parse_formula(r"\mathrm{x^2}").expect("`\\mathrm{x^2}` parses");
+    let tree = lower_formula(r"\mathrm{x^2}", false).map(|(tree, _)| tree).expect("`\\mathrm{x^2}` parses");
     let SemanticNode::Superscript { base, sup } = &tree.root
     else {
         panic!("`\\mathrm{{x^2}}` must stay a superscript, got {:?}", tree.root)
@@ -3301,9 +3287,9 @@ fn mathrm_switches_the_face_without_leaving_math_mode() {
     // `\text` still reads its group literally — the literal-text commands keep
     // their own contract, and a named operator inside `\mathrm` stays upright
     // text rather than being re-drawn letter by letter.
-    let tree = parse_formula(r"\text{lambda}").expect("`\\text{lambda}` parses");
+    let tree = lower_formula(r"\text{lambda}", false).map(|(tree, _)| tree).expect("`\\text{lambda}` parses");
     assert!(matches!(&tree.root, SemanticNode::Text { text, .. } if text.as_str() == "lambda"));
-    let tree = parse_formula(r"\mathrm{\sin x}").expect("`\\mathrm{\\sin x}` parses");
+    let tree = lower_formula(r"\mathrm{\sin x}", false).map(|(tree, _)| tree).expect("`\\mathrm{\\sin x}` parses");
     let SemanticNode::Sequence(items) = &tree.root
     else {
         panic!("two atoms: {:?}", tree.root)
@@ -3347,14 +3333,14 @@ fn script_kern_follows_the_drawn_alphalect_face() {
     }
 
     let family = vutex_text::math::MathFontFamily::XitsMath;
-    let (_, italic, _) = layout_formula_with_result_for("\\lambda^2", false, default_base_size(false), family)
+    let (_, italic, _) = layout_formula_source_for("\\lambda^2", false, default_base_size(false), family)
         .expect("the formula should lay out");
     let mut italic_kerns = Vec::new();
     horizontal_kerns(&italic, &mut italic_kerns);
     let italic_corners: Vec<Fixed> = italic_kerns.into_iter().filter(|kern| *kern < Fixed::ZERO).collect();
     assert!(italic_corners.is_empty(), "upright λ's `TopRight` step must not leak onto the drawn 𝜆: {italic_corners:?}");
 
-    let (_, upright, _) = layout_formula_with_result_for("\\Delta^2", false, default_base_size(false), family)
+    let (_, upright, _) = layout_formula_source_for("\\Delta^2", false, default_base_size(false), family)
         .expect("the formula should lay out");
     let mut upright_kerns = Vec::new();
     horizontal_kerns(&upright, &mut upright_kerns);
@@ -3392,7 +3378,7 @@ fn accent_shields_the_base_corner_from_the_script() {
     }
 
     let family = vutex_text::math::MathFontFamily::XitsMath;
-    let (_, accented, _) = layout_formula_with_result_for("\\hat{\\Delta}^2", false, default_base_size(false), family)
+    let (_, accented, _) = layout_formula_source_for("\\hat{\\Delta}^2", false, default_base_size(false), family)
         .expect("the formula should lay out");
     let mut kerns = Vec::new();
     horizontal_kerns(&accented, &mut kerns);

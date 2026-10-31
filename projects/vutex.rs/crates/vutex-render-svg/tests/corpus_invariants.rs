@@ -8,7 +8,7 @@
 //! fractions, script fractions, stretched delimiters, the `\bar` rule).
 
 use serde::Deserialize;
-use vutex_layout::math::{LayoutNode, collect_paint, default_base_size, layout_formula_with_result};
+use vutex_layout::math::{LayoutNode, collect_paint, default_base_size, layout_formula_source};
 use vutex_render_svg::math::render_formula_result;
 use vutex_types::math::FormulaLayoutResult;
 
@@ -63,7 +63,7 @@ fn is_display(case: &GateCase) -> bool {
 /// the SVG already carries outlines only.
 fn render(case: &GateCase) -> (LayoutNode, FormulaLayoutResult, String) {
     let display = is_display(case);
-    let (result, root, _) = layout_formula_with_result(&case.src, display, default_base_size(display))
+    let (result, root, _) = layout_formula_source(&case.src, display, default_base_size(display))
         .unwrap_or_else(|e| panic!("`{}` ({}) must lay out: {e}", case.src, case.style));
     let out = render_formula_result(&result);
     assert!(
@@ -267,14 +267,14 @@ fn flush_numbers(operator: char, numbers: &mut Vec<f64>, points: &mut Vec<(f64, 
 
 /// Total vertical extent (`height + depth`) of a formula.
 fn total_extent(source: &str, display: bool) -> f64 {
-    let (result, _, _) = layout_formula_with_result(source, display, default_base_size(display))
+    let (result, _, _) = layout_formula_source(source, display, default_base_size(display))
         .unwrap_or_else(|e| panic!("`{source}` must lay out: {e}"));
     (result.metrics.height + result.metrics.depth).to_f64()
 }
 
 /// Vertical extents `(height, depth)` of a formula.
 fn extents(source: &str, display: bool) -> (f64, f64) {
-    let (result, _, _) = layout_formula_with_result(source, display, default_base_size(display))
+    let (result, _, _) = layout_formula_source(source, display, default_base_size(display))
         .unwrap_or_else(|e| panic!("`{source}` must lay out: {e}"));
     (result.metrics.height.to_f64(), result.metrics.depth.to_f64())
 }
@@ -449,7 +449,7 @@ fn stretched_delimiters_cover_their_body() {
         }
         let body = case.body.as_deref().expect("`delimiter_covers_body` records the body");
         let display = is_display(case);
-        let (wrapped, root, _) = layout_formula_with_result(&case.src, display, default_base_size(display))
+        let (wrapped, root, _) = layout_formula_source(&case.src, display, default_base_size(display))
             .unwrap_or_else(|e| panic!("`{}` ({}) must lay out: {e}", case.src, case.style));
         let (bare_height, bare_depth) = extents(body, display);
         let bare_total = bare_height + bare_depth;

@@ -1,4 +1,4 @@
-use vutex_layout::math::{LayoutNode, default_base_size, layout_formula_with_result_for};
+use vutex_layout::math::{LayoutNode, default_base_size, layout_formula_source_for};
 use vutex_render_svg::math::{render_formula_result, render_mathml_result};
 use vutex_text::math::MathFontFamily;
 use vutex_types::{
@@ -10,8 +10,6 @@ use crate::{
     html::HtmlBackend,
     types::{DisplayMode, FontFamily, FormulaDiagnostic, FormulaMetrics, FormulaRender, RenderOptions},
 };
-
-const UNSUPPORTED_COMMANDS: &[&str] = &["usepackage", "input", "include", "write", "openout"];
 
 /// Measure a formula without emitting a full render payload.
 pub fn measure(source: &str, options: &RenderOptions) -> FormulaRender {
@@ -182,7 +180,7 @@ fn layout_formula(
     let display = options.display_mode == DisplayMode::Block;
     let base = options.font_size.unwrap_or_else(|| default_base_size(display));
     let family = embedded_family(options.font_family).expect("entries reject unsupported families before layout");
-    layout_formula_with_result_for(source, display, base, family)
+    layout_formula_source_for(source, display, base, family)
 }
 
 /// Map the host's `fontFamily` choice onto an embedded layout family.
@@ -244,19 +242,6 @@ fn collect_diagnostics(source: &str) -> Vec<FormulaDiagnostic> {
             end: Some(0),
         });
         return diagnostics;
-    }
-
-    for command in UNSUPPORTED_COMMANDS {
-        let needle = format!("\\{}", command);
-        if let Some(index) = source.find(&needle) {
-            diagnostics.push(FormulaDiagnostic {
-                code: "WETEX_UNSUPPORTED_COMMAND".into(),
-                severity: severity_name(Severity::Error),
-                message: format!("unsupported TeX command `\\{}`", command),
-                start: Some(index as u32),
-                end: Some((index + needle.len()) as u32),
-            });
-        }
     }
 
     diagnostics

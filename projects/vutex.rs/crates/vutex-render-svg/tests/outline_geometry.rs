@@ -6,7 +6,7 @@
 //! the ink never runs away from the layout box, that emphasis faces keep their
 //! own outlines, and that `Vmatrix` and `vmatrix` stay structurally distinct.
 
-use vutex_layout::math::{Glyph, LayoutNode, default_base_size, layout_formula_with_result};
+use vutex_layout::math::{Glyph, LayoutNode, default_base_size, layout_formula_source};
 use vutex_render_svg::math::render_formula_result;
 use vutex_types::math::FormulaLayoutResult;
 
@@ -21,7 +21,7 @@ const CASES: &[(&str, &str, bool)] = &[
 
 fn render(source: &str, display: bool) -> (String, FormulaLayoutResult) {
     let (result, _, _) =
-        layout_formula_with_result(source, display, default_base_size(display)).expect("layout should succeed");
+        layout_formula_source(source, display, default_base_size(display)).expect("layout should succeed");
     let out = render_formula_result(&result);
     assert!(out.diagnostics.is_empty(), "{source}: the SVG backend found a glyph without an outline: {:?}", out.diagnostics);
     (out.markup, result)
@@ -30,7 +30,7 @@ fn render(source: &str, display: bool) -> (String, FormulaLayoutResult) {
 /// Like [`render`], but hands back the layout tree instead of the box extents.
 fn render_with_tree(source: &str, display: bool) -> (String, LayoutNode) {
     let (result, root, _) =
-        layout_formula_with_result(source, display, default_base_size(display)).expect("layout should succeed");
+        layout_formula_source(source, display, default_base_size(display)).expect("layout should succeed");
     let out = render_formula_result(&result);
     assert!(out.diagnostics.is_empty(), "{source}: the SVG backend found a glyph without an outline: {:?}", out.diagnostics);
     (out.markup, root)

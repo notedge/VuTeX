@@ -22,7 +22,7 @@
 use std::{collections::BTreeMap, fs, path::Path};
 
 use serde::Deserialize;
-use vutex_layout::math::{LayoutNode, layout_formula_with_result};
+use vutex_layout::math::{LayoutNode, layout_formula_source};
 use vutex_types::math::MathResult;
 
 // ---------------------------------------------------------------------------
@@ -363,7 +363,7 @@ const REFERENCE_BASE_SIZE_PX: f64 = 10.0;
 
 /// Layout the given TeX source with VuTeX and return (width, height, depth) in em.
 fn vutex_measure(tex: &str, display: bool) -> MathResult<(f64, f64, f64)> {
-    let (result, _, _) = layout_formula_with_result(tex, display, REFERENCE_BASE_SIZE_PX)?;
+    let (result, _, _) = layout_formula_source(tex, display, REFERENCE_BASE_SIZE_PX)?;
     // VuTeX returns pixel dimensions.  Dividing by base_size converts to em
     // because we laid out at 10px and TeX normalsize = 10pt → 1em = 10pt.
     let em = REFERENCE_BASE_SIZE_PX;
@@ -662,7 +662,7 @@ fn vutex_radical_degree_matches_the_latex_degree_assembly() {
             value.unwrap_or_else(|| panic!("{label}: reference `{field}` missing — regenerate the fixture"))
         };
 
-        let (_, root, _) = layout_formula_with_result(&record.tex, record.display_mode, REFERENCE_BASE_SIZE_PX)
+        let (_, root, _) = layout_formula_source(&record.tex, record.display_mode, REFERENCE_BASE_SIZE_PX)
             .expect("VuTeX must layout the corpus radical-degree source");
         let vu =
             find_vu_degree(&root).expect("VuTeX must assemble the degree as `Kern, VBox([degree, Kern(raise)]), Kern, ...`");

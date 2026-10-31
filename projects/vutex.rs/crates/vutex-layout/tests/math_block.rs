@@ -5,13 +5,13 @@ use vutex_layout::{
     Diagrams, LayoutHint,
     document::layout_with_diagnostics,
     layout,
-    math::layout_formula_with_result,
+    math::layout_formula_source,
     plan::{LayoutItem, LayoutPage, Path, Rule, TextRun},
 };
 
 fn math_graph(content: &str) -> DocumentGraph {
     let mut graph = DocumentGraph::new(DocumentId(7));
-    graph.push_block(Block::Math { content: content.to_string(), language: Some("tex".to_string()) });
+    graph.push_block(Block::Math { formula: notedown_formats::lower_tex_formula_source(content, notedown_ir::MathDisplay::Display) });
     graph
 }
 
@@ -85,7 +85,7 @@ fn display_formula_is_centred_in_the_content_column() {
     let plan = layout(&math_graph("x + y"));
     let hint = LayoutHint::a4();
     let page = &plan.pages[0];
-    let (formula, _, _) = layout_formula_with_result("x + y", true, hint.base_font_size).expect("formula layout");
+    let (formula, _, _) = layout_formula_source("x + y", true, hint.base_font_size).expect("formula layout");
 
     let first = page
         .items
@@ -143,23 +143,28 @@ fn fraction_emits_a_rule_between_numerator_and_denominator() {
 }
 
 #[test]
-fn unparseable_formula_falls_back_to_its_raw_source() {
+fn unsupported_formula_is_reported_and_stays_visible() {
     let source = "\\notacommand{x}";
-    let plan = layout(&math_graph(source));
+    let (plan, diagnostics) = layout_with_diagnostics(&math_graph(source), &LayoutHint::a4(), &Diagrams::default());
     let page = &plan.pages[0];
-    let runs = text_runs(page);
 
-    assert!(!runs.is_empty(), "fallback must still paint something");
-    let painted: String = runs.iter().map(|run| run.text.as_str()).collect();
-    assert_eq!(painted, source, "fallback should render the raw source verbatim: {runs:#?}");
-    assert!(rules(page).is_empty(), "text fallback emits no rules");
-    assert!(runs.iter().all(|run| run.y <= page.height));
+    assert!(
+        diagnostics.iter().any(|diagnostic| diagnostic.code == "vutex.math.unsupported_expression"),
+        "the unsupported fragment must be reported: {diagnostics:?}"
+    );
+    assert!(!page.items.is_empty(), "the unsupported formula must stay visible");
+    assert!(page.items.iter().all(|item| match item {
+        LayoutItem::TextRun(run) => run.y <= page.height,
+        _ => true,
+    }));
 }
 
 #[test]
 fn foreign_math_language_is_not_parsed_as_tex() {
     let mut graph = DocumentGraph::new(DocumentId(13));
-    graph.push_block(Block::Math { content: "\\frac{a}{b}".to_string(), language: Some("typst".to_string()) });
+    graph.push_block(Block::Math {
+        formula: notedown_ir::MathFormula::unsupported("\\frac{a}{b}", Some("typst".to_string()), notedown_ir::MathDisplay::Display, "typst-math"),
+    });
     let (plan, diagnostics) = layout_with_diagnostics(&graph, &LayoutHint::a4(), &Diagrams::default());
 
     assert!(
@@ -176,7 +181,7 @@ fn foreign_math_language_is_not_parsed_as_tex() {
 fn math_blocks_paginate_without_leaving_the_page() {
     let mut graph = DocumentGraph::new(DocumentId(8));
     for _ in 0..80 {
-        graph.push_block(Block::Math { content: "\\frac{a}{b}".to_string(), language: None });
+        graph.push_block(Block::Math { formula: notedown_formats::lower_tex_formula_source("\\frac{a}{b}", notedown_ir::MathDisplay::Display) });
     }
 
     let plan = layout(&graph);
@@ -217,7 +222,7 @@ const ASCENT: f64 = 0.8;
 fn paragraph_display_graph(content: &str) -> DocumentGraph {
     let mut graph = DocumentGraph::new(DocumentId(9));
     graph.push_block(Block::Paragraph { content: vec![Inline::Text { text: "Lead in.".to_string() }] });
-    graph.push_block(Block::Math { content: content.to_string(), language: None });
+    graph.push_block(Block::Math { formula: notedown_formats::lower_tex_formula_source(content, notedown_ir::MathDisplay::Display) });
     graph.push_block(Block::Paragraph { content: vec![Inline::Text { text: "Tail.".to_string() }] });
     graph
 }
@@ -261,7 +266,7 @@ fn display_math_uses_tex_display_skips_above_and_below() {
     // A formula wider than the column is centred at the left margin, so the
     // short line above it cannot make the display short.
     let wide = vec!["\\frac{a}{b}"; 24].join("+");
-    let (formula, _, _) = layout_formula_with_result(&wide, true, hint.base_font_size).expect("formula layout");
+    let (formula, _, _) = layout_formula_source(&wide, true, hint.base_font_size).expect("formula layout");
     assert!(
         formula.metrics.width.to_f64() > hint.content_width(),
         "the display must span the column, got {}",
@@ -320,9 +325,11 @@ fn spacing_commands_never_raise_outline_warnings_in_a_document() {
     // without ink, so the report must not carry an outline gap for them.
     for source in ["a\\ b", "a\\quad b", "\\text{a b}"] {
         let mut graph = DocumentGraph::new(DocumentId(11));
-        graph.push_block(Block::Math { content: source.to_string(), language: None });
+        graph.push_block(Block::Math { formula: notedown_formats::lower_tex_formula_source(source, notedown_ir::MathDisplay::Display) });
         graph.push_block(Block::Paragraph {
-            content: vec![Inline::InlineMath { content: source.to_string(), language: Some("tex".to_string()) }],
+            content: vec![Inline::InlineMath {
+                formula: notedown_formats::lower_tex_formula_source(source, notedown_ir::MathDisplay::Inline),
+            }],
         });
 
         let (plan, diagnostics) = layout_with_diagnostics(&graph, &hint, &Diagrams::default());

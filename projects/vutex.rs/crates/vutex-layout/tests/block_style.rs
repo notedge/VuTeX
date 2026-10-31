@@ -264,8 +264,10 @@ fn tall_inline_formula_grows_the_quote_rule() {
             content: vec![
                 text("before "),
                 Inline::InlineMath {
-                    content: "\\frac{\\frac{a}{b}}{\\frac{c}{d}}".to_string(),
-                    language: Some("latex".to_string()),
+                    formula: notedown_formats::lower_tex_formula_source(
+                        "\\frac{\\frac{a}{b}}{\\frac{c}{d}}",
+                        notedown_ir::MathDisplay::Inline,
+                    ),
                 },
                 text(" after"),
             ],

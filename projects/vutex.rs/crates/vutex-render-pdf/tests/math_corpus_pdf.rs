@@ -11,7 +11,7 @@ use std::{env, fs, path::PathBuf};
 
 use serde::Deserialize;
 use vutex_layout::{
-    math::{LayoutNode, collect_paint, default_base_size, layout_formula_with_result},
+    math::{LayoutNode, collect_paint, default_base_size, layout_formula_source},
     plan::{LayoutItem, LayoutPage, LayoutPlan},
 };
 use vutex_presentation::build_display_presentation;
@@ -69,7 +69,7 @@ fn path_primitives(node: &LayoutNode) -> usize {
 /// Lay one corpus case out, lower it to display primitives and render a page.
 fn render_page(case: &GateCase) -> (Vec<u8>, Vec<LayoutItem>, LayoutNode) {
     let display = is_display(case);
-    let (result, root, _) = layout_formula_with_result(&case.src, display, default_base_size(display))
+    let (result, root, _) = layout_formula_source(&case.src, display, default_base_size(display))
         .unwrap_or_else(|e| panic!("`{}` ({}) must lay out: {e}", case.src, case.style));
 
     let baseline = MARGIN + result.metrics.height.to_f64();

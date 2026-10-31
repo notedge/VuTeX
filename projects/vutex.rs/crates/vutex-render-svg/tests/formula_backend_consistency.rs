@@ -5,7 +5,7 @@
 //! the structured backend walks [`FormulaLayoutResult::semantics`], so all three
 //! describe one formula without the source being parsed again per backend.
 
-use vutex_layout::math::layout_formula_with_result;
+use vutex_layout::math::layout_formula_source;
 use vutex_render_pdf::render_formula_result as render_pdf_result;
 use vutex_render_svg::math::{render_formula_result as render_svg_result, render_mathml_result};
 use vutex_types::math::FormulaLayoutResult;
@@ -64,7 +64,7 @@ const CASES: &[(&str, &str, &str)] = &[
 
 fn layout(source: &str) -> FormulaLayoutResult {
     let (result, _root, _diagnostics) =
-        layout_formula_with_result(source, true, 16.0).unwrap_or_else(|e| panic!("failed to lay out {source}: {e}"));
+        layout_formula_source(source, true, 16.0).unwrap_or_else(|e| panic!("failed to lay out {source}: {e}"));
     result
 }
 

@@ -10,7 +10,7 @@
 use std::{fs, path::Path};
 
 use serde::Deserialize;
-use vutex_layout::math::{default_base_size, layout_formula_with_result};
+use vutex_layout::math::{default_base_size, layout_formula_source};
 use vutex_types::math::MathErrorKind;
 
 /// Invariants every `layout` record is checked against by the gate.
@@ -144,7 +144,7 @@ fn corpus_layout_records_produce_positive_metrics() {
 
     for case in corpus.cases.iter().filter(|case| case.expected == "layout") {
         let display = is_display(&case.style);
-        let (result, _, _) = layout_formula_with_result(&case.src, display, default_base_size(display))
+        let (result, _, _) = layout_formula_source(&case.src, display, default_base_size(display))
             .unwrap_or_else(|e| panic!("`{}` ({}) must lay out: {e}", case.src, case.style));
         let width = result.metrics.width.to_f64();
         let height = result.metrics.height.to_f64();
@@ -158,24 +158,24 @@ fn corpus_layout_records_produce_positive_metrics() {
         assert!(depth.is_finite() && depth >= 0.0, "`{}`: depth must not be negative, got {depth}", case.src);
 
         if let Some(body) = &case.body {
-            layout_formula_with_result(body, display, default_base_size(display))
+            layout_formula_source(body, display, default_base_size(display))
                 .unwrap_or_else(|e| panic!("`{}`: delimiter body `{body}` must lay out: {e}", case.src));
         }
     }
 }
 
 #[test]
-fn corpus_error_records_really_fail_to_parse() {
+fn corpus_error_records_degrade_with_an_unsupported_diagnostic() {
     let corpus = load_corpus();
 
     for case in corpus.cases.iter().filter(|case| case.expected == "error") {
-        let error = layout_formula_with_result(&case.src, is_display(&case.style), default_base_size(is_display(&case.style)))
-            .expect_err(&format!("`{}` must be rejected", case.src));
+        let (_, _, diagnostics) = layout_formula_source(&case.src, is_display(&case.style), default_base_size(is_display(&case.style)))
+            .unwrap_or_else(|error| panic!("`{}` must degrade instead of failing: {error}", case.src));
         assert!(
-            matches!(*error.kind, MathErrorKind::ParseError { .. }),
-            "`{}` must fail as a parse error, got {:?}",
-            case.src,
-            error
+            diagnostics.iter().any(|diagnostic| diagnostic.code == "vutex.math.unsupported_expression")
+                || diagnostics.iter().any(|diagnostic| diagnostic.code == "vutex.layout.math.limits_misuse"),
+            "`{}` must report why it cannot be fully lowered: {diagnostics:?}",
+            case.src
         );
     }
 }

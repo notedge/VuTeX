@@ -8,7 +8,7 @@
 use std::{fs, path::Path};
 
 use serde::Deserialize;
-use vutex_layout::math::{default_base_size, layout_formula_with_result};
+use vutex_layout::math::{default_base_size, layout_formula_source};
 use vutex_types::math::FormulaLayoutResult;
 
 /// A single corpus entry, deserialized from `formula_corpus.json`.
@@ -49,12 +49,12 @@ fn corpus_all_formulas_layout_successfully() {
 
     for entry in &corpus {
         // Inline / text style
-        let (inline, _, _) = layout_formula_with_result(&entry.src, false, default_base_size(false))
+        let (inline, _, _) = layout_formula_source(&entry.src, false, default_base_size(false))
             .unwrap_or_else(|e| panic!("inline layout failed for `{}`: {e}", entry.src));
         assert_positive_metrics(&entry.src, &inline, "inline");
 
         // Display style
-        let (display, _, _) = layout_formula_with_result(&entry.src, true, default_base_size(true))
+        let (display, _, _) = layout_formula_source(&entry.src, true, default_base_size(true))
             .unwrap_or_else(|e| panic!("display layout failed for `{}`: {e}", entry.src));
         assert_positive_metrics(&entry.src, &display, "display");
     }
@@ -87,8 +87,8 @@ fn corpus_non_operator_display_is_not_narrower_than_inline() {
             continue;
         }
 
-        let (inline, _, _) = layout_formula_with_result(&entry.src, false, default_base_size(false)).unwrap();
-        let (display, _, _) = layout_formula_with_result(&entry.src, true, default_base_size(true)).unwrap();
+        let (inline, _, _) = layout_formula_source(&entry.src, false, default_base_size(false)).unwrap();
+        let (display, _, _) = layout_formula_source(&entry.src, true, default_base_size(true)).unwrap();
         let inline_width = inline.metrics.width.to_f64();
         let display_width = display.metrics.width.to_f64();
 
@@ -123,8 +123,8 @@ fn corpus_display_total_extent_ge_inline() {
     let mut violations = Vec::new();
 
     for entry in &corpus {
-        let (inline, _, _) = layout_formula_with_result(&entry.src, false, default_base_size(false)).unwrap();
-        let (display, _, _) = layout_formula_with_result(&entry.src, true, default_base_size(true)).unwrap();
+        let (inline, _, _) = layout_formula_source(&entry.src, false, default_base_size(false)).unwrap();
+        let (display, _, _) = layout_formula_source(&entry.src, true, default_base_size(true)).unwrap();
 
         let inline_total = inline.metrics.height.to_f64() + inline.metrics.depth.to_f64();
         let display_total = display.metrics.height.to_f64() + display.metrics.depth.to_f64();
@@ -159,14 +159,14 @@ fn corpus_display_total_extent_ge_inline() {
 fn corpus_each_formula_is_wider_than_single_atom() {
     let corpus = load_corpus();
     let single_x = {
-        let (m, _, _) = layout_formula_with_result("x", false, default_base_size(false)).unwrap();
+        let (m, _, _) = layout_formula_source("x", false, default_base_size(false)).unwrap();
         m.metrics.width.to_f64()
     };
     assert!(single_x > 0.0, "sanity: single `x` must have positive width");
 
     let mut violations = Vec::new();
     for entry in &corpus {
-        let (inline, _, _) = layout_formula_with_result(&entry.src, false, default_base_size(false)).unwrap();
+        let (inline, _, _) = layout_formula_source(&entry.src, false, default_base_size(false)).unwrap();
         let inline_width = inline.metrics.width.to_f64();
         if inline_width < single_x * 0.5 {
             violations.push(format!(
@@ -186,8 +186,8 @@ fn corpus_metrics_summary() {
     let corpus = load_corpus();
     println!("{:<40} {:>10} {:>10} {:>10} {:>10}", "src", "inline_w", "display_w", "ratio", "group");
     for entry in &corpus {
-        let (inline, _, _) = layout_formula_with_result(&entry.src, false, default_base_size(false)).unwrap();
-        let (display, _, _) = layout_formula_with_result(&entry.src, true, default_base_size(true)).unwrap();
+        let (inline, _, _) = layout_formula_source(&entry.src, false, default_base_size(false)).unwrap();
+        let (display, _, _) = layout_formula_source(&entry.src, true, default_base_size(true)).unwrap();
         let inline_width = inline.metrics.width.to_f64();
         let display_width = display.metrics.width.to_f64();
         let ratio = display_width / inline_width.max(f64::EPSILON);

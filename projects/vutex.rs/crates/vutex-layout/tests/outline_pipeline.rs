@@ -8,7 +8,7 @@
 //! formulas, and that tricky constructs like `Vmatrix` keep their
 //! double-bar delimiters.
 
-use vutex_layout::math::{collect_paint, default_base_size, layout_formula_with_result};
+use vutex_layout::math::{collect_paint, default_base_size, layout_formula_source};
 use vutex_render_svg::math::render_formula_result;
 use vutex_types::math::FormulaLayoutResult;
 
@@ -22,7 +22,7 @@ struct Case {
 
 fn render_outline(source: &str, display: bool) -> (String, FormulaLayoutResult) {
     let (result, _, _) =
-        layout_formula_with_result(source, display, default_base_size(display)).expect("layout should succeed");
+        layout_formula_source(source, display, default_base_size(display)).expect("layout should succeed");
     let out = render_formula_result(&result);
     assert!(out.diagnostics.is_empty(), "the SVG backend found a glyph without an outline: {:?}", out.diagnostics);
     (out.markup, result)
@@ -103,7 +103,7 @@ fn lowercase_vmatrix_keeps_a_single_bar() {
 #[test]
 fn spacing_commands_paint_no_glyph_and_raise_no_outline_gap() {
     for source in [r"a\ b", r"a\,b", r"a\:b", r"a\;b", r"a\quad b", r"a\qquad b", r"\text{a b}"] {
-        let (result, _, _) = layout_formula_with_result(source, true, default_base_size(true))
+        let (result, _, _) = layout_formula_source(source, true, default_base_size(true))
             .unwrap_or_else(|error| panic!("layout {source}: {error}"));
         let mut diagnostics = Vec::new();
         let items = collect_paint(&result, 0.0, result.metrics.height.to_f64(), &mut diagnostics);
@@ -116,12 +116,12 @@ fn spacing_commands_paint_no_glyph_and_raise_no_outline_gap() {
     }
 
     // The space still advances the pen, it just does so without ink.
-    let spaced = layout_formula_with_result(r"a\ b", true, default_base_size(true)).expect("layout").0.metrics.width.to_f64();
-    let tight = layout_formula_with_result("ab", true, default_base_size(true)).expect("layout").0.metrics.width.to_f64();
+    let spaced = layout_formula_source(r"a\ b", true, default_base_size(true)).expect("layout").0.metrics.width.to_f64();
+    let tight = layout_formula_source("ab", true, default_base_size(true)).expect("layout").0.metrics.width.to_f64();
     assert!(spaced > tight, "a spacing command must still advance the pen: {spaced} vs {tight}");
 
     // A glyph the font really cannot outline keeps its diagnostic.
-    let (result, _, _) = layout_formula_with_result(r"\text{中}", true, default_base_size(true)).expect("layout");
+    let (result, _, _) = layout_formula_source(r"\text{中}", true, default_base_size(true)).expect("layout");
     let mut diagnostics = Vec::new();
     let items = collect_paint(&result, 0.0, result.metrics.height.to_f64(), &mut diagnostics);
     assert!(items.is_empty(), "the CJK glyph paints nothing: {items:#?}");

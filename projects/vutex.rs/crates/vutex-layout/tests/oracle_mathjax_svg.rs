@@ -26,7 +26,7 @@
 use std::{collections::BTreeMap, fs, path::Path};
 
 use serde::Deserialize;
-use vutex_layout::math::{default_base_size, layout_formula_with_result};
+use vutex_layout::math::{default_base_size, layout_formula_source};
 use vutex_render_svg::math::render_formula_result;
 
 /// MathJax version the fixture must have been generated with.
@@ -134,7 +134,7 @@ fn load_document() -> Document {
 /// Render a corpus formula through VuTeX's SVG backend and return the full
 /// SVG markup plus the single layout result the render was painted from.
 fn vutex_svg(tex: &str, display_mode: bool) -> (String, vutex_types::math::FormulaLayoutResult) {
-    let (result, _, _) = layout_formula_with_result(tex, display_mode, default_base_size(display_mode))
+    let (result, _, _) = layout_formula_source(tex, display_mode, default_base_size(display_mode))
         .unwrap_or_else(|e| panic!("corpus `{tex}` (display={display_mode}) must lay out: {e}"));
     let svg = render_formula_result(&result).markup;
     (svg, result)

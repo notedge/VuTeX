@@ -133,7 +133,9 @@ fn honours_explicit_page_size_and_margins() {
 fn inline_math_limits_misuse_reaches_the_document_diagnostics() {
     let mut graph = DocumentGraph::new(DocumentId(3));
     graph.push_block(Block::Paragraph {
-        content: vec![Inline::InlineMath { content: "x\\limits_1".to_string(), language: None }],
+        content: vec![Inline::InlineMath {
+            formula: notedown_formats::lower_tex_formula_source("x\\limits_1", notedown_ir::MathDisplay::Inline),
+        }],
     });
 
     let (plan, diagnostics) = layout_with_diagnostics(&graph, &LayoutHint::a4(), &Diagrams::new());

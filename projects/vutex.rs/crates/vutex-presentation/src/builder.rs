@@ -249,8 +249,8 @@ fn collect_flow(graph: &DocumentGraph, ids: &[NodeId], blocks: &mut Vec<FlowBloc
             Block::Diagram { language, source } => {
                 blocks.push(FlowBlock::CodeBlock { language: Some(language.clone()), text: source.clone() });
             }
-            Block::Math { content, .. } => {
-                blocks.push(FlowBlock::CodeBlock { language: None, text: content.clone() });
+            Block::Math { formula } => {
+                blocks.push(FlowBlock::CodeBlock { language: None, text: formula.source.clone() });
             }
             Block::Quote { content } => blocks.push(FlowBlock::Quote { runs: runs_of(content) }),
             Block::Table { caption, rows } => {

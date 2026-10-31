@@ -6,7 +6,7 @@
 //! serif face.
 
 use vutex_layout::{
-    math::{LayoutNode, collect_paint, default_base_size, layout_formula_with_result},
+    math::{LayoutNode, collect_paint, default_base_size, layout_formula_source},
     plan::{LayoutItem, LayoutPage, LayoutPlan},
 };
 use vutex_presentation::build_display_presentation;
@@ -91,7 +91,7 @@ fn rectangle_fills(content: &str, min_width: f64) -> usize {
 /// Lay out one formula, lower it to display primitives, and render a PDF page.
 fn render_formula(source: &str) -> (Vec<u8>, Vec<LayoutItem>, Vec<Diagnostic>) {
     let (result, _, _) =
-        layout_formula_with_result(source, true, default_base_size(true)).unwrap_or_else(|e| panic!("layout {source}: {e}"));
+        layout_formula_source(source, true, default_base_size(true)).unwrap_or_else(|e| panic!("layout {source}: {e}"));
     let mut diagnostics = Vec::new();
     let items = collect_paint(&result, 72.0, BASELINE, &mut diagnostics);
     let plan = LayoutPlan { pages: vec![LayoutPage { width: PAGE_WIDTH, height: PAGE_HEIGHT, items: items.clone() }] };
@@ -142,7 +142,7 @@ fn math_pages_paint_outlines_without_host_text() {
         let (pdf, items, diagnostics) = render_formula(source);
         let root_pdf = String::from_utf8_lossy(&pdf).into_owned();
         let content = page_content(&pdf);
-        let (_, root, _) = layout_formula_with_result(source, true, default_base_size(true)).expect("layout");
+        let (_, root, _) = layout_formula_source(source, true, default_base_size(true)).expect("layout");
 
         assert!(diagnostics.is_empty(), "{source}: the embedded font must outline every glyph: {diagnostics:?}");
         assert!(

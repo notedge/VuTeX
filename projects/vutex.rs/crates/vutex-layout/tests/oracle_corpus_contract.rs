@@ -182,7 +182,7 @@ fn corpus_covers_the_required_formula_set() {
 fn corpus_formulas_parse_in_vutex() {
     let corpus = load_corpus();
     for formula in &corpus.formulas {
-        vutex_layout::math::parse_formula(&formula.tex)
+        vutex_layout::math::lower_formula(&formula.tex, false).map(|(tree, _)| tree)
             .unwrap_or_else(|e| panic!("corpus formula `{}` does not parse: {e}\n  tex: {}", formula.id, formula.tex));
     }
 }

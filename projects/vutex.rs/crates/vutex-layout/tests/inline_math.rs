@@ -6,7 +6,7 @@ use vutex_layout::{
     document::{layout_with_diagnostics, layout_with_hint},
     hint::Margin,
     layout,
-    math::layout_formula_with_result,
+    math::layout_formula_source,
     plan::{LayoutItem, LayoutPage, Path, Rule, TextRun},
 };
 
@@ -15,7 +15,7 @@ fn text(value: &str) -> Inline {
 }
 
 fn math(source: &str) -> Inline {
-    Inline::InlineMath { content: source.to_string(), language: Some("tex".to_string()) }
+    Inline::InlineMath { formula: notedown_formats::lower_tex_formula_source(source, notedown_ir::MathDisplay::Inline) }
 }
 
 fn paragraph(content: Vec<Inline>) -> DocumentGraph {
@@ -111,7 +111,7 @@ fn inline_formula_flows_between_surrounding_text_runs_on_the_text_baseline() {
 #[test]
 fn inline_fraction_keeps_its_bar_between_the_text_runs_and_grows_the_line() {
     let hint = LayoutHint { line_height: 1.2, ..LayoutHint::a4() };
-    let (formula, _, _) = layout_formula_with_result("\\frac{a}{b}", false, hint.base_font_size).expect("fraction layout");
+    let (formula, _, _) = layout_formula_source("\\frac{a}{b}", false, hint.base_font_size).expect("fraction layout");
     let fraction_extent = formula.metrics.height.to_f64() + formula.metrics.depth.to_f64();
     assert!(
         fraction_extent > 0.75 * hint.base_font_size,
@@ -229,23 +229,26 @@ fn formula_wider_than_the_content_width_is_still_painted_clamped() {
 }
 
 #[test]
-fn unparseable_inline_formula_falls_back_to_its_raw_source() {
+fn unsupported_inline_formula_is_reported_and_stays_visible() {
     let source = "\\notacommand{x}";
     let graph = paragraph(vec![text("See "), math(source), text(" here")]);
-    let plan = layout(&graph);
+    let (plan, diagnostics) = layout_with_diagnostics(&graph, &LayoutHint::a4(), &Diagrams::default());
     let page = &plan.pages[0];
-    let runs = text_runs(page);
 
-    assert_eq!(runs.len(), 1, "fallback joins the surrounding text flow: {runs:#?}");
-    assert_eq!(runs[0].text, format!("See {source} here"));
-    assert!(rules(page).is_empty(), "text fallback emits no rules");
+    assert!(
+        diagnostics.iter().any(|diagnostic| diagnostic.code == "vutex.math.unsupported_expression"),
+        "the unsupported fragment must be reported: {diagnostics:?}"
+    );
+    assert!(!page.items.is_empty(), "the surrounding line must stay painted");
 }
 
 #[test]
 fn foreign_inline_math_language_is_not_parsed_as_tex() {
     let graph = paragraph(vec![
         text("See "),
-        Inline::InlineMath { content: "x^2".to_string(), language: Some("typst".to_string()) },
+        Inline::InlineMath {
+            formula: notedown_ir::MathFormula::unsupported("x^2", Some("typst".to_string()), notedown_ir::MathDisplay::Inline, "typst-math"),
+        },
         text(" here"),
     ]);
     let (plan, diagnostics) = layout_with_diagnostics(&graph, &LayoutHint::a4(), &Diagrams::default());

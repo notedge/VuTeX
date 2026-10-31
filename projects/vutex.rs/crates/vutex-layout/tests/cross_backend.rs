@@ -6,7 +6,7 @@
 //! non-negative height and depth), and that each semantic construct lowers to
 //! its fixed Presentation MathML element.
 
-use vutex_layout::math::{LayoutNode, default_base_size, layout_formula_with_result, parse_formula};
+use vutex_layout::math::{LayoutNode, default_base_size, layout_formula_source, lower_formula};
 use vutex_render_svg::math::{MathmlBackend, render_formula_result};
 use vutex_types::{
     Severity,
@@ -203,20 +203,20 @@ const STRUCTURE_CASES: &[(&str, &str, &str)] = &[
 // ——— helpers ——— //
 
 fn layout(source: &str) -> (LayoutNode, FormulaLayoutResult) {
-    let (result, root, _) = layout_formula_with_result(source, false, default_base_size(false))
+    let (result, root, _) = layout_formula_source(source, false, default_base_size(false))
         .unwrap_or_else(|e| panic!("failed to layout {source}: {e}"));
     (root, result)
 }
 
 fn layout_display(source: &str) -> (LayoutNode, FormulaLayoutResult) {
-    let (result, root, _) = layout_formula_with_result(source, true, default_base_size(true))
+    let (result, root, _) = layout_formula_source(source, true, default_base_size(true))
         .unwrap_or_else(|e| panic!("failed to layout (display) {source}: {e}"));
     (root, result)
 }
 
 /// Render the structured MathML of one formula source.
 fn render_mathml(source: &str) -> String {
-    let tree = parse_formula(source).unwrap_or_else(|e| panic!("failed to parse {source}: {e}"));
+    let tree = lower_formula(source, false).map(|(tree, _)| tree).unwrap_or_else(|e| panic!("failed to parse {source}: {e}"));
     let semantics = MathSemantics::from_semantic_tree(&tree);
     let mut backend = MathmlBackend::new();
     backend.render_semantics(&semantics);

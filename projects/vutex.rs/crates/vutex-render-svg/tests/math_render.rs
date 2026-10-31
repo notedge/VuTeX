@@ -1,18 +1,18 @@
 //! Integration tests for the SVG and MathML math backends.
 
-use vutex_layout::math::{default_base_size, layout_formula_with_result, parse_formula};
+use vutex_layout::math::{default_base_size, layout_formula_source, lower_formula};
 use vutex_render_svg::math::{MathmlBackend, render_formula_result};
 use vutex_types::math::MathSemantics;
 
 /// Render one formula through the outline-only SVG backend.
 fn render_svg(source: &str) -> String {
-    let (result, _, _) = layout_formula_with_result(source, false, default_base_size(false)).expect("formula should lay out");
+    let (result, _, _) = layout_formula_source(source, false, default_base_size(false)).expect("formula should lay out");
     render_formula_result(&result).markup
 }
 
 /// Render the structured MathML of one formula source.
 fn render_mathml(source: &str) -> String {
-    let tree = parse_formula(source).expect("formula should parse");
+    let tree = lower_formula(source, false).map(|(tree, _)| tree).expect("formula should parse");
     let semantics = MathSemantics::from_semantic_tree(&tree);
     let mut backend = MathmlBackend::new();
     backend.render_semantics(&semantics);
