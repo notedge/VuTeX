@@ -26,7 +26,7 @@
     "scripts": {
         "build": "tsc -p tsconfig.build.json",
         "typecheck": "tsc --noEmit",
-        "test": "tsx --test tests/smoke.test.ts tests/facade.test.ts tests/load.test.ts"
+        "test": "tsx --test tests/smoke.test.ts tests/facade.test.ts tests/load.test.ts tests/syntax-corpus.test.ts"
     },
     "dependencies": {
         "@vutex/vutex-unknown-wasm32": "workspace:*"
