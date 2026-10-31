@@ -3,7 +3,7 @@
   "source": {
     "engine": "mathjax",
     "version": "3.2.2",
-    "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+    "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
     "status": "available",
     "status_reason": null
   },
@@ -17,7 +17,7 @@
       "source": {
         "engine": "mathjax",
         "version": "3.2.2",
-        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -69,7 +69,7 @@
       "source": {
         "engine": "mathjax",
         "version": "3.2.2",
-        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -121,7 +121,7 @@
       "source": {
         "engine": "mathjax",
         "version": "3.2.2",
-        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -183,7 +183,7 @@
       "source": {
         "engine": "mathjax",
         "version": "3.2.2",
-        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -245,7 +245,7 @@
       "source": {
         "engine": "mathjax",
         "version": "3.2.2",
-        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -314,7 +314,7 @@
       "source": {
         "engine": "mathjax",
         "version": "3.2.2",
-        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -383,7 +383,7 @@
       "source": {
         "engine": "mathjax",
         "version": "3.2.2",
-        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -435,7 +435,7 @@
       "source": {
         "engine": "mathjax",
         "version": "3.2.2",
-        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -487,7 +487,7 @@
       "source": {
         "engine": "mathjax",
         "version": "3.2.2",
-        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -541,7 +541,7 @@
       "source": {
         "engine": "mathjax",
         "version": "3.2.2",
-        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -595,7 +595,7 @@
       "source": {
         "engine": "mathjax",
         "version": "3.2.2",
-        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -654,7 +654,7 @@
       "source": {
         "engine": "mathjax",
         "version": "3.2.2",
-        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -713,7 +713,7 @@
       "source": {
         "engine": "mathjax",
         "version": "3.2.2",
-        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -775,7 +775,7 @@
       "source": {
         "engine": "mathjax",
         "version": "3.2.2",
-        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -837,7 +837,7 @@
       "source": {
         "engine": "mathjax",
         "version": "3.2.2",
-        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -904,7 +904,7 @@
       "source": {
         "engine": "mathjax",
         "version": "3.2.2",
-        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -971,7 +971,7 @@
       "source": {
         "engine": "mathjax",
         "version": "3.2.2",
-        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -1035,7 +1035,7 @@
       "source": {
         "engine": "mathjax",
         "version": "3.2.2",
-        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -1099,7 +1099,7 @@
       "source": {
         "engine": "mathjax",
         "version": "3.2.2",
-        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -1146,7 +1146,7 @@
       "source": {
         "engine": "mathjax",
         "version": "3.2.2",
-        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -1193,7 +1193,7 @@
       "source": {
         "engine": "mathjax",
         "version": "3.2.2",
-        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -1240,7 +1240,7 @@
       "source": {
         "engine": "mathjax",
         "version": "3.2.2",
-        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -1287,7 +1287,7 @@
       "source": {
         "engine": "mathjax",
         "version": "3.2.2",
-        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -1339,7 +1339,7 @@
       "source": {
         "engine": "mathjax",
         "version": "3.2.2",
-        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -1391,7 +1391,7 @@
       "source": {
         "engine": "mathjax",
         "version": "3.2.2",
-        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -1448,7 +1448,7 @@
       "source": {
         "engine": "mathjax",
         "version": "3.2.2",
-        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -1505,7 +1505,7 @@
       "source": {
         "engine": "mathjax",
         "version": "3.2.2",
-        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -1592,7 +1592,7 @@
       "source": {
         "engine": "mathjax",
         "version": "3.2.2",
-        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -1679,7 +1679,7 @@
       "source": {
         "engine": "mathjax",
         "version": "3.2.2",
-        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -1751,7 +1751,7 @@
       "source": {
         "engine": "mathjax",
         "version": "3.2.2",
-        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -1823,7 +1823,7 @@
       "source": {
         "engine": "mathjax",
         "version": "3.2.2",
-        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -1885,7 +1885,7 @@
       "source": {
         "engine": "mathjax",
         "version": "3.2.2",
-        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -1947,7 +1947,7 @@
       "source": {
         "engine": "mathjax",
         "version": "3.2.2",
-        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -2004,7 +2004,7 @@
       "source": {
         "engine": "mathjax",
         "version": "3.2.2",
-        "command": "node scripts/oracle/emit-mathjax-svg.mjs",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
         "status": "available",
         "status_reason": null
       },
@@ -2038,6 +2038,4244 @@
       "rules": [],
       "paths_count": 4,
       "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "accent-vec",
+      "tex": "\\vec{v}",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 485,
+        "height": 857,
+        "depth": 846
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 485
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 276
+        }
+      ],
+      "rules": [],
+      "paths_count": 2,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "accent-vec",
+      "tex": "\\vec{v}",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 485,
+        "height": 857,
+        "depth": 846
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 485
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 276
+        }
+      ],
+      "rules": [],
+      "paths_count": 2,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "accent-tilde",
+      "tex": "\\tilde{a}",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 529,
+        "height": 760,
+        "depth": 750
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 221
+        }
+      ],
+      "rules": [],
+      "paths_count": 2,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "accent-tilde",
+      "tex": "\\tilde{a}",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 529,
+        "height": 760,
+        "depth": 750
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 221
+        }
+      ],
+      "rules": [],
+      "paths_count": 2,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "accent-dot",
+      "tex": "\\dot{x}",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 572,
+        "height": 778,
+        "depth": 767
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 651
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 105
+        }
+      ],
+      "rules": [],
+      "paths_count": 2,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "accent-dot",
+      "tex": "\\dot{x}",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 572,
+        "height": 778,
+        "depth": 767
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 651
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 105
+        }
+      ],
+      "rules": [],
+      "paths_count": 2,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "accent-ddot",
+      "tex": "\\ddot{y}",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 490,
+        "height": 967,
+        "depth": 762
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 738
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 214
+        }
+      ],
+      "rules": [],
+      "paths_count": 2,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "accent-ddot",
+      "tex": "\\ddot{y}",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 490,
+        "height": 967,
+        "depth": 762
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 738
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 214
+        }
+      ],
+      "rules": [],
+      "paths_count": 2,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "accent-widehat",
+      "tex": "\\widehat{CD}",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 1588,
+        "height": 1140,
+        "depth": 1118
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 511
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 495
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 146
+        }
+      ],
+      "rules": [],
+      "paths_count": 3,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "accent-widehat",
+      "tex": "\\widehat{CD}",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 1588,
+        "height": 1140,
+        "depth": 1118
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 511
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 495
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 146
+        }
+      ],
+      "rules": [],
+      "paths_count": 3,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "radical-degree-sum",
+      "tex": "\\sqrt[3]{x+y}",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 3137.4,
+        "height": 1060,
+        "depth": 816.5
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 642
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 305
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 651
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 171
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 738
+        }
+      ],
+      "rules": [
+        {
+          "x1": 853,
+          "y1": 696.5,
+          "x2": 3137.4,
+          "y2": 756.5
+        }
+      ],
+      "paths_count": 5,
+      "rects_count": 1,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "radical-degree-sum",
+      "tex": "\\sqrt[3]{x+y}",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 3304.4,
+        "height": 1260,
+        "depth": 964.3
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 642
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 257
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 651
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 171
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 738
+        }
+      ],
+      "rules": [
+        {
+          "x1": 1020,
+          "y1": 844.3,
+          "x2": 3304.4,
+          "y2": 904.3
+        }
+      ],
+      "paths_count": 5,
+      "rects_count": 1,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "radical-fraction",
+      "tex": "\\sqrt{\\frac{a}{b}}",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 1834.1,
+        "height": 1260,
+        "depth": 904
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 257
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        }
+      ],
+      "rules": [
+        {
+          "x1": 120,
+          "y1": 220,
+          "x2": 694.1,
+          "y2": 280
+        },
+        {
+          "x1": 1020,
+          "y1": 784,
+          "x2": 1834.1,
+          "y2": 844
+        }
+      ],
+      "paths_count": 3,
+      "rects_count": 2,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "radical-fraction",
+      "tex": "\\sqrt{\\frac{a}{b}}",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 1989,
+        "height": 2460,
+        "depth": 1585.3
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 252
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        }
+      ],
+      "rules": [
+        {
+          "x1": 120,
+          "y1": 220,
+          "x2": 849,
+          "y2": 280
+        },
+        {
+          "x1": 1020,
+          "y1": 1465.3,
+          "x2": 1989,
+          "y2": 1525.3
+        }
+      ],
+      "paths_count": 3,
+      "rects_count": 2,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "radical-nested",
+      "tex": "\\sqrt{\\sqrt{x}}",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 2445,
+        "height": 1260,
+        "depth": 1040.5
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 257
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 305
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 651
+        }
+      ],
+      "rules": [
+        {
+          "x1": 853,
+          "y1": 723,
+          "x2": 1425,
+          "y2": 783
+        },
+        {
+          "x1": 1020,
+          "y1": 920.5,
+          "x2": 2445,
+          "y2": 980.5
+        }
+      ],
+      "paths_count": 3,
+      "rects_count": 2,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "radical-nested",
+      "tex": "\\sqrt{\\sqrt{x}}",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 2445,
+        "height": 1860,
+        "depth": 1436
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 254
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 305
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 651
+        }
+      ],
+      "rules": [
+        {
+          "x1": 853,
+          "y1": 770.8,
+          "x2": 1425,
+          "y2": 830.8
+        },
+        {
+          "x1": 1020,
+          "y1": 1316,
+          "x2": 2445,
+          "y2": 1376
+        }
+      ],
+      "paths_count": 3,
+      "rects_count": 2,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "fraction-nested",
+      "tex": "\\frac{\\frac{a}{b}}{c}",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 1015.6,
+        "height": 1441.3,
+        "depth": 1088.6
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 361
+        }
+      ],
+      "rules": [
+        {
+          "x1": 120,
+          "y1": 220,
+          "x2": 694.1,
+          "y2": 280
+        },
+        {
+          "x1": 120,
+          "y1": 220,
+          "x2": 895.6,
+          "y2": 280
+        }
+      ],
+      "paths_count": 3,
+      "rects_count": 2,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "fraction-nested",
+      "tex": "\\frac{\\frac{a}{b}}{c}",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 1254.1,
+        "height": 2215.6,
+        "depth": 1518.6
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 361
+        }
+      ],
+      "rules": [
+        {
+          "x1": 120,
+          "y1": 220,
+          "x2": 694.1,
+          "y2": 280
+        },
+        {
+          "x1": 120,
+          "y1": 220,
+          "x2": 1134.1,
+          "y2": 280
+        }
+      ],
+      "paths_count": 3,
+      "rects_count": 2,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "fraction-display",
+      "tex": "\\dfrac{a}{b}",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 969,
+        "height": 1814,
+        "depth": 1117
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        }
+      ],
+      "rules": [
+        {
+          "x1": 120,
+          "y1": 220,
+          "x2": 849,
+          "y2": 280
+        }
+      ],
+      "paths_count": 2,
+      "rects_count": 1,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "fraction-display",
+      "tex": "\\dfrac{a}{b}",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 969,
+        "height": 1814,
+        "depth": 1117
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        }
+      ],
+      "rules": [
+        {
+          "x1": 120,
+          "y1": 220,
+          "x2": 849,
+          "y2": 280
+        }
+      ],
+      "paths_count": 2,
+      "rects_count": 1,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "fraction-text",
+      "tex": "\\tfrac{a}{b}",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 814.1,
+        "height": 1058.6,
+        "depth": 705.8
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        }
+      ],
+      "rules": [
+        {
+          "x1": 120,
+          "y1": 220,
+          "x2": 694.1,
+          "y2": 280
+        }
+      ],
+      "paths_count": 2,
+      "rects_count": 1,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "fraction-text",
+      "tex": "\\tfrac{a}{b}",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 814.1,
+        "height": 1058.6,
+        "depth": 705.8
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        }
+      ],
+      "rules": [
+        {
+          "x1": 120,
+          "y1": 220,
+          "x2": 694.1,
+          "y2": 280
+        }
+      ],
+      "paths_count": 2,
+      "rects_count": 1,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "prod-limits",
+      "tex": "\\prod_{i=1}^{n} i",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 2686.3,
+        "height": 1132.9,
+        "depth": 789.6
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 271
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 554
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 520
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 158
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 252
+        }
+      ],
+      "rules": [],
+      "paths_count": 5,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "prod-limits",
+      "tex": "\\prod_{i=1}^{n} i",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 1789.7,
+        "height": 2808.5,
+        "depth": 1562.5
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 310
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 520
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 158
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 252
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 554
+        }
+      ],
+      "rules": [],
+      "paths_count": 5,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "oint-script",
+      "tex": "\\oint_C f\\,dz",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 2961.1,
+        "height": 1161.9,
+        "depth": 805.5
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 1095
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 511
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 651
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 640
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 593
+        }
+      ],
+      "rules": [],
+      "paths_count": 5,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "oint-script",
+      "tex": "\\oint_C f\\,dz",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 3045.1,
+        "height": 2272.9,
+        "depth": 1361
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 815
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 511
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 651
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 640
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 593
+        }
+      ],
+      "rules": [],
+      "paths_count": 5,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "script-negative",
+      "tex": "e^{-x^2}",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 1812.3,
+        "height": 963.7,
+        "depth": 952.7
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 399
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 67
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 651
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 454
+        }
+      ],
+      "rules": [],
+      "paths_count": 4,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "script-negative",
+      "tex": "e^{-x^2}",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 1812.3,
+        "height": 1013.7,
+        "depth": 1002.7
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 399
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 67
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 651
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 454
+        }
+      ],
+      "rules": [],
+      "paths_count": 4,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "brace-fenced-fraction",
+      "tex": "\\left\\{ \\frac{a}{b} \\right\\}",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 1980.1,
+        "height": 1202.3,
+        "depth": 849.5
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 699
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 593
+        }
+      ],
+      "rules": [
+        {
+          "x1": 120,
+          "y1": 220,
+          "x2": 694.1,
+          "y2": 280
+        }
+      ],
+      "paths_count": 4,
+      "rects_count": 1,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "brace-fenced-fraction",
+      "tex": "\\left\\{ \\frac{a}{b} \\right\\}",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 2303,
+        "height": 1846.5,
+        "depth": 1149.5
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 641
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 669
+        }
+      ],
+      "rules": [
+        {
+          "x1": 120,
+          "y1": 220,
+          "x2": 849,
+          "y2": 280
+        }
+      ],
+      "paths_count": 4,
+      "rects_count": 1,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "angle-bracket",
+      "tex": "\\left\\langle v \\right\\rangle",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 1263,
+        "height": 1000,
+        "depth": 750
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 207
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 485
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 173
+        }
+      ],
+      "rules": [],
+      "paths_count": 3,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "angle-bracket",
+      "tex": "\\left\\langle v \\right\\rangle",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 1263,
+        "height": 1000,
+        "depth": 750
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 207
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 485
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 173
+        }
+      ],
+      "rules": [],
+      "paths_count": 3,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "null-fence-derivative",
+      "tex": "\\left. \\frac{dy}{dx} \\right|_{0}",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 1981.7,
+        "height": 1502.3,
+        "depth": 975.7
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 640
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 738
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 651
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 103
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 329
+        }
+      ],
+      "rules": [
+        {
+          "x1": 120,
+          "y1": 220,
+          "x2": 1092.2,
+          "y2": 280
+        }
+      ],
+      "paths_count": 5,
+      "rects_count": 1,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "null-fence-derivative",
+      "tex": "\\left. \\frac{dy}{dx} \\right|_{0}",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 2301.6,
+        "height": 2290.9,
+        "depth": 1370
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 640
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 738
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 651
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 103
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 329
+        }
+      ],
+      "rules": [
+        {
+          "x1": 120,
+          "y1": 220,
+          "x2": 1412,
+          "y2": 280
+        }
+      ],
+      "paths_count": 5,
+      "rects_count": 1,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "fenced-matrix",
+      "tex": "\\left[ \\begin{matrix} a & b \\\\ c & d \\end{matrix} \\right]",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 3105,
+        "height": 2400,
+        "depth": 1450
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 46
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 361
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 640
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 43
+        }
+      ],
+      "rules": [],
+      "paths_count": 6,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "fenced-matrix",
+      "tex": "\\left[ \\begin{matrix} a & b \\\\ c & d \\end{matrix} \\right]",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 3105,
+        "height": 2400,
+        "depth": 1450
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 46
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 361
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 640
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 43
+        }
+      ],
+      "rules": [],
+      "paths_count": 6,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "smallmatrix",
+      "tex": "\\begin{smallmatrix} a & b \\\\ c & d \\end{smallmatrix}",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 1074.8,
+        "height": 1197,
+        "depth": 848.5
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 361
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 640
+        }
+      ],
+      "rules": [],
+      "paths_count": 4,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "smallmatrix",
+      "tex": "\\begin{smallmatrix} a & b \\\\ c & d \\end{smallmatrix}",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 1074.8,
+        "height": 1197,
+        "depth": 848.5
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 361
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 640
+        }
+      ],
+      "rules": [],
+      "paths_count": 4,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "gathered",
+      "tex": "\\begin{gathered} a+b \\\\ c+d \\end{gathered}",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 2180.4,
+        "height": 2300,
+        "depth": 1400
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 171
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 361
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 640
+        }
+      ],
+      "rules": [],
+      "paths_count": 5,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "gathered",
+      "tex": "\\begin{gathered} a+b \\\\ c+d \\end{gathered}",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 2180.4,
+        "height": 2300,
+        "depth": 1400
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 171
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 361
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 640
+        }
+      ],
+      "rules": [],
+      "paths_count": 5,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "bmatrix",
+      "tex": "\\begin{bmatrix} a & b \\\\ c & d \\end{bmatrix}",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 3105,
+        "height": 2400,
+        "depth": 1450
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 46
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 361
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 640
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 43
+        }
+      ],
+      "rules": [],
+      "paths_count": 6,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "bmatrix",
+      "tex": "\\begin{bmatrix} a & b \\\\ c & d \\end{bmatrix}",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 3105,
+        "height": 2400,
+        "depth": 1450
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 46
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 361
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 640
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 43
+        }
+      ],
+      "rules": [],
+      "paths_count": 6,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "vmatrix",
+      "tex": "\\begin{vmatrix} a & b \\\\ c & d \\end{vmatrix}",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 2715,
+        "height": 2400,
+        "depth": 1450
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 103
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 361
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 640
+        }
+      ],
+      "rules": [],
+      "paths_count": 5,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "vmatrix",
+      "tex": "\\begin{vmatrix} a & b \\\\ c & d \\end{vmatrix}",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 2715,
+        "height": 2400,
+        "depth": 1450
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 103
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 361
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 640
+        }
+      ],
+      "rules": [],
+      "paths_count": 5,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "Vmatrix",
+      "tex": "\\begin{Vmatrix} a & b \\\\ c & d \\end{Vmatrix}",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 3161,
+        "height": 2400,
+        "depth": 1450
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 314
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 361
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 640
+        }
+      ],
+      "rules": [],
+      "paths_count": 5,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "Vmatrix",
+      "tex": "\\begin{Vmatrix} a & b \\\\ c & d \\end{Vmatrix}",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 3161,
+        "height": 2400,
+        "depth": 1450
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 314
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 361
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 640
+        }
+      ],
+      "rules": [],
+      "paths_count": 5,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "thin-space",
+      "tex": "a\\,b",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 1125,
+        "height": 705,
+        "depth": 694
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        }
+      ],
+      "rules": [],
+      "paths_count": 2,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "thin-space",
+      "tex": "a\\,b",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 1125,
+        "height": 705,
+        "depth": 694
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        }
+      ],
+      "rules": [],
+      "paths_count": 2,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "thick-space",
+      "tex": "a\\;b",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 1236,
+        "height": 705,
+        "depth": 694
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        }
+      ],
+      "rules": [],
+      "paths_count": 2,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "thick-space",
+      "tex": "a\\;b",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 1236,
+        "height": 705,
+        "depth": 694
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        }
+      ],
+      "rules": [],
+      "paths_count": 2,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "quad-space",
+      "tex": "a\\quad b",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 1958,
+        "height": 705,
+        "depth": 694
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        }
+      ],
+      "rules": [],
+      "paths_count": 2,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "quad-space",
+      "tex": "a\\quad b",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 1958,
+        "height": 705,
+        "depth": 694
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        }
+      ],
+      "rules": [],
+      "paths_count": 2,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "double-quad-space",
+      "tex": "a\\qquad b",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 2958,
+        "height": 705,
+        "depth": 694
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        }
+      ],
+      "rules": [],
+      "paths_count": 2,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "double-quad-space",
+      "tex": "a\\qquad b",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 2958,
+        "height": 705,
+        "depth": 694
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        }
+      ],
+      "rules": [],
+      "paths_count": 2,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "font-roman",
+      "tex": "\\mathrm{d}x",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 1128,
+        "height": 705,
+        "depth": 694
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 429
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 651
+        }
+      ],
+      "rules": [],
+      "paths_count": 2,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "font-roman",
+      "tex": "\\mathrm{d}x",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 1128,
+        "height": 705,
+        "depth": 694
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 429
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 651
+        }
+      ],
+      "rules": [],
+      "paths_count": 2,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "chain-relations",
+      "tex": "x \\le y \\ge z",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 4194.1,
+        "height": 841,
+        "depth": 636
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 651
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 292
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 738
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 317
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 593
+        }
+      ],
+      "rules": [],
+      "paths_count": 5,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "chain-relations",
+      "tex": "x \\le y \\ge z",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 4194.1,
+        "height": 841,
+        "depth": 636
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 651
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 292
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 738
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 317
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 593
+        }
+      ],
+      "rules": [],
+      "paths_count": 5,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "implication",
+      "tex": "p \\Rightarrow q",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 2518.6,
+        "height": 719,
+        "depth": 525
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 739
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 420
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 574
+        }
+      ],
+      "rules": [],
+      "paths_count": 3,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "implication",
+      "tex": "p \\Rightarrow q",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 2518.6,
+        "height": 719,
+        "depth": 525
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 739
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 420
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 574
+        }
+      ],
+      "rules": [],
+      "paths_count": 3,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "left-arrow",
+      "tex": "A \\leftarrow B",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 3064.6,
+        "height": 727,
+        "depth": 716
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 512
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 376
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 651
+        }
+      ],
+      "rules": [],
+      "paths_count": 3,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "left-arrow",
+      "tex": "A \\leftarrow B",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 3064.6,
+        "height": 727,
+        "depth": 716
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 512
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 376
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 651
+        }
+      ],
+      "rules": [],
+      "paths_count": 3,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "arithmetic-operators",
+      "tex": "a \\cdot b \\times c \\div d",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 5078.3,
+        "height": 730,
+        "depth": 694
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 92
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 338
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 361
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 269
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 640
+        }
+      ],
+      "rules": [],
+      "paths_count": 7,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "arithmetic-operators",
+      "tex": "a \\cdot b \\times c \\div d",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 5078.3,
+        "height": 730,
+        "depth": 694
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 92
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 486
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 338
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 361
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 269
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 640
+        }
+      ],
+      "rules": [],
+      "paths_count": 7,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "cdots-sum",
+      "tex": "a_1 + \\cdots + a_n",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 5618.7,
+        "height": 740.8,
+        "depth": 583
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 252
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 171
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 293
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 554
+        }
+      ],
+      "rules": [],
+      "paths_count": 5,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "cdots-sum",
+      "tex": "a_1 + \\cdots + a_n",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 5618.7,
+        "height": 740.8,
+        "depth": 583
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 536
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 252
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 171
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 293
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 554
+        }
+      ],
+      "rules": [],
+      "paths_count": 5,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "text-phrase",
+      "tex": "\\text{hello world}",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 4754,
+        "height": 705,
+        "depth": 694
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 603
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 358
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 341
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 266
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 0
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 583
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 524
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 429
+        }
+      ],
+      "rules": [],
+      "paths_count": 8,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "text-phrase",
+      "tex": "\\text{hello world}",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 4754,
+        "height": 705,
+        "depth": 694
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 603
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 358
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 341
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 266
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 0
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 583
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 524
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 429
+        }
+      ],
+      "rules": [],
+      "paths_count": 8,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "text-inline",
+      "tex": "x + \\text{ text } + y",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 5756.9,
+        "height": 820,
+        "depth": 615
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 651
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 171
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 0
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 236
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 358
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 718
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 738
+        }
+      ],
+      "rules": [],
+      "paths_count": 7,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "text-inline",
+      "tex": "x + \\text{ text } + y",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 5756.9,
+        "height": 820,
+        "depth": 615
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 651
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 171
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 0
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 236
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 358
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 718
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 738
+        }
+      ],
+      "rules": [],
+      "paths_count": 7,
+      "rects_count": 0,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "fraction-sum-radical",
+      "tex": "\\frac{\\sum_{i=1}^{n} i}{\\sqrt{n}}",
+      "display_mode": false,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 2418.7,
+        "height": 1730.6,
+        "depth": 1141.1
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 451
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 554
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 520
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 158
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 252
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 305
+        }
+      ],
+      "rules": [
+        {
+          "x1": 853,
+          "y1": 723,
+          "x2": 1453,
+          "y2": 765.4
+        },
+        {
+          "x1": 120,
+          "y1": 220,
+          "x2": 2298.7,
+          "y2": 280
+        }
+      ],
+      "paths_count": 6,
+      "rects_count": 2,
+      "texts_count": 0,
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "fraction-sum-radical",
+      "tex": "\\frac{\\sum_{i=1}^{n} i}{\\sqrt{n}}",
+      "display_mode": true,
+      "source": {
+        "engine": "mathjax",
+        "version": "3.2.2",
+        "command": "node projects/vutex.ts/examples/oracle/emit-mathjax-svg.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "box": {
+        "width": 3238.3,
+        "height": 2612.9,
+        "depth": 1592.9
+      },
+      "glyphs": [
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 451
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 554
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 520
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 158
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 252
+        },
+        {
+          "cx": null,
+          "cy": null,
+          "path_length": 305
+        }
+      ],
+      "rules": [
+        {
+          "x1": 853,
+          "y1": 723,
+          "x2": 1453,
+          "y2": 783
+        },
+        {
+          "x1": 120,
+          "y1": 220,
+          "x2": 3118.3,
+          "y2": 280
+        }
+      ],
+      "paths_count": 6,
+      "rects_count": 2,
       "texts_count": 0,
       "font": null,
       "size": null,

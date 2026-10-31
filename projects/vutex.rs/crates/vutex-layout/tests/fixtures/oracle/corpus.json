@@ -48,6 +48,72 @@
       "tex": "\\begin{split} a &= b \\\\ &= c \\end{split}",
       "group": "matrix",
       "notes": "split relation with an empty leading cell"
-    }
+    },
+    { "id": "accent-vec", "tex": "\\vec{v}", "group": "accent", "notes": "vector arrow over an identifier" },
+    { "id": "accent-tilde", "tex": "\\tilde{a}", "group": "accent", "notes": "tilde accent over an identifier" },
+    { "id": "accent-dot", "tex": "\\dot{x}", "group": "accent", "notes": "single dot accent above a time derivative" },
+    { "id": "accent-ddot", "tex": "\\ddot{y}", "group": "accent", "notes": "double dot accent above a second derivative" },
+    { "id": "accent-widehat", "tex": "\\widehat{CD}", "group": "accent", "notes": "wide circumflex over a two-letter group" },
+    { "id": "radical-degree-sum", "tex": "\\sqrt[3]{x+y}", "group": "radical", "notes": "indexed root over a compound radicand" },
+    { "id": "radical-fraction", "tex": "\\sqrt{\\frac{a}{b}}", "group": "radical", "notes": "fraction inside a radical" },
+    { "id": "radical-nested", "tex": "\\sqrt{\\sqrt{x}}", "group": "radical", "notes": "nested square roots" },
+    { "id": "fraction-nested", "tex": "\\frac{\\frac{a}{b}}{c}", "group": "fraction", "notes": "fraction whose numerator is a fraction" },
+    { "id": "fraction-display", "tex": "\\dfrac{a}{b}", "group": "fraction", "notes": "display-style fraction command" },
+    { "id": "fraction-text", "tex": "\\tfrac{a}{b}", "group": "fraction", "notes": "text-style fraction command" },
+    { "id": "prod-limits", "tex": "\\prod_{i=1}^{n} i", "group": "large-operator", "notes": "product with sub and superscript" },
+    { "id": "oint-script", "tex": "\\oint_C f\\,dz", "group": "large-operator", "notes": "contour integral with a subscript and a thin space" },
+    { "id": "script-negative", "tex": "e^{-x^2}", "group": "script", "notes": "superscript carrying a negated superscript" },
+    { "id": "brace-fenced-fraction", "tex": "\\left\\{ \\frac{a}{b} \\right\\}", "group": "delimiter", "notes": "braced fraction" },
+    { "id": "angle-bracket", "tex": "\\left\\langle v \\right\\rangle", "group": "delimiter", "notes": "angle-bracket inner product" },
+    { "id": "null-fence-derivative", "tex": "\\left. \\frac{dy}{dx} \\right|_{0}", "group": "delimiter", "notes": "invisible left fence with an evaluated-at bar" },
+    {
+      "id": "fenced-matrix",
+      "tex": "\\left[ \\begin{matrix} a & b \\\\ c & d \\end{matrix} \\right]",
+      "group": "delimiter",
+      "notes": "matrix inside auto-sized brackets"
+    },
+    {
+      "id": "smallmatrix",
+      "tex": "\\begin{smallmatrix} a & b \\\\ c & d \\end{smallmatrix}",
+      "group": "matrix",
+      "notes": "script-sized inline matrix"
+    },
+    {
+      "id": "gathered",
+      "tex": "\\begin{gathered} a+b \\\\ c+d \\end{gathered}",
+      "group": "matrix",
+      "notes": "centred stacked rows"
+    },
+    {
+      "id": "bmatrix",
+      "tex": "\\begin{bmatrix} a & b \\\\ c & d \\end{bmatrix}",
+      "group": "matrix",
+      "notes": "square-bracketed matrix"
+    },
+    {
+      "id": "vmatrix",
+      "tex": "\\begin{vmatrix} a & b \\\\ c & d \\end{vmatrix}",
+      "group": "matrix",
+      "notes": "single-bar determinant fences"
+    },
+    {
+      "id": "Vmatrix",
+      "tex": "\\begin{Vmatrix} a & b \\\\ c & d \\end{Vmatrix}",
+      "group": "matrix",
+      "notes": "double-bar norm fences"
+    },
+    { "id": "thin-space", "tex": "a\\,b", "group": "spacing", "notes": "explicit thin space between identifiers" },
+    { "id": "thick-space", "tex": "a\\;b", "group": "spacing", "notes": "explicit thick space between identifiers" },
+    { "id": "quad-space", "tex": "a\\quad b", "group": "spacing", "notes": "quad space between identifiers" },
+    { "id": "double-quad-space", "tex": "a\\qquad b", "group": "spacing", "notes": "double quad space between identifiers" },
+    { "id": "font-roman", "tex": "\\mathrm{d}x", "group": "font", "notes": "upright differential before an italic atom" },
+    { "id": "chain-relations", "tex": "x \\le y \\ge z", "group": "relation", "notes": "chained order relations" },
+    { "id": "implication", "tex": "p \\Rightarrow q", "group": "relation", "notes": "material implication" },
+    { "id": "left-arrow", "tex": "A \\leftarrow B", "group": "relation", "notes": "assignment-style left arrow" },
+    { "id": "arithmetic-operators", "tex": "a \\cdot b \\times c \\div d", "group": "relation", "notes": "chained binary arithmetic operators" },
+    { "id": "cdots-sum", "tex": "a_1 + \\cdots + a_n", "group": "dots", "notes": "elliptic sum between scripted terms" },
+    { "id": "text-phrase", "tex": "\\text{hello world}", "group": "text", "notes": "authored text run with a word space" },
+    { "id": "text-inline", "tex": "x + \\text{ text } + y", "group": "text", "notes": "text run embedded between math atoms" },
+    { "id": "fraction-sum-radical", "tex": "\\frac{\\sum_{i=1}^{n} i}{\\sqrt{n}}", "group": "nested", "notes": "large operator over a radical in one fraction" }
   ]
 }

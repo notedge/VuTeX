@@ -308,6 +308,42 @@ fn expected_core_tag_families(corpus_id: &str) -> &'static [&'static [&'static s
         "aligned" => &[&["mtable"], &["mtr"], &["mtd"]],
         "alignedat" => &[&["mtable"], &["mtr"], &["mtd"]],
         "split" => &[&["mtable"], &["mtr"], &["mtd"]],
+        // ——— accent family ——— //
+        "accent-vec" | "accent-tilde" | "accent-dot" | "accent-ddot" | "accent-widehat" => &[&["mover"]],
+        // ——— radical family ——— //
+        "radical-degree-sum" => &[&["mroot"]],
+        "radical-fraction" => &[&["msqrt"], &["mfrac"]],
+        "radical-nested" => &[&["msqrt"]],
+        // ——— fraction family ——— //
+        "fraction-nested" | "fraction-display" | "fraction-text" => &[&["mfrac"]],
+        // ——— large-operator family ——— //
+        "prod-limits" => &[&["munderover", "msubsup"], &["mo"]],
+        "oint-script" => &[&["msub", "munder", "msubsup", "munderover"], &["mo"]],
+        // ——— script family ——— //
+        "script-negative" => &[&["msup"]],
+        // ——— delimiter family ——— //
+        "brace-fenced-fraction" => &[&["mfrac"], &["mo"]],
+        "angle-bracket" => &[&["mo"]],
+        "null-fence-derivative" => &[&["mfrac"], &["mo"], &["msub", "munder"]],
+        "fenced-matrix" => &[&["mtable"], &["mo"]],
+        // ——— environment family ——— //
+        "smallmatrix" => &[&["mtable"], &["mtr"], &["mtd"]],
+        "gathered" => &[&["mtable"], &["mtr"], &["mtd"]],
+        "bmatrix" | "vmatrix" | "Vmatrix" => &[&["mtable"], &["mtr"], &["mtd"], &["mo"]],
+        // ——— spacing family ——— //
+        // Explicit spaces lower to `mspace`, which the normalizer drops as
+        // presentation-only; the remaining atoms carry no core structure.
+        "thin-space" | "thick-space" | "quad-space" | "double-quad-space" => &[],
+        // ——— font family ——— //
+        "font-roman" => &[&["mi"]],
+        // ——— relation family ——— //
+        "chain-relations" | "implication" | "left-arrow" | "arithmetic-operators" => &[&["mo"]],
+        // ——— dots family ——— //
+        "cdots-sum" => &[&["msub", "munder"], &["mo"]],
+        // ——— text family ——— //
+        "text-phrase" | "text-inline" => &[&["mtext"]],
+        // ——— nested family ——— //
+        "fraction-sum-radical" => &[&["mfrac"], &["munderover", "msubsup"], &["msqrt"]],
         other => panic!("unknown corpus id `{other}` in expected_core_tag_families"),
     }
 }
