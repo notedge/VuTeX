@@ -98,5 +98,5 @@ their own licenses, and each license text ships next to its font:
 
 | Font | License | License file | Source | SHA-256 |
 |---|---|---|---|---|
-| `XITSMath-Regular.otf` | SIL Open Font License 1.1 | `XITSMath-Regular.OFL.txt` | <https://github.com/alif-type/xits> | `3025792ADB0B7072ACE08BF5726D341DE32F2254612DDEC6DD98271A8DD29689` |
+| `XITSMath-Regular.otf` | SIL Open Font License 1.1 | `XITSMath-Regular.OFL.txt` | <https://github.com/alif-type/xits/releases/tag/v1.302> | `3025792ADB0B7072ACE08BF5726D341DE32F2254612DDEC6DD98271A8DD29689` |
 | `LatinModernMath-Regular.otf` | GUST Font License 1.0 (legally equivalent to LPPL 1.3c or later) | `LatinModernMath-Regular.GUST-FONT-LICENSE.txt` | <https://www.gust.org.pl/projects/e-foundry/lm-math> | `6075562B771F8B82F0C179E363389684F2DD09DE30038269E2628E504BD7BE0F` |

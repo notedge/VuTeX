@@ -85,8 +85,8 @@ pub(crate) const LM_MATH_BYTES: &[u8] = include_bytes!("../../assets/LatinModern
 /// Embedded OpenType MATH font: XITS Math Regular.
 ///
 /// Licensed under the SIL Open Font License 1.1. Downloaded from
-/// `https://cdn.jsdelivr.net/gh/alif-type/xits@master/XITSMath-Regular.otf`
-/// (upstream: <https://github.com/alif-type/xits>).
+/// `https://cdn.jsdelivr.net/gh/alif-type/xits@v1.302/XITSMath-Regular.otf`
+/// (upstream release tag: <https://github.com/alif-type/xits/releases/tag/v1.302>).
 pub(crate) const XITS_MATH_BYTES: &[u8] = include_bytes!("../../assets/XITSMath-Regular.otf");
 
 // ---------------------------------------------------------------------------
