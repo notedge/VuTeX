@@ -1,1 +1,6 @@
-["en-US"]
+{
+  "defaultLocale": "en-US",
+  "locales": [
+    { "id": "en-US" }
+  ]
+}
