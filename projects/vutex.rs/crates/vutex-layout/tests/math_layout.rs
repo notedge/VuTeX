@@ -3252,6 +3252,21 @@ fn mathsf_mathit_textit_and_mathit_variants_are_accepted() {
     accepts_face_command(r"\mathit{w}", r"\mathit{w}");
 }
 
+/// TeX spellings keep their glyph identity: the plain command names the
+/// variant glyph and the `var` form names the ordinary letter.
+#[test]
+fn greek_variant_commands_keep_their_unicode_symbols() {
+    for (source, expected) in [(r"\epsilon", 'ϵ'), (r"\varepsilon", 'ε'), (r"\phi", 'ϕ'), (r"\varphi", 'φ')] {
+        let tree = parse_formula(source).unwrap_or_else(|error| panic!("`{source}`: {error}"));
+        let SemanticNode::Symbol { glyph_key, role } = &tree.root
+        else {
+            panic!("`{source}` must parse to one symbol, got {:?}", tree.root)
+        };
+        assert_eq!(glyph_key.char, Some(expected), "`{source}` must keep its TeX glyph identity");
+        assert_eq!(*role, SymbolRole::Ordinary);
+    }
+}
+
 /// `\mathrm` is a face switch, not a text group: its body stays math, so a
 /// command like `\lambda` keeps its symbol meaning and the upright face draws
 /// the Greek glyph instead of the command name's letters.

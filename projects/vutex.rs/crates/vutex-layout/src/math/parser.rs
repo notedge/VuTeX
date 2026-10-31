@@ -996,8 +996,12 @@ fn named_symbol(name: &str) -> Option<(char, SymbolRole)> {
         "beta" => ('β', SymbolRole::Ordinary),
         "gamma" => ('γ', SymbolRole::Ordinary),
         "delta" => ('δ', SymbolRole::Ordinary),
-        "epsilon" => ('ε', SymbolRole::Ordinary),
-        "varepsilon" => ('ϵ', SymbolRole::Ordinary),
+        // TeX's plain command names the variant glyph, and the `var` form
+        // names the ordinary letter: `\epsilon` is the lunate epsilon and
+        // `\varepsilon` the letter epsilon, while `\phi` is the straight phi
+        // and `\varphi` the curly one.
+        "epsilon" => ('ϵ', SymbolRole::Ordinary),
+        "varepsilon" => ('ε', SymbolRole::Ordinary),
         "zeta" => ('ζ', SymbolRole::Ordinary),
         "eta" => ('η', SymbolRole::Ordinary),
         "theta" => ('θ', SymbolRole::Ordinary),
@@ -1014,8 +1018,8 @@ fn named_symbol(name: &str) -> Option<(char, SymbolRole)> {
         "varsigma" => ('ς', SymbolRole::Ordinary),
         "tau" => ('τ', SymbolRole::Ordinary),
         "upsilon" => ('υ', SymbolRole::Ordinary),
-        "phi" => ('φ', SymbolRole::Ordinary),
-        "varphi" => ('ϕ', SymbolRole::Ordinary),
+        "phi" => ('ϕ', SymbolRole::Ordinary),
+        "varphi" => ('φ', SymbolRole::Ordinary),
         "chi" => ('χ', SymbolRole::Ordinary),
         "psi" => ('ψ', SymbolRole::Ordinary),
         "omega" => ('ω', SymbolRole::Ordinary),
