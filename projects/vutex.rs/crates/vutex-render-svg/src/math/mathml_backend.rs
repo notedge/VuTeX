@@ -115,7 +115,14 @@ fn render_node(out: &mut String, node: &MathSemNode) {
                 AccentPosition::Above => "mover",
                 AccentPosition::Below => "munder",
             };
-            wrap(out, tag, |out| {
+            // A TeX accent is not a bare script: `mover` / `munder` default to
+            // `accent="false"`, which lays the second operand out as a
+            // full-sized script instead of compressing the accent onto its
+            // base.  KaTeX marks the same structure `<mover accent="true">`.
+            // Only this variant carries that meaning — [`MathSemNode::StackAbove`]
+            // and [`MathSemNode::StackBelow`] are arbitrary stacked expressions
+            // (`\overset` / `\underset`) and keep the default.
+            wrap_with_attrs(out, tag, r#" accent="true""#, |out| {
                 render_node(out, base);
                 push_element(out, "mo", accent);
             });
@@ -170,8 +177,15 @@ fn alignment_value(columnalign: &[Alignment]) -> String {
 
 /// Emit `<tag>…</tag>` around the content produced by `render`.
 fn wrap(out: &mut String, tag: &str, render: impl FnOnce(&mut String)) {
+    wrap_with_attrs(out, tag, "", render);
+}
+
+/// Emit `<tag attrs…>…</tag>`, where `attrs` is each attribute written with a
+/// leading space (e.g. `r#" accent="true""#`).
+fn wrap_with_attrs(out: &mut String, tag: &str, attrs: &str, render: impl FnOnce(&mut String)) {
     out.push('<');
     out.push_str(tag);
+    out.push_str(attrs);
     out.push('>');
     render(out);
     out.push_str("</");
@@ -227,5 +241,52 @@ mod tests {
         assert!(mathml.contains("<mo>+</mo>"));
         assert!(mathml.contains("<mtext>sin</mtext>"));
         assert!(mathml.contains(r#"<mspace width="1.0000em" />"#));
+    }
+
+    #[test]
+    fn accent_carries_the_accent_attribute() {
+        let semantics = MathSemantics {
+            nodes: vec![
+                MathSemNode::Accent {
+                    base: Box::new(MathSemNode::Identifier("x".into())),
+                    accent: "ˆ".into(),
+                    position: AccentPosition::Above,
+                },
+                MathSemNode::Accent {
+                    base: Box::new(MathSemNode::Identifier("y".into())),
+                    accent: "‾".into(),
+                    position: AccentPosition::Below,
+                },
+            ],
+        };
+        let mut backend = MathmlBackend::new();
+        backend.render_semantics(&semantics);
+        let mathml = backend.finish();
+        assert!(mathml.contains(r#"<mover accent="true"><mi>x</mi><mo>ˆ</mo></mover>"#), "an over-accent is marked: {mathml}");
+        assert!(mathml.contains(r#"<munder accent="true"><mi>y</mi><mo>‾</mo></munder>"#), "an under-accent is marked: {mathml}");
+    }
+
+    #[test]
+    fn stacked_expressions_are_not_accents() {
+        // `\overset` / `\underset` stack a full expression, not a compressed
+        // accent glyph, so they keep MathML's default `accent="false"`.
+        let semantics = MathSemantics {
+            nodes: vec![
+                MathSemNode::StackAbove {
+                    base: Box::new(MathSemNode::Identifier("b".into())),
+                    over: Box::new(MathSemNode::Identifier("a".into())),
+                },
+                MathSemNode::StackBelow {
+                    base: Box::new(MathSemNode::Identifier("d".into())),
+                    under: Box::new(MathSemNode::Identifier("c".into())),
+                },
+            ],
+        };
+        let mut backend = MathmlBackend::new();
+        backend.render_semantics(&semantics);
+        let mathml = backend.finish();
+        assert!(mathml.contains("<mover><mi>b</mi><mi>a</mi></mover>"), "overset stays bare: {mathml}");
+        assert!(mathml.contains("<munder><mi>d</mi><mi>c</mi></munder>"), "underset stays bare: {mathml}");
+        assert!(!mathml.contains("accent="), "no stack claims accent compression: {mathml}");
     }
 }

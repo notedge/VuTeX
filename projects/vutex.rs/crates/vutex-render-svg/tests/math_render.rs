@@ -100,8 +100,18 @@ fn mathml_environment_keeps_its_column_alignment() {
 #[test]
 fn mathml_accent_becomes_mover() {
     let mathml = render_mathml("\\hat{f}");
-    assert!(mathml.contains("<mover><mi>f</mi>"), "an accent is an over-script: {mathml}");
-    assert!(mathml.contains("</mi><mo>ˆ</mo></mover>"), "the accent glyph must stay attached: {mathml}");
+    // TeX's `\hat` compresses the accent onto its base, which MathML expresses
+    // through `accent="true"` on the mover — the same mark KaTeX emits.
+    assert!(mathml.contains(r#"<mover accent="true"><mi>f</mi><mo>ˆ</mo></mover>"#), "an accent is a marked mover: {mathml}");
+}
+
+#[test]
+fn mathml_overset_stays_an_unmarked_mover() {
+    // `\overset` stacks a full expression above its base, so it is not a
+    // compressed accent and must not claim `accent="true"`.
+    let mathml = render_mathml("\\overset{a}{b}");
+    assert!(mathml.contains("<mover><mi>b</mi><mi>a</mi></mover>"), "overset stays bare: {mathml}");
+    assert!(!mathml.contains("accent="), "only an authored accent is marked: {mathml}");
 }
 
 #[test]
