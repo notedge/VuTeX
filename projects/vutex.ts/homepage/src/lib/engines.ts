@@ -6,6 +6,17 @@
 
 export type EngineId = "wetex" | "katex" | "mathjax";
 export type Backend = "svg" | "mathml" | "html";
+export type FontId = "lm-math" | "xits-math";
+
+export interface FontMeta {
+    id: FontId;
+    label: string;
+}
+
+export const FONTS: FontMeta[] = [
+    { id: "lm-math", label: "Latin Modern" },
+    { id: "xits-math", label: "XITS" },
+];
 
 export interface BackendMeta {
     id: Backend;
@@ -71,8 +82,8 @@ let wetexLoad: any = null;
 let katexLoad: any = null;
 let mathjaxLoad: any = null;
 
-function displayOptions(display: boolean) {
-    return { displayMode: display ? "block" : "inline" };
+function displayOptions(display: boolean, font: FontId) {
+    return { displayMode: display ? "block" : "inline", fontFamily: font };
 }
 
 async function loadWetex(): Promise<any> {
@@ -139,6 +150,7 @@ export async function renderFormula(
     backend: Backend,
     tex: string,
     display = true,
+    font: FontId = "lm-math",
 ): Promise<EngineOutput> {
     const clock = () => (typeof performance === "undefined" ? Date.now() : performance.now());
     const started = clock();
@@ -160,10 +172,10 @@ export async function renderFormula(
             const wetex = await loadWetex();
             const render =
                 backend === "html"
-                    ? wetex.renderHtml(tex, displayOptions(display))
+                    ? wetex.renderHtml(tex, displayOptions(display, font))
                     : backend === "svg"
-                      ? wetex.renderSvg(tex, displayOptions(display))
-                      : wetex.renderMathml(tex, displayOptions(display));
+                      ? wetex.renderSvg(tex, displayOptions(display, font))
+                      : wetex.renderMathml(tex, displayOptions(display, font));
             const markup =
                 backend === "html"
                     ? render.html

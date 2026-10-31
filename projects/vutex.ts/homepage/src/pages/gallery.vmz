@@ -17,6 +17,20 @@
                         {{ backend.label }}
                     </button>
                 </div>
+                <div class="segmented" role="group" aria-label="公式模式">
+                    <button :data-active="display ? 'true' : 'false'" @click="setDisplay(true)">展示</button>
+                    <button :data-active="display ? 'false' : 'true'" @click="setDisplay(false)">行内</button>
+                </div>
+                <div class="segmented" role="group" aria-label="数学字体">
+                    <button
+                        v-for="font in fonts"
+                        :key="font.id"
+                        :data-active="font.id === activeFont ? 'true' : 'false'"
+                        @click="setFont(font.id)"
+                    >
+                        {{ font.label }}
+                    </button>
+                </div>
                 <p class="gallery__hint">{{ hint }}</p>
             </div>
         </section>
@@ -46,17 +60,20 @@
     </SiteShell>
 </template>
 <script client>
-import { BACKENDS, ENGINES, renderFormula } from "../lib/engines.ts";
+import { BACKENDS, ENGINES, FONTS, renderFormula } from "../lib/engines.ts";
 import { SPECIMENS } from "../lib/formulas.ts";
 
 export default class Gallery {
     backends = BACKENDS.slice();
     engines = ENGINES.slice();
+    fonts = FONTS.slice();
     specimens = SPECIMENS.slice();
     active = "html";
+    display = true;
+    activeFont = "lm-math";
     outputs = {};
 
-    hint = "WeTeX 支持 HTML、SVG 与 MathML 三种后端。参照组的范围更窄：KaTeX 只有 HTML 与 MathML，MathJax 只有 SVG 与 MathML。";
+    hint = "字体切换只作用于 WeTeX（KaTeX 与 MathJax 使用自带字体）。WeTeX 支持 HTML、SVG 与 MathML 三种后端；KaTeX 只有 HTML 与 MathML，MathJax 只有 SVG 与 MathML。";
 
     onMount() {
         this.run();
@@ -65,6 +82,18 @@ export default class Gallery {
     pick(backend) {
         if (this.active === backend) return;
         this.active = backend;
+        this.run();
+    }
+
+    setDisplay(value) {
+        if (this.display === value) return;
+        this.display = value;
+        this.run();
+    }
+
+    setFont(font) {
+        if (this.activeFont === font) return;
+        this.activeFont = font;
         this.run();
     }
 
@@ -94,11 +123,13 @@ export default class Gallery {
 
     async run() {
         const backend = this.active;
+        const display = this.display;
+        const font = this.activeFont;
         const spec = this.specimens;
         const jobs = [];
         for (const item of spec) {
             for (const engine of this.engines) {
-                jobs.push(renderFormula(engine.id, backend, item.tex, true));
+                jobs.push(renderFormula(engine.id, backend, item.tex, display, font));
             }
         }
         const results = await Promise.all(jobs);
