@@ -51,38 +51,25 @@ fn render_formula_returns_both_payloads() {
 }
 
 #[test]
-fn strict_outline_covers_ascii_relations() {
+fn path_only_svg_covers_ascii_relations() {
     let value = parse(&render_svg_wasm(
         "\\begin{cases} a & x>0 \\\\ b & x\\le 0 \\end{cases}",
-        Some("{\"displayMode\":\"block\",\"outline\":true}".to_string()),
+        Some("{\"displayMode\":\"block\"}".to_string()),
     ));
     let svg = value["svg"].as_str().unwrap_or_default();
-    assert!(svg.contains("<path"), "strict outline emitted no paths: {value}");
-    assert!(!svg.contains("<text"), "strict outline fell back to a host font: {svg}");
-    assert_eq!(value["diagnostics"].as_array().map(Vec::len), Some(0), "strict outline reported diagnostics: {value}");
+    assert!(svg.contains("<path"), "the outline path emitted no paths: {value}");
+    assert!(!svg.contains("<text"), "the outline path fell back to a host font: {svg}");
+    assert_eq!(value["diagnostics"].as_array().map(Vec::len), Some(0), "the outline path reported diagnostics: {value}");
 }
 
 #[test]
-fn default_render_is_strict_path_only() {
-    // The public render path must not depend on a host font. Omitting `outline`
-    // therefore means strict, and a glyph Latin Modern Math cannot outline fails
-    // the render instead of being painted as `<text>`.
+fn a_glyph_without_an_outline_is_skipped_with_a_warning() {
+    // CJK is absent from the embedded math faces. The single outline path skips
+    // the glyph and names it in an `outline_missing` warning instead of painting
+    // a host-font `<text>` run or failing the whole render.
     let value = parse(&render_svg_wasm("\\text{字}", None));
-    assert_eq!(value["svg"].as_str(), Some(""), "the default render must not emit a host-font run: {value}");
-
-    let diagnostics = value["diagnostics"].as_array().expect("diagnostics");
-    assert_eq!(diagnostics[0]["code"].as_str(), Some("WETEX_MATH_ERROR"));
-    assert_eq!(diagnostics[0]["severity"].as_str(), Some("error"));
-}
-
-#[test]
-fn missing_outline_warns_alongside_the_host_font_fallback() {
-    // CJK is absent from Latin Modern Math, so the opt-in non-strict backend
-    // paints a `<text>` run whose metrics came from the synthetic fallback. That
-    // host-font dependency must be reported instead of passing silently.
-    let value = parse(&render_svg_wasm("\\text{字}", Some("{\"outline\":false}".to_string())));
     let svg = value["svg"].as_str().unwrap_or_default();
-    assert!(svg.contains("<text"), "the non-strict backend must paint the fallback run: {value}");
+    assert!(!svg.contains("<text"), "the public render must never depend on a host font: {value}");
 
     let diagnostics = value["diagnostics"].as_array().expect("diagnostics");
     let warnings: Vec<&Value> = diagnostics.iter().filter(|item| item["severity"] == "warning").collect();
@@ -92,17 +79,6 @@ fn missing_outline_warns_alongside_the_host_font_fallback() {
         warnings[0]["message"].as_str().unwrap_or_default().contains('字'),
         "the warning must name the glyph it skipped: {value}"
     );
-}
-
-#[test]
-fn strict_outline_rejects_a_glyph_without_an_outline() {
-    let value = parse(&render_svg_wasm("\\text{字}", Some("{\"outline\":true}".to_string())));
-    assert_eq!(value["svg"].as_str(), Some(""), "strict outline must not emit a host-font run: {value}");
-
-    let diagnostics = value["diagnostics"].as_array().expect("diagnostics");
-    assert_eq!(diagnostics.len(), 1, "unexpected diagnostics: {value}");
-    assert_eq!(diagnostics[0]["code"].as_str(), Some("WETEX_MATH_ERROR"));
-    assert_eq!(diagnostics[0]["severity"].as_str(), Some("error"));
 }
 
 #[test]
@@ -152,18 +128,15 @@ fn limits_misuse_reaches_the_host_diagnostics() {
 }
 
 #[test]
-fn render_svg_with_outline_option_successfully_returns_svg() {
-    // With outline=true, the deterministic SvgBackend is wired in.
-    // Block A (real glyph outline paths) has landed, so ALL formula glyphs
-    // should now render as <path> nodes without falling back to <text>.
-    let value = parse(&render_svg_wasm("x + y", Some("{\"outline\": true}".to_string())));
+fn render_svg_is_path_only() {
+    let value = parse(&render_svg_wasm("x + y", None));
     let diagnostics = value["diagnostics"].as_array().expect("diagnostics array");
     let error_count = diagnostics.iter().filter(|d| d["severity"].as_str() == Some("error")).count();
-    assert_eq!(error_count, 0, "unexpected error diagnostics with outline=true: {diagnostics:?}");
+    assert_eq!(error_count, 0, "unexpected error diagnostics: {diagnostics:?}");
     let svg = value["svg"].as_str().expect("svg");
     assert!(svg.starts_with("<svg"), "unexpected svg: {svg}");
-    // Deterministic path-only render must NOT emit any <text> nodes.
-    assert!(!svg.contains("<text"), "deterministic SVG must be path-only, got text in: {svg}");
+    assert!(svg.contains("<path"), "every covered glyph must paint an outline: {svg}");
+    assert!(!svg.contains("<text"), "the SVG must be path-only, got text in: {svg}");
 }
 
 /// The JSON payload carries the semantic tree the layout consumed, and the
@@ -197,7 +170,7 @@ fn semantics_are_absent_when_the_formula_fails() {
     let value = parse(&render_mathml_wasm("   ", None));
     assert!(value["semantics"].is_null(), "empty source: {value}");
 
-    let value = parse(&render_svg_wasm("\\text{字}", Some("{\"outline\":true}".to_string())));
+    let value = parse(&render_svg_wasm("\\frac{a}{b}", Some("{\"fontFamily\":\"stix-two-math\"}".to_string())));
     assert!(value["semantics"].is_null(), "failed render: {value}");
     assert!(value["diagnostics"].as_array().map(|items| !items.is_empty()).unwrap_or(false), "{value}");
 }

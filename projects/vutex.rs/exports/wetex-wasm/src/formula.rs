@@ -41,11 +41,9 @@ pub fn measure(source: &str, options: &RenderOptions) -> FormulaRender {
 
 /// Render a formula to SVG.
 ///
-/// Strict path-only output is the default: a glyph the math font ships no
-/// outline for fails the render instead of being painted as a host-font
-/// `<text>` run. Callers opt into that fallback with `outline: false`, which
-/// also reports a `vutex.layout.math.outline_missing` warning so a host-font
-/// dependency is never silent.
+/// The backend paints outlines only: a glyph the math font ships no outline
+/// for is skipped and named in a `vutex.layout.math.outline_missing` warning,
+/// never pulled in through a host-font `<text>` run.
 pub fn render_svg(source: &str, options: &RenderOptions) -> FormulaRender {
     let mut diagnostics = collect_diagnostics(source);
     if let Some(diagnostic) = font_family_diagnostic(options) {
@@ -58,22 +56,15 @@ pub fn render_svg(source: &str, options: &RenderOptions) -> FormulaRender {
     match layout_formula(source, options) {
         Ok((result, _root, math_diagnostics)) => {
             diagnostics.extend(math_diagnostics.into_iter().map(FormulaDiagnostic::from));
-            match render_svg_markup(&result, options.outline.unwrap_or(true)) {
-                Ok((svg, outline_diagnostics)) => {
-                    diagnostics.extend(outline_diagnostics.into_iter().map(FormulaDiagnostic::from));
-                    FormulaRender {
-                        metrics: result_metrics(&result.metrics),
-                        svg,
-                        html: String::new(),
-                        mathml: None,
-                        semantics: Some(result.semantics),
-                        diagnostics,
-                    }
-                }
-                Err(err) => {
-                    diagnostics.push(math_error_to_diagnostic(&err));
-                    failed(diagnostics)
-                }
+            let svg = render_formula_result(&result);
+            diagnostics.extend(svg.diagnostics.into_iter().map(FormulaDiagnostic::from));
+            FormulaRender {
+                metrics: result_metrics(&result.metrics),
+                svg: svg.markup,
+                html: String::new(),
+                mathml: None,
+                semantics: Some(result.semantics),
+                diagnostics,
             }
         }
         Err(err) => failed(vec![math_error_to_diagnostic(&err)]),
@@ -156,26 +147,18 @@ pub fn render(source: &str, options: &RenderOptions) -> FormulaRender {
     match layout_formula(source, options) {
         Ok((result, _root, math_diagnostics)) => {
             diagnostics.extend(math_diagnostics.into_iter().map(FormulaDiagnostic::from));
-            match render_svg_markup(&result, options.outline.unwrap_or(true)) {
-                Ok((svg, outline_diagnostics)) => {
-                    diagnostics.extend(outline_diagnostics.into_iter().map(FormulaDiagnostic::from));
-                    let family =
-                        embedded_family(options.font_family).expect("entries reject unsupported families before layout");
-                    let html = HtmlBackend::new(family).render(&result);
-                    let mathml = render_mathml_result(&result);
-                    FormulaRender {
-                        metrics: result_metrics(&result.metrics),
-                        svg,
-                        html,
-                        mathml: Some(mathml),
-                        semantics: Some(result.semantics),
-                        diagnostics,
-                    }
-                }
-                Err(err) => {
-                    diagnostics.push(math_error_to_diagnostic(&err));
-                    failed(diagnostics)
-                }
+            let svg = render_formula_result(&result);
+            diagnostics.extend(svg.diagnostics.into_iter().map(FormulaDiagnostic::from));
+            let family = embedded_family(options.font_family).expect("entries reject unsupported families before layout");
+            let html = HtmlBackend::new(family).render(&result);
+            let mathml = render_mathml_result(&result);
+            FormulaRender {
+                metrics: result_metrics(&result.metrics),
+                svg: svg.markup,
+                html,
+                mathml: Some(mathml),
+                semantics: Some(result.semantics),
+                diagnostics,
             }
         }
         Err(err) => failed(vec![math_error_to_diagnostic(&err)]),
@@ -224,17 +207,6 @@ fn font_family_diagnostic(options: &RenderOptions) -> Option<FormulaDiagnostic> 
         start: None,
         end: None,
     })
-}
-
-/// Render the SVG markup of one laid-out formula.
-///
-/// Returns the markup plus the warnings raised while walking the paint tree,
-/// such as a glyph that has no outline and fell back to a host font.
-fn render_svg_markup(result: &FormulaLayoutResult, outline: bool) -> Result<(String, Vec<Diagnostic>), MathError> {
-    match render_formula_result(result, !outline) {
-        Ok(svg) => Ok((svg.markup, svg.diagnostics)),
-        Err(message) => Err(MathError::backend_error(message)),
-    }
 }
 
 /// Formula metrics taken from the single immutable layout result.

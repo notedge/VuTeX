@@ -38,11 +38,6 @@ pub enum FontFamily {
 pub struct RenderOptions {
     /// Inline or block layout mode.
     pub display_mode: DisplayMode,
-    /// Strict path-only SVG output. Defaults to `true` when omitted, so the
-    /// public render path never falls back to a host-font `<text>` run.
-    /// Passing `false` opts into that host-font fallback explicitly.
-    #[serde(default)]
-    pub outline: Option<bool>,
     /// Explicit base font size in CSS pixels. When omitted the renderer uses
     /// `default_base_size(display_mode)` — 14px for inline, 16px for display.
     #[serde(default)]
@@ -57,7 +52,7 @@ pub struct RenderOptions {
 
 impl Default for RenderOptions {
     fn default() -> Self {
-        Self { display_mode: DisplayMode::Inline, outline: None, font_size: None, font_family: None }
+        Self { display_mode: DisplayMode::Inline, font_size: None, font_family: None }
     }
 }
 
