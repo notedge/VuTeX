@@ -48,7 +48,7 @@ function nativeTest(name: string, run: (bindings: VuTeXBindings) => void | Promi
     });
 }
 
-test("loadVuTeXNode exposes the seven documented binding functions", () => {
+test("loadVuTeXNode exposes the seven documented binding functions", { skip: native ? false : "native bindings unavailable" }, () => {
     const bindings = loadVuTeXNode();
     for (const name of BINDING_FUNCTIONS) {
         assert.equal(typeof bindings[name], "function");
