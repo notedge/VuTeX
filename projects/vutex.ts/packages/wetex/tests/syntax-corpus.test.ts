@@ -37,17 +37,15 @@ const corpus = [
     "\\left(\\frac{a}{b}\\right) \\cdot \\binom{n}{k}",
 ];
 
-test("the LaTeX corpus renders through every backend without error diagnostics", (t) => {
+test("the LaTeX corpus renders through every backend without error diagnostics", () => {
     for (const source of corpus) {
-        t.test(source, () => {
-            const result = wetex.renderFormula(source);
-            const errors = result.diagnostics.filter((d) => d.severity === "error");
-            assert.deepEqual(errors, []);
-            assert.ok(result.metrics.width > 0);
-            assert.match(result.svg, /<path/);
-            assert.ok(!result.svg.includes("<text"));
-            assert.ok((result.mathml ?? "").startsWith("<math xmlns"));
-        });
+        const result = wetex.renderFormula(source);
+        const errors = result.diagnostics.filter((d) => d.severity === "error");
+        assert.deepEqual(errors, [], source);
+        assert.ok(result.metrics.width > 0, source);
+        assert.match(result.svg, /<path/, source);
+        assert.ok(!result.svg.includes("<text"), source);
+        assert.ok((result.mathml ?? "").startsWith("<math xmlns"), source);
     }
 });
 
