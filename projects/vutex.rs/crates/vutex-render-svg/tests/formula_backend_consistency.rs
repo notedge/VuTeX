@@ -12,12 +12,54 @@ use vutex_types::math::FormulaLayoutResult;
 
 /// Formula, the semantic node kind the layout consumed, and the MathML element
 /// that kind must produce.
+///
+/// Covers every family of the shared cross-backend corpus: atoms, fractions,
+/// radicals, scripts, large operators, delimiters, environments, accents and
+/// stacked expressions, spacing, math faces, relations, dots, text and nested
+/// combinations.  A case only joins this table when the SVG backend renders it
+/// with zero diagnostics — constructs that still need synthesized glyph metrics
+/// stay out until they are clean.
 const CASES: &[(&str, &str, &str)] = &[
+    // ——— atoms and relations ——— //
     ("\\frac{a}{b}", "fraction", "<mfrac"),
+    ("x + y", "identifier", "<mi"),
+    ("\\alpha + \\beta", "identifier", "<mi"),
+    ("x \\le y", "identifier", "<mo"),
+    ("p \\Rightarrow q", "identifier", "<mo"),
+    // ——— fractions ——— //
+    ("\\binom{n}{k}", "delimited", "<mfrac"),
+    ("\\frac{\\sum_{i=1}^{n} i}{\\sqrt{n}}", "fraction", "<msubsup"),
+    // ——— radicals ——— //
     ("\\sqrt[3]{x}", "radical", "<mroot"),
+    ("\\sqrt{x}", "radical", "<msqrt"),
+    ("\\sqrt{\\frac{a}{b}}", "radical", "<msqrt"),
+    // ——— scripts and large operators ——— //
     ("x_a^b", "sub-sup", "<msubsup"),
-    ("\\hat{f}", "accent", "<mover"),
+    ("x^2", "sup", "<msup"),
+    ("x_2", "sub", "<msub"),
+    ("\\sum_{i=1}^{n}", "sub-sup", "<msubsup"),
+    ("\\int_0^\\infty", "sub-sup", "<msubsup"),
+    ("\\oint_C f\\,dz", "sub", "<msub"),
+    // ——— delimiters and environments ——— //
+    ("\\left\\{ \\frac{a}{b} \\right\\}", "delimited", "<mfrac"),
+    ("\\left[ \\begin{matrix} a & b \\\\ c & d \\end{matrix} \\right]", "delimited", "<mtable"),
+    ("\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}", "delimited", "<mtable"),
+    ("\\begin{matrix} a & b \\\\ c & d \\end{matrix}", "table", "<mtable"),
+    ("\\begin{cases} x & x > 0 \\\\ 0 & \\text{otherwise} \\end{cases}", "delimited", "<mtable"),
     ("\\begin{aligned}a&=b\\\\c&=d\\end{aligned}", "table", "<mtable"),
+    // ——— accents and stacked expressions ——— //
+    ("\\hat{f}", "accent", "<mover"),
+    ("\\vec{v}", "accent", "<mover"),
+    ("\\widehat{CD}", "accent", "<mover"),
+    ("\\overset{!}{=}", "stack-above", "<mover"),
+    ("\\underset{\\alpha}{\\rightarrow}", "stack-below", "<munder"),
+    // ——— spacing, faces, dots and text ——— //
+    ("a\\,b", "identifier", "<mspace"),
+    ("\\mathbb{R}", "text", "<mtext"),
+    ("\\mathbf{Ax}", "text", "<mtext"),
+    ("\\mathrm{d}x", "identifier", "<mi"),
+    ("x, \\ldots, y", "identifier", "<mo"),
+    ("\\text{hello world}", "text", "<mtext"),
 ];
 
 fn layout(source: &str) -> FormulaLayoutResult {
