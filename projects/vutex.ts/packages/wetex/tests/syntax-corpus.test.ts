@@ -14,46 +14,120 @@ const wasmBytes = new Uint8Array(readFileSync(wasmPath));
 
 const wetex: WeTeXBindings = await loadWeTeX({ bytes: wasmBytes });
 
-const corpus = [
-    "x^2",
-    "\\frac{a}{b}",
-    "\\sqrt{x}",
-    "\\sqrt[3]{x+y}",
-    "\\sum_{i=1}^{n} i",
-    "\\sum\\limits_{i=1}^{n} i^2",
-    "\\int_0^1 x\\,dx",
-    "\\begin{pmatrix}a&b\\\\c&d\\end{pmatrix}",
-    "\\begin{bmatrix}1&2\\\\3&4\\end{bmatrix}",
-    "\\begin{vmatrix}a&b\\\\c&d\\end{vmatrix}",
-    "\\begin{Vmatrix}a&b\\\\c&d\\end{Vmatrix}",
-    "\\begin{cases}x&x>0\\\\-x&x\\le 0\\end{cases}",
-    "\\begin{aligned}a&=b\\\\c&=d\\end{aligned}",
-    "\\begin{alignedat}{2}x&=y&x&=z\\end{alignedat}",
-    "\\begin{gathered}a+b\\\\c+d\\end{gathered}",
-    "\\text{hello world}",
-    "\\alpha\\beta\\gamma",
-    "\\lim_{x\\to 0}\\frac{\\sin x}{x}",
-    "\\overline{AB} \\ne \\widehat{CD}",
-    "\\left(\\frac{a}{b}\\right) \\cdot \\binom{n}{k}",
+type CorpusEntry = {
+    /** LaTeX source of one syntax-family sample. */
+    source: string;
+    /**
+     * MathML substrings the engine really emits for this sample, confirmed by
+     * rendering it. Structural shape only — nothing font- or version-dependent.
+     */
+    mathml?: string[];
+};
+
+const corpus: CorpusEntry[] = [
+    // scripts
+    { source: "x^2", mathml: ["<msup"] },
+    { source: "x^{a_b}", mathml: ["<msup", "<msub"] },
+    { source: "10^{10^{10}}", mathml: ["<msup"] },
+    { source: "e^{-x^2}", mathml: ["<msup"] },
+    // the prime serializes as a trailing `<mo>`, not as `<msup>`
+    { source: "x'", mathml: ["<mo"] },
+    { source: "f''(x)", mathml: ["<mo"] },
+    // fractions
+    { source: "\\frac{a}{b}", mathml: ["<mfrac"] },
+    { source: "\\frac{\\frac{a}{b}}{c}", mathml: ["<mfrac"] },
+    { source: "\\dfrac{a}{b}", mathml: ["<mfrac"] },
+    { source: "\\tfrac{a}{b}", mathml: ["<mfrac"] },
+    // radicals
+    { source: "\\sqrt{x}", mathml: ["<msqrt"] },
+    { source: "\\sqrt[3]{x+y}", mathml: ["<mroot", "<mn"] },
+    { source: "\\sqrt{\\frac{a}{b}}", mathml: ["<msqrt", "<mfrac"] },
+    { source: "\\sqrt{\\sqrt{x}}", mathml: ["<msqrt"] },
+    // large operators
+    { source: "\\sum_{i=1}^{n} i", mathml: ["<msubsup"] },
+    // `\sum\limits` should reach `<munderover>`; the semantic refactor is open,
+    // so only the base invariants are asserted here.
+    { source: "\\sum\\limits_{i=1}^{n} i^2" },
+    { source: "\\int_0^1 x\\,dx", mathml: ["<msubsup", "<mspace"] },
+    { source: "\\prod_{i=1}^{n} i", mathml: ["<msubsup"] },
+    { source: "\\oint_C f\\,dz", mathml: ["<msub", "<mspace"] },
+    { source: "\\lim_{x\\to 0}\\frac{\\sin x}{x}", mathml: ["<msub", "<mfrac"] },
+    // accents
+    { source: "\\vec{v}", mathml: ['<mover accent="true"'] },
+    { source: "\\tilde{a}", mathml: ['<mover accent="true"'] },
+    { source: "\\dot{x}", mathml: ['<mover accent="true"'] },
+    { source: "\\ddot{y}", mathml: ['<mover accent="true"'] },
+    { source: "\\overline{AB} \\ne \\widehat{CD}", mathml: ["<mover"] },
+    // over/under
+    { source: "\\overset{!}{=}", mathml: ["<mover"] },
+    { source: "\\underset{\\alpha}{\\rightarrow}", mathml: ["<munder"] },
+    // delimiters
+    { source: "\\left(\\frac{a}{b}\\right) \\cdot \\binom{n}{k}", mathml: ["<mo", "<mfrac"] },
+    { source: "\\left\\lVert x \\right\\rVert", mathml: ["<mo"] },
+    { source: "\\left\\{ \\frac{a}{b} \\right\\}", mathml: ["<mo", "<mfrac"] },
+    { source: "\\left\\langle v \\right\\rangle", mathml: ["<mo"] },
+    { source: "\\left[ \\begin{matrix} a & b \\\\ c & d \\end{matrix} \\right]", mathml: ["<mo", "<mtable"] },
+    { source: "\\left. \\frac{dy}{dx} \\right|_{0}", mathml: ["<msub", "<mfrac", "<mo"] },
+    // environments
+    { source: "\\begin{pmatrix}a&b\\\\c&d\\end{pmatrix}", mathml: ["<mtable", "<mtr", "<mtd", "<mo"] },
+    { source: "\\begin{bmatrix}1&2\\\\3&4\\end{bmatrix}", mathml: ["<mtable", "<mtr", "<mtd"] },
+    { source: "\\begin{vmatrix}a&b\\\\c&d\\end{vmatrix}", mathml: ["<mtable", "<mtr", "<mtd"] },
+    { source: "\\begin{Vmatrix}a&b\\\\c&d\\end{Vmatrix}", mathml: ["<mtable", "<mtr", "<mtd"] },
+    { source: "\\begin{cases}x&x>0\\\\-x&x\\le 0\\end{cases}", mathml: ["<mtable", "<mtr", "<mtd"] },
+    { source: "\\begin{aligned}a&=b\\\\c&=d\\end{aligned}", mathml: ["<mtable", "<mtr", "<mtd"] },
+    { source: "\\begin{alignedat}{2}x&=y&x&=z\\end{alignedat}", mathml: ["<mtable", "<mtr", "<mtd"] },
+    { source: "\\begin{gathered}a+b\\\\c+d\\end{gathered}", mathml: ["<mtable", "<mtr", "<mtd"] },
+    { source: "\\begin{smallmatrix} a & b \\\\ c & d \\end{smallmatrix}", mathml: ["<mtable", "<mtr", "<mtd"] },
+    { source: "\\begin{split} a &= b \\\\ &= c \\end{split}", mathml: ["<mtable", "<mtr", "<mtd"] },
+    // spacing
+    { source: "a\\,b", mathml: ["<mspace"] },
+    { source: "a\\;b", mathml: ["<mspace"] },
+    { source: "a\\quad b", mathml: ["<mspace"] },
+    { source: "a\\qquad b", mathml: ["<mspace"] },
+    // fonts — the engine really emits `<mtext>` without any `mathvariant`
+    // attribute for the style commands; `<mi>` is asserted as the real shape.
+    { source: "\\mathbf{Ax}", mathml: ["<mtext"] },
+    { source: "\\mathbb{R}", mathml: ["<mtext"] },
+    { source: "\\mathcal{L}", mathml: ["<mtext"] },
+    { source: "\\mathsf{s}", mathml: ["<mtext"] },
+    { source: "\\mathit{x}", mathml: ["<mtext"] },
+    { source: "\\mathrm{d}x", mathml: ["<mi"] },
+    // relations and symbols
+    { source: "\\alpha\\beta\\gamma", mathml: ["<mi"] },
+    { source: "x \\le y \\ge z", mathml: ["<mo"] },
+    { source: "p \\Rightarrow q", mathml: ["<mo"] },
+    { source: "A \\leftarrow B", mathml: ["<mo"] },
+    { source: "a \\cdot b \\times c \\div d", mathml: ["<mo"] },
+    // dots
+    { source: "a_1 + \\cdots + a_n", mathml: ["<msub", "<mo"] },
+    // text
+    { source: "\\text{hello world}", mathml: ["<mtext"] },
+    { source: "x + \\text{ text } + y", mathml: ["<mtext"] },
+    // nested structures
+    { source: "\\frac{\\sum_{i=1}^{n} i}{\\sqrt{n}}", mathml: ["<mfrac", "<msubsup", "<msqrt"] },
 ];
 
 test("the LaTeX corpus renders through every backend without error diagnostics", () => {
-    for (const source of corpus) {
-        const result = wetex.renderFormula(source);
+    for (const entry of corpus) {
+        const result = wetex.renderFormula(entry.source);
         const errors = result.diagnostics.filter((d) => d.severity === "error");
-        assert.deepEqual(errors, [], source);
-        assert.ok(result.metrics.width > 0, source);
-        assert.match(result.svg, /<path/, source);
-        assert.ok(!result.svg.includes("<text"), source);
-        assert.ok((result.mathml ?? "").startsWith("<math xmlns"), source);
+        assert.deepEqual(errors, [], entry.source);
+        assert.ok(result.metrics.width > 0, entry.source);
+        assert.match(result.svg, /<path/, entry.source);
+        assert.ok(!result.svg.includes("<text"), entry.source);
+        const mathml = result.mathml ?? "";
+        assert.ok(mathml.startsWith("<math xmlns"), entry.source);
+        for (const element of entry.mathml ?? []) {
+            assert.ok(mathml.includes(element), `${entry.source}: mathml is missing ${element}: ${mathml}`);
+        }
     }
 });
 
 test("measureFormula accepts the same corpus with positive widths", () => {
-    for (const source of corpus) {
-        const result = wetex.measureFormula(source);
-        assert.equal(result.diagnostics.filter((d) => d.severity === "error").length, 0, source);
-        assert.ok(result.metrics.width > 0, source);
+    for (const entry of corpus) {
+        const result = wetex.measureFormula(entry.source);
+        assert.equal(result.diagnostics.filter((d) => d.severity === "error").length, 0, entry.source);
+        assert.ok(result.metrics.width > 0, entry.source);
     }
 });
 
