@@ -1181,8 +1181,10 @@ fn bmatrix_supported() {
 fn hat_accent_centres_on_base_top_accent_attachment() {
     let (_, tree, _) =
         layout_formula_with_result("\\hat{f}", false, default_base_size(false)).expect("\\hat{f} should lay out");
-    let LayoutNode::VBox(vbox) = &tree
-    else {
+    // A laid-out formula is always the packed list box; a single accent noad
+    // fills it alone, so the accent stack is its only child.
+    let LayoutNode::HBox(root_box) = &tree else { panic!("a formula packs into an hbox: {tree:?}") };
+    let [LayoutNode::VBox(vbox)] = root_box.children.as_slice() else {
         panic!("an accent stacks an accent box over a base box: {tree:?}")
     };
     assert_eq!(vbox.children.len(), 2, "accent stack should hold exactly the accent and the base");
@@ -1274,8 +1276,8 @@ fn rules(node: &LayoutNode) -> Vec<(f64, f64, f64, f64)> {
 fn hat_accent_paints_font_ink_on_the_base_attachment() {
     let (_, tree, _) =
         layout_formula_with_result("\\hat{x}", false, default_base_size(false)).expect("\\hat{x} should lay out");
-    let LayoutNode::VBox(vbox) = &tree
-    else {
+    let LayoutNode::HBox(root_box) = &tree else { panic!("a formula packs into an hbox: {tree:?}") };
+    let [LayoutNode::VBox(vbox)] = root_box.children.as_slice() else {
         panic!("an accent stacks an accent box over a base box: {tree:?}")
     };
     assert_eq!(vbox.children.len(), 2, "accent stack should hold exactly the accent and the base");

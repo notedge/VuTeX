@@ -19,7 +19,7 @@ fn make_test_engine() -> LayoutEngine {
 fn simple_formula_produces_nonzero_metrics() {
     let engine = make_test_engine();
     let nodes = vec![sym('x', SymbolRole::Ordinary), sym('+', SymbolRole::Binary), sym('y', SymbolRole::Ordinary)];
-    let result = engine.layout_formula_result(&nodes, MathStyle::Display).unwrap();
+    let (result, _tree) = engine.layout_formula_result(&nodes, MathStyle::Display).unwrap();
 
     // 基本 sanity：metrics 必须全是正数（x + glue + + + glue + y 的宽度肯定大于零）。
     assert!(result.metrics.width > vutex_types::math::Fixed::ZERO, "width must be > 0");
@@ -35,7 +35,7 @@ fn simple_formula_produces_nonzero_metrics() {
 fn paint_tree_is_group_rooted() {
     let engine = make_test_engine();
     let nodes = vec![sym('a', SymbolRole::Ordinary), sym('+', SymbolRole::Binary), sym('b', SymbolRole::Ordinary)];
-    let result = engine.layout_formula_result(&nodes, MathStyle::Text).unwrap();
+    let (result, _tree) = engine.layout_formula_result(&nodes, MathStyle::Text).unwrap();
 
     // paint 树根节点是 Group(HBox children lowered)。
     match &result.paint {
@@ -50,7 +50,7 @@ fn paint_tree_is_group_rooted() {
 fn diagnostics_and_fonts_are_default_empty() {
     let engine = make_test_engine();
     let nodes = vec![sym('x', SymbolRole::Ordinary)];
-    let result = engine.layout_formula_result(&nodes, MathStyle::Script).unwrap();
+    let (result, _tree) = engine.layout_formula_result(&nodes, MathStyle::Script).unwrap();
     assert!(result.diagnostics.is_empty(), "diagnostics 占位应为空");
     assert!(result.fonts.faces.is_empty(), "fonts 占位应为空");
 }

@@ -54,7 +54,6 @@ pub fn layout_formula_with_result_for(
     let (tree, mut diagnostics) = parse_math_with_diagnostics(source)?;
     let font_system = builtin_font_metrics_for(family);
     let engine = LayoutEngine::with_facts(font_system, MathFontFacts::for_family(family)).with_base_size(base_size);
-    let root = engine.layout_node(&tree.root, style)?;
     let nodes: &[SemanticNode] = match &tree.root {
         // The parser always roots a formula in a sequence, and a sequence is a
         // style scope that projects to its children, so the layout consumes the
@@ -62,7 +61,10 @@ pub fn layout_formula_with_result_for(
         SemanticNode::Sequence(items) => items.as_slice(),
         other => std::slice::from_ref(other),
     };
-    let result = engine.layout_formula_result(nodes, style)?;
+    // One layout pass produces both the immutable result and the box tree;
+    // laying the same semantic tree twice could let the two halves of a
+    // formula drift apart.
+    let (result, root) = engine.layout_formula_result(nodes, style)?;
     diagnostics.extend(result.diagnostics.iter().cloned());
     Ok((result, root, diagnostics))
 }

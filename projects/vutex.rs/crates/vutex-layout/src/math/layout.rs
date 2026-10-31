@@ -736,7 +736,14 @@ impl LayoutEngine {
     /// 保持现有 `layout_noads → LayoutNode` 路径完全不变；本方法只是在
     /// 计算完 LayoutNode 树之后再跑一遍 lower + extract，把它降成
     /// `PaintNode` 树 + `FormulaMetrics`。
-    pub fn layout_formula_result(&self, nodes: &[SemanticNode], style: MathStyle) -> MathResult<FormulaLayoutResult> {
+    ///
+    /// 返回的元组同时携带布局内部的 [`LayoutNode`] 盒树，调用方不再需要
+    /// 对同一棵语义树重复跑一次 `layout_node`。
+    pub fn layout_formula_result(
+        &self,
+        nodes: &[SemanticNode],
+        style: MathStyle,
+    ) -> MathResult<(FormulaLayoutResult, LayoutNode)> {
         let layout_node = self.layout_math_list(nodes, style)?;
         // width / height / depth take the packed root box (the same
         // advance/shift semantics the render cursor walks), axis is the font's
@@ -759,13 +766,16 @@ impl LayoutEngine {
         let mut glyph_paths = Vec::new();
         collect_glyph_paths(&layout_node, &mut glyph_paths);
         let fonts = FontMetricsSnapshot { faces: Vec::new(), glyph_paths };
-        Ok(FormulaLayoutResult {
-            metrics,
-            paint,
-            diagnostics: self.script_scale_diagnostics(),
-            fonts,
-            semantics: vutex_types::math::MathSemantics::from_nodes(nodes),
-        })
+        Ok((
+            FormulaLayoutResult {
+                metrics,
+                paint,
+                diagnostics: self.script_scale_diagnostics(),
+                fonts,
+                semantics: vutex_types::math::MathSemantics::from_nodes(nodes),
+            },
+            layout_node,
+        ))
     }
 
     /// Lay out a flat, normalized [`MathList`].
