@@ -29,18 +29,19 @@ pub struct FormulaSvg {
 /// is the union of that box and the ink actually painted, padded slightly so
 /// scaled outlines are never clipped.
 ///
-/// When `text_fallback` is false (the deterministic default), a glyph the face
-/// cannot outline fails the render with an error instead of pulling in a host
-/// font through `<text>`; when true, such a glyph paints a host-font text run
-/// and reports a `vutex.layout.math.outline_missing` warning.
-pub fn render_formula_result(result: &FormulaLayoutResult, text_fallback: bool) -> Result<FormulaSvg, String> {
+/// The backend paints outlines only, matching the document path: a glyph the
+/// face ships no outline for is skipped and named in a returned
+/// `vutex.layout.math.outline_missing` warning, never pulled in through a
+/// host-font `<text>` run and never a hard render failure.  Callers that gate
+/// on completeness assert the returned diagnostics are empty.
+pub fn render_formula_result(result: &FormulaLayoutResult) -> FormulaSvg {
     let metrics = &result.metrics;
-    let mut walk = SvgWalk { buffer: String::new(), ink: None, diagnostics: Vec::new(), text_fallback };
-    walk.walk(&result.paint, 0.0, 0.0)?;
+    let mut walk = SvgWalk { buffer: String::new(), ink: None, diagnostics: Vec::new() };
+    walk.walk(&result.paint, 0.0, 0.0);
     let width = metrics.width.to_f64();
     let height = (metrics.height + metrics.depth).to_f64();
     let diagnostics = std::mem::take(&mut walk.diagnostics);
-    Ok(FormulaSvg { markup: walk.finish(width, height), diagnostics })
+    FormulaSvg { markup: walk.finish(width, height), diagnostics }
 }
 
 /// Axis-aligned ink bounds in canvas pixels, with y growing downward.
@@ -74,18 +75,17 @@ struct SvgWalk {
     /// Bounds of everything painted so far, in canvas pixels.
     ink: Option<Bounds>,
     diagnostics: Vec<Diagnostic>,
-    text_fallback: bool,
 }
 
 impl SvgWalk {
-    fn walk(&mut self, node: &PaintNode, ox: f64, oy: f64) -> Result<(), String> {
+    fn walk(&mut self, node: &PaintNode, ox: f64, oy: f64) {
         match node {
             PaintNode::Group { children, translate_x, translate_y } => {
                 let nx = ox + translate_x.to_f64();
                 let ny = oy + translate_y.to_f64();
                 let _ = write!(self.buffer, r#"<g transform="translate({}, {})">"#, translate_x.to_f64(), translate_y.to_f64());
                 for child in children {
-                    self.walk(child, nx, ny)?;
+                    self.walk(child, nx, ny);
                 }
                 self.buffer.push_str("</g>");
             }
@@ -94,26 +94,13 @@ impl SvgWalk {
                 for (i, d_opt) in path_data.iter().enumerate() {
                     let (px, py) = positions.get(i).copied().unwrap_or((Fixed::ZERO, Fixed::ZERO));
                     let (rx, ry) = (px.to_f64(), py.to_f64());
-                    if let Some(d) = d_opt {
-                        self.path(d, ox + rx, oy + ry, rx, ry, scale);
+                    let Some(d) = d_opt else {
+                        // No outline: the entry is reported whether or not it
+                        // paints, matching the document collector this mirrors.
+                        self.diagnostics.push(outline_missing(chars.get(i).copied().flatten(), family));
                         continue;
-                    }
-                    // No outline: the entry is reported whether or not it
-                    // paints, matching the box-tree collector this replaces.
-                    self.diagnostics.push(outline_missing(chars.get(i).copied().flatten(), family));
-                    let text = match chars.get(i).copied().flatten() {
-                        Some(c) if !c.is_whitespace() => c.to_string(),
-                        _ => continue,
                     };
-                    if !self.text_fallback {
-                        let msg = format!(
-                            "deterministic SVG requires pre-computed glyph paths; \
-                             <text> fallback triggered for text={:?} at ({}, {})",
-                            text, rx, ry
-                        );
-                        return Err(msg);
-                    }
-                    self.text(&text, ox + rx, oy + ry, rx, ry, scale, family);
+                    self.path(d, ox + rx, oy + ry, rx, ry, scale);
                 }
             }
             PaintNode::Rect { x, y, width, height, stroke_width, baseline: _ } => {
@@ -149,7 +136,6 @@ impl SvgWalk {
                 self.path(d, ox + rx, oy + ry, rx, ry, s);
             }
         }
-        Ok(())
     }
 
     /// Emit one outline path under `translate(x, y) scale(s, -s)`, mapping the
@@ -172,21 +158,6 @@ impl SvgWalk {
             num(ry),
             num(scale),
             num(-scale),
-        );
-    }
-
-    /// Emit one host-font text run (non-deterministic fallback).
-    fn text(&mut self, text: &str, ax: f64, ay: f64, rx: f64, ry: f64, font_size: f64, family: &str) {
-        // Rough advance estimate: the backend only needs it to keep the
-        // viewport wide enough for the host-font fallback.
-        let estimate = font_size * 0.6 * text.chars().count() as f64;
-        let box_bounds = Bounds { min_x: ax, min_y: ay - font_size, max_x: ax + estimate, max_y: ay + font_size * 0.25 };
-        self.ink.get_or_insert(box_bounds).include_bounds(&box_bounds);
-        let font_family_attr = if family == "default" { String::new() } else { format!(r#" font-family="{}""#, family) };
-        let _ = write!(
-            self.buffer,
-            r#"<text x="{}" y="{}" font-size="{}"{} fill="currentColor">{}</text>"#,
-            rx, ry, font_size, font_family_attr, text,
         );
     }
 
@@ -352,7 +323,7 @@ mod tests {
 
     #[test]
     fn rect_paint_emits_svg_rect() {
-        let svg = render_formula_result(&rect_result(), false).expect("render").markup;
+        let svg = render_formula_result(&rect_result()).markup;
         assert!(svg.starts_with(r#"<svg xmlns="http://www.w3.org/2000/svg""#));
         assert!(svg.contains("<rect "));
         assert!(svg.contains("width="));
@@ -378,7 +349,7 @@ mod tests {
             translate_x: Fixed::ZERO,
             translate_y: Fixed::ZERO,
         };
-        let svg = render_formula_result(&res, false).expect("render").markup;
+        let svg = render_formula_result(&res).markup;
         assert!(svg.contains(r#"<g transform="translate(10, 20)">"#), "{svg}");
         assert!(svg.contains(r#"<rect x="1" y="2" width="3" height="4"#), "{svg}");
     }
@@ -397,7 +368,7 @@ mod tests {
             translate_x: Fixed::ZERO,
             translate_y: Fixed::ZERO,
         };
-        let svg = render_formula_result(&res, false).expect("render").markup;
+        let svg = render_formula_result(&res).markup;
         assert!(svg.contains("<path d=\"M 0 0 L 10 0 L 5 10 Z\""), "{svg}");
         assert!(svg.contains("scale(1.0000, -1.0000)"), "{svg}");
     }
@@ -405,7 +376,7 @@ mod tests {
     #[test]
     fn empty_paint_still_emits_valid_svg() {
         let res = FormulaLayoutResult::default();
-        let svg = render_formula_result(&res, false).expect("render").markup;
+        let svg = render_formula_result(&res).markup;
         assert!(svg.starts_with("<svg"));
         assert!(svg.ends_with("</svg>"));
     }
@@ -426,52 +397,47 @@ mod tests {
             translate_x: Fixed::ZERO,
             translate_y: Fixed::ZERO,
         };
-        let svg = render_formula_result(&res, false).expect("render").markup;
+        let svg = render_formula_result(&res).markup;
         assert!(
             svg.contains(r#"<path d="M 0 0 L 1 1 Z" transform="translate(3.0000, 4.0000) scale(16.0000, -16.0000)""#),
             "{svg}"
         );
     }
 
+    /// A glyph the face ships no outline for is skipped with a warning and
+    /// never pulled in through a host font, matching the document path.
     #[test]
-    fn glyph_run_without_outline_fails_strictly() {
+    fn glyph_run_without_outline_is_skipped_and_diagnosed() {
         let mut res = rect_result();
         res.paint = PaintNode::Group {
-            children: vec![PaintNode::GlyphRun {
-                font_id: "lmr".to_string(),
-                glyph_ids: vec![0],
-                chars: vec![Some('字')],
-                family: "latin-modern-math".to_string(),
-                positions: vec![(Fixed::from_f64(3.0), Fixed::from_f64(4.0))],
-                size: Fixed::from_f64(16.0),
-                path_data: vec![None],
-            }],
+            children: vec![
+                PaintNode::GlyphRun {
+                    font_id: "lmr".to_string(),
+                    glyph_ids: vec![0],
+                    chars: vec![Some('字')],
+                    family: "latin-modern-math".to_string(),
+                    positions: vec![(Fixed::from_f64(3.0), Fixed::from_f64(4.0))],
+                    size: Fixed::from_f64(16.0),
+                    path_data: vec![None],
+                },
+                PaintNode::GlyphRun {
+                    font_id: "lmr".to_string(),
+                    glyph_ids: vec![65],
+                    chars: vec![Some('A')],
+                    family: "latin-modern-math".to_string(),
+                    positions: vec![(Fixed::from_f64(10.0), Fixed::from_f64(4.0))],
+                    size: Fixed::from_f64(16.0),
+                    path_data: vec![Some("M 0 0 L 1 1 Z".to_string())],
+                },
+            ],
             translate_x: Fixed::ZERO,
             translate_y: Fixed::ZERO,
         };
-        let err = render_formula_result(&res, false).expect_err("strict mode must reject a host-font run");
-        assert!(err.contains("deterministic SVG requires pre-computed glyph paths"), "{err}");
-    }
-
-    #[test]
-    fn glyph_run_without_outline_falls_back_to_text() {
-        let mut res = rect_result();
-        res.paint = PaintNode::Group {
-            children: vec![PaintNode::GlyphRun {
-                font_id: "lmr".to_string(),
-                glyph_ids: vec![0],
-                chars: vec![Some('字')],
-                family: "latin-modern-math".to_string(),
-                positions: vec![(Fixed::from_f64(3.0), Fixed::from_f64(4.0))],
-                size: Fixed::from_f64(16.0),
-                path_data: vec![None],
-            }],
-            translate_x: Fixed::ZERO,
-            translate_y: Fixed::ZERO,
-        };
-        let out = render_formula_result(&res, true).expect("fallback mode renders");
-        assert!(out.markup.contains("<text x=\"3\" y=\"4\""), "{}", out.markup);
+        let out = render_formula_result(&res);
+        assert!(!out.markup.contains("<text"), "the backend must not pull in a host font:\n{}", out.markup);
+        assert_eq!(out.markup.matches("<path").count(), 1, "only the outlined glyph paints:\n{}", out.markup);
         assert_eq!(out.diagnostics.len(), 1);
         assert_eq!(out.diagnostics[0].code, "vutex.layout.math.outline_missing");
+        assert_eq!(out.diagnostics[0].severity, Severity::Warning);
     }
 }

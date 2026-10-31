@@ -56,17 +56,18 @@ fn is_display(case: &GateCase) -> bool {
     case.style == "display"
 }
 
-/// Lay the case out and render it through the strict, path-only SVG backend.
+/// Lay the case out and render it through the path-only SVG backend.
 ///
-/// Strict mode fails the render as soon as a glyph would need a host-font
-/// `<text>` run, so a returned SVG already carries outlines only.
+/// The backend skips any glyph without an outline and names it in a warning,
+/// so the gate asserts the returned diagnostics are empty: a case that reaches
+/// the SVG already carries outlines only.
 fn render(case: &GateCase) -> (LayoutNode, FormulaLayoutResult, String) {
     let display = is_display(case);
     let (result, root, _) = layout_formula_with_result(&case.src, display, default_base_size(display))
         .unwrap_or_else(|e| panic!("`{}` ({}) must lay out: {e}", case.src, case.style));
-    let svg =
-        render_formula_result(&result, false).unwrap_or_else(|e| panic!("`{}` must render as outlines: {e}", case.src)).markup;
-    (root, result, svg)
+    let out = render_formula_result(&result);
+    assert!(out.diagnostics.is_empty(), "`{}`: the SVG backend found a glyph without an outline: {:?}", case.src, out.diagnostics);
+    (root, result, out.markup)
 }
 
 /// Number of outlined glyph nodes in a layout tree.

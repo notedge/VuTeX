@@ -4,10 +4,10 @@ use vutex_layout::math::{default_base_size, layout_formula_with_result, parse_fo
 use vutex_render_svg::math::{MathmlBackend, render_formula_result};
 use vutex_types::math::MathSemantics;
 
-/// Render one formula through the SVG backend with host-font fallback enabled.
+/// Render one formula through the outline-only SVG backend.
 fn render_svg(source: &str) -> String {
     let (result, _, _) = layout_formula_with_result(source, false, default_base_size(false)).expect("formula should lay out");
-    render_formula_result(&result, true).expect("svg rendering").markup
+    render_formula_result(&result).markup
 }
 
 /// Render the structured MathML of one formula source.

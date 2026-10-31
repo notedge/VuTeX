@@ -23,8 +23,9 @@ struct Case {
 fn render_outline(source: &str, display: bool) -> (String, FormulaLayoutResult) {
     let (result, _, _) =
         layout_formula_with_result(source, display, default_base_size(display)).expect("layout should succeed");
-    let svg = render_formula_result(&result, false).expect("deterministic render should succeed").markup;
-    (svg, result)
+    let out = render_formula_result(&result);
+    assert!(out.diagnostics.is_empty(), "the SVG backend found a glyph without an outline: {:?}", out.diagnostics);
+    (out.markup, result)
 }
 
 /// Count closed, straight-sided subpaths.

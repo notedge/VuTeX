@@ -41,7 +41,9 @@ fn every_backend_reads_one_layout_result() {
         // One layout result, consumed by all three backends.
         let result = layout(source);
 
-        let svg = render_svg_result(&result, false).unwrap_or_else(|e| panic!("svg failed for {source}: {e}")).markup;
+        let svg_out = render_svg_result(&result);
+        assert!(svg_out.diagnostics.is_empty(), "{source}: every glyph must carry an outline: {:?}", svg_out.diagnostics);
+        let svg = svg_out.markup;
         assert!(svg.starts_with("<svg"), "{source}: svg must be a document, got {svg:?}");
         assert!(svg.ends_with("</svg>"), "{source}: svg must be closed, got {svg:?}");
 
@@ -82,7 +84,7 @@ fn geometry_and_structure_share_one_result() {
     let result = layout("\\sqrt[3]{x}");
     assert!(!result.semantics.nodes.is_empty(), "the result must carry the IR it laid out");
 
-    let svg = render_svg_result(&result, false).expect("svg render").markup;
+    let svg = render_svg_result(&result).markup;
     let pdf = String::from_utf8_lossy(&render_pdf_result(&result).expect("pdf render")).into_owned();
     let width = result.metrics.width.to_f64().max(1.0);
     // Both geometry backends size their canvas/page from `result.metrics`.

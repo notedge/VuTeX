@@ -22,16 +22,18 @@ const CASES: &[(&str, &str, bool)] = &[
 fn render(source: &str, display: bool) -> (String, FormulaLayoutResult) {
     let (result, _, _) =
         layout_formula_with_result(source, display, default_base_size(display)).expect("layout should succeed");
-    let svg = render_formula_result(&result, false).expect("render should succeed").markup;
-    (svg, result)
+    let out = render_formula_result(&result);
+    assert!(out.diagnostics.is_empty(), "{source}: the SVG backend found a glyph without an outline: {:?}", out.diagnostics);
+    (out.markup, result)
 }
 
 /// Like [`render`], but hands back the layout tree instead of the box extents.
 fn render_with_tree(source: &str, display: bool) -> (String, LayoutNode) {
     let (result, root, _) =
         layout_formula_with_result(source, display, default_base_size(display)).expect("layout should succeed");
-    let svg = render_formula_result(&result, false).expect("render should succeed").markup;
-    (svg, root)
+    let out = render_formula_result(&result);
+    assert!(out.diagnostics.is_empty(), "{source}: the SVG backend found a glyph without an outline: {:?}", out.diagnostics);
+    (out.markup, root)
 }
 
 /// Every `Glyph` node in a layout tree, in document order.

@@ -7,7 +7,7 @@
 
 use vutex_layout::math::{LayoutNode, default_base_size, layout_formula_with_result, parse_formula};
 use vutex_render_svg::math::{MathmlBackend, render_formula_result};
-use vutex_types::math::{Fixed, FormulaLayoutResult, MathSemantics};
+use vutex_types::{Severity, math::{Fixed, FormulaLayoutResult, MathSemantics}};
 
 /// A curated list of representative formulas that exercise every major node
 /// kind in the layout engine: plain atoms, fractions, radicals, sub/super-
@@ -114,14 +114,15 @@ fn every_formula_lays_out_in_both_inline_and_display_style() {
 fn all_formulas_render_through_svg_backend() {
     for formula in formula_list() {
         let (_, result) = layout(formula);
-        let svg = render_formula_result(&result, true).unwrap_or_else(|e| panic!("svg render failed for {formula}: {e}"));
+        let svg = render_formula_result(&result);
 
         assert!(svg.markup.starts_with("<svg"), "{formula}: svg output must start with <svg, got {:?}", svg.markup);
         assert!(svg.markup.ends_with("</svg>"), "{formula}: svg output must end with </svg>, got {:?}", svg.markup);
 
         assert!(
-            svg.diagnostics.iter().all(|d| !d.message.contains("deterministic")),
-            "{formula}: unexpected deterministic-path warning from the text-fallback backend"
+            svg.diagnostics.iter().all(|d| d.severity == Severity::Warning),
+            "{formula}: the SVG backend must only report warnings, got {:?}",
+            svg.diagnostics
         );
     }
 }
@@ -151,10 +152,7 @@ fn all_formulas_render_through_mathml_backend() {
 fn svg_and_mathml_backends_both_render_every_formula() {
     for formula in formula_list() {
         let (_, result) = layout(formula);
-        let svg_ok = render_formula_result(&result, true)
-            .unwrap_or_else(|e| panic!("svg failed for {formula}: {e}"))
-            .markup
-            .starts_with("<svg");
+        let svg_ok = render_formula_result(&result).markup.starts_with("<svg");
 
         let mathml_ok = render_mathml(formula).starts_with("<math");
 

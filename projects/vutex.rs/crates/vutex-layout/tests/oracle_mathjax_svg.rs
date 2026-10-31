@@ -136,9 +136,7 @@ fn load_document() -> Document {
 fn vutex_svg(tex: &str, display_mode: bool) -> (String, vutex_types::math::FormulaLayoutResult) {
     let (result, _, _) = layout_formula_with_result(tex, display_mode, default_base_size(display_mode))
         .unwrap_or_else(|e| panic!("corpus `{tex}` (display={display_mode}) must lay out: {e}"));
-    let svg = render_formula_result(&result, true)
-        .unwrap_or_else(|e| panic!("svg render failed for `{tex}` (display={display_mode}): {e}"))
-        .markup;
+    let svg = render_formula_result(&result).markup;
     (svg, result)
 }
 
@@ -394,8 +392,8 @@ fn geometric_direction_gates() {
                 record.display_mode
             );
         }
-        // Texts: host-font fallback.  VuTeX runs deterministic (path-only) by
-        // default, so texts_count can legitimately be 0 while MathJax emits
+        // Texts: host-font fallback.  VuTeX paints path-only outlines, so
+        // texts_count can legitimately be 0 while MathJax emits
         // <text> for some glyphs.  We only compare when BOTH are non-zero.
         if mathjax_texts > 0 && vutex_texts > 0 {
             assert!(
