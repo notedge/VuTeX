@@ -12,6 +12,20 @@
 //! [`FormulaLayoutResult`], the same canvas-space geometry the SVG and PDF
 //! backends emit. The text/path choice per glyph needs the glyph's
 //! `char`/`glyph_id` pair, which the paint tree carries directly.
+//!
+//! # Coordinate space
+//!
+//! The fragment mirrors the paint tree's nested coordinate space one-to-one,
+//! exactly like the SVG backend's nested `<g transform>` markup. Each
+//! [`PaintNode::Group`] becomes a positioned span whose `transform` carries
+//! **only that group's own `translate_x`/`translate_y`** — the offset from the
+//! enclosing group origin, never the accumulated canvas position. Every leaf
+//! (`text` run, rule `rect`, outline `svg` fragment) is positioned with its
+//! node-local coordinates, relative to the innermost enclosing group span.
+//! CSS containing-block nesting composes the ancestor offsets, so each
+//! coordinate is written once and no offset is ever double-counted. The
+//! container span is the canvas origin: the root group's transform carries the
+//! baseline offset from the box top-left, as the layout emits it.
 
 use std::collections::HashMap;
 
@@ -81,9 +95,9 @@ impl HtmlBackend {
     ///
     /// The container is sized by the result metrics: `height` above the
     /// baseline, `depth` below, with `vertical-align` dropping the baseline
-    /// into the host text line exactly like a text glyph would. The paint
-    /// tree's canvas origin is the box top-left, so the walk starts at
-    /// `(0, 0)` and the root group already carries the baseline offset.
+    /// into the host text line exactly like a text glyph would. The container
+    /// is the canvas origin (box top-left); the paint tree's root group
+    /// transform carries the baseline offset from it.
     pub fn render(mut self, result: &FormulaLayoutResult) -> String {
         let metrics = &result.metrics;
         let width = metrics.width.to_f64();
@@ -97,7 +111,7 @@ impl HtmlBackend {
             num(height + depth),
             num(depth)
         );
-        self.walk(&result.paint, 0.0, 0.0);
+        self.walk(&result.paint);
         let mut buffer = self.buffer;
         for _ in 0..self.group_depth {
             buffer.push_str("</span>");
@@ -106,15 +120,18 @@ impl HtmlBackend {
         buffer
     }
 
-    /// Recursively paint one paint node at the given canvas offset.
-    fn walk(&mut self, node: &PaintNode, ox: f64, oy: f64) {
+    /// Recursively paint one paint node inside its enclosing group space.
+    ///
+    /// No ancestor offset is accumulated here: a group's own translate goes on
+    /// the group span, and leaves use their node-local positions, so the CSS
+    /// nesting composes the canvas position exactly once (see the module-level
+    /// coordinate-space contract).
+    fn walk(&mut self, node: &PaintNode) {
         match node {
             PaintNode::Group { children, translate_x, translate_y } => {
-                let nx = ox + translate_x.to_f64();
-                let ny = oy + translate_y.to_f64();
-                self.start_group(nx, ny);
+                self.start_group(translate_x.to_f64(), translate_y.to_f64());
                 for child in children {
-                    self.walk(child, nx, ny);
+                    self.walk(child);
                 }
                 self.end_group();
             }
@@ -122,7 +139,7 @@ impl HtmlBackend {
                 let size = size.to_f64();
                 for (i, d_opt) in path_data.iter().enumerate() {
                     let (px, py) = positions.get(i).copied().unwrap_or((Fixed::ZERO, Fixed::ZERO));
-                    let (x, y) = (ox + px.to_f64(), oy + py.to_f64());
+                    let (x, y) = (px.to_f64(), py.to_f64());
                     let text = match chars.get(i).copied().flatten() {
                         Some(c) if !c.is_whitespace() => Some(c),
                         _ => None,
@@ -143,10 +160,10 @@ impl HtmlBackend {
                 }
             }
             PaintNode::Rect { x, y, width, height, .. } => {
-                self.rect(ox + x.to_f64(), oy + y.to_f64(), width.to_f64(), height.to_f64());
+                self.rect(x.to_f64(), y.to_f64(), width.to_f64(), height.to_f64());
             }
             PaintNode::VectorPath { d, x, y, scale, .. } => {
-                self.path(d, ox + x.to_f64(), oy + y.to_f64(), scale.to_f64());
+                self.path(d, x.to_f64(), y.to_f64(), scale.to_f64());
             }
         }
     }
@@ -187,7 +204,8 @@ impl HtmlBackend {
         self.face_mut(family).map(|data| data.baseline)
     }
 
-    /// Emit one absolutely positioned text run.
+    /// Emit one absolutely positioned text run at its group-local baseline
+    /// anchor `(x, y)`.
     fn text(&mut self, ch: char, x: f64, y: f64, size: f64, label: &str) {
         let css_family = embedded_family_for(label, self.fallback_family).map(MathFontFamily::label).unwrap_or(label);
         let ratio = self.baseline_ratio(label).unwrap_or(0.0);
@@ -203,7 +221,7 @@ impl HtmlBackend {
         );
     }
 
-    /// Emit one filled rule rectangle.
+    /// Emit one filled rule rectangle at its group-local top-left `(x, y)`.
     fn rect(&mut self, x: f64, y: f64, w: f64, h: f64) {
         use std::fmt::Write;
         let _ = write!(
@@ -220,8 +238,9 @@ impl HtmlBackend {
     ///
     /// Path data arrives in em units with `y` growing upward from the
     /// baseline; `translate(x, y) scale(s, -s)` maps it onto the y-down
-    /// canvas. The element's box is the transformed ink bounds (padded), with
-    /// a matching `viewBox`, so nothing relies on `overflow: visible` —
+    /// group-local space, where `(x, y)` is the node's own baseline anchor.
+    /// The element's box is the transformed ink bounds (padded), with a
+    /// matching `viewBox`, so nothing relies on `overflow: visible` —
     /// Chrome does not paint viewport-external svg content that way.
     fn path(&mut self, d: &str, x: f64, y: f64, scale: f64) {
         let (min_x, min_y, max_x, max_y) = path_bounds(d, x, y, scale);
@@ -250,14 +269,16 @@ impl HtmlBackend {
         );
     }
 
-    /// Open a positioned group span translated to `(x, y)`.
-    fn start_group(&mut self, x: f64, y: f64) {
+    /// Open a positioned group span carrying **only** this group's own offset
+    /// `(dx, dy)` from the enclosing group origin — never the accumulated
+    /// canvas position, which the CSS nesting composes on its own.
+    fn start_group(&mut self, dx: f64, dy: f64) {
         use std::fmt::Write;
         let _ = write!(
             self.buffer,
             r#"<span style="position:absolute;left:0;top:0;width:0;height:0;transform:translate({}px,{}px)">"#,
-            num(x),
-            num(y)
+            num(dx),
+            num(dy)
         );
         self.group_depth += 1;
     }
@@ -269,7 +290,8 @@ impl HtmlBackend {
     }
 }
 
-/// Axis-aligned ink bounds of one transformed path, in group-relative pixels.
+/// Axis-aligned ink bounds of one transformed path, in the group-local canvas
+/// pixels the emitted svg fragment is positioned with.
 ///
 /// Control points are included, so the box is a superset of the outline — the
 /// same safe over-approximation the SVG backend uses for its viewport.
