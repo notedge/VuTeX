@@ -120,6 +120,9 @@
     { "id": "font-double-struck", "tex": "\\mathbb{R}", "group": "font", "notes": "double-struck set-style identifier" },
     { "id": "font-script", "tex": "\\mathcal{L}", "group": "font", "notes": "calligraphic identifier lowers to the script variant" },
     { "id": "font-sans-serif", "tex": "\\mathsf{s}", "group": "font", "notes": "sans-serif identifier" },
-    { "id": "font-italic", "tex": "\\mathit{x}", "group": "font", "notes": "explicit italic is the bare identifier of math mode" }
+    { "id": "font-italic", "tex": "\\mathit{x}", "group": "font", "notes": "explicit italic is the bare identifier of math mode" },
+    { "id": "accent-breve", "tex": "\\breve{a}", "group": "accent", "notes": "breve accent over a single atom" },
+    { "id": "accent-check", "tex": "\\check{a}", "group": "accent", "notes": "caron accent over a single atom" },
+    { "id": "accent-overrightarrow", "tex": "\\overrightarrow{AB}", "group": "accent", "notes": "arrow accent spanning a two-letter base" }
   ]
 }

@@ -381,6 +381,9 @@ impl Parser {
             "tilde" | "widetilde" => self.parse_accent('˜'),
             "dot" => self.parse_accent('˙'),
             "ddot" => self.parse_accent('¨'),
+            "breve" => self.parse_accent('˘'),
+            "check" => self.parse_accent('ˇ'),
+            "overrightarrow" => self.parse_accent('→'),
             // Stacking commands — TeX's `\overset`, `\underset`, `\stackrel`.
             // `\overset`/`\underset` layer a script-sized node above/below the
             // base, and `\stackrel` is `\mathrel{\overset}` so the whole

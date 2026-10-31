@@ -310,6 +310,7 @@ fn expected_core_tag_families(corpus_id: &str) -> &'static [&'static [&'static s
         "split" => &[&["mtable"], &["mtr"], &["mtd"]],
         // ——— accent family ——— //
         "accent-vec" | "accent-tilde" | "accent-dot" | "accent-ddot" | "accent-widehat" => &[&["mover"]],
+        "accent-breve" | "accent-check" | "accent-overrightarrow" => &[&["mover"]],
         // ——— radical family ——— //
         "radical-degree-sum" => &[&["mroot"]],
         "radical-fraction" => &[&["msqrt"], &["mfrac"]],

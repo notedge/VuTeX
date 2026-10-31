@@ -3271,6 +3271,198 @@
       "script_positions": null,
       "degree": null,
       "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "accent-breve",
+      "tex": "\\breve{a}",
+      "display_mode": false,
+      "source": {
+        "engine": "latex",
+        "version": "Tectonic 0.17.0",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "font": {
+        "family": "Latin Modern Math",
+        "sha256": null,
+        "units_per_em": 1000,
+        "path": null
+      },
+      "size": 10,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": 0.528589,
+      "height": 0.6944440000000001,
+      "depth": 0,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "degree": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "accent-breve",
+      "tex": "\\breve{a}",
+      "display_mode": true,
+      "source": {
+        "engine": "latex",
+        "version": "Tectonic 0.17.0",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "font": {
+        "family": "Latin Modern Math",
+        "sha256": null,
+        "units_per_em": 1000,
+        "path": null
+      },
+      "size": 10,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": 0.528589,
+      "height": 0.6944440000000001,
+      "depth": 0,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "degree": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "accent-check",
+      "tex": "\\check{a}",
+      "display_mode": false,
+      "source": {
+        "engine": "latex",
+        "version": "Tectonic 0.17.0",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "font": {
+        "family": "Latin Modern Math",
+        "sha256": null,
+        "units_per_em": 1000,
+        "path": null
+      },
+      "size": 10,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": 0.528589,
+      "height": 0.628473,
+      "depth": 0,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "degree": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "accent-check",
+      "tex": "\\check{a}",
+      "display_mode": true,
+      "source": {
+        "engine": "latex",
+        "version": "Tectonic 0.17.0",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "font": {
+        "family": "Latin Modern Math",
+        "sha256": null,
+        "units_per_em": 1000,
+        "path": null
+      },
+      "size": 10,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": 0.528589,
+      "height": 0.628473,
+      "depth": 0,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "degree": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "accent-overrightarrow",
+      "tex": "\\overrightarrow{AB}",
+      "display_mode": false,
+      "source": {
+        "engine": "latex",
+        "version": "Tectonic 0.17.0",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "font": {
+        "family": "Latin Modern Math",
+        "sha256": null,
+        "units_per_em": 1000,
+        "path": null
+      },
+      "size": 10,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": 1.558682,
+      "height": 1.050206,
+      "depth": 0,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "degree": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "accent-overrightarrow",
+      "tex": "\\overrightarrow{AB}",
+      "display_mode": true,
+      "source": {
+        "engine": "latex",
+        "version": "Tectonic 0.17.0",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "font": {
+        "family": "Latin Modern Math",
+        "sha256": null,
+        "units_per_em": 1000,
+        "path": null
+      },
+      "size": 10,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": 1.558682,
+      "height": 1.050206,
+      "depth": 0,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "degree": null,
+      "mathml": null
     }
   ]
 }

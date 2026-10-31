@@ -21,8 +21,8 @@ use vutex_types::{
 ///
 /// This is the VuTeX-side superset of the shared cross-backend corpus.  A
 /// formula appears here as soon as the parser, the layout engine and both
-/// renderers accept it; constructs the engine cannot parse (e.g. `\breve`,
-/// `\bigcup`, `\pmod`, `\bigl`, `\enspace`, `\bmod`, `\vdots`, `\dots`) stay
+/// renderers accept it; constructs the engine cannot parse (e.g. `\bigcup`,
+/// `\pmod`, `\bigl`, `\enspace`, `\bmod`, `\vdots`, `\dots`) stay
 /// out until they are implemented, instead of turning the gate red.
 fn formula_list() -> &'static [&'static str] {
     &[
@@ -49,6 +49,9 @@ fn formula_list() -> &'static [&'static str] {
         "\\dot{x}",
         "\\ddot{y}",
         "\\widehat{CD}",
+        "\\breve{a}",
+        "\\check{a}",
+        "\\overrightarrow{AB}",
         "\\overset{!}{=}",
         "\\underset{\\alpha}{\\rightarrow}",
         // ——— large operators and scripts ——— //
@@ -148,6 +151,9 @@ const STRUCTURE_CASES: &[(&str, &str, &str)] = &[
     ("\\dot{x}", "accent", "<mover"),
     ("\\ddot{y}", "accent", "<mover"),
     ("\\widehat{CD}", "accent", "<mover"),
+    ("\\breve{a}", "accent", "<mover"),
+    ("\\check{a}", "accent", "<mover"),
+    ("\\overrightarrow{AB}", "accent", "<mover"),
     ("\\overset{!}{=}", "stack-above", "<mover"),
     ("\\underset{\\alpha}{\\rightarrow}", "stack-below", "<munder"),
     // ——— delimiters ——— //

@@ -78,6 +78,9 @@ const REQUIRED_CORPUS_IDS: &[&str] = &[
     "font-script",
     "font-sans-serif",
     "font-italic",
+    "accent-breve",
+    "accent-check",
+    "accent-overrightarrow",
 ];
 
 /// Per-record fields whose absence must be recorded as `null`, never as zero.

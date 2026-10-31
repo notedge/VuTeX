@@ -58,6 +58,9 @@ const corpus: CorpusEntry[] = [
     { source: "\\dot{x}", mathml: ['<mover accent="true"'] },
     { source: "\\ddot{y}", mathml: ['<mover accent="true"'] },
     { source: "\\overline{AB} \\ne \\widehat{CD}", mathml: ["<mover"] },
+    { source: "\\breve{a}", mathml: ['<mover accent="true"'] },
+    { source: "\\check{a}", mathml: ['<mover accent="true"'] },
+    { source: "\\overrightarrow{AB}", mathml: ['<mover accent="true"'] },
     // over/under
     { source: "\\overset{!}{=}", mathml: ["<mover"] },
     { source: "\\underset{\\alpha}{\\rightarrow}", mathml: ["<munder"] },
