@@ -3,15 +3,16 @@
 //! Paints the laid-out formula result as absolutely positioned CSS boxes
 //! inside one inline-block container — the same flow model KaTeX uses, so the
 //! formula aligns with surrounding text through `vertical-align` and scales
-//! with the page. Glyphs the selected face reaches through its character map
-//! are emitted as real text (selectable, accessible, no embedded outlines);
-//! variant-selected or assembled glyphs that text cannot express fall back to
-//! tiny inline SVG fragments, so no ink is ever dropped.
+//! with the page.
 //!
-//! The traversal walks the [`PaintNode`] tree from the single
-//! [`FormulaLayoutResult`], the same canvas-space geometry the SVG and PDF
-//! backends emit. The text/path choice per glyph needs the glyph's
-//! `char`/`glyph_id` pair, which the paint tree carries directly.
+//! The leaf population is the SVG backend's, one-for-one: every glyph the
+//! paint tree carries an outline for becomes one tiny inline SVG fragment,
+//! every rule becomes one positioned box, and a glyph the selected face ships
+//! no outline for is skipped and named in a `vutex.layout.math.outline_missing`
+//! warning, never pulled in through a host-font text run. Both backends walk
+//! the same [`PaintNode`] tree from the single [`FormulaLayoutResult`], so the
+//! cross-backend geometry gate sees the same leaves at the same composed
+//! anchors.
 //!
 //! # Coordinate space
 //!
@@ -20,85 +21,54 @@
 //! [`PaintNode::Group`] becomes a positioned span whose `transform` carries
 //! **only that group's own `translate_x`/`translate_y`** — the offset from the
 //! enclosing group origin, never the accumulated canvas position. Every leaf
-//! (`text` run, rule `rect`, outline `svg` fragment) is positioned with its
-//! node-local coordinates, relative to the innermost enclosing group span.
+//! (rule `rect`, outline `svg` fragment) is positioned with its node-local
+//! coordinates, relative to the innermost enclosing group span.
 //! CSS containing-block nesting composes the ancestor offsets, so each
 //! coordinate is written once and no offset is ever double-counted. The
 //! container span is the canvas origin: the root group's transform carries the
 //! baseline offset from the box top-left, as the layout emits it.
 
-use std::collections::HashMap;
+use vutex_types::{
+    Diagnostic, Severity,
+    math::{Fixed, FormulaLayoutResult, PaintNode},
+};
 
-use acorn_ttf::FontFace;
-use vutex_text::math::MathFontFamily;
-use vutex_types::math::{Fixed, FormulaLayoutResult, PaintNode};
-
-/// Per-face data the HTML backend reads from an embedded math font.
+/// Output of [`HtmlBackend::render`]: the container markup plus the warnings
+/// collected while walking the paint tree (glyphs the face ships no outline
+/// for), mirroring the SVG backend's report.
 #[derive(Debug)]
-struct FaceData {
-    /// Offset from the top of a zero-line-height box down to the text
-    /// baseline, per em pixel: `(hhea.ascender + hhea.descender) / (2 * upem)`.
-    baseline: f64,
-    /// Lazily-parsed face used to answer cmap questions.
-    face: FontFace,
-}
-
-impl FaceData {
-    /// Parse one embedded family, or `None` when it ships no asset.
-    fn load(family: MathFontFamily) -> Option<Self> {
-        let bytes = family.bytes()?;
-        let mut face = FontFace::load(bytes).ok()?;
-        let (ascent, descent) = face.hhea().map(|hhea| (hhea.ascent, hhea.descent))?;
-        let upem = face.units_per_em().max(1) as f64;
-        Some(Self { baseline: (i32::from(ascent) + i32::from(descent)) as f64 / (2.0 * upem), face })
-    }
-
-    /// The glyph the font's character map assigns to `ch`.
-    fn cmap_glyph(&mut self, ch: char) -> Option<u16> {
-        self.face.glyph_index(ch)
-    }
-}
-
-/// Resolve a layout font-family label onto an embedded family.
-///
-/// `"default"` is the family the layout engine resolved for this render, so
-/// the caller passes the selected face as the fallback.
-fn embedded_family_for(label: &str, fallback: MathFontFamily) -> Option<MathFontFamily> {
-    match label {
-        "xits-math" => Some(MathFontFamily::XitsMath),
-        "latin-modern-math" => Some(MathFontFamily::LmMath),
-        "default" => Some(fallback),
-        _ => None,
-    }
+pub struct FormulaHtml {
+    /// The complete container fragment.
+    pub markup: String,
+    /// One `vutex.layout.math.outline_missing` warning per skipped glyph.
+    pub diagnostics: Vec<Diagnostic>,
 }
 
 /// Renders a [`FormulaLayoutResult`] paint tree into an HTML fragment.
 #[derive(Debug)]
 pub struct HtmlBackend {
     buffer: String,
-    /// The face the host selected for this render; `"default"` labels resolve
-    /// against it, and its label is the CSS family registered by `@font-face`.
-    fallback_family: MathFontFamily,
-    /// Parsed faces keyed by family label, filled lazily per render.
-    faces: HashMap<&'static str, Option<FaceData>>,
+    /// Warnings for glyphs skipped for lack of an embedded outline.
+    diagnostics: Vec<Diagnostic>,
     /// Open group spans awaiting their closing tag.
     group_depth: usize,
 }
 
 impl HtmlBackend {
-    /// Create a backend whose unlabeled glyphs render in `family`.
-    pub fn new(family: MathFontFamily) -> Self {
-        Self { buffer: String::new(), fallback_family: family, faces: HashMap::new(), group_depth: 0 }
+    /// Create a backend painting the shared outline-only leaf contract.
+    pub fn new() -> Self {
+        Self { buffer: String::new(), diagnostics: Vec::new(), group_depth: 0 }
     }
 
-    /// Close the walk and return the complete container markup.
+    /// Close the walk and return the complete container markup with the
+    /// skipped-glyph warnings.
     ///
     /// The container is sized by the result metrics: `height` above the
     /// baseline, `depth` below, with `vertical-align` dropping the baseline
     /// into the host text line exactly like a text glyph would. The container
     /// is the canvas origin (box top-left); the paint tree's root group
     /// transform carries the baseline offset from it.
-    pub fn render(mut self, result: &FormulaLayoutResult) -> String {
+    pub fn render(mut self, result: &FormulaLayoutResult) -> FormulaHtml {
         let metrics = &result.metrics;
         let width = metrics.width.to_f64();
         let height = metrics.height.to_f64();
@@ -112,12 +82,13 @@ impl HtmlBackend {
             num(depth)
         );
         self.walk(&result.paint);
+        let diagnostics = std::mem::take(&mut self.diagnostics);
         let mut buffer = self.buffer;
         for _ in 0..self.group_depth {
             buffer.push_str("</span>");
         }
         buffer.push_str("</span>");
-        buffer
+        FormulaHtml { markup: buffer, diagnostics }
     }
 
     /// Recursively paint one paint node inside its enclosing group space.
@@ -129,34 +100,35 @@ impl HtmlBackend {
     fn walk(&mut self, node: &PaintNode) {
         match node {
             PaintNode::Group { children, translate_x, translate_y } => {
+                let pre = self.buffer.len();
                 self.start_group(translate_x.to_f64(), translate_y.to_f64());
+                let after_open = self.buffer.len();
                 for child in children {
                     self.walk(child);
                 }
-                self.end_group();
+                if self.buffer.len() == after_open {
+                    // The whole subtree painted nothing: drop the group
+                    // instead of leaving an empty span in the fragment,
+                    // matching the SVG backend's empty-group rule.
+                    self.buffer.truncate(pre);
+                    self.group_depth -= 1;
+                }
+                else {
+                    self.end_group();
+                }
             }
-            PaintNode::GlyphRun { glyph_ids, chars, family, positions, size, path_data, .. } => {
+            PaintNode::GlyphRun { chars, family, positions, size, path_data, .. } => {
                 let size = size.to_f64();
                 for (i, d_opt) in path_data.iter().enumerate() {
-                    let (px, py) = positions.get(i).copied().unwrap_or((Fixed::ZERO, Fixed::ZERO));
-                    let (x, y) = (px.to_f64(), py.to_f64());
-                    let text = match chars.get(i).copied().flatten() {
-                        Some(c) if !c.is_whitespace() => Some(c),
-                        _ => None,
+                    let Some(d) = d_opt
+                    else {
+                        // No outline: skip and report, exactly like the SVG
+                        // backend's walk over the same entry.
+                        self.diagnostics.push(outline_missing(chars.get(i).copied().flatten(), family));
+                        continue;
                     };
-                    if let Some(c) = text {
-                        if self.text_faithful(c, glyph_ids.get(i).copied(), family) {
-                            self.text(c, x, y, size, family);
-                            continue;
-                        }
-                    }
-                    if let Some(d) = d_opt {
-                        self.path(d, x, y, size);
-                    }
-                    else if let Some(c) = text {
-                        // A text-only key with no outline still has to paint.
-                        self.text(c, x, y, size, family);
-                    }
+                    let (px, py) = positions.get(i).copied().unwrap_or((Fixed::ZERO, Fixed::ZERO));
+                    self.path(d, px.to_f64(), py.to_f64(), size);
                 }
             }
             PaintNode::Rect { x, y, width, height, .. } => {
@@ -166,59 +138,6 @@ impl HtmlBackend {
                 self.path(d, x.to_f64(), y.to_f64(), scale.to_f64());
             }
         }
-    }
-
-    /// Whether emitting `ch` as text reproduces the glyph the layout chose.
-    ///
-    /// Char-only keys (no resolved id) always do. Variant-selected keys (large
-    /// operators, stretched delimiters) only when the cmap entry for the char
-    /// is that very glyph — otherwise the text run would paint the wrong
-    /// outline.
-    fn text_faithful(&mut self, ch: char, glyph_id: Option<u16>, label: &str) -> bool {
-        let Some(family) = embedded_family_for(label, self.fallback_family)
-        else {
-            return false;
-        };
-        let Some(data) = self.face_mut(family)
-        else {
-            return false;
-        };
-        match glyph_id {
-            None => true,
-            Some(id) => data.cmap_glyph(ch) == Some(id),
-        }
-    }
-
-    /// The parsed face for `family`, loaded once per backend.
-    fn face_mut(&mut self, family: MathFontFamily) -> Option<&mut FaceData> {
-        let label = family.label();
-        if !self.faces.contains_key(label) {
-            self.faces.insert(label, FaceData::load(family));
-        }
-        self.faces.get_mut(label).and_then(Option::as_mut)
-    }
-
-    /// The baseline offset ratio for the face `label` resolves to.
-    fn baseline_ratio(&mut self, label: &str) -> Option<f64> {
-        let family = embedded_family_for(label, self.fallback_family)?;
-        self.face_mut(family).map(|data| data.baseline)
-    }
-
-    /// Emit one absolutely positioned text run at its group-local baseline
-    /// anchor `(x, y)`.
-    fn text(&mut self, ch: char, x: f64, y: f64, size: f64, label: &str) {
-        let css_family = embedded_family_for(label, self.fallback_family).map(MathFontFamily::label).unwrap_or(label);
-        let ratio = self.baseline_ratio(label).unwrap_or(0.0);
-        use std::fmt::Write;
-        let _ = write!(
-            self.buffer,
-            r#"<span style="position:absolute;left:{}px;top:{}px;font-size:{}px;line-height:0;white-space:pre;font-family:'{}'">{}</span>"#,
-            num(x),
-            num(y - ratio * size),
-            num(size),
-            css_family,
-            escape(ch)
-        );
     }
 
     /// Emit one filled rule rectangle at its group-local top-left `(x, y)`.
@@ -387,12 +306,20 @@ fn num(value: f64) -> String {
     format!("{value:.4}")
 }
 
-/// Escape one character for HTML text content.
-fn escape(ch: char) -> String {
-    match ch {
-        '&' => "&amp;".to_string(),
-        '<' => "&lt;".to_string(),
-        '>' => "&gt;".to_string(),
-        _ => ch.to_string(),
+/// Structure diagnostic for a glyph the math font ships no outline for.
+///
+/// The same contract the SVG backend reports: the entry is skipped, the box
+/// keeps its measured advance, and no host-font text run replaces the ink.
+fn outline_missing(ch: Option<char>, family: &str) -> Diagnostic {
+    let name = match ch {
+        Some(ch) => format!("'{ch}' (U+{:04X})", ch as u32),
+        None => "without a character".to_string(),
+    };
+    Diagnostic {
+        code: "vutex.layout.math.outline_missing".into(),
+        severity: Severity::Warning,
+        message: format!(
+            "math glyph {name} in family `{family}` has no embedded outline and was not painted; the box keeps its measured advance rather than falling back to a host font"
+        ),
     }
 }

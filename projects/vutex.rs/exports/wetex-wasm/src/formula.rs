@@ -104,9 +104,12 @@ pub fn render_mathml(source: &str, options: &RenderOptions) -> FormulaRender {
 /// Render a formula to an HTML fragment.
 ///
 /// The fragment is one inline-block container holding absolutely positioned
-/// text runs and outline paths, laid out by the same box tree the SVG backend
-/// paints, so the two agree on geometry while the HTML flows with host text
-/// and stays selectable wherever the selected face reaches the glyph.
+/// outline paths and rule boxes, laid out by the same box tree the SVG backend
+/// paints, so the two backends agree on geometry and paint the same leaf
+/// population: a glyph the selected face ships no outline for is skipped with
+/// a `vutex.layout.math.outline_missing` warning in both, never pulled in
+/// through a host-font text run. The container's `vertical-align` still lets
+/// the formula flow with surrounding host text.
 pub fn render_html(source: &str, options: &RenderOptions) -> FormulaRender {
     let mut diagnostics = collect_diagnostics(source);
     if let Some(diagnostic) = font_family_diagnostic(options) {
@@ -119,12 +122,12 @@ pub fn render_html(source: &str, options: &RenderOptions) -> FormulaRender {
     match layout_formula(source, options) {
         Ok((result, _root, math_diagnostics)) => {
             diagnostics.extend(math_diagnostics.into_iter().map(FormulaDiagnostic::from));
-            let family = embedded_family(options.font_family).expect("entries reject unsupported families before layout");
-            let html = HtmlBackend::new(family).render(&result);
+            let html = HtmlBackend::new().render(&result);
+            diagnostics.extend(html.diagnostics.into_iter().map(FormulaDiagnostic::from));
             FormulaRender {
                 metrics: result_metrics(&result.metrics),
                 svg: String::new(),
-                html,
+                html: html.markup,
                 mathml: None,
                 semantics: Some(result.semantics),
                 diagnostics,
@@ -149,13 +152,15 @@ pub fn render(source: &str, options: &RenderOptions) -> FormulaRender {
             diagnostics.extend(math_diagnostics.into_iter().map(FormulaDiagnostic::from));
             let svg = render_formula_result(&result);
             diagnostics.extend(svg.diagnostics.into_iter().map(FormulaDiagnostic::from));
-            let family = embedded_family(options.font_family).expect("entries reject unsupported families before layout");
-            let html = HtmlBackend::new(family).render(&result);
+            // The HTML walk skips exactly the glyphs the SVG walk above
+            // reported for this one paint tree, so their warnings are already
+            // in `diagnostics` and are not named twice.
+            let html = HtmlBackend::new().render(&result);
             let mathml = render_mathml_result(&result);
             FormulaRender {
                 metrics: result_metrics(&result.metrics),
                 svg: svg.markup,
-                html,
+                html: html.markup,
                 mathml: Some(mathml),
                 semantics: Some(result.semantics),
                 diagnostics,

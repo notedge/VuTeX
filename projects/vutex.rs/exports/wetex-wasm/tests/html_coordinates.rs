@@ -44,10 +44,7 @@ const CORPUS: &[&str] = &[
     // delimiters
     "\\left\\lVert x \\right\\rVert",
     "\\left\\{ \\frac{a}{b} \\right\\}",
-    // `\left\langle v \right\rangle` is excluded: the HTML backend paints the
-    // angle-bracket fence as a host-font text run while the SVG backend paints
-    // it as an outline path, so the leaf populations cannot match. Reported as
-    // an HTML-backend defect, not a coordinate-space bug.
+    "\\left\\langle v \\right\\rangle",
     "\\left[ \\begin{matrix} a & b \\\\ c & d \\end{matrix} \\right]",
     "\\left. \\frac{dy}{dx} \\right|_{0}",
     // environments
