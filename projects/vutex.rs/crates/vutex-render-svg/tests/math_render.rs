@@ -121,6 +121,22 @@ fn mathml_backend_marks_operators() {
 }
 
 #[test]
+fn mathml_left_right_fences_are_marked_as_fences() {
+    // `\left` … `\right` authors a delimiter pair, and KaTeX marks the same
+    // structure `<mo fence="true">(</mo>`.
+    let mathml = render_mathml("\\left(\\frac{a}{b}\\right)");
+    assert!(mathml.contains(r#"<mo fence="true">(</mo>"#), "the left fence is marked: {mathml}");
+    assert!(mathml.contains(r#"<mo fence="true">)</mo>"#), "the right fence is marked: {mathml}");
+
+    // A plain parenthesis is an ordinary atom, not an authored fence, and a
+    // fenced matrix marks its delimiters like any other `\left` pair.
+    let mathml = render_mathml("(x)");
+    assert!(mathml.contains("<mo>(</mo><mi>x</mi><mo>)</mo>"), "plain parens stay bare: {mathml}");
+    let mathml = render_mathml("\\begin{pmatrix} a \\end{pmatrix}");
+    assert!(mathml.contains(r#"<mo fence="true">(</mo>"#), "a pmatrix fence is a fence: {mathml}");
+}
+
+#[test]
 fn mathml_backend_escapes_markup_in_text() {
     let mathml = render_mathml("\\text{<}");
     assert!(mathml.contains("<mtext>&lt;</mtext>"), "markup must be escaped: {mathml}");

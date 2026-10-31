@@ -136,12 +136,16 @@ fn render_node(out: &mut String, node: &MathSemNode) {
             render_node(out, under);
         }),
         MathSemNode::Delimited { left, right, body } => wrap(out, "mrow", |out| {
+            // Every construction site of this node (`\left` / `\right`, `\big`
+            // sizing, fenced matrices, `\binom`) authors a delimiter, not an
+            // infix operator, so the fences carry `fence="true"` — the same
+            // mark KaTeX puts on the `mo` of `\left(\frac{a}{b}\right)`.
             if let Some(left) = left {
-                push_element(out, "mo", left);
+                push_element_with_attrs(out, "mo", r#" fence="true""#, left);
             }
             render_node(out, body);
             if let Some(right) = right {
-                push_element(out, "mo", right);
+                push_element_with_attrs(out, "mo", r#" fence="true""#, right);
             }
         }),
         MathSemNode::Space { width_em } => {
@@ -195,8 +199,15 @@ fn wrap_with_attrs(out: &mut String, tag: &str, attrs: &str, render: impl FnOnce
 
 /// Emit a leaf element with escaped character data.
 fn push_element(out: &mut String, tag: &str, text: &str) {
+    push_element_with_attrs(out, tag, "", text);
+}
+
+/// Emit a leaf element with `attrs` (each written with a leading space) before
+/// its escaped character data.
+fn push_element_with_attrs(out: &mut String, tag: &str, attrs: &str, text: &str) {
     out.push('<');
     out.push_str(tag);
+    out.push_str(attrs);
     out.push('>');
     out.push_str(&escape_xml(text));
     out.push_str("</");
@@ -288,5 +299,32 @@ mod tests {
         assert!(mathml.contains("<mover><mi>b</mi><mi>a</mi></mover>"), "overset stays bare: {mathml}");
         assert!(mathml.contains("<munder><mi>d</mi><mi>c</mi></munder>"), "underset stays bare: {mathml}");
         assert!(!mathml.contains("accent="), "no stack claims accent compression: {mathml}");
+    }
+
+    #[test]
+    fn authored_delimiters_are_marked_as_fences() {
+        let semantics = MathSemantics {
+            nodes: vec![
+                MathSemNode::Delimited {
+                    left: Some("(".into()),
+                    right: Some(")".into()),
+                    body: Box::new(MathSemNode::Identifier("x".into())),
+                },
+                // `\left( … \right.` keeps only the authored fence.
+                MathSemNode::Delimited {
+                    left: Some("[".into()),
+                    right: None,
+                    body: Box::new(MathSemNode::Identifier("y".into())),
+                },
+                // An ordinary operator is never a fence.
+                MathSemNode::Operator("+".into()),
+            ],
+        };
+        let mut backend = MathmlBackend::new();
+        backend.render_semantics(&semantics);
+        let mathml = backend.finish();
+        assert!(mathml.contains(r#"<mrow><mo fence="true">(</mo><mi>x</mi><mo fence="true">)</mo></mrow>"#), "both fences marked: {mathml}");
+        assert!(mathml.contains(r#"<mo fence="true">[</mo><mi>y</mi>"#), "the lone fence is marked: {mathml}");
+        assert!(mathml.contains("<mo>+</mo>"), "an infix operator stays bare: {mathml}");
     }
 }
