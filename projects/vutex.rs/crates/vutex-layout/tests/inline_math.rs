@@ -2,8 +2,8 @@
 
 use notedown_ir::{Block, DocumentGraph, DocumentId, Inline};
 use vutex_layout::{
-    LayoutHint,
-    document::layout_with_hint,
+    Diagrams, LayoutHint,
+    document::{layout_with_diagnostics, layout_with_hint},
     hint::Margin,
     layout,
     math::layout_formula_with_result,
@@ -239,6 +239,24 @@ fn unparseable_inline_formula_falls_back_to_its_raw_source() {
     assert_eq!(runs.len(), 1, "fallback joins the surrounding text flow: {runs:#?}");
     assert_eq!(runs[0].text, format!("See {source} here"));
     assert!(rules(page).is_empty(), "text fallback emits no rules");
+}
+
+#[test]
+fn foreign_inline_math_language_is_not_parsed_as_tex() {
+    let graph = paragraph(vec![
+        text("See "),
+        Inline::InlineMath { content: "x^2".to_string(), language: Some("typst".to_string()) },
+        text(" here"),
+    ]);
+    let (plan, diagnostics) = layout_with_diagnostics(&graph, &LayoutHint::a4(), &Diagrams::default());
+
+    assert!(
+        diagnostics.iter().any(|item| item.code == "vutex.layout.math.unsupported_language"),
+        "a non-TeX inline math language must report its missing lowering: {diagnostics:#?}"
+    );
+    let runs = text_runs(&plan.pages[0]);
+    assert_eq!(runs.len(), 1, "the foreign math source joins the text flow: {runs:#?}");
+    assert_eq!(runs[0].text, "See x^2 here");
 }
 
 #[test]

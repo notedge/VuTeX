@@ -157,6 +157,22 @@ fn unparseable_formula_falls_back_to_its_raw_source() {
 }
 
 #[test]
+fn foreign_math_language_is_not_parsed_as_tex() {
+    let mut graph = DocumentGraph::new(DocumentId(13));
+    graph.push_block(Block::Math { content: "\\frac{a}{b}".to_string(), language: Some("typst".to_string()) });
+    let (plan, diagnostics) = layout_with_diagnostics(&graph, &LayoutHint::a4(), &Diagrams::default());
+
+    assert!(
+        diagnostics.iter().any(|item| item.code == "vutex.layout.math.unsupported_language"),
+        "a non-TeX math language must report its missing lowering: {diagnostics:#?}"
+    );
+    let page = &plan.pages[0];
+    assert!(rules(page).is_empty(), "foreign math must not run through the TeX fraction layout");
+    let painted: String = text_runs(page).iter().map(|run| run.text.as_str()).collect();
+    assert_eq!(painted, "\\frac{a}{b}", "the source must stay visible as text");
+}
+
+#[test]
 fn math_blocks_paginate_without_leaving_the_page() {
     let mut graph = DocumentGraph::new(DocumentId(8));
     for _ in 0..80 {

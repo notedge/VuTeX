@@ -9,7 +9,7 @@ use std::collections::HashSet;
 use notedown_ir::{Block, DocumentGraph, Inline, ListItem, NodeId, RelationEndpoint, TableRow};
 use vutex_text::math::{FontMetricsSystem, builtin_font_metrics};
 use vutex_types::{
-    Diagnostic,
+    Diagnostic, Severity,
     math::{FontStyle, GlyphKey},
 };
 
@@ -132,6 +132,30 @@ fn link_title(title: Option<&String>) -> Option<&str> {
 /// reaches this helper.
 fn is_tikz_language(language: Option<&str>) -> bool {
     language.is_some_and(|value| value.trim().eq_ignore_ascii_case("tikz"))
+}
+
+/// Whether a Notedown math language tag names the grammar this engine owns.
+///
+/// The formula layout engine implements TeX math only. An absent tag is the
+/// host's default math language, which the Notedown pipeline defines as TeX.
+/// Any other tag (for example `typst`) must not be silently fed to the TeX
+/// grammar: [`PageBuilder::emit_foreign_math`] keeps the source visible as
+/// text and reports the missing lowering instead.
+fn is_tex_math_language(language: Option<&str>) -> bool {
+    match language.map(str::trim) {
+        None => true,
+        Some(tag) => tag.is_empty() || tag.eq_ignore_ascii_case("tex") || tag.eq_ignore_ascii_case("latex"),
+    }
+}
+
+/// The degradation reported when math carries a language the formula engine
+/// cannot lower.
+fn unsupported_math_language_diagnostic(language: &str) -> Diagnostic {
+    Diagnostic {
+        code: "vutex.layout.math.unsupported_language".to_string(),
+        severity: Severity::Warning,
+        message: format!("math language `{language}` has no lowering in the TeX formula engine, the source was kept as text"),
+    }
 }
 
 /// Compute the layout plan for a Notedown document graph.
@@ -551,17 +575,23 @@ impl<'a> PageBuilder<'a> {
                         ImageMode::AltText => flow.pending.push(&alt_text, face, href, title, &mut flow.atoms),
                     }
                 }
-                Inline::InlineMath { content, .. } => {
+                Inline::InlineMath { content, language } => {
                     flow.pending.flush(&mut flow.atoms);
-                    match layout_formula_with_result(content, false, size) {
-                        Ok((result, _root, math_diagnostics)) => {
-                            self.diagnostics.extend(math_diagnostics);
-                            let metrics = &result.metrics;
-                            let (width, height, depth) =
-                                (metrics.width.to_f64(), metrics.height.to_f64(), metrics.depth.to_f64());
-                            flow.atoms.push(InlineAtom::Math(MathAtom { result, width, height, depth }));
+                    if is_tex_math_language(language.as_deref()) {
+                        match layout_formula_with_result(content, false, size) {
+                            Ok((result, _root, math_diagnostics)) => {
+                                self.diagnostics.extend(math_diagnostics);
+                                let metrics = &result.metrics;
+                                let (width, height, depth) =
+                                    (metrics.width.to_f64(), metrics.height.to_f64(), metrics.depth.to_f64());
+                                flow.atoms.push(InlineAtom::Math(MathAtom { result, width, height, depth }));
+                            }
+                            Err(_) => flow.atoms.extend(split_inline_atoms(content, face, href, title)),
                         }
-                        Err(_) => flow.atoms.extend(split_inline_atoms(content, face, href, title)),
+                    } else {
+                        self.diagnostics
+                            .push(unsupported_math_language_diagnostic(language.as_deref().unwrap_or_default()));
+                        flow.atoms.extend(split_inline_atoms(content, face, href, title));
                     }
                 }
                 Inline::Styled { style, children } => {
@@ -961,6 +991,16 @@ impl<'a> PageBuilder<'a> {
         (above.natural - above.shrink * ratio, below.natural - below.shrink * ratio)
     }
 
+    /// Keep display math in a language this engine does not lower as text.
+    ///
+    /// The TeX formula grammar would misinterpret a foreign math language, so
+    /// the source is not parsed at all; it stays visible and the missing
+    /// lowering is reported through the layout diagnostics.
+    fn emit_foreign_math(&mut self, content: &str, language: &str, indent: f64) {
+        self.diagnostics.push(unsupported_math_language_diagnostic(language));
+        self.emit_math_text_fallback(content, indent);
+    }
+
     /// Plain-text rendering used when the math engine rejects the source.
     fn emit_math_text_fallback(&mut self, content: &str, indent: f64) {
         let size = self.body_size();
@@ -1026,7 +1066,13 @@ impl<'a> PageBuilder<'a> {
                         self.emit_code(source, indent);
                     }
                 }
-                Block::Math { content, language: _ } => self.emit_math(content, indent, line_right),
+                Block::Math { content, language } => {
+                    if is_tex_math_language(language.as_deref()) {
+                        self.emit_math(content, indent, line_right);
+                    } else {
+                        self.emit_foreign_math(content, language.as_deref().unwrap_or_default(), indent);
+                    }
+                }
                 Block::Table { caption, rows } => self.emit_table(caption.as_deref(), rows, indent),
                 Block::Opaque { kind, .. } if kind == "thematic_break" => self.emit_thematic_break(indent),
                 // An imported TeX picture environment carries no geometry
