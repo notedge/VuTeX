@@ -1,7 +1,7 @@
 //! Math-list pipeline parity and glue-shape smoke tests.
 //!
 //! Every math list reaches the layout engine through the normalized pipeline
-//!   `SemanticNode → project_semantic → normalize_math_list → tex_skip_between_noad → LayoutNode`
+//!   `FormulaNode → project_formula → normalize_math_list → tex_skip_between_noad → LayoutNode`
 //! driven by `LayoutEngine::layout_math_list`, which `layout_node` on a
 //! `Sequence` delegates to.
 //!
@@ -15,13 +15,13 @@
 use vutex_layout::math::{LayoutEngine, LayoutNode};
 use vutex_text::math::builtin_font_metrics;
 use vutex_types::math::{
-    FontStyle, GlyphKey, LimitsPolicy, LineStyle, MathList, MathStyle, Noad, SemanticNode, SymbolRole, normalize_math_list,
-    project_semantic,
+    FontStyle, GlyphKey, LimitsPolicy, LineStyle, MathList, MathStyle, Noad, FormulaNode, SymbolRole, normalize_math_list,
+    project_formula,
 };
 
 /// Build a symbol atom for a single char.
-fn sym(c: char, role: SymbolRole) -> SemanticNode {
-    SemanticNode::Symbol { glyph_key: GlyphKey::from_char(c, None, FontStyle::Math), role }
+fn sym(c: char, role: SymbolRole) -> FormulaNode {
+    FormulaNode::Symbol { glyph_key: GlyphKey::from_char(c, None, FontStyle::Math), role }
 }
 
 /// The `index`-th atom of `list`, skipping the explicit glue items that sit
@@ -45,7 +45,7 @@ fn glue_widths(node: &LayoutNode) -> Vec<f64> {
     }
 }
 
-fn compare_pipelines(nodes: &[SemanticNode], label: &str) {
+fn compare_pipelines(nodes: &[FormulaNode], label: &str) {
     let engine = LayoutEngine::new(builtin_font_metrics());
     let style = MathStyle::Display;
 
@@ -80,7 +80,7 @@ fn compare_pipelines(nodes: &[SemanticNode], label: &str) {
 #[test]
 fn bin_between_atoms_keeps_medium_glue() {
     // `a + b`: Ord Bin Ord — no demote, 1 glue (medium)
-    let nodes = vec![SemanticNode::Sequence(vec![
+    let nodes = vec![FormulaNode::Sequence(vec![
         sym('a', SymbolRole::Ordinary),
         sym('+', SymbolRole::Binary),
         sym('b', SymbolRole::Ordinary),
@@ -91,7 +91,7 @@ fn bin_between_atoms_keeps_medium_glue() {
 #[test]
 fn relation_between_atoms_keeps_thick_glue() {
     // `a = b`: Ord Rel Ord — no demote (Rel stays Rel between two Ords), 1 glue (thick)
-    let nodes = vec![SemanticNode::Sequence(vec![
+    let nodes = vec![FormulaNode::Sequence(vec![
         sym('a', SymbolRole::Ordinary),
         sym('=', SymbolRole::Relation),
         sym('b', SymbolRole::Ordinary),
@@ -102,7 +102,7 @@ fn relation_between_atoms_keeps_thick_glue() {
 #[test]
 fn operator_between_atoms_keeps_medium_glue() {
     // `a ∑ b`: Ord Op Ord — Op stays Op, 1 glue (medium each side)
-    let nodes = vec![SemanticNode::Sequence(vec![
+    let nodes = vec![FormulaNode::Sequence(vec![
         sym('a', SymbolRole::Ordinary),
         sym('∑', SymbolRole::LargeOperator),
         sym('b', SymbolRole::Ordinary),
@@ -113,7 +113,7 @@ fn operator_between_atoms_keeps_medium_glue() {
 #[test]
 fn three_operators_take_glue_on_each_gap() {
     // `a + b = c`: Ord Bin Ord Rel Ord — Bin stays Bin (no demote), Rel stays Rel, 2 glues
-    let nodes = vec![SemanticNode::Sequence(vec![
+    let nodes = vec![FormulaNode::Sequence(vec![
         sym('a', SymbolRole::Ordinary),
         sym('+', SymbolRole::Binary),
         sym('b', SymbolRole::Ordinary),
@@ -127,10 +127,10 @@ fn three_operators_take_glue_on_each_gap() {
 fn inner_fraction_next_to_binary_keeps_medium_glue() {
     // `a + \frac{b}{c}`: Ord Bin Inner — Bin stays Bin (no demote before Inner, Bin after Atom)
     // Appendix G: Ord→Bin = 2 (Medium), Bin→Inner = 2 (Medium).  2 glues total.
-    let nodes = vec![SemanticNode::Sequence(vec![
+    let nodes = vec![FormulaNode::Sequence(vec![
         sym('a', SymbolRole::Ordinary),
         sym('+', SymbolRole::Binary),
-        SemanticNode::Fraction {
+        FormulaNode::Fraction {
             num: Box::new(sym('b', SymbolRole::Ordinary)),
             den: Box::new(sym('c', SymbolRole::Ordinary)),
             line: LineStyle::Solid,
@@ -149,8 +149,8 @@ fn inner_fraction_next_to_binary_keeps_medium_glue() {
 
 /// Project and normalize a math list in text style, the context where an
 /// accidental `\limits` shows up as stacked instead of side-mounted scripts.
-fn text_noads(nodes: &[SemanticNode]) -> vutex_types::math::MathList {
-    normalize_math_list(project_semantic(nodes, MathStyle::Text))
+fn text_noads(nodes: &[FormulaNode]) -> vutex_types::math::MathList {
+    normalize_math_list(project_formula(nodes, MathStyle::Text))
 }
 
 /// A `\limits` authored after an ordinary atom is consumed by that atom: it is
@@ -158,12 +158,12 @@ fn text_noads(nodes: &[SemanticNode]) -> vutex_types::math::MathList {
 #[test]
 fn limits_after_an_ordinary_atom_do_not_reach_a_later_operator() {
     let nodes = vec![
-        SemanticNode::LimitsSpec(LimitsPolicy::Limits),
-        SemanticNode::Subscript {
+        FormulaNode::LimitsSpec(LimitsPolicy::Limits),
+        FormulaNode::Subscript {
             base: Box::new(sym('x', SymbolRole::Ordinary)),
             sub: Box::new(sym('1', SymbolRole::Ordinary)),
         },
-        SemanticNode::Superscript {
+        FormulaNode::Superscript {
             base: Box::new(sym('∑', SymbolRole::LargeOperator)),
             sup: Box::new(sym('2', SymbolRole::Ordinary)),
         },
@@ -181,9 +181,9 @@ fn limits_after_an_ordinary_atom_do_not_reach_a_later_operator() {
 #[test]
 fn consecutive_limits_keep_the_last_policy() {
     let nodes = vec![
-        SemanticNode::LimitsSpec(LimitsPolicy::Limits),
-        SemanticNode::LimitsSpec(LimitsPolicy::NoLimits),
-        SemanticNode::SubSuperscript {
+        FormulaNode::LimitsSpec(LimitsPolicy::Limits),
+        FormulaNode::LimitsSpec(LimitsPolicy::NoLimits),
+        FormulaNode::SubSuperscript {
             base: Box::new(sym('∑', SymbolRole::LargeOperator)),
             sub: Box::new(sym('1', SymbolRole::Ordinary)),
             sup: Box::new(sym('2', SymbolRole::Ordinary)),
@@ -204,16 +204,16 @@ fn consecutive_limits_keep_the_last_policy() {
 /// group keeps TeX's default placement.
 #[test]
 fn limits_inside_a_group_stay_with_that_operator() {
-    let group = SemanticNode::Sequence(vec![
-        SemanticNode::LimitsSpec(LimitsPolicy::Limits),
-        SemanticNode::Superscript {
+    let group = FormulaNode::Sequence(vec![
+        FormulaNode::LimitsSpec(LimitsPolicy::Limits),
+        FormulaNode::Superscript {
             base: Box::new(sym('∑', SymbolRole::LargeOperator)),
             sup: Box::new(sym('2', SymbolRole::Ordinary)),
         },
     ]);
     let nodes = vec![
         group,
-        SemanticNode::Subscript {
+        FormulaNode::Subscript {
             base: Box::new(sym('∫', SymbolRole::LargeOperator)),
             sub: Box::new(sym('0', SymbolRole::Ordinary)),
         },
@@ -230,14 +230,14 @@ fn limits_inside_a_group_stay_with_that_operator() {
 #[test]
 fn repeated_layout_of_one_math_list_is_identical() {
     let engine = LayoutEngine::new(builtin_font_metrics());
-    let nodes = vec![SemanticNode::Sequence(vec![
+    let nodes = vec![FormulaNode::Sequence(vec![
         sym('x', SymbolRole::Ordinary),
-        SemanticNode::LimitsSpec(LimitsPolicy::Limits),
-        SemanticNode::Subscript {
+        FormulaNode::LimitsSpec(LimitsPolicy::Limits),
+        FormulaNode::Subscript {
             base: Box::new(sym('x', SymbolRole::Ordinary)),
             sub: Box::new(sym('1', SymbolRole::Ordinary)),
         },
-        SemanticNode::Superscript {
+        FormulaNode::Superscript {
             base: Box::new(sym('∑', SymbolRole::LargeOperator)),
             sup: Box::new(sym('2', SymbolRole::Ordinary)),
         },
@@ -247,7 +247,7 @@ fn repeated_layout_of_one_math_list_is_identical() {
     let second = engine.layout_math_list(&nodes, MathStyle::Text).expect("second layout");
     assert_eq!(format!("{first:?}"), format!("{second:?}"), "the same math list must lay out identically every time");
 
-    let unrelated = vec![SemanticNode::SubSuperscript {
+    let unrelated = vec![FormulaNode::SubSuperscript {
         base: Box::new(sym('∫', SymbolRole::LargeOperator)),
         sub: Box::new(sym('0', SymbolRole::Ordinary)),
         sup: Box::new(sym('1', SymbolRole::Ordinary)),

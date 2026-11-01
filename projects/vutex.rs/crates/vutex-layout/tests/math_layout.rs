@@ -9,7 +9,7 @@ use vutex_types::{
     Severity,
     math::{
         EnvironmentKind, EnvironmentRow, Fixed, FontMetricsData, FontStyle, GlyphKey, MathConstant, MathEnvironment, MathStyle,
-        Numbering, SemanticNode, SymbolRole, math_alphalect,
+        Numbering, FormulaNode, SymbolRole, math_alphalect,
     },
 };
 
@@ -1754,7 +1754,7 @@ fn missing_font_ratios_fall_back_and_are_reported() {
     let scriptscript_scale = fallback(MathConstant::ScriptScriptPercentScaleDown);
     let engine = LayoutEngine::new(font).with_base_size(10.0);
     let nodes =
-        vec![SemanticNode::Symbol { glyph_key: GlyphKey::from_char('x', None, FontStyle::Math), role: SymbolRole::Ordinary }];
+        vec![FormulaNode::Symbol { glyph_key: GlyphKey::from_char('x', None, FontStyle::Math), role: SymbolRole::Ordinary }];
 
     for (style, expected) in [
         (MathStyle::Display, 10.0),
@@ -2808,13 +2808,13 @@ fn cramped_leaves_the_insensitive_formulas_unchanged() {
 // ── AMS environments through the IR ─────────────────────────────────
 
 /// One symbol atom of an environment cell.
-fn cell(c: char) -> SemanticNode {
-    SemanticNode::Symbol { glyph_key: GlyphKey::from_char(c, None, FontStyle::Math), role: SymbolRole::Ordinary }
+fn cell(c: char) -> FormulaNode {
+    FormulaNode::Symbol { glyph_key: GlyphKey::from_char(c, None, FontStyle::Math), role: SymbolRole::Ordinary }
 }
 
 /// An AMS environment block over the given rows.
-fn environment(kind: EnvironmentKind, rows: Vec<Vec<char>>) -> SemanticNode {
-    SemanticNode::Environment(MathEnvironment {
+fn environment(kind: EnvironmentKind, rows: Vec<Vec<char>>) -> FormulaNode {
+    FormulaNode::Environment(MathEnvironment {
         kind,
         starred: false,
         rows: rows
@@ -2862,8 +2862,8 @@ fn gather_environment_centres_its_rows() {
     // The engine's base em is 14pt, the same as `layout_formula_source(source, false, default_base_size(false))`
     // uses, so glyph positions and formula widths share one unit.
     let engine = LayoutEngine::new(builtin_font_metrics()).with_base_size(14.0);
-    let sequence = |source: &str| SemanticNode::Sequence(source.chars().map(cell).collect());
-    let node = SemanticNode::Environment(MathEnvironment {
+    let sequence = |source: &str| FormulaNode::Sequence(source.chars().map(cell).collect());
+    let node = FormulaNode::Environment(MathEnvironment {
         kind: EnvironmentKind::Gather,
         starred: false,
         rows: vec![
@@ -3007,17 +3007,17 @@ fn tag_outside_an_environment_is_unsupported() {
 }
 
 /// The first environment in a parsed semantic tree.
-fn first_environment(node: &SemanticNode) -> Option<&MathEnvironment> {
+fn first_environment(node: &FormulaNode) -> Option<&MathEnvironment> {
     match node {
-        SemanticNode::Environment(environment) => Some(environment),
-        SemanticNode::Sequence(items) => items.iter().find_map(first_environment),
-        SemanticNode::Delimited { content, .. } => first_environment(content),
+        FormulaNode::Environment(environment) => Some(environment),
+        FormulaNode::Sequence(items) => items.iter().find_map(first_environment),
+        FormulaNode::Delimited { content, .. } => first_environment(content),
         _ => None,
     }
 }
 
-/// The parser lowers every AMS environment to `SemanticNode::Environment` with
-/// its own kind, and only the matrix-like bodies stay `SemanticNode::Matrix`.
+/// The parser lowers every AMS environment to `FormulaNode::Environment` with
+/// its own kind, and only the matrix-like bodies stay `FormulaNode::Matrix`.
 #[test]
 fn ams_environments_parse_to_their_own_ir_nodes() {
     let cases = [
@@ -3152,7 +3152,7 @@ fn environment_rows_carry_anchor_metadata() {
         row_spacing: Fixed::from_f64(0.35),
         col_spacing: Fixed::ZERO,
     };
-    let node = SemanticNode::Environment(environment);
+    let node = FormulaNode::Environment(environment);
     let engine = LayoutEngine::new(builtin_font_metrics());
     let tree = engine.layout_node(&node, MathStyle::Display).expect("environment lays out");
 
@@ -3244,7 +3244,7 @@ fn mathsf_mathit_textit_and_mathit_variants_are_accepted() {
 fn greek_variant_commands_keep_their_unicode_symbols() {
     for (source, expected) in [(r"\epsilon", 'ϵ'), (r"\varepsilon", 'ε'), (r"\phi", 'ϕ'), (r"\varphi", 'φ')] {
         let tree = lower_formula(source, false).map(|(tree, _)| tree).unwrap_or_else(|error| panic!("`{source}`: {error}"));
-        let SemanticNode::Symbol { glyph_key, role } = &tree.root
+        let FormulaNode::Symbol { glyph_key, role } = &tree.root
         else {
             panic!("`{source}` must parse to one symbol, got {:?}", tree.root)
         };
@@ -3259,7 +3259,7 @@ fn greek_variant_commands_keep_their_unicode_symbols() {
 #[test]
 fn mathrm_switches_the_face_without_leaving_math_mode() {
     let tree = lower_formula(r"\mathrm{\lambda}", false).map(|(tree, _)| tree).expect("`\\mathrm{\\lambda}` parses");
-    let SemanticNode::Symbol { glyph_key, role } = &tree.root
+    let FormulaNode::Symbol { glyph_key, role } = &tree.root
     else {
         panic!("`\\mathrm{{\\lambda}}` must stay a symbol node, got {:?}", tree.root)
     };
@@ -3269,16 +3269,16 @@ fn mathrm_switches_the_face_without_leaving_math_mode() {
 
     // The face reaches every atom of the group, including nested structure.
     let tree = lower_formula(r"\mathrm{x^2}", false).map(|(tree, _)| tree).expect("`\\mathrm{x^2}` parses");
-    let SemanticNode::Superscript { base, sup } = &tree.root
+    let FormulaNode::Superscript { base, sup } = &tree.root
     else {
         panic!("`\\mathrm{{x^2}}` must stay a superscript, got {:?}", tree.root)
     };
-    let SemanticNode::Symbol { glyph_key, .. } = &**base
+    let FormulaNode::Symbol { glyph_key, .. } = &**base
     else {
         panic!("the nucleus is a symbol")
     };
     assert_eq!(glyph_key.style, FontStyle::Normal, "the nucleus takes the upright face");
-    let SemanticNode::Symbol { glyph_key, .. } = &**sup
+    let FormulaNode::Symbol { glyph_key, .. } = &**sup
     else {
         panic!("the script is a symbol")
     };
@@ -3288,14 +3288,14 @@ fn mathrm_switches_the_face_without_leaving_math_mode() {
     // their own contract, and a named operator inside `\mathrm` stays upright
     // text rather than being re-drawn letter by letter.
     let tree = lower_formula(r"\text{lambda}", false).map(|(tree, _)| tree).expect("`\\text{lambda}` parses");
-    assert!(matches!(&tree.root, SemanticNode::Text { text, .. } if text.as_str() == "lambda"));
+    assert!(matches!(&tree.root, FormulaNode::Text { text, .. } if text.as_str() == "lambda"));
     let tree = lower_formula(r"\mathrm{\sin x}", false).map(|(tree, _)| tree).expect("`\\mathrm{\\sin x}` parses");
-    let SemanticNode::Sequence(items) = &tree.root
+    let FormulaNode::Sequence(items) = &tree.root
     else {
         panic!("two atoms: {:?}", tree.root)
     };
-    assert!(matches!(&items[0], SemanticNode::Text { text, .. } if text.as_str() == "sin"), "a named operator stays text");
-    let SemanticNode::Symbol { glyph_key, .. } = &items[1]
+    assert!(matches!(&items[0], FormulaNode::Text { text, .. } if text.as_str() == "sin"), "a named operator stays text");
+    let FormulaNode::Symbol { glyph_key, .. } = &items[1]
     else {
         panic!("`x` is a symbol")
     };

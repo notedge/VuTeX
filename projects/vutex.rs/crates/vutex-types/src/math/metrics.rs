@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::semantic::{Fixed, GlyphKey};
+use super::formula::{Fixed, GlyphKey};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum MathConstant {

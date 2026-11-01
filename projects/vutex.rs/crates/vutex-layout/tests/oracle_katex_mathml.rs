@@ -201,7 +201,7 @@ fn structures_match_katex_for_inline_style() {
 
         let tree = lower_formula(&record.tex, false).map(|(tree, _)| tree).unwrap_or_else(|e| panic!("corpus `{}` must parse: {e}", record.corpus_id));
         let mut backend = MathmlBackend::new();
-        backend.render_semantics(&MathSemantics::from_semantic_tree(&tree));
+        backend.render_semantics(&MathSemantics::from_formula_tree(&tree));
         let vutex_mathml = backend.finish();
 
         let expected = normalize(katex_mathml);

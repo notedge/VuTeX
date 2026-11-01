@@ -8,12 +8,12 @@ use notedown_ir::{MathDisplay, MathFormula};
 use vutex_text::math::{MathFontFacts, MathFontFamily, builtin_font_metrics_for};
 use vutex_types::{
     Diagnostic,
-    math::{FormulaLayoutResult, MathError, MathResult, MathSemanticTree, MathStyle},
+    math::{FormulaLayoutResult, MathError, MathResult, FormulaTree, MathStyle},
 };
 
 use super::{
     LayoutEngine, LayoutNode,
-    ir::{is_tex_formula, semantic_tree},
+    lowering::{is_tex_formula, formula_tree},
 };
 
 /// Em size used for a formula laid out without an explicit base size.
@@ -21,27 +21,27 @@ pub fn default_base_size(display: bool) -> f64 {
     if display { 16.0 } else { 14.0 }
 }
 
-/// Lower authored TeX math through Notedown's import layer into the semantic tree.
+/// Lower authored TeX math through Notedown's import layer into the formula tree.
 ///
 /// The syntax stays in Oak and the semantics in `notedown-ir`; this function is
 /// orchestration for hosts that own only a formula string, such as WeTeX.
-pub fn lower_formula(source: &str, display: bool) -> MathResult<(MathSemanticTree, Vec<Diagnostic>)> {
+pub fn lower_formula(source: &str, display: bool) -> MathResult<(FormulaTree, Vec<Diagnostic>)> {
     let formula = notedown_formats::lower_tex_formula_source(
         source,
         if display { MathDisplay::Display } else { MathDisplay::Inline },
     );
-    lower_formula_ir(&formula)
+    lower_formula_tree(&formula)
 }
 
-/// Map one `notedown-ir` formula onto the layout semantic tree.
-pub fn lower_formula_ir(formula: &MathFormula) -> MathResult<(MathSemanticTree, Vec<Diagnostic>)> {
+/// Map one `notedown-ir` formula onto the layout engine formula tree.
+pub fn lower_formula_tree(formula: &MathFormula) -> MathResult<(FormulaTree, Vec<Diagnostic>)> {
     if !is_tex_formula(formula) {
         return Err(MathError::parse_error(
             format!("math language `{}` has no VuTeX lowering", formula.language.as_deref().unwrap_or_default()),
             None,
         ));
     }
-    Ok(semantic_tree(formula))
+    Ok(formula_tree(formula))
 }
 
 /// Lay out one `notedown-ir` formula with the builtin default font family.
@@ -56,15 +56,15 @@ pub fn layout_formula_for(
     base_size: f64,
     family: MathFontFamily,
 ) -> MathResult<(FormulaLayoutResult, LayoutNode, Vec<Diagnostic>)> {
-    let (tree, mut diagnostics) = lower_formula_ir(formula)?;
+    let (tree, mut diagnostics) = lower_formula_tree(formula)?;
     let style = match formula.display {
         MathDisplay::Display => MathStyle::Display,
         MathDisplay::Inline => MathStyle::Text,
     };
     let font_system = builtin_font_metrics_for(family);
     let engine = LayoutEngine::with_facts(font_system, MathFontFacts::for_family(family)).with_base_size(base_size);
-    let nodes: &[vutex_types::math::SemanticNode] = match &tree.root {
-        vutex_types::math::SemanticNode::Sequence(items) => items.as_slice(),
+    let nodes: &[vutex_types::math::FormulaNode] = match &tree.root {
+        vutex_types::math::FormulaNode::Sequence(items) => items.as_slice(),
         other => std::slice::from_ref(other),
     };
     let (result, root) = engine.layout_formula_result(nodes, style)?;

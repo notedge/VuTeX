@@ -13,7 +13,7 @@ fn render_svg(source: &str) -> String {
 /// Render the structured MathML of one formula source.
 fn render_mathml(source: &str) -> String {
     let tree = lower_formula(source, false).map(|(tree, _)| tree).expect("formula should parse");
-    let semantics = MathSemantics::from_semantic_tree(&tree);
+    let semantics = MathSemantics::from_formula_tree(&tree);
     let mut backend = MathmlBackend::new();
     backend.render_semantics(&semantics);
     backend.finish()

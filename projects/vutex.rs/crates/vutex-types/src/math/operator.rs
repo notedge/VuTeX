@@ -14,7 +14,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::semantic::{MathStyle, SemanticNode, SymbolRole};
+use super::formula::{MathStyle, FormulaNode, SymbolRole};
 
 /// TeX's class of an operator atom, used for script placement.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -76,9 +76,9 @@ impl LimitsPolicy {
     ///
     /// Named operators read [`of_text`](Self::of_text), everything else keeps
     /// `Auto` so the [`OperatorClass`] and the math style decide.
-    pub fn of_node(node: &SemanticNode) -> Self {
+    pub fn of_node(node: &FormulaNode) -> Self {
         match node {
-            SemanticNode::Text { text, .. } => Self::of_text(text),
+            FormulaNode::Text { text, .. } => Self::of_text(text),
             _ => Self::Auto,
         }
     }
@@ -116,14 +116,14 @@ impl OperatorClass {
     /// Only a large-operator symbol can stack by default; text atoms are the
     /// upright named functions, and every other node behaves like an ordinary
     /// atom for placement purposes.
-    pub fn of_node(node: &SemanticNode) -> Self {
+    pub fn of_node(node: &FormulaNode) -> Self {
         match node {
-            SemanticNode::Symbol { glyph_key, role } => match role {
+            FormulaNode::Symbol { glyph_key, role } => match role {
                 SymbolRole::LargeOperator => Self::of_char(glyph_key.char),
                 SymbolRole::Operator => Self::NamedOp,
                 _ => Self::Ord,
             },
-            SemanticNode::Text { .. } => Self::NamedOp,
+            FormulaNode::Text { .. } => Self::NamedOp,
             _ => Self::Ord,
         }
     }
@@ -152,9 +152,9 @@ impl OperatorClass {
 mod tests {
     use super::*;
 
-    fn large_op(c: char) -> SemanticNode {
-        SemanticNode::Symbol {
-            glyph_key: super::super::semantic::GlyphKey::from_char(c, None, super::super::semantic::FontStyle::Math),
+    fn large_op(c: char) -> FormulaNode {
+        FormulaNode::Symbol {
+            glyph_key: super::super::formula::GlyphKey::from_char(c, None, super::super::formula::FontStyle::Math),
             role: SymbolRole::LargeOperator,
         }
     }
@@ -215,7 +215,7 @@ mod tests {
         assert!(!OperatorClass::NamedOp.places_limits(LimitsPolicy::of_text("some text"), MathStyle::Display));
     }
 
-    fn named_op(text: &str) -> SemanticNode {
-        SemanticNode::Text { text: text.to_string(), font_style: super::super::semantic::FontStyle::Normal }
+    fn named_op(text: &str) -> FormulaNode {
+        FormulaNode::Text { text: text.to_string(), font_style: super::super::formula::FontStyle::Normal }
     }
 }

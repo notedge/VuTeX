@@ -97,7 +97,7 @@ fn lowercase_vmatrix_keeps_a_single_bar() {
 /// never be reported as a glyph without an outline.
 ///
 /// `\,`, `\:`, `\;`, `\ `, `\quad`, `\qquad` and the spaces inside `\text{}` all
-/// reach layout as `SemanticNode::Text`, which TeX sets as a horizontal kern.
+/// reach layout as `FormulaNode::Text`, which TeX sets as a horizontal kern.
 /// Turning them into glyphs made the collector warn about a blank glyph the font
 /// cannot outline even though no ink was ever meant to be painted.
 #[test]

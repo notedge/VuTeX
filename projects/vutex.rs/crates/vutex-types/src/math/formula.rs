@@ -4,34 +4,34 @@ use super::operator::LimitsPolicy;
 use crate::{Diagnostic, Severity};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct MathSemanticTree {
-    pub root: SemanticNode,
+pub struct FormulaTree {
+    pub root: FormulaNode,
     // TODO: Add source mapping for debugging
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum SemanticNode {
-    Sequence(Vec<SemanticNode>),
+pub enum FormulaNode {
+    Sequence(Vec<FormulaNode>),
     HorizontalBox {
-        content: Vec<SemanticNode>,
+        content: Vec<FormulaNode>,
         spacing: SpacingRule,
     },
     Paragraph {
-        content: Vec<SemanticNode>,
+        content: Vec<FormulaNode>,
         width: Fixed,
     },
     VerticalBox {
-        content: Vec<SemanticNode>,
+        content: Vec<FormulaNode>,
         alignment: Alignment,
     },
     Fraction {
-        num: Box<SemanticNode>,
-        den: Box<SemanticNode>,
+        num: Box<FormulaNode>,
+        den: Box<FormulaNode>,
         line: LineStyle,
     },
     Radical {
-        degree: Option<Box<SemanticNode>>,
-        radicand: Box<SemanticNode>,
+        degree: Option<Box<FormulaNode>>,
+        radicand: Box<FormulaNode>,
     },
     Symbol {
         glyph_key: GlyphKey,
@@ -43,7 +43,7 @@ pub enum SemanticNode {
     /// Presentation MathML expects a multi-digit number inside a single `mn`,
     /// not one `mn` per digit.  The parser groups an unbraced run of ASCII
     /// digits into this node; a digit reached as a single-argument atom (the
-    /// nucleus of a script, an optional root degree) stays a [`Symbol`](SemanticNode::Symbol)
+    /// nucleus of a script, an optional root degree) stays a [`Symbol`](FormulaNode::Symbol)
     /// and lowers to the same `mn`.
     Number {
         text: String,
@@ -62,27 +62,27 @@ pub enum SemanticNode {
     ///
     /// `width` is measured in em of the current math size and is scaled by the
     /// layout engine, exactly like the `row_spacing` / `col_spacing` of
-    /// [`SemanticNode::Matrix`].  TeX sets `\,` to 3mu, `\:` to 4mu and `\;` to
+    /// [`FormulaNode::Matrix`].  TeX sets `\,` to 3mu, `\:` to 4mu and `\;` to
     /// 5mu of the current em (`1mu` is `em / 18`), `\ ` to a third of an em,
     /// `\quad` to 1em and `\qquad` to 2em.
     Space {
         width: Fixed,
     },
     Subscript {
-        base: Box<SemanticNode>,
-        sub: Box<SemanticNode>,
+        base: Box<FormulaNode>,
+        sub: Box<FormulaNode>,
     },
     Superscript {
-        base: Box<SemanticNode>,
-        sup: Box<SemanticNode>,
+        base: Box<FormulaNode>,
+        sup: Box<FormulaNode>,
     },
     SubSuperscript {
-        base: Box<SemanticNode>,
-        sub: Box<SemanticNode>,
-        sup: Box<SemanticNode>,
+        base: Box<FormulaNode>,
+        sub: Box<FormulaNode>,
+        sup: Box<FormulaNode>,
     },
     Matrix {
-        rows: Vec<Vec<SemanticNode>>,
+        rows: Vec<Vec<FormulaNode>>,
         row_spacing: Fixed,
         col_spacing: Fixed,
         /// Whether the grid is always set at display style.
@@ -102,10 +102,10 @@ pub enum SemanticNode {
     Delimited {
         left: Option<GlyphKey>,
         right: Option<GlyphKey>,
-        content: Box<SemanticNode>,
+        content: Box<FormulaNode>,
     },
     Accent {
-        base: Box<SemanticNode>,
+        base: Box<FormulaNode>,
         accent: GlyphKey,
     },
     /// TeX's `\overset{top}{base}` — stack `top` above `base`.
@@ -114,28 +114,28 @@ pub enum SemanticNode {
     /// geometric layout mirrors a single upper limit on a large operator but
     /// carries no spacing class of its own — spacing follows the base.
     OverSet {
-        top: Box<SemanticNode>,
-        base: Box<SemanticNode>,
+        top: Box<FormulaNode>,
+        base: Box<FormulaNode>,
     },
     /// TeX's `\underset{bot}{base}` — stack `bot` below `base`.
     ///
-    /// `bot` is rendered in script style (cramped).  Like [`SemanticNode::OverSet`],
+    /// `bot` is rendered in script style (cramped).  Like [`FormulaNode::OverSet`],
     /// the spacing class follows the base.
     UnderSet {
-        bot: Box<SemanticNode>,
-        base: Box<SemanticNode>,
+        bot: Box<FormulaNode>,
+        base: Box<FormulaNode>,
     },
     /// TeX's `\mathrel{…}` — force the wrapped node to behave as a Relation
     /// atom for Appendix G spacing purposes.
     ///
     /// `\stackrel` expands to `Relation(OverSet { top, base })` so the stacked
     /// expression takes relation spacing on both sides (thick space from Rel).
-    Relation(Box<SemanticNode>),
+    Relation(Box<FormulaNode>),
     /// One AMS math environment block.
     ///
     /// The environment keeps its own kind, alignment anchors and per-row
     /// numbering intent instead of being lowered into a flagged
-    /// [`SemanticNode::Matrix`]: `aligned`, `alignedat{n}`, `split`, `align`,
+    /// [`FormulaNode::Matrix`]: `aligned`, `alignedat{n}`, `split`, `align`,
     /// `equation`, `gather`, `gathered` and `multline` differ in how many `&`
     /// anchors a row has, whether the rows are one equation or several, and
     /// whether the block is display level.
@@ -181,7 +181,7 @@ pub struct MathEnvironment {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct EnvironmentRow {
     /// Cells in source order — one per `&`-separated segment.
-    pub cells: Vec<SemanticNode>,
+    pub cells: Vec<FormulaNode>,
     /// Numbering intent authored on this row.
     pub numbering: Numbering,
 }
@@ -552,7 +552,7 @@ pub enum MathStyle {
 /// layout geometry is involved.  Structured backends render this tree directly
 /// instead of reconstructing structure from painted glyph runs.
 ///
-/// The imperative nodes of [`SemanticNode`] (`SetMathStyle`, `LimitsSpec`)
+/// The imperative nodes of [`FormulaNode`] (`SetMathStyle`, `LimitsSpec`)
 /// carry no structure and are dropped during construction.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -562,20 +562,20 @@ pub struct MathSemantics {
 }
 
 impl MathSemantics {
-    /// Build from a parsed [`MathSemanticTree`].
+    /// Build from a parsed [`FormulaTree`].
     ///
     /// A sequence root is unwrapped so the result is a flat list of siblings
     /// rather than a redundant nested row.
-    pub fn from_semantic_tree(tree: &MathSemanticTree) -> Self {
+    pub fn from_formula_tree(tree: &FormulaTree) -> Self {
         match &tree.root {
-            SemanticNode::Sequence(items) => Self::from_nodes(items),
-            other => Self { nodes: MathSemNode::from_semantic(other).into_iter().collect() },
+            FormulaNode::Sequence(items) => Self::from_nodes(items),
+            other => Self { nodes: MathSemNode::from_formula(other).into_iter().collect() },
         }
     }
 
-    /// Build from one semantic node sequence.
-    pub fn from_nodes(nodes: &[SemanticNode]) -> Self {
-        Self { nodes: nodes.iter().filter_map(MathSemNode::from_semantic).collect() }
+    /// Build from one formula node sequence.
+    pub fn from_nodes(nodes: &[FormulaNode]) -> Self {
+        Self { nodes: nodes.iter().filter_map(MathSemNode::from_formula).collect() }
     }
 }
 
@@ -704,26 +704,26 @@ impl MathVariant {
 }
 
 impl MathSemNode {
-    /// Lower one [`SemanticNode`] into its structured form.
+    /// Lower one [`FormulaNode`] into its structured form.
     ///
     /// Returns `None` for the imperative nodes that carry no structure.
-    fn from_semantic(node: &SemanticNode) -> Option<Self> {
-        let child = |node: &SemanticNode| Box::new(Self::from_semantic(node).unwrap_or(MathSemNode::Empty));
+    fn from_formula(node: &FormulaNode) -> Option<Self> {
+        let child = |node: &FormulaNode| Box::new(Self::from_formula(node).unwrap_or(MathSemNode::Empty));
 
         Some(match node {
-            SemanticNode::Sequence(items) => MathSemNode::Row(MathSemantics::from_nodes(items).nodes).into_row(),
-            SemanticNode::HorizontalBox { content, .. }
-            | SemanticNode::Paragraph { content, .. }
-            | SemanticNode::VerticalBox { content, .. } => {
+            FormulaNode::Sequence(items) => MathSemNode::Row(MathSemantics::from_nodes(items).nodes).into_row(),
+            FormulaNode::HorizontalBox { content, .. }
+            | FormulaNode::Paragraph { content, .. }
+            | FormulaNode::VerticalBox { content, .. } => {
                 MathSemNode::Row(MathSemantics::from_nodes(content).nodes).into_row()
             }
-            SemanticNode::Fraction { num, den, line } => {
+            FormulaNode::Fraction { num, den, line } => {
                 MathSemNode::Fraction { numerator: child(num), denominator: child(den), line: *line }
             }
-            SemanticNode::Radical { degree, radicand } => {
+            FormulaNode::Radical { degree, radicand } => {
                 MathSemNode::Radical { radicand: child(radicand), degree: degree.as_ref().map(|degree| child(degree)) }
             }
-            SemanticNode::Symbol { glyph_key, .. } => match glyph_key.char {
+            FormulaNode::Symbol { glyph_key, .. } => match glyph_key.char {
                 Some(c) if c.is_numeric() => MathSemNode::Number(c.to_string()),
                 Some(c) if c.is_alphabetic() => {
                     MathSemNode::Identifier { text: c.to_string(), mathvariant: MathVariant::from_style(glyph_key.style) }
@@ -731,20 +731,20 @@ impl MathSemNode {
                 Some(c) => MathSemNode::Operator(c.to_string()),
                 None => MathSemNode::Empty,
             },
-            SemanticNode::Number { text } => MathSemNode::Number(text.clone()),
-            SemanticNode::Text { text, .. } => MathSemNode::Text(text.clone()),
-            SemanticNode::Space { width } => MathSemNode::Space { width_em: width.to_f64() },
-            SemanticNode::Subscript { base, sub } => MathSemNode::Sub { base: child(base), sub: child(sub) },
-            SemanticNode::Superscript { base, sup } => MathSemNode::Sup { base: child(base), sup: child(sup) },
-            SemanticNode::SubSuperscript { base, sub, sup } => {
+            FormulaNode::Number { text } => MathSemNode::Number(text.clone()),
+            FormulaNode::Text { text, .. } => MathSemNode::Text(text.clone()),
+            FormulaNode::Space { width } => MathSemNode::Space { width_em: width.to_f64() },
+            FormulaNode::Subscript { base, sub } => MathSemNode::Sub { base: child(base), sub: child(sub) },
+            FormulaNode::Superscript { base, sup } => MathSemNode::Sup { base: child(base), sup: child(sup) },
+            FormulaNode::SubSuperscript { base, sub, sup } => {
                 MathSemNode::SubSup { base: child(base), sub: child(sub), sup: child(sup) }
             }
             // A matrix has no authored column alignment beyond its own cell
             // contents, so it carries none here and keeps MathML's default.
-            SemanticNode::Matrix { rows, .. } => MathSemNode::Table {
+            FormulaNode::Matrix { rows, .. } => MathSemNode::Table {
                 rows: rows
                     .iter()
-                    .map(|row| row.iter().map(|cell| Self::from_semantic(cell).unwrap_or(MathSemNode::Empty)).collect())
+                    .map(|row| row.iter().map(|cell| Self::from_formula(cell).unwrap_or(MathSemNode::Empty)).collect())
                     .collect(),
                 columnalign: Vec::new(),
             },
@@ -754,32 +754,32 @@ impl MathSemNode {
             // the IR node ([`MathEnvironment`]), which is what layout and
             // diagnostics read.  The column alignment is also the table's own
             // `columnalign`, because it is structure an `mtable` can express.
-            SemanticNode::Environment(environment) => MathSemNode::Table {
+            FormulaNode::Environment(environment) => MathSemNode::Table {
                 rows: environment
                     .rows
                     .iter()
-                    .map(|row| row.cells.iter().map(|cell| Self::from_semantic(cell).unwrap_or(MathSemNode::Empty)).collect())
+                    .map(|row| row.cells.iter().map(|cell| Self::from_formula(cell).unwrap_or(MathSemNode::Empty)).collect())
                     .collect(),
                 columnalign: environment.column_alignment(),
             },
-            SemanticNode::Delimited { left, right, content } => MathSemNode::Delimited {
+            FormulaNode::Delimited { left, right, content } => MathSemNode::Delimited {
                 left: left.as_ref().and_then(delimiter_text),
                 right: right.as_ref().and_then(delimiter_text),
                 body: child(content),
             },
             // The parser only lowers over-accents (`\hat`, `\bar`, …), so every
             // authored accent sits above its base.
-            SemanticNode::Accent { base, accent } => MathSemNode::Accent {
+            FormulaNode::Accent { base, accent } => MathSemNode::Accent {
                 base: child(base),
                 accent: accent.char.map(|c| c.to_string()).unwrap_or_default(),
                 position: AccentPosition::Above,
             },
-            SemanticNode::OverSet { top, base } => MathSemNode::StackAbove { base: child(base), over: child(top) },
-            SemanticNode::UnderSet { bot, base } => MathSemNode::StackBelow { base: child(base), under: child(bot) },
+            FormulaNode::OverSet { top, base } => MathSemNode::StackAbove { base: child(base), over: child(top) },
+            FormulaNode::UnderSet { bot, base } => MathSemNode::StackBelow { base: child(base), under: child(bot) },
             // `\mathrel` / `\stackrel` — the spacing role is layout-layer
             // concern, so the semantic layer just lowers the body it wraps.
-            SemanticNode::Relation(inner) => return Self::from_semantic(inner),
-            SemanticNode::SetMathStyle(_) | SemanticNode::LimitsSpec(_) => return None,
+            FormulaNode::Relation(inner) => return Self::from_formula(inner),
+            FormulaNode::SetMathStyle(_) | FormulaNode::LimitsSpec(_) => return None,
         })
     }
 
@@ -868,17 +868,17 @@ impl std::ops::Div<f64> for Fixed {
 mod tests {
     use super::*;
 
-    fn sym(c: char, role: SymbolRole) -> SemanticNode {
-        SemanticNode::Symbol { glyph_key: GlyphKey::from_char(c, None, FontStyle::Math), role }
+    fn sym(c: char, role: SymbolRole) -> FormulaNode {
+        FormulaNode::Symbol { glyph_key: GlyphKey::from_char(c, None, FontStyle::Math), role }
     }
 
-    fn lower(node: &SemanticNode) -> MathSemNode {
-        MathSemNode::from_semantic(node).expect("structural node")
+    fn lower(node: &FormulaNode) -> MathSemNode {
+        MathSemNode::from_formula(node).expect("structural node")
     }
 
     #[test]
     fn fraction_keeps_numerator_and_denominator_nested() {
-        let frac = SemanticNode::Fraction {
+        let frac = FormulaNode::Fraction {
             num: Box::new(sym('a', SymbolRole::Ordinary)),
             den: Box::new(sym('b', SymbolRole::Ordinary)),
             line: LineStyle::Solid,
@@ -895,7 +895,7 @@ mod tests {
 
     #[test]
     fn radical_degree_stays_nested() {
-        let rad = SemanticNode::Radical {
+        let rad = FormulaNode::Radical {
             degree: Some(Box::new(sym('3', SymbolRole::Ordinary))),
             radicand: Box::new(sym('x', SymbolRole::Ordinary)),
         };
@@ -907,7 +907,7 @@ mod tests {
             other => panic!("expected Radical, got {other:?}"),
         }
 
-        let plain = SemanticNode::Radical { degree: None, radicand: Box::new(sym('x', SymbolRole::Ordinary)) };
+        let plain = FormulaNode::Radical { degree: None, radicand: Box::new(sym('x', SymbolRole::Ordinary)) };
         match lower(&plain) {
             MathSemNode::Radical { degree, .. } => assert!(degree.is_none()),
             other => panic!("expected Radical, got {other:?}"),
@@ -917,9 +917,9 @@ mod tests {
     #[test]
     fn scripts_keep_their_nesting() {
         // `x^{a_b}`: a superscript whose body holds its own subscript.
-        let sup = SemanticNode::Superscript {
+        let sup = FormulaNode::Superscript {
             base: Box::new(sym('x', SymbolRole::Ordinary)),
-            sup: Box::new(SemanticNode::Subscript {
+            sup: Box::new(FormulaNode::Subscript {
                 base: Box::new(sym('a', SymbolRole::Ordinary)),
                 sub: Box::new(sym('b', SymbolRole::Ordinary)),
             }),
@@ -941,7 +941,7 @@ mod tests {
 
     #[test]
     fn sub_superscript_lowers_to_a_single_sub_sup_node() {
-        let node = SemanticNode::SubSuperscript {
+        let node = FormulaNode::SubSuperscript {
             base: Box::new(sym('x', SymbolRole::Ordinary)),
             sub: Box::new(sym('a', SymbolRole::Ordinary)),
             sup: Box::new(sym('b', SymbolRole::Ordinary)),
@@ -958,7 +958,7 @@ mod tests {
 
     #[test]
     fn matrix_lowers_to_table_rows() {
-        let matrix = SemanticNode::Matrix {
+        let matrix = FormulaNode::Matrix {
             rows: vec![
                 vec![sym('a', SymbolRole::Ordinary), sym('b', SymbolRole::Ordinary)],
                 vec![sym('c', SymbolRole::Ordinary), sym('d', SymbolRole::Ordinary)],
@@ -983,7 +983,7 @@ mod tests {
 
     #[test]
     fn accent_keeps_base_and_accent_glyph() {
-        let accent = SemanticNode::Accent {
+        let accent = FormulaNode::Accent {
             base: Box::new(sym('f', SymbolRole::Ordinary)),
             accent: GlyphKey::from_char('ˆ', None, FontStyle::Normal),
         };
@@ -999,7 +999,7 @@ mod tests {
 
     #[test]
     fn delimited_wraps_its_body_with_both_fences() {
-        let delim = SemanticNode::Delimited {
+        let delim = FormulaNode::Delimited {
             left: Some(GlyphKey::from_char('(', None, FontStyle::Normal)),
             right: Some(GlyphKey::from_char(')', None, FontStyle::Normal)),
             content: Box::new(sym('x', SymbolRole::Ordinary)),
@@ -1020,7 +1020,7 @@ mod tests {
         assert_eq!(lower(&sym('7', SymbolRole::Ordinary)), MathSemNode::Number("7".into()));
         assert_eq!(lower(&sym('+', SymbolRole::Binary)), MathSemNode::Operator("+".into()));
         assert_eq!(
-            lower(&SemanticNode::Text { text: "sin".into(), font_style: FontStyle::Normal }),
+            lower(&FormulaNode::Text { text: "sin".into(), font_style: FontStyle::Normal }),
             MathSemNode::Text("sin".into())
         );
     }
@@ -1029,7 +1029,7 @@ mod tests {
     fn a_math_face_lowers_to_the_identifier_variant_it_names() {
         // A `\math…` face switch rewrites the face of its symbol atoms, so the
         // lowered identifier keeps the MathML `mathvariant` the face names.
-        let face = |c: char, style: FontStyle| SemanticNode::Symbol {
+        let face = |c: char, style: FontStyle| FormulaNode::Symbol {
             glyph_key: GlyphKey::from_char(c, None, style),
             role: SymbolRole::Ordinary,
         };
@@ -1054,15 +1054,15 @@ mod tests {
     fn a_grouped_number_lowers_to_one_mn_atom() {
         // `10` is one numeric atom, not two digits: the whole run stays inside
         // a single `mn`, matching TeX and KaTeX.
-        assert_eq!(lower(&SemanticNode::Number { text: "10".into() }), MathSemNode::Number("10".into()));
+        assert_eq!(lower(&FormulaNode::Number { text: "10".into() }), MathSemNode::Number("10".into()));
     }
 
     #[test]
     fn imperative_nodes_are_dropped() {
         let nodes = vec![
-            SemanticNode::SetMathStyle(MathStyle::Script),
+            FormulaNode::SetMathStyle(MathStyle::Script),
             sym('x', SymbolRole::Ordinary),
-            SemanticNode::LimitsSpec(LimitsPolicy::Limits),
+            FormulaNode::LimitsSpec(LimitsPolicy::Limits),
         ];
         let semantics = MathSemantics::from_nodes(&nodes);
         assert_eq!(semantics.nodes, vec![MathSemNode::Identifier { text: "x".into(), mathvariant: None }]);
@@ -1070,13 +1070,13 @@ mod tests {
 
     #[test]
     fn sequence_root_is_unwrapped_and_single_children_stay_bare() {
-        let tree = MathSemanticTree {
-            root: SemanticNode::Sequence(vec![
+        let tree = FormulaTree {
+            root: FormulaNode::Sequence(vec![
                 sym('x', SymbolRole::Ordinary),
-                SemanticNode::Sequence(vec![sym('+', SymbolRole::Binary)]),
+                FormulaNode::Sequence(vec![sym('+', SymbolRole::Binary)]),
             ]),
         };
-        let semantics = MathSemantics::from_semantic_tree(&tree);
+        let semantics = MathSemantics::from_formula_tree(&tree);
         assert_eq!(
             semantics.nodes,
             vec![MathSemNode::Identifier { text: "x".into(), mathvariant: None }, MathSemNode::Operator("+".into())]
@@ -1085,7 +1085,7 @@ mod tests {
 
     // ── AMS environments ──────────────────────────────────────────────
 
-    fn env(kind: EnvironmentKind, rows: Vec<Vec<SemanticNode>>) -> MathEnvironment {
+    fn env(kind: EnvironmentKind, rows: Vec<Vec<FormulaNode>>) -> MathEnvironment {
         MathEnvironment {
             kind,
             starred: false,
@@ -1204,7 +1204,7 @@ mod tests {
             env(EnvironmentKind::Split, vec![vec![sym('x', SymbolRole::Ordinary)], vec![sym('y', SymbolRole::Ordinary)]]);
         environment.rows[0].numbering = Numbering::Tag("1".into());
         environment.rows[1].numbering = Numbering::Suppressed;
-        let node = SemanticNode::Environment(environment);
+        let node = FormulaNode::Environment(environment);
 
         match lower(&node) {
             MathSemNode::Table { rows, columnalign } => {
@@ -1218,7 +1218,7 @@ mod tests {
             other => panic!("expected the block to lower to one table, got {other:?}"),
         }
 
-        let SemanticNode::Environment(environment) = node
+        let FormulaNode::Environment(environment) = node
         else {
             panic!("expected an environment node")
         };

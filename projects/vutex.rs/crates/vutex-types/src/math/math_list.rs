@@ -3,7 +3,7 @@
 //! TeX's math engine lowers the syntax tree into a flat list of **noads**,
 //! each carrying a role (the 8 spacing classes from Appendix G), an optional
 //! nucleus, sub/superscripts, and the math style that governs it.  VuTeX's
-//! [`SemanticNode`] tree currently mixes syntax (grouping), semantic role,
+//! [`FormulaNode`] tree currently mixes syntax (grouping), semantic role,
 //! style commands and layout hints in one enum, which makes the spacing,
 //! demotion and style-propagation rules hard to reason about locally.
 //!
@@ -19,8 +19,8 @@
 //! * [`normalize_math_list`] — flatten transparent groups, demote `Bin` atoms
 //!   per TeX Appendix G and merge consecutive text atoms in one left-to-right
 //!   sweep.
-//! * [`From<&[SemanticNode]>` for `MathList`] — a shallow projector that
-//!   lowers a SemanticNode sequence into a MathList.
+//! * [`From<&[FormulaNode]>` for `MathList`] — a shallow projector that
+//!   lowers a FormulaNode sequence into a MathList.
 //!
 //! The layout engine consumes this normalization: every math list it lays out
 //! is projected and normalized first, so inter-atom spacing only ever reads an
@@ -31,7 +31,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     operator::LimitsPolicy,
-    semantic::{Fixed, FontStyle, MathStyle, SemanticNode, SymbolRole},
+    formula::{Fixed, FontStyle, MathStyle, FormulaNode, SymbolRole},
 };
 
 /// TeX Appendix G spacing classes + structural extensions.
@@ -132,11 +132,11 @@ impl NoadKind {
 pub struct Noad {
     /// The spacing / structural class for this noad.
     pub kind: NoadKind,
-    /// The nucleus — a shallow reference to the original [`SemanticNode`]
+    /// The nucleus — a shallow reference to the original [`FormulaNode`]
     /// subtree that produced this noad, so downstream consumers still have
     /// full access to the parsed form before a deeper nucleus enum replaces
     /// it.
-    pub nucleus: Option<Box<SemanticNode>>,
+    pub nucleus: Option<Box<FormulaNode>>,
     /// Attached sub/superscripts, if any.
     pub scripts: Option<Scripts>,
     /// An explicit `\limits` / `\nolimits` override, if any.  Only meaningful
@@ -161,8 +161,8 @@ pub struct Noad {
 /// Sub- and/or superscript attached to a [`Noad`].
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Scripts {
-    pub sub: Option<Box<SemanticNode>>,
-    pub sup: Option<Box<SemanticNode>>,
+    pub sub: Option<Box<FormulaNode>>,
+    pub sup: Option<Box<FormulaNode>>,
 }
 
 impl Noad {
@@ -181,26 +181,26 @@ impl Noad {
         self.kind.spacing_class()
     }
 
-    /// True when this noad's nucleus is a `SemanticNode::Text` (not a
+    /// True when this noad's nucleus is a `FormulaNode::Text` (not a
     /// Symbol, not any other variant).
     ///
-    /// Text noads come from `SemanticNode::Text { text, font_style }` while
-    /// Symbol noads come from `SemanticNode::Symbol { glyph_key, role }`.
+    /// Text noads come from `FormulaNode::Text { text, font_style }` while
+    /// Symbol noads come from `FormulaNode::Symbol { glyph_key, role }`.
     /// We only merge adjacent Text atoms — Symbol atoms (even when both
     /// happen to be Ordinary) must remain distinct because TeX keeps a
     /// demoted `Bin→Atom` as its own spacing entity.
     pub fn is_text_atom(&self) -> bool {
-        matches!(self.nucleus.as_deref(), Some(SemanticNode::Text { .. }))
+        matches!(self.nucleus.as_deref(), Some(FormulaNode::Text { .. }))
     }
 
     /// The font face of this noad's nucleus when it is a
-    /// [`SemanticNode::Text`], and `None` for every other nucleus.
+    /// [`FormulaNode::Text`], and `None` for every other nucleus.
     ///
     /// The face is part of a Text atom's identity: `\text{a}` and `\textbf{b}`
     /// are two atoms, not one, because the bold run must keep its own face.
     pub fn text_font_style(&self) -> Option<FontStyle> {
         match self.nucleus.as_deref() {
-            Some(SemanticNode::Text { font_style, .. }) => Some(*font_style),
+            Some(FormulaNode::Text { font_style, .. }) => Some(*font_style),
             _ => None,
         }
     }
@@ -396,29 +396,29 @@ fn demote_text(s: MathStyle) -> MathStyle {
     }
 }
 
-/// Shallow projection from a `SemanticNode` slice into a [`MathList`].
+/// Shallow projection from a `FormulaNode` slice into a [`MathList`].
 ///
 /// This is intentionally a **first pass**: we flatten `Sequence` groups,
 /// honour `SetMathStyle` style switches, and project individual atoms to
 /// their [`NoadKind`].  Fractions, radicals, delimiters, matrices and
 /// other structural nodes still produce a single `Inner` noad whose
-/// nucleus points back to the original `SemanticNode` — a deeper nucleus
+/// nucleus points back to the original `FormulaNode` — a deeper nucleus
 /// decomposition will come later.
 ///
 /// Transparent flattening rules:
 ///
-/// * `SemanticNode::Sequence` — descend, append children (flat).
-/// * `SemanticNode::SetMathStyle(s)` — push `s` as the current style for
+/// * `FormulaNode::Sequence` — descend, append children (flat).
+/// * `FormulaNode::SetMathStyle(s)` — push `s` as the current style for
 ///   subsequent noads.  Does **not** itself emit a noad.  Each `Sequence` is
 ///   a style scope: the style in force at its end is restored when the group
 ///   closes, so `\scriptstyle` inside `{…}` cannot leak to later siblings.
-/// * `SemanticNode::LimitsSpec(policy)` — sets `limits` on the next `Op` noad.
+/// * `FormulaNode::LimitsSpec(policy)` — sets `limits` on the next `Op` noad.
 ///
 /// `base_style` is the outer formula context math style (Display / Text /
 /// Script / ScriptScript).  Imperative nodes still override `state.style`
 /// in place, so subsequent noads carry the correct per-node style.
-pub fn project_semantic(nodes: &[SemanticNode], base_style: MathStyle) -> MathList {
-    project_semantic_with_state(nodes, MathStyleState::from_style(base_style))
+pub fn project_formula(nodes: &[FormulaNode], base_style: MathStyle) -> MathList {
+    project_formula_with_state(nodes, MathStyleState::from_style(base_style))
 }
 
 /// Project from an already-known recursive style state.
@@ -426,7 +426,7 @@ pub fn project_semantic(nodes: &[SemanticNode], base_style: MathStyle) -> MathLi
 /// Layout uses this entry point when it enters a structure that pins `cramped`
 /// (a fraction denominator, a radical radicand or a sequence body); the noads
 /// then carry the flag so their own scripts and nested structures inherit it.
-pub fn project_semantic_with_state(nodes: &[SemanticNode], initial: MathStyleState) -> MathList {
+pub fn project_formula_with_state(nodes: &[FormulaNode], initial: MathStyleState) -> MathList {
     let mut state = initial;
     let mut list = MathList::new();
     let mut pending_limits: Option<LimitsPolicy> = None;
@@ -439,13 +439,13 @@ pub fn project_semantic_with_state(nodes: &[SemanticNode], initial: MathStyleSta
 }
 
 fn project_one(
-    node: &SemanticNode,
+    node: &FormulaNode,
     state: &mut MathStyleState,
     list: &mut MathList,
     pending_limits: &mut Option<LimitsPolicy>,
 ) {
     match node {
-        SemanticNode::Sequence(children) => {
+        FormulaNode::Sequence(children) => {
             // A braced group is a style scope; `\scriptstyle` and friends
             // inside it must not leak to the siblings after the group.
             let outer = *state;
@@ -454,13 +454,13 @@ fn project_one(
             }
             *state = outer;
         }
-        SemanticNode::SetMathStyle(s) => {
+        FormulaNode::SetMathStyle(s) => {
             state.style = *s;
         }
-        SemanticNode::LimitsSpec(policy) => {
+        FormulaNode::LimitsSpec(policy) => {
             *pending_limits = Some(*policy);
         }
-        SemanticNode::Symbol { role, .. } => {
+        FormulaNode::Symbol { role, .. } => {
             let kind = NoadKind::from_role(*role);
             let mut noad = Noad::new(kind, state.style, state.cramped);
             noad.nucleus = Some(Box::new(node.clone()));
@@ -468,12 +468,12 @@ fn project_one(
         }
         // A number is one ordinary atom: the same spacing class a digit symbol
         // carries, so Appendix G reads it as `Ord` whatever its digit count.
-        SemanticNode::Number { .. } | SemanticNode::Text { .. } => {
+        FormulaNode::Number { .. } | FormulaNode::Text { .. } => {
             let mut noad = Noad::new(NoadKind::Atom, state.style, state.cramped);
             noad.nucleus = Some(Box::new(node.clone()));
             push_noad(list, noad, pending_limits);
         }
-        SemanticNode::Space { width } => {
+        FormulaNode::Space { width } => {
             // Explicit TeX math spaces (`\,`, `\:`, `\;`, `\ `, `\quad`,
             // `\qquad`) are `\mskip` glue, not atoms: they advance the line by
             // their own width and leave the Appendix G table to the atoms on
@@ -482,7 +482,7 @@ fn project_one(
             *pending_limits = None;
             list.push_glue(MathGlue { width: *width, style: state.style });
         }
-        SemanticNode::Subscript { base, sub } => {
+        FormulaNode::Subscript { base, sub } => {
             let kind = kind_of_node(base);
             let mut noad = Noad::new(kind, state.style, state.cramped);
             noad.nucleus = Some(base.clone());
@@ -490,7 +490,7 @@ fn project_one(
             noad.scripts = Some(Scripts { sub: Some(Box::new(with_style(sub, sub_state.style))), sup: None });
             push_noad(list, noad, pending_limits);
         }
-        SemanticNode::Superscript { base, sup } => {
+        FormulaNode::Superscript { base, sup } => {
             let kind = kind_of_node(base);
             let mut noad = Noad::new(kind, state.style, state.cramped);
             noad.nucleus = Some(base.clone());
@@ -498,7 +498,7 @@ fn project_one(
             noad.scripts = Some(Scripts { sub: None, sup: Some(Box::new(with_style(sup, sup_state.style))) });
             push_noad(list, noad, pending_limits);
         }
-        SemanticNode::SubSuperscript { base, sub, sup } => {
+        FormulaNode::SubSuperscript { base, sub, sup } => {
             let kind = kind_of_node(base);
             let mut noad = Noad::new(kind, state.style, state.cramped);
             noad.nucleus = Some(base.clone());
@@ -510,7 +510,7 @@ fn project_one(
             });
             push_noad(list, noad, pending_limits);
         }
-        SemanticNode::Fraction { num, den, line } => {
+        FormulaNode::Fraction { num, den, line } => {
             // The fraction itself is an Inner atom in the current style, but
             // TeX sets its numerator and denominator one text level down, and
             // the denominator cramped.  Stamping the derived styles into the
@@ -519,21 +519,21 @@ fn project_one(
             let num_state = state.frac_num();
             let den_state = state.frac_den();
             let mut noad = Noad::new(NoadKind::Inner, state.style, state.cramped);
-            noad.nucleus = Some(Box::new(SemanticNode::Fraction {
+            noad.nucleus = Some(Box::new(FormulaNode::Fraction {
                 num: Box::new(with_style(num, num_state.style)),
                 den: Box::new(with_style(den, den_state.style)),
                 line: *line,
             }));
             push_noad(list, noad, pending_limits);
         }
-        SemanticNode::Radical { .. } => {
+        FormulaNode::Radical { .. } => {
             // A radical's argument is typeset cramped at the current style.
             let inner = state.cramp();
             let mut noad = Noad::new(NoadKind::Radical, inner.style, inner.cramped);
             noad.nucleus = Some(Box::new(node.clone()));
             push_noad(list, noad, pending_limits);
         }
-        SemanticNode::Delimited { left, right, content } => {
+        FormulaNode::Delimited { left, right, content } => {
             // A `\left…\right` pair is one fence split into its two spacing
             // atoms.  Both halves carry `fence` so the layout engine can pair
             // them back up and size the delimiters against the body, which the
@@ -543,7 +543,7 @@ fn project_one(
             // so the spacing engine can read its glyph for metrics.
             if let Some(gk) = left {
                 let mut open = Noad::new(NoadKind::Open, state.style, state.cramped);
-                open.nucleus = Some(Box::new(SemanticNode::Symbol { glyph_key: gk.clone(), role: SymbolRole::Opening }));
+                open.nucleus = Some(Box::new(FormulaNode::Symbol { glyph_key: gk.clone(), role: SymbolRole::Opening }));
                 open.fence = paired;
                 push_noad(list, open, pending_limits);
             }
@@ -561,17 +561,17 @@ fn project_one(
             // Right delimiter → Close noad.
             if let Some(gk) = right {
                 let mut close = Noad::new(NoadKind::Close, state.style, state.cramped);
-                close.nucleus = Some(Box::new(SemanticNode::Symbol { glyph_key: gk.clone(), role: SymbolRole::Closing }));
+                close.nucleus = Some(Box::new(FormulaNode::Symbol { glyph_key: gk.clone(), role: SymbolRole::Closing }));
                 close.fence = paired;
                 push_noad(list, close, pending_limits);
             }
         }
-        SemanticNode::Accent { .. } => {
+        FormulaNode::Accent { .. } => {
             let mut noad = Noad::new(NoadKind::Atom, state.style, state.cramped);
             noad.nucleus = Some(Box::new(node.clone()));
             push_noad(list, noad, pending_limits);
         }
-        SemanticNode::OverSet { .. } | SemanticNode::UnderSet { .. } => {
+        FormulaNode::OverSet { .. } | FormulaNode::UnderSet { .. } => {
             // A stacked expression is one Inner atom: TeX treats composed
             // atoms like `\overset` / `\underset` as Inner for Appendix G
             // spacing purposes, so spacing flows around the whole block.
@@ -579,31 +579,31 @@ fn project_one(
             noad.nucleus = Some(Box::new(node.clone()));
             push_noad(list, noad, pending_limits);
         }
-        SemanticNode::Relation(inner) => {
+        FormulaNode::Relation(inner) => {
             // `\mathrel` / `\stackrel` — force Relation spacing on the body.
             let mut noad = Noad::new(NoadKind::Rel, state.style, state.cramped);
             noad.nucleus = Some(inner.clone());
             push_noad(list, noad, pending_limits);
         }
-        SemanticNode::HorizontalBox { content, .. } | SemanticNode::Paragraph { content, .. } => {
+        FormulaNode::HorizontalBox { content, .. } | FormulaNode::Paragraph { content, .. } => {
             // Flattened: descend and emit children as if they were in a Sequence.
             for c in content {
                 project_one(c, state, list, pending_limits);
             }
         }
-        SemanticNode::VerticalBox { content, .. } => {
+        FormulaNode::VerticalBox { content, .. } => {
             // Vertical box is Inner.
             let mut noad = Noad::new(NoadKind::Inner, state.style, state.cramped);
             noad.nucleus = Some(Box::new(node.clone()));
             push_noad(list, noad, pending_limits);
             let _ = content; // deeper decomposition deferred
         }
-        SemanticNode::Matrix { .. } => {
+        FormulaNode::Matrix { .. } => {
             let mut noad = Noad::new(NoadKind::TableCell, state.style, state.cramped);
             noad.nucleus = Some(Box::new(node.clone()));
             push_noad(list, noad, pending_limits);
         }
-        SemanticNode::Environment(_) => {
+        FormulaNode::Environment(_) => {
             // An AMS environment is one Inner atom of the surrounding list: its
             // rows, alignment anchors and numbering intent stay inside the
             // nucleus so the block still knows what kind of environment it is.
@@ -628,26 +628,26 @@ fn push_noad(list: &mut MathList, mut noad: Noad, pending_limits: &mut Option<Li
     list.push_noad(noad);
 }
 
-/// Extract the [`NoadKind`] a semantic node contributes to the flat math
+/// Extract the [`NoadKind`] a formula node contributes to the flat math
 /// list.  Mirrors [`LayoutEngine::role_of`] but only covers the projector's
 /// own needs: Symbols map through `NoadKind::from_role`, everything else
 /// defaults to Atom.  Fractions / radicals / delimiters are handled by
 /// their own `project_one` arms and never reach here.
-fn kind_of_node(node: &SemanticNode) -> NoadKind {
+fn kind_of_node(node: &FormulaNode) -> NoadKind {
     match node {
-        SemanticNode::Symbol { role, .. } => NoadKind::from_role(*role),
+        FormulaNode::Symbol { role, .. } => NoadKind::from_role(*role),
         _ => NoadKind::Atom,
     }
 }
 
 /// Wrap a node with a matching `SetMathStyle` when the target style differs
 /// from the node's natural style.  In the shallow projection the sub/sup
-/// nodes still live as raw `SemanticNode`s so we push the style imperatively
+/// nodes still live as raw `FormulaNode`s so we push the style imperatively
 /// in front of them.
-fn with_style(node: &SemanticNode, target: MathStyle) -> SemanticNode {
+fn with_style(node: &FormulaNode, target: MathStyle) -> FormulaNode {
     // For the first pass we don't introspect inside the sub/sup subtree —
     // the style command at the head is a hint for the layout engine.
-    SemanticNode::Sequence(vec![SemanticNode::SetMathStyle(target), node.clone()])
+    FormulaNode::Sequence(vec![FormulaNode::SetMathStyle(target), node.clone()])
 }
 
 /// Normalize a projected [`MathList`] with TeX Appendix G passes.
@@ -701,7 +701,7 @@ pub fn normalize_math_list(mut list: MathList) -> MathList {
 /// the outer side, so their spacing contribution is zero.  Bare atoms of
 /// those kinds that carry no glyph (no nucleus) are pure artifacts and
 /// can be dropped safely.  Delimiter atoms emitted by the
-/// [`SemanticNode::Delimited`] projector always carry a synthetic
+/// [`FormulaNode::Delimited`] projector always carry a synthetic
 /// `Symbol` nucleus, so they survive this pass — only placeholder atoms
 /// from other sources are trimmed.  Explicit glue is never a placeholder:
 /// `\,x` really is spaced, so the glue at either end stays.
@@ -817,7 +817,7 @@ fn bin_demotes(left: Option<NoadKind>, right: Option<NoadKind>) -> bool {
 /// Ordinary — each remains a distinct atom with its own glyph and spacing
 /// context.  In particular, a Bin demoted to Atom still participates in
 /// spacing as a separate Ordinary atom.  But multiple consecutive `Text`
-/// fragments (e.g. a word split into several `SemanticNode::Text` during
+/// fragments (e.g. a word split into several `FormulaNode::Text` during
 /// markdown import) should fold into a single atom so the layout engine
 /// sees one "word" instead of N single-letter atoms with zero glue between
 /// them.
@@ -827,7 +827,7 @@ fn bin_demotes(left: Option<NoadKind>, right: Option<NoadKind>) -> bool {
 ///
 /// Two Text atoms are merged only when:
 /// * both are `NoadKind::Atom`,
-/// * both carry a `SemanticNode::Text` nucleus (never Symbol),
+/// * both carry a `FormulaNode::Text` nucleus (never Symbol),
 /// * they carry the same `FontStyle` face (a bold run never folds into the
 ///   plain run before it),
 /// * they share the same `MathStyle` and `cramped` flag,
@@ -864,60 +864,60 @@ fn merge_atoms_pass(input: Vec<MathItem>) -> Vec<MathItem> {
     out
 }
 
-/// Concatenate two Text nuclei into a single `SemanticNode::Text`.
+/// Concatenate two Text nuclei into a single `FormulaNode::Text`.
 ///
-/// Only succeeds when **both** are `SemanticNode::Text`; otherwise returns
+/// Only succeeds when **both** are `FormulaNode::Text`; otherwise returns
 /// `b` verbatim as a safe fallback (the caller gate keeps Symbol/other
 /// nuclei out of this branch, so we only hit the fallback in defensive
 /// paths).  `font_style` is taken from `a` — the merge gate already requires
 /// both fragments to share the face, so the concatenation keeps it.
-fn merge_text_nodes(a: Option<&Box<SemanticNode>>, b: Option<&Box<SemanticNode>>) -> Box<SemanticNode> {
+fn merge_text_nodes(a: Option<&Box<FormulaNode>>, b: Option<&Box<FormulaNode>>) -> Box<FormulaNode> {
     let a_text = a.and_then(|x| match x.as_ref() {
-        SemanticNode::Text { text, font_style } => Some((text.clone(), *font_style)),
+        FormulaNode::Text { text, font_style } => Some((text.clone(), *font_style)),
         _ => None,
     });
     let b_text = b.and_then(|x| match x.as_ref() {
-        SemanticNode::Text { text, .. } => Some(text.clone()),
+        FormulaNode::Text { text, .. } => Some(text.clone()),
         _ => None,
     });
     match (a_text, b_text) {
-        (Some((ta, fa)), Some(tb)) => Box::new(SemanticNode::Text { text: format!("{ta}{tb}"), font_style: fa }),
+        (Some((ta, fa)), Some(tb)) => Box::new(FormulaNode::Text { text: format!("{ta}{tb}"), font_style: fa }),
         // Defensive fallback: keep b (caller already filtered).
         (_, Some(_)) => b.unwrap().clone(),
         (Some(_), None) => a.unwrap().clone(),
-        (None, None) => Box::new(SemanticNode::Text { text: String::new(), font_style: crate::math::FontStyle::Math }),
+        (None, None) => Box::new(FormulaNode::Text { text: String::new(), font_style: crate::math::FontStyle::Math }),
     }
 }
 
 // ---------------------------------------------------------------------------
-// From<&[SemanticNode]> for MathList
+// From<&[FormulaNode]> for MathList
 // ---------------------------------------------------------------------------
 
-impl From<&[SemanticNode]> for MathList {
-    fn from(nodes: &[SemanticNode]) -> Self {
-        project_semantic(nodes, MathStyle::Display)
+impl From<&[FormulaNode]> for MathList {
+    fn from(nodes: &[FormulaNode]) -> Self {
+        project_formula(nodes, MathStyle::Display)
     }
 }
 
-impl From<&Vec<SemanticNode>> for MathList {
-    fn from(nodes: &Vec<SemanticNode>) -> Self {
-        project_semantic(nodes, MathStyle::Display)
+impl From<&Vec<FormulaNode>> for MathList {
+    fn from(nodes: &Vec<FormulaNode>) -> Self {
+        project_formula(nodes, MathStyle::Display)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::math::{GlyphKey, LineStyle, SemanticNode, SymbolRole};
+    use crate::math::{GlyphKey, LineStyle, FormulaNode, SymbolRole};
 
-    fn sym(c: char, role: SymbolRole) -> SemanticNode {
-        SemanticNode::Symbol { glyph_key: GlyphKey::from_char(c, None, crate::math::FontStyle::Math), role }
+    fn sym(c: char, role: SymbolRole) -> FormulaNode {
+        FormulaNode::Symbol { glyph_key: GlyphKey::from_char(c, None, crate::math::FontStyle::Math), role }
     }
 
     /// An explicit math space of `mu` math units (1mu = em/18), the shape the
     /// parser hands the projector for `\,`, `\:` and friends.
-    fn space(mu: f64) -> SemanticNode {
-        SemanticNode::Space { width: Fixed::from_f64(mu / 18.0) }
+    fn space(mu: f64) -> FormulaNode {
+        FormulaNode::Space { width: Fixed::from_f64(mu / 18.0) }
     }
 
     /// The `index`-th atom of `list`, skipping the glue between atoms.
@@ -927,10 +927,10 @@ mod tests {
 
     /// Style a projected nucleus/script fragment was stamped with, when the
     /// projection prefixed it with `SetMathStyle`.
-    fn stamped_style(node: &SemanticNode) -> Option<MathStyle> {
+    fn stamped_style(node: &FormulaNode) -> Option<MathStyle> {
         match node {
-            SemanticNode::Sequence(items) => match items.first() {
-                Some(SemanticNode::SetMathStyle(s)) => Some(*s),
+            FormulaNode::Sequence(items) => match items.first() {
+                Some(FormulaNode::SetMathStyle(s)) => Some(*s),
                 _ => None,
             },
             _ => None,
@@ -950,7 +950,7 @@ mod tests {
     #[test]
     fn sequence_flattens() {
         let nodes = vec![
-            SemanticNode::Sequence(vec![sym('a', SymbolRole::Ordinary), sym('b', SymbolRole::Ordinary)]),
+            FormulaNode::Sequence(vec![sym('a', SymbolRole::Ordinary), sym('b', SymbolRole::Ordinary)]),
             sym('+', SymbolRole::Binary),
         ];
         let list = MathList::from(nodes.as_slice());
@@ -964,9 +964,9 @@ mod tests {
     #[test]
     fn style_command_propagates() {
         let nodes = vec![
-            SemanticNode::SetMathStyle(MathStyle::Script),
+            FormulaNode::SetMathStyle(MathStyle::Script),
             sym('x', SymbolRole::Ordinary),
-            SemanticNode::SetMathStyle(MathStyle::Display),
+            FormulaNode::SetMathStyle(MathStyle::Display),
             sym('y', SymbolRole::Ordinary),
         ];
         let list = MathList::from(nodes.as_slice());
@@ -995,7 +995,7 @@ mod tests {
 
     #[test]
     fn subscript_attaches() {
-        let nodes = vec![SemanticNode::Subscript {
+        let nodes = vec![FormulaNode::Subscript {
             base: Box::new(sym('x', SymbolRole::Ordinary)),
             sub: Box::new(sym('i', SymbolRole::Ordinary)),
         }];
@@ -1062,7 +1062,7 @@ mod tests {
 
     #[test]
     fn fraction_num_and_den_carry_derived_styles() {
-        let frac = SemanticNode::Fraction {
+        let frac = FormulaNode::Fraction {
             num: Box::new(sym('a', SymbolRole::Ordinary)),
             den: Box::new(sym('b', SymbolRole::Ordinary)),
             line: LineStyle::Solid,
@@ -1076,7 +1076,7 @@ mod tests {
         assert_eq!(n.style, MathStyle::Display);
         assert!(!n.cramped);
         match n.nucleus.as_deref() {
-            Some(SemanticNode::Fraction { num, den, .. }) => {
+            Some(FormulaNode::Fraction { num, den, .. }) => {
                 assert_eq!(stamped_style(num), Some(MathStyle::Text));
                 assert_eq!(stamped_style(den), Some(MathStyle::Text));
             }
@@ -1095,9 +1095,9 @@ mod tests {
         assert_eq!(nested.style, MathStyle::ScriptScript);
         assert!(nested.cramped, "the nested subscript is cramped");
 
-        let nodes = vec![SemanticNode::Superscript {
+        let nodes = vec![FormulaNode::Superscript {
             base: Box::new(sym('x', SymbolRole::Ordinary)),
-            sup: Box::new(SemanticNode::Subscript {
+            sup: Box::new(FormulaNode::Subscript {
                 base: Box::new(sym('a', SymbolRole::Ordinary)),
                 sub: Box::new(sym('b', SymbolRole::Ordinary)),
             }),
@@ -1112,7 +1112,7 @@ mod tests {
 
     #[test]
     fn radical_argument_is_cramped() {
-        let rad = SemanticNode::Radical { degree: None, radicand: Box::new(sym('x', SymbolRole::Ordinary)) };
+        let rad = FormulaNode::Radical { degree: None, radicand: Box::new(sym('x', SymbolRole::Ordinary)) };
         let list = MathList::from(std::slice::from_ref(&rad));
         assert_eq!(noad(&list, 0).kind, NoadKind::Radical);
         assert_eq!(noad(&list, 0).style, MathStyle::Display);
@@ -1124,12 +1124,12 @@ mod tests {
         // `\sqrt{\frac{a}{b}}`: the radical marks its argument cramped, and a
         // fraction inside it propagates that crampedness to the numerator and
         // forces it in the denominator.
-        let frac = SemanticNode::Fraction {
+        let frac = FormulaNode::Fraction {
             num: Box::new(sym('a', SymbolRole::Ordinary)),
             den: Box::new(sym('b', SymbolRole::Ordinary)),
             line: LineStyle::Solid,
         };
-        let rad = SemanticNode::Radical { degree: None, radicand: Box::new(frac) };
+        let rad = FormulaNode::Radical { degree: None, radicand: Box::new(frac) };
         let list = MathList::from(std::slice::from_ref(&rad));
         assert!(noad(&list, 0).cramped);
 
@@ -1145,7 +1145,7 @@ mod tests {
         // must not reach the sibling after the group.
         let nodes = vec![
             sym('a', SymbolRole::Ordinary),
-            SemanticNode::Sequence(vec![SemanticNode::SetMathStyle(MathStyle::Script), sym('b', SymbolRole::Ordinary)]),
+            FormulaNode::Sequence(vec![FormulaNode::SetMathStyle(MathStyle::Script), sym('b', SymbolRole::Ordinary)]),
             sym('c', SymbolRole::Ordinary),
         ];
         let list = MathList::from(nodes.as_slice());
@@ -1284,9 +1284,9 @@ mod tests {
         // nucleus carries the concatenated string.
         use crate::math::FontStyle;
         let nodes = vec![
-            SemanticNode::Text { text: "a".into(), font_style: FontStyle::Math },
-            SemanticNode::Text { text: "b".into(), font_style: FontStyle::Math },
-            SemanticNode::Text { text: "c".into(), font_style: FontStyle::Math },
+            FormulaNode::Text { text: "a".into(), font_style: FontStyle::Math },
+            FormulaNode::Text { text: "b".into(), font_style: FontStyle::Math },
+            FormulaNode::Text { text: "c".into(), font_style: FontStyle::Math },
         ];
         let projected = MathList::from(nodes.as_slice());
         let normalized = normalize_math_list(projected);
@@ -1294,7 +1294,7 @@ mod tests {
         let n = noad(&normalized, 0);
         assert!(n.is_text_atom());
         match n.nucleus.as_deref() {
-            Some(SemanticNode::Text { text, .. }) => {
+            Some(FormulaNode::Text { text, .. }) => {
                 assert_eq!(text, "abc");
             }
             other => panic!("expected Text nucleus, got {other:?}"),
@@ -1308,16 +1308,16 @@ mod tests {
         // first fragment's face and the bold would disappear.
         use crate::math::FontStyle;
         let nodes = vec![
-            SemanticNode::Text { text: "a".into(), font_style: FontStyle::Normal },
-            SemanticNode::Text { text: "b".into(), font_style: FontStyle::Bold },
+            FormulaNode::Text { text: "a".into(), font_style: FontStyle::Normal },
+            FormulaNode::Text { text: "b".into(), font_style: FontStyle::Bold },
         ];
-        let projected = project_semantic(&nodes, MathStyle::Text);
+        let projected = project_formula(&nodes, MathStyle::Text);
         let normalized = normalize_math_list(projected);
         assert_eq!(normalized.len(), 2, "a face change must break the Text run");
         assert_eq!(noad(&normalized, 0).text_font_style(), Some(FontStyle::Normal));
         assert_eq!(noad(&normalized, 1).text_font_style(), Some(FontStyle::Bold), "the bold fragment keeps its face");
         match noad(&normalized, 1).nucleus.as_deref() {
-            Some(SemanticNode::Text { text, font_style }) => {
+            Some(FormulaNode::Text { text, font_style }) => {
                 assert_eq!(text, "b");
                 assert_eq!(*font_style, FontStyle::Bold);
             }
@@ -1331,19 +1331,19 @@ mod tests {
         // normal run, the bold fragment and the trailing normal fragment.
         use crate::math::FontStyle;
         let nodes = vec![
-            SemanticNode::Text { text: "a".into(), font_style: FontStyle::Normal },
-            SemanticNode::Text { text: "b".into(), font_style: FontStyle::Normal },
-            SemanticNode::Text { text: "c".into(), font_style: FontStyle::Bold },
-            SemanticNode::Text { text: "d".into(), font_style: FontStyle::Normal },
+            FormulaNode::Text { text: "a".into(), font_style: FontStyle::Normal },
+            FormulaNode::Text { text: "b".into(), font_style: FontStyle::Normal },
+            FormulaNode::Text { text: "c".into(), font_style: FontStyle::Bold },
+            FormulaNode::Text { text: "d".into(), font_style: FontStyle::Normal },
         ];
-        let projected = project_semantic(&nodes, MathStyle::Text);
+        let projected = project_formula(&nodes, MathStyle::Text);
         let normalized = normalize_math_list(projected);
         assert_eq!(normalized.len(), 3);
         assert_eq!(noad(&normalized, 0).text_font_style(), Some(FontStyle::Normal));
         assert_eq!(noad(&normalized, 1).text_font_style(), Some(FontStyle::Bold));
         assert_eq!(noad(&normalized, 2).text_font_style(), Some(FontStyle::Normal));
         match noad(&normalized, 0).nucleus.as_deref() {
-            Some(SemanticNode::Text { text, .. }) => assert_eq!(text, "ab"),
+            Some(FormulaNode::Text { text, .. }) => assert_eq!(text, "ab"),
             other => panic!("expected Text nucleus, got {other:?}"),
         }
     }
@@ -1355,7 +1355,7 @@ mod tests {
         use crate::math::FontStyle;
         let nodes = vec![
             sym('a', SymbolRole::Ordinary),
-            SemanticNode::Text { text: "b".into(), font_style: FontStyle::Math },
+            FormulaNode::Text { text: "b".into(), font_style: FontStyle::Math },
             sym('c', SymbolRole::Ordinary),
         ];
         let projected = MathList::from(nodes.as_slice());
@@ -1376,7 +1376,7 @@ mod tests {
     #[test]
     fn limits_spec_attaches_to_next_op() {
         let nodes = vec![
-            SemanticNode::LimitsSpec(LimitsPolicy::Limits),
+            FormulaNode::LimitsSpec(LimitsPolicy::Limits),
             sym('∑', SymbolRole::LargeOperator),
             sym('x', SymbolRole::Ordinary),
         ];
@@ -1411,8 +1411,8 @@ mod tests {
     fn glue_carries_the_style_in_force() {
         // `{\scriptstyle a\,b}`: the space is measured in the em of the style
         // that wrote it, so the glue records script style rather than display.
-        let nodes = vec![SemanticNode::Sequence(vec![
-            SemanticNode::SetMathStyle(MathStyle::Script),
+        let nodes = vec![FormulaNode::Sequence(vec![
+            FormulaNode::SetMathStyle(MathStyle::Script),
             sym('a', SymbolRole::Ordinary),
             space(3.0),
             sym('b', SymbolRole::Ordinary),
@@ -1467,15 +1467,15 @@ mod tests {
         // spacing inside one word.
         use crate::math::FontStyle;
         let nodes = vec![
-            SemanticNode::Text { text: "a".into(), font_style: FontStyle::Math },
+            FormulaNode::Text { text: "a".into(), font_style: FontStyle::Math },
             space(3.0),
-            SemanticNode::Text { text: "b".into(), font_style: FontStyle::Math },
+            FormulaNode::Text { text: "b".into(), font_style: FontStyle::Math },
         ];
         let normalized = normalize_math_list(MathList::from(nodes.as_slice()));
         assert_eq!(normalized.len(), 3);
         assert_eq!(normalized.noad_count(), 2, "the glue must stop the Text merge");
         match noad(&normalized, 0).nucleus.as_deref() {
-            Some(SemanticNode::Text { text, .. }) => assert_eq!(text, "a"),
+            Some(FormulaNode::Text { text, .. }) => assert_eq!(text, "a"),
             other => panic!("expected Text nucleus, got {other:?}"),
         }
     }
@@ -1495,10 +1495,10 @@ mod tests {
     #[test]
     fn delimited_expands_to_open_inner_close() {
         // \left(a + b\right) → Open · Atom · Bin · Atom · Close
-        let delim = SemanticNode::Delimited {
+        let delim = FormulaNode::Delimited {
             left: Some(GlyphKey::from_char('(', None, crate::math::FontStyle::Math)),
             right: Some(GlyphKey::from_char(')', None, crate::math::FontStyle::Math)),
-            content: Box::new(SemanticNode::Sequence(vec![
+            content: Box::new(FormulaNode::Sequence(vec![
                 sym('a', SymbolRole::Ordinary),
                 sym('+', SymbolRole::Binary),
                 sym('b', SymbolRole::Ordinary),
@@ -1518,10 +1518,10 @@ mod tests {
     #[test]
     fn delimited_empty_content_gets_inner_placeholder() {
         // \left(\right) — empty body → Open · Inner · Close (TeX semantics).
-        let delim = SemanticNode::Delimited {
+        let delim = FormulaNode::Delimited {
             left: Some(GlyphKey::from_char('(', None, crate::math::FontStyle::Math)),
             right: Some(GlyphKey::from_char(')', None, crate::math::FontStyle::Math)),
-            content: Box::new(SemanticNode::Sequence(vec![])),
+            content: Box::new(FormulaNode::Sequence(vec![])),
         };
         let list = MathList::from(std::slice::from_ref(&delim));
         assert_eq!(list.len(), 3);
@@ -1533,11 +1533,11 @@ mod tests {
     #[test]
     fn delimited_content_projected_recursively() {
         // Content containing SetMathStyle must propagate style.
-        let delim = SemanticNode::Delimited {
+        let delim = FormulaNode::Delimited {
             left: Some(GlyphKey::from_char('[', None, crate::math::FontStyle::Math)),
             right: Some(GlyphKey::from_char(']', None, crate::math::FontStyle::Math)),
-            content: Box::new(SemanticNode::Sequence(vec![
-                SemanticNode::SetMathStyle(crate::math::MathStyle::Script),
+            content: Box::new(FormulaNode::Sequence(vec![
+                FormulaNode::SetMathStyle(crate::math::MathStyle::Script),
                 sym('x', SymbolRole::Ordinary),
             ])),
         };
@@ -1568,10 +1568,10 @@ mod tests {
     #[test]
     fn boundary_trim_preserves_delimited_open_close() {
         // Open/Close emitted from Delimited carry a nucleus and survive trim.
-        let delim = SemanticNode::Delimited {
+        let delim = FormulaNode::Delimited {
             left: Some(GlyphKey::from_char('(', None, crate::math::FontStyle::Math)),
             right: Some(GlyphKey::from_char(')', None, crate::math::FontStyle::Math)),
-            content: Box::new(SemanticNode::Sequence(vec![])),
+            content: Box::new(FormulaNode::Sequence(vec![])),
         };
         let projected = MathList::from(std::slice::from_ref(&delim));
         let normalized = normalize_math_list(projected);
@@ -1585,10 +1585,10 @@ mod tests {
     fn delimited_bin_demotes_after_open() {
         // \left(+ — the Bin after Delimited's Open must demote exactly like
         // bin_demotes_before_open, but the Open here comes from Delimited.
-        let delim = SemanticNode::Delimited {
+        let delim = FormulaNode::Delimited {
             left: Some(GlyphKey::from_char('(', None, crate::math::FontStyle::Math)),
             right: None,
-            content: Box::new(SemanticNode::Sequence(vec![sym('+', SymbolRole::Binary)])),
+            content: Box::new(FormulaNode::Sequence(vec![sym('+', SymbolRole::Binary)])),
         };
         let projected = MathList::from(std::slice::from_ref(&delim));
         let normalized = normalize_math_list(projected);
@@ -1613,13 +1613,13 @@ mod tests {
             col_spacing: Fixed::ZERO,
         };
         let nodes =
-            vec![sym('a', SymbolRole::Ordinary), SemanticNode::Environment(environment), sym('b', SymbolRole::Ordinary)];
+            vec![sym('a', SymbolRole::Ordinary), FormulaNode::Environment(environment), sym('b', SymbolRole::Ordinary)];
         let normalized = normalize_math_list(MathList::from(nodes.as_slice()));
         assert_eq!(normalized.noad_count(), 3, "the block is one atom, not one atom per row");
         assert_eq!(noad(&normalized, 1).kind, NoadKind::Environment);
         assert_eq!(noad(&normalized, 1).effective_kind(), NoadKind::Inner);
         match noad(&normalized, 1).nucleus.as_deref() {
-            Some(SemanticNode::Environment(environment)) => assert_eq!(environment.kind, EnvironmentKind::Gather),
+            Some(FormulaNode::Environment(environment)) => assert_eq!(environment.kind, EnvironmentKind::Gather),
             other => panic!("expected the environment nucleus, got {other:?}"),
         }
     }

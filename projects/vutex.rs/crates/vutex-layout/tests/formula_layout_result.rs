@@ -5,10 +5,10 @@
 
 use vutex_layout::math::LayoutEngine;
 use vutex_text::math::builtin_font_metrics;
-use vutex_types::math::{FontStyle, GlyphKey, MathStyle, SemanticNode, SymbolRole};
+use vutex_types::math::{FontStyle, GlyphKey, MathStyle, FormulaNode, SymbolRole};
 
-fn sym(c: char, role: SymbolRole) -> SemanticNode {
-    SemanticNode::Symbol { glyph_key: GlyphKey::from_char(c, None, FontStyle::Math), role }
+fn sym(c: char, role: SymbolRole) -> FormulaNode {
+    FormulaNode::Symbol { glyph_key: GlyphKey::from_char(c, None, FontStyle::Math), role }
 }
 
 fn make_test_engine() -> LayoutEngine {

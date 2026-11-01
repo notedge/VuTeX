@@ -68,7 +68,7 @@ fn layout(source: &str) -> FormulaLayoutResult {
     result
 }
 
-/// The single tag of the first top-level semantic node, e.g. `fraction`.
+/// The single tag of the first top-level formula node, e.g. `fraction`.
 fn top_kind(result: &FormulaLayoutResult) -> String {
     let json = serde_json::to_value(&result.semantics).expect("semantics must serialize");
     let node = json["nodes"].get(0).unwrap_or_else(|| panic!("no semantic node in {json}"));

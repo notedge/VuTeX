@@ -3,7 +3,7 @@
 //! Verifies that the same [`FormulaLayoutResult`] renders successfully through
 //! both SVG and MathML math backends without error-level diagnostics, that
 //! every laid-out formula produces sane box metrics (positive width,
-//! non-negative height and depth), and that each semantic construct lowers to
+//! non-negative height and depth), and that each formula construct lowers to
 //! its fixed Presentation MathML element.
 
 use vutex_layout::math::{LayoutNode, default_base_size, layout_formula_source, lower_formula};
@@ -107,7 +107,7 @@ fn formula_list() -> &'static [&'static str] {
     ]
 }
 
-/// Formula, the top-level semantic node kind the layout consumed, and the
+/// Formula, the top-level formula node kind the layout consumed, and the
 /// MathML element that kind must produce (or, for multi-node formulas, an
 /// element the lowering of that construct must emit somewhere).
 ///
@@ -217,13 +217,13 @@ fn layout_display(source: &str) -> (LayoutNode, FormulaLayoutResult) {
 /// Render the structured MathML of one formula source.
 fn render_mathml(source: &str) -> String {
     let tree = lower_formula(source, false).map(|(tree, _)| tree).unwrap_or_else(|e| panic!("failed to parse {source}: {e}"));
-    let semantics = MathSemantics::from_semantic_tree(&tree);
+    let semantics = MathSemantics::from_formula_tree(&tree);
     let mut backend = MathmlBackend::new();
     backend.render_semantics(&semantics);
     backend.finish()
 }
 
-/// The single tag of the first top-level semantic node, e.g. `fraction`.
+/// The single tag of the first top-level formula node, e.g. `fraction`.
 fn top_kind(result: &FormulaLayoutResult) -> String {
     let json = serde_json::to_value(&result.semantics).expect("semantics must serialize");
     let node = json["nodes"].get(0).unwrap_or_else(|| panic!("no semantic node in {json}"));
@@ -313,7 +313,7 @@ fn all_formulas_render_through_svg_backend() {
 
 /// The same set of formulas must also render cleanly through the MathML
 /// backend — this gives us a real cross-backend comparison: the exact same
-/// parsed formula feeds both sinks (geometry vs. semantic tree) and both must
+/// parsed formula feeds both sinks (geometry vs. formula tree) and both must
 /// succeed at producing well-formed output.
 #[test]
 fn all_formulas_render_through_mathml_backend() {
@@ -348,7 +348,7 @@ fn svg_and_mathml_backends_both_render_every_formula() {
 
 // ——— group 5: semantics-to-MathML mapping invariants ——— //
 
-/// Each semantic construct must lower to its fixed MathML element: the first
+/// Each formula construct must lower to its fixed MathML element: the first
 /// top-level node of the serialized semantics carries the expected kind tag,
 /// and the MathML rendered from the same semantics contains the element that
 /// kind maps to.  No geometry, no character data, no font-dependent value is
@@ -357,7 +357,7 @@ fn svg_and_mathml_backends_both_render_every_formula() {
 fn every_semantic_construct_maps_to_its_mathml_element() {
     for (source, kind, element) in STRUCTURE_CASES {
         let (_, result) = layout(source);
-        assert_eq!(top_kind(&result), *kind, "{source}: unexpected top semantic node kind");
+        assert_eq!(top_kind(&result), *kind, "{source}: unexpected top formula node kind");
 
         let mathml = render_mathml(source);
         assert!(mathml.contains(element), "{source}: mathml is missing {element}: {mathml}");

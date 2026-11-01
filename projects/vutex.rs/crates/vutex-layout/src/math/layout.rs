@@ -1,5 +1,5 @@
 //! Layout tree (boxes, glue, kerns, glyphs) and the layout engine that lowers a
-//! `SemanticNode` tree into it.
+//! `FormulaNode` tree into it.
 
 use std::sync::OnceLock;
 
@@ -11,7 +11,7 @@ use vutex_types::{
         Alignment, AlignmentAnchors, BBox, DelimiterComponent, DelimiterVariant, Fixed, FontMetricsSnapshot, FontStyle,
         FormulaLayoutResult, FormulaMetrics, GlyphKey, GlyphMetrics, LimitsPolicy, LineStyle, MathConstant, MathEnvironment,
         MathItem, MathList, MathResult, MathStyle, MathStyleState, Noad, NoadKind, Numbering, OperatorClass, PaintNode,
-        RowPlacement, SemanticNode, SpacingRule, SymbolRole, math_alphalect, normalize_math_list, project_semantic_with_state,
+        RowPlacement, FormulaNode, SpacingRule, SymbolRole, math_alphalect, normalize_math_list, project_formula_with_state,
     },
 };
 
@@ -310,7 +310,7 @@ fn font_facts() -> Option<&'static MathFontFacts> {
     FACTS.get_or_init(MathFontFacts::embedded).as_ref()
 }
 
-/// Lowers [`SemanticNode`] trees into [`LayoutNode`] boxes.
+/// Lowers [`FormulaNode`] trees into [`LayoutNode`] boxes.
 #[derive(Debug)]
 pub struct LayoutEngine {
     font_system: FontMetricsSystem,
@@ -367,30 +367,30 @@ impl LayoutEngine {
     ///
     /// Nodes that aren't atoms (Fraction, Radical, Subsuperscript, Matrix, etc.)
     /// behave like TeX Inner atoms — spacing flows around them.
-    fn role_of(node: &SemanticNode) -> SymbolRole {
+    fn role_of(node: &FormulaNode) -> SymbolRole {
         match node {
-            SemanticNode::Symbol { role, .. } => *role,
-            SemanticNode::Subscript { .. }
-            | SemanticNode::Superscript { .. }
-            | SemanticNode::SubSuperscript { .. }
-            | SemanticNode::Fraction { .. }
-            | SemanticNode::Radical { .. }
-            | SemanticNode::Delimited { .. }
-            | SemanticNode::Matrix { .. }
-            | SemanticNode::Environment(_)
-            | SemanticNode::Accent { .. }
-            | SemanticNode::OverSet { .. }
-            | SemanticNode::UnderSet { .. }
-            | SemanticNode::HorizontalBox { .. }
-            | SemanticNode::VerticalBox { .. }
-            | SemanticNode::Paragraph { .. } => SymbolRole::Inner,
-            SemanticNode::Relation(inner) => Self::role_of(inner),
-            SemanticNode::Sequence(_)
-            | SemanticNode::Number { .. }
-            | SemanticNode::Text { .. }
-            | SemanticNode::Space { .. }
-            | SemanticNode::SetMathStyle(_)
-            | SemanticNode::LimitsSpec(_) => SymbolRole::Ordinary,
+            FormulaNode::Symbol { role, .. } => *role,
+            FormulaNode::Subscript { .. }
+            | FormulaNode::Superscript { .. }
+            | FormulaNode::SubSuperscript { .. }
+            | FormulaNode::Fraction { .. }
+            | FormulaNode::Radical { .. }
+            | FormulaNode::Delimited { .. }
+            | FormulaNode::Matrix { .. }
+            | FormulaNode::Environment(_)
+            | FormulaNode::Accent { .. }
+            | FormulaNode::OverSet { .. }
+            | FormulaNode::UnderSet { .. }
+            | FormulaNode::HorizontalBox { .. }
+            | FormulaNode::VerticalBox { .. }
+            | FormulaNode::Paragraph { .. } => SymbolRole::Inner,
+            FormulaNode::Relation(inner) => Self::role_of(inner),
+            FormulaNode::Sequence(_)
+            | FormulaNode::Number { .. }
+            | FormulaNode::Text { .. }
+            | FormulaNode::Space { .. }
+            | FormulaNode::SetMathStyle(_)
+            | FormulaNode::LimitsSpec(_) => SymbolRole::Ordinary,
         }
     }
 
@@ -408,7 +408,7 @@ impl LayoutEngine {
     /// An accent answers `None`: TeX attaches a script to the accented box,
     /// never to the glyph under the mark, and the accent's own ink occupies the
     /// top corner a `MathKernInfo` corner would pull the script into.
-    fn first_glyph_key(&self, node: &SemanticNode) -> Option<GlyphKey> {
+    fn first_glyph_key(&self, node: &FormulaNode) -> Option<GlyphKey> {
         Self::authored_glyph_key(node).map(|key| self.alphalect_key(&key))
     }
 
@@ -418,29 +418,29 @@ impl LayoutEngine {
     /// script wrappers until it hits a `Symbol` or `Text` with at least one
     /// character.  Returns `None` for purely structural nodes (fractions,
     /// radicals, matrices, …) that don't directly own a glyph key.
-    fn authored_glyph_key(node: &SemanticNode) -> Option<GlyphKey> {
+    fn authored_glyph_key(node: &FormulaNode) -> Option<GlyphKey> {
         match node {
-            SemanticNode::Symbol { glyph_key, .. } => Some(glyph_key.clone()),
-            SemanticNode::Sequence(items) => items.iter().find_map(Self::authored_glyph_key),
-            SemanticNode::Number { text } => text.chars().next().map(|c| GlyphKey::from_char(c, None, FontStyle::Normal)),
-            SemanticNode::Text { text, font_style } => text.chars().next().map(|c| GlyphKey::from_char(c, None, *font_style)),
-            SemanticNode::Subscript { base, .. }
-            | SemanticNode::Superscript { base, .. }
-            | SemanticNode::SubSuperscript { base, .. } => Self::authored_glyph_key(base),
-            SemanticNode::Fraction { num, .. } => Self::authored_glyph_key(num),
-            SemanticNode::Radical { radicand, .. } => Self::authored_glyph_key(radicand),
-            SemanticNode::Delimited { content, .. } => Self::authored_glyph_key(content),
-            SemanticNode::Accent { .. } => None,
-            SemanticNode::OverSet { base, .. } | SemanticNode::UnderSet { base, .. } => Self::authored_glyph_key(base),
-            SemanticNode::Relation(inner) => Self::authored_glyph_key(inner),
-            SemanticNode::HorizontalBox { content, .. } => content.iter().find_map(Self::authored_glyph_key),
-            SemanticNode::Paragraph { content, .. } => content.iter().find_map(Self::authored_glyph_key),
-            SemanticNode::VerticalBox { content, .. } => content.iter().find_map(Self::authored_glyph_key),
-            SemanticNode::Matrix { rows, .. } => rows.iter().flatten().find_map(Self::authored_glyph_key),
-            SemanticNode::Environment(environment) => {
+            FormulaNode::Symbol { glyph_key, .. } => Some(glyph_key.clone()),
+            FormulaNode::Sequence(items) => items.iter().find_map(Self::authored_glyph_key),
+            FormulaNode::Number { text } => text.chars().next().map(|c| GlyphKey::from_char(c, None, FontStyle::Normal)),
+            FormulaNode::Text { text, font_style } => text.chars().next().map(|c| GlyphKey::from_char(c, None, *font_style)),
+            FormulaNode::Subscript { base, .. }
+            | FormulaNode::Superscript { base, .. }
+            | FormulaNode::SubSuperscript { base, .. } => Self::authored_glyph_key(base),
+            FormulaNode::Fraction { num, .. } => Self::authored_glyph_key(num),
+            FormulaNode::Radical { radicand, .. } => Self::authored_glyph_key(radicand),
+            FormulaNode::Delimited { content, .. } => Self::authored_glyph_key(content),
+            FormulaNode::Accent { .. } => None,
+            FormulaNode::OverSet { base, .. } | FormulaNode::UnderSet { base, .. } => Self::authored_glyph_key(base),
+            FormulaNode::Relation(inner) => Self::authored_glyph_key(inner),
+            FormulaNode::HorizontalBox { content, .. } => content.iter().find_map(Self::authored_glyph_key),
+            FormulaNode::Paragraph { content, .. } => content.iter().find_map(Self::authored_glyph_key),
+            FormulaNode::VerticalBox { content, .. } => content.iter().find_map(Self::authored_glyph_key),
+            FormulaNode::Matrix { rows, .. } => rows.iter().flatten().find_map(Self::authored_glyph_key),
+            FormulaNode::Environment(environment) => {
                 environment.rows.iter().flat_map(|row| row.cells.iter()).find_map(Self::authored_glyph_key)
             }
-            SemanticNode::Space { .. } | SemanticNode::SetMathStyle(_) | SemanticNode::LimitsSpec(_) => None,
+            FormulaNode::Space { .. } | FormulaNode::SetMathStyle(_) | FormulaNode::LimitsSpec(_) => None,
         }
     }
 
@@ -484,10 +484,10 @@ impl LayoutEngine {
 
     /// First atom of `node` that takes part in math spacing, skipping the
     /// imperative nodes that produce no boxes.
-    fn leading_role(node: &SemanticNode) -> Option<SymbolRole> {
+    fn leading_role(node: &FormulaNode) -> Option<SymbolRole> {
         match node {
-            SemanticNode::Sequence(items) => items.iter().find_map(Self::leading_role),
-            SemanticNode::SetMathStyle(_) | SemanticNode::LimitsSpec(_) => None,
+            FormulaNode::Sequence(items) => items.iter().find_map(Self::leading_role),
+            FormulaNode::SetMathStyle(_) | FormulaNode::LimitsSpec(_) => None,
             other => Some(Self::role_of(other)),
         }
     }
@@ -583,7 +583,7 @@ impl LayoutEngine {
     }
 
     /// Lay out a semantic node in the given math style.
-    pub fn layout_node<'a>(&'a self, node: &'a SemanticNode, style: MathStyle) -> MathResult<LayoutNode> {
+    pub fn layout_node<'a>(&'a self, node: &'a FormulaNode, style: MathStyle) -> MathResult<LayoutNode> {
         self.layout_node_state(node, MathStyleState::from_style(style))
     }
 
@@ -594,12 +594,12 @@ impl LayoutEngine {
     /// subscripts raise it, while superscripts, numerators and plain sequence
     /// bodies inherit it.  A superscript's shift picks
     /// `SuperscriptShiftUpCramped` over `SuperscriptShiftUp` accordingly.
-    fn layout_node_state<'a>(&'a self, node: &'a SemanticNode, state: MathStyleState) -> MathResult<LayoutNode> {
+    fn layout_node_state<'a>(&'a self, node: &'a FormulaNode, state: MathStyleState) -> MathResult<LayoutNode> {
         {
             match node {
-                SemanticNode::Symbol { glyph_key, role } => self.layout_math_symbol(glyph_key, *role, state.style),
-                SemanticNode::Sequence(nodes) => self.layout_sequence(nodes, state),
-                SemanticNode::HorizontalBox { content, spacing } => {
+                FormulaNode::Symbol { glyph_key, role } => self.layout_math_symbol(glyph_key, *role, state.style),
+                FormulaNode::Sequence(nodes) => self.layout_sequence(nodes, state),
+                FormulaNode::HorizontalBox { content, spacing } => {
                     let mut children = Vec::new();
                     let n = content.len();
                     for (i, node) in content.iter().enumerate() {
@@ -612,7 +612,7 @@ impl LayoutEngine {
                     }
                     Ok(self.pack_hbox(children, None))
                 }
-                SemanticNode::Paragraph { content, width } => {
+                FormulaNode::Paragraph { content, width } => {
                     let mut children = Vec::new();
                     let n = content.len();
                     for (i, node) in content.iter().enumerate() {
@@ -628,9 +628,9 @@ impl LayoutEngine {
                     }
                     Ok(self.break_lines(children, vec![*width], 1.0))
                 }
-                SemanticNode::Fraction { num, den, line } => self.layout_fraction(num, den, *line, state),
-                SemanticNode::Radical { degree, radicand } => self.layout_radical(degree.as_deref(), radicand, state),
-                SemanticNode::VerticalBox { content, alignment } => {
+                FormulaNode::Fraction { num, den, line } => self.layout_fraction(num, den, *line, state),
+                FormulaNode::Radical { degree, radicand } => self.layout_radical(degree.as_deref(), radicand, state),
+                FormulaNode::VerticalBox { content, alignment } => {
                     let mut children = Vec::new();
                     for node in content {
                         children.push(self.layout_node_state(node, state)?);
@@ -640,7 +640,7 @@ impl LayoutEngine {
                 // A number is one ordinary atom of upright digits: every digit
                 // is laid out in the font's normal face, exactly as a single
                 // digit symbol reached through `char_node` would be.
-                SemanticNode::Number { text } => {
+                FormulaNode::Number { text } => {
                     let mut children = Vec::new();
                     for c in text.chars() {
                         let key = GlyphKey::from_char(c, None, FontStyle::Normal);
@@ -648,7 +648,7 @@ impl LayoutEngine {
                     }
                     Ok(self.pack_hbox(children, None))
                 }
-                SemanticNode::Text { text, font_style } => {
+                FormulaNode::Text { text, font_style } => {
                     let mut children = Vec::new();
                     let size = self.base_size * self.get_style_scale(state.style);
                     for c in text.chars() {
@@ -670,13 +670,13 @@ impl LayoutEngine {
                 // carries no `\limits` information of its own, so placement
                 // follows the operator class default and the named-operator
                 // name table.
-                SemanticNode::Subscript { base, sub } => {
+                FormulaNode::Subscript { base, sub } => {
                     self.layout_subsup(base, Some(sub), None, state, OperatorClass::of_node(base), LimitsPolicy::of_node(base))
                 }
-                SemanticNode::Superscript { base, sup } => {
+                FormulaNode::Superscript { base, sup } => {
                     self.layout_subsup(base, None, Some(sup), state, OperatorClass::of_node(base), LimitsPolicy::of_node(base))
                 }
-                SemanticNode::SubSuperscript { base, sub, sup } => self.layout_subsup(
+                FormulaNode::SubSuperscript { base, sub, sup } => self.layout_subsup(
                     base,
                     Some(sub),
                     Some(sup),
@@ -686,32 +686,32 @@ impl LayoutEngine {
                 ),
                 // A math space is a kern of the current em: `width` is already
                 // in em, so the style scale is the only factor left to apply.
-                SemanticNode::Space { width } => {
+                FormulaNode::Space { width } => {
                     let size = self.base_size * self.get_style_scale(state.style);
                     Ok(LayoutNode::Kern(*width * size))
                 }
-                SemanticNode::Matrix { rows, row_spacing, col_spacing, display_style, column_alignment } => {
+                FormulaNode::Matrix { rows, row_spacing, col_spacing, display_style, column_alignment } => {
                     // `align` / `align*` pin their cells to display style so an
                     // enclosing `\scriptstyle` cannot demote the grid.  The
                     // cramped flag still follows the surrounding formula.
                     let state = if *display_style { MathStyleState { style: MathStyle::Display, ..state } } else { state };
-                    let rows: Vec<&[SemanticNode]> = rows.iter().map(|row| row.as_slice()).collect();
+                    let rows: Vec<&[FormulaNode]> = rows.iter().map(|row| row.as_slice()).collect();
                     self.layout_matrix(&rows, *row_spacing, *col_spacing, column_alignment, state)
                 }
-                SemanticNode::Environment(environment) => self.layout_environment(environment, state),
-                SemanticNode::Delimited { left, right, content } => {
+                FormulaNode::Environment(environment) => self.layout_environment(environment, state),
+                FormulaNode::Delimited { left, right, content } => {
                     self.layout_delimited(left.as_ref(), right.as_ref(), content, state)
                 }
-                SemanticNode::Accent { accent, base } => self.layout_accent(accent, base, state),
-                SemanticNode::OverSet { top, base } => self.layout_overset(top, base, state),
-                SemanticNode::UnderSet { bot, base } => self.layout_underset(bot, base, state),
+                FormulaNode::Accent { accent, base } => self.layout_accent(accent, base, state),
+                FormulaNode::OverSet { top, base } => self.layout_overset(top, base, state),
+                FormulaNode::UnderSet { bot, base } => self.layout_underset(bot, base, state),
                 // `Relation` is a spacing wrapper, not a layout wrapper — the
                 // nucleus renders exactly as before, and the Relation class
                 // is carried on the Noad kind from `project_one` instead.
-                SemanticNode::Relation(inner) => self.layout_node_state(inner, state),
+                FormulaNode::Relation(inner) => self.layout_node_state(inner, state),
                 // Imperative nodes: no boxes; side-effects are handled by
                 // `layout_sequence` and `layout_subsup` when they iterate.
-                SemanticNode::SetMathStyle(_) | SemanticNode::LimitsSpec(_) => Ok(LayoutNode::Kern(Fixed::ZERO)),
+                FormulaNode::SetMathStyle(_) | FormulaNode::LimitsSpec(_) => Ok(LayoutNode::Kern(Fixed::ZERO)),
             }
         }
     }
@@ -720,7 +720,7 @@ impl LayoutEngine {
     /// [`layout_math_list`] pipeline (project → demote → layout-by-noads).
     /// Kept as a named method so callers don't need to know the pipeline
     /// name; internals can be swapped later without changing call sites.
-    fn layout_sequence(&self, nodes: &[SemanticNode], state: MathStyleState) -> MathResult<LayoutNode> {
+    fn layout_sequence(&self, nodes: &[FormulaNode], state: MathStyleState) -> MathResult<LayoutNode> {
         self.layout_math_list_state(nodes, state)
     }
 
@@ -729,17 +729,17 @@ impl LayoutEngine {
     /// [`normalize_math_list`] runs the TeX Appendix G demote pass before
     /// this entry point is called, so the spacing phase in [`layout_noads`]
     /// only needs to key off the already-resolved [`NoadKind`].
-    pub fn layout_math_list(&self, nodes: &[SemanticNode], style: MathStyle) -> MathResult<LayoutNode> {
+    pub fn layout_math_list(&self, nodes: &[FormulaNode], style: MathStyle) -> MathResult<LayoutNode> {
         self.layout_math_list_state(nodes, MathStyleState::from_style(style))
     }
 
     /// [`layout_math_list`] for callers that already track `cramped`.
     ///
-    /// The state has to reach [`project_semantic_with_state`], otherwise the
+    /// The state has to reach [`project_formula_with_state`], otherwise the
     /// projected noads lose the cramped flag their scripts and nested
     /// structures inherit from the enclosing fraction or radical.
-    fn layout_math_list_state(&self, nodes: &[SemanticNode], state: MathStyleState) -> MathResult<LayoutNode> {
-        let projected = project_semantic_with_state(nodes, state);
+    fn layout_math_list_state(&self, nodes: &[FormulaNode], state: MathStyleState) -> MathResult<LayoutNode> {
+        let projected = project_formula_with_state(nodes, state);
         let normalized = normalize_math_list(projected);
         self.layout_noads(&normalized)
     }
@@ -754,7 +754,7 @@ impl LayoutEngine {
     /// 对同一棵语义树重复跑一次 `layout_node`。
     pub fn layout_formula_result(
         &self,
-        nodes: &[SemanticNode],
+        nodes: &[FormulaNode],
         style: MathStyle,
     ) -> MathResult<(FormulaLayoutResult, LayoutNode)> {
         let layout_node = self.layout_math_list(nodes, style)?;
@@ -927,7 +927,7 @@ impl LayoutEngine {
                     // No nucleus → call layout_subsup with a zero-width kern as
                     // the base so the scripts still get positioned correctly.
                     self.layout_subsup(
-                        &SemanticNode::SetMathStyle(style),
+                        &FormulaNode::SetMathStyle(style),
                         sub_ref,
                         sup_ref,
                         state,
@@ -975,9 +975,9 @@ impl LayoutEngine {
     }
 
     /// Delimiter glyph a fence noad carries as its synthetic symbol nucleus.
-    fn delimiter_key(nucleus: Option<&SemanticNode>) -> Option<GlyphKey> {
+    fn delimiter_key(nucleus: Option<&FormulaNode>) -> Option<GlyphKey> {
         match nucleus? {
-            SemanticNode::Symbol { glyph_key, .. } => Some(glyph_key.clone()),
+            FormulaNode::Symbol { glyph_key, .. } => Some(glyph_key.clone()),
             _ => None,
         }
     }
@@ -1306,8 +1306,8 @@ impl LayoutEngine {
 
     fn layout_fraction(
         &self,
-        numerator: &SemanticNode,
-        denominator: &SemanticNode,
+        numerator: &FormulaNode,
+        denominator: &FormulaNode,
         line_style: LineStyle,
         state: MathStyleState,
     ) -> MathResult<LayoutNode> {
@@ -1443,8 +1443,8 @@ impl LayoutEngine {
 
     fn layout_radical(
         &self,
-        degree: Option<&SemanticNode>,
-        radicand: &SemanticNode,
+        degree: Option<&FormulaNode>,
+        radicand: &FormulaNode,
         state: MathStyleState,
     ) -> MathResult<LayoutNode> {
         // A radical's radicand is cramped, so any superscript inside it takes
@@ -1581,9 +1581,9 @@ impl LayoutEngine {
 
     fn layout_limits(
         &self,
-        base: &SemanticNode,
-        sub: Option<&SemanticNode>,
-        sup: Option<&SemanticNode>,
+        base: &FormulaNode,
+        sub: Option<&FormulaNode>,
+        sup: Option<&FormulaNode>,
         state: MathStyleState,
     ) -> MathResult<LayoutNode> {
         // Upper and lower limits are one style smaller than the operator, so a
@@ -1688,7 +1688,7 @@ impl LayoutEngine {
     /// (not centred on the axis), and `top` uses `state.sup()` — uncramped
     /// so the superscript shift `SuperscriptShiftUp` rather than the cramped
     /// variant.
-    fn layout_overset(&self, top: &SemanticNode, base: &SemanticNode, state: MathStyleState) -> MathResult<LayoutNode> {
+    fn layout_overset(&self, top: &FormulaNode, base: &FormulaNode, state: MathStyleState) -> MathResult<LayoutNode> {
         let style = state.style;
         let size = self.base_size * self.get_style_scale(style);
 
@@ -1729,7 +1729,7 @@ impl LayoutEngine {
     /// `bot` uses `state.sub()` (demoted and cramped), and the overall
     /// baseline shifts down so the stacked expression descends below the
     /// original base the way TeX underset does.
-    fn layout_underset(&self, bot: &SemanticNode, base: &SemanticNode, state: MathStyleState) -> MathResult<LayoutNode> {
+    fn layout_underset(&self, bot: &FormulaNode, base: &FormulaNode, state: MathStyleState) -> MathResult<LayoutNode> {
         let style = state.style;
         let size = self.base_size * self.get_style_scale(style);
 
@@ -1775,9 +1775,9 @@ impl LayoutEngine {
     /// consumed by whichever large operator happens to be lowered next.
     fn layout_subsup(
         &self,
-        base: &SemanticNode,
-        sub: Option<&SemanticNode>,
-        sup: Option<&SemanticNode>,
+        base: &FormulaNode,
+        sub: Option<&FormulaNode>,
+        sup: Option<&FormulaNode>,
         state: MathStyleState,
         class: OperatorClass,
         limits: LimitsPolicy,
@@ -1814,14 +1814,14 @@ impl LayoutEngine {
         // minima below already encode, so it is not treated as extended here.
         let base_key = self.first_glyph_key(base);
         let extended_base = match base {
-            SemanticNode::Symbol { glyph_key, .. } => {
+            FormulaNode::Symbol { glyph_key, .. } => {
                 !class.is_large_operator()
                     && match (self.facts.as_ref(), self.facts_glyph(&self.alphalect_key(glyph_key))) {
                         (Some(facts), Some(glyph)) => facts.is_extended_shape(glyph),
                         _ => false,
                     }
             }
-            SemanticNode::Number { .. } | SemanticNode::Text { .. } => false,
+            FormulaNode::Number { .. } | FormulaNode::Text { .. } => false,
             _ => true,
         };
 
@@ -2194,7 +2194,7 @@ impl LayoutEngine {
         &self,
         cells: Vec<LayoutNode>,
         col_widths: &[Fixed],
-        authored: &[SemanticNode],
+        authored: &[FormulaNode],
         size: Fixed,
         col_spacing: Fixed,
         right_side: impl Fn(usize) -> bool,
@@ -2246,7 +2246,7 @@ impl LayoutEngine {
 
     fn layout_matrix(
         &self,
-        rows: &[&[SemanticNode]],
+        rows: &[&[FormulaNode]],
         row_spacing: Fixed,
         col_spacing: Fixed,
         column_alignment: &[Alignment],
@@ -2342,7 +2342,7 @@ impl LayoutEngine {
         &self,
         left: Option<&GlyphKey>,
         right: Option<&GlyphKey>,
-        content: &SemanticNode,
+        content: &FormulaNode,
         state: MathStyleState,
     ) -> MathResult<LayoutNode> {
         let content_layout = self.layout_node_state(content, state)?;
@@ -2500,7 +2500,7 @@ impl LayoutEngine {
         wrapper
     }
 
-    fn layout_accent(&self, accent: &GlyphKey, base: &SemanticNode, state: MathStyleState) -> MathResult<LayoutNode> {
+    fn layout_accent(&self, accent: &GlyphKey, base: &FormulaNode, state: MathStyleState) -> MathResult<LayoutNode> {
         let base_layout = self.layout_node_state(base, state)?;
         let style = state.style;
         let style_scale = self.get_style_scale(style);

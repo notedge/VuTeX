@@ -13,22 +13,22 @@ use vutex_types::{
     Diagnostic, Severity,
     math::{
         Alignment, EnvironmentKind, EnvironmentRow, Fixed, FontStyle, GlyphKey, LimitsPolicy, LineStyle, MathEnvironment as LayoutEnvironment,
-        MathSemanticTree, MathStyle as LayoutStyle, Numbering, SemanticNode, SymbolRole,
+        FormulaTree, MathStyle as LayoutStyle, Numbering, FormulaNode, SymbolRole,
     },
 };
 
-/// Lower one formula into the semantic tree the layout engine consumes.
-pub fn semantic_tree(formula: &MathFormula) -> (MathSemanticTree, Vec<Diagnostic>) {
+/// Lower one formula into the tree the layout engine consumes.
+pub fn formula_tree(formula: &MathFormula) -> (FormulaTree, Vec<Diagnostic>) {
     let mut diagnostics = Vec::new();
-    let root = semantic_node(&formula.expression, None, &mut diagnostics);
-    (MathSemanticTree { root }, diagnostics)
+    let root = formula_node(&formula.expression, None, &mut diagnostics);
+    (FormulaTree { root }, diagnostics)
 }
 
 /// Lower one expression, optionally inside a face scope.
-fn semantic_node(expression: &MathExpression, face: Option<FontStyle>, diagnostics: &mut Vec<Diagnostic>) -> SemanticNode {
+fn formula_node(expression: &MathExpression, face: Option<FontStyle>, diagnostics: &mut Vec<Diagnostic>) -> FormulaNode {
     match expression {
         MathExpression::Sequence(items) => {
-            let content: Vec<SemanticNode> = items.iter().map(|item| semantic_node(item, face, diagnostics)).collect();
+            let content: Vec<FormulaNode> = items.iter().map(|item| formula_node(item, face, diagnostics)).collect();
             for pair in items.windows(2) {
                 let (MathExpression::LimitsPolicy { limits }, MathExpression::Script { base, .. }) = (&pair[0], &pair[1])
                 else {
@@ -50,85 +50,85 @@ fn semantic_node(expression: &MathExpression, face: Option<FontStyle>, diagnosti
         MathExpression::Atom(atom) => atom_node(atom.text.as_str(), atom.class, face, diagnostics),
         MathExpression::Number { text } => {
             if text.chars().count() > 1 && face.is_none() {
-                SemanticNode::Number { text: text.clone() }
+                FormulaNode::Number { text: text.clone() }
             }
             else {
                 let style = face.unwrap_or(FontStyle::Normal);
-                SemanticNode::Symbol { glyph_key: GlyphKey::from_char(text.chars().next().unwrap_or('0'), None, style), role: SymbolRole::Ordinary }
+                FormulaNode::Symbol { glyph_key: GlyphKey::from_char(text.chars().next().unwrap_or('0'), None, style), role: SymbolRole::Ordinary }
             }
         }
-        MathExpression::Group { body } => semantic_node(body, face, diagnostics),
+        MathExpression::Group { body } => formula_node(body, face, diagnostics),
         MathExpression::Script { base, superscript, subscript } => {
-            let base = semantic_node(base, face, diagnostics);
+            let base = formula_node(base, face, diagnostics);
             match (subscript, superscript) {
-                (Some(sub), Some(sup)) => SemanticNode::SubSuperscript {
+                (Some(sub), Some(sup)) => FormulaNode::SubSuperscript {
                     base: Box::new(base),
-                    sub: Box::new(semantic_node(sub, face, diagnostics)),
-                    sup: Box::new(semantic_node(sup, face, diagnostics)),
+                    sub: Box::new(formula_node(sub, face, diagnostics)),
+                    sup: Box::new(formula_node(sup, face, diagnostics)),
                 },
                 (Some(sub), None) => {
-                    SemanticNode::Subscript { base: Box::new(base), sub: Box::new(semantic_node(sub, face, diagnostics)) }
+                    FormulaNode::Subscript { base: Box::new(base), sub: Box::new(formula_node(sub, face, diagnostics)) }
                 }
                 (None, Some(sup)) => {
-                    SemanticNode::Superscript { base: Box::new(base), sup: Box::new(semantic_node(sup, face, diagnostics)) }
+                    FormulaNode::Superscript { base: Box::new(base), sup: Box::new(formula_node(sup, face, diagnostics)) }
                 }
                 (None, None) => base,
             }
         }
-        MathExpression::Fraction { numerator, denominator, line } => SemanticNode::Fraction {
-            num: Box::new(semantic_node(numerator, face, diagnostics)),
-            den: Box::new(semantic_node(denominator, face, diagnostics)),
+        MathExpression::Fraction { numerator, denominator, line } => FormulaNode::Fraction {
+            num: Box::new(formula_node(numerator, face, diagnostics)),
+            den: Box::new(formula_node(denominator, face, diagnostics)),
             line: match line {
                 notedown_ir::MathFractionLine::Solid => LineStyle::Solid,
                 notedown_ir::MathFractionLine::None => LineStyle::None,
             },
         },
-        MathExpression::Radical { index, radicand } => SemanticNode::Radical {
-            degree: index.as_ref().map(|index| Box::new(semantic_node(index, face, diagnostics))),
-            radicand: Box::new(semantic_node(radicand, face, diagnostics)),
+        MathExpression::Radical { index, radicand } => FormulaNode::Radical {
+            degree: index.as_ref().map(|index| Box::new(formula_node(index, face, diagnostics))),
+            radicand: Box::new(formula_node(radicand, face, diagnostics)),
         },
         MathExpression::Delimited { open, close, body, middles } => {
             let left = delimiter_key(open);
             let right = delimiter_key(close);
-            let content = semantic_node(body, face, diagnostics);
+            let content = formula_node(body, face, diagnostics);
             for middle in middles {
-                let _ = semantic_node(middle, face, diagnostics);
+                let _ = formula_node(middle, face, diagnostics);
                 diagnostics.push(unsupported("middle-delimiter", "a `\\middle` delimiter has no VuTeX layout node"));
             }
-            SemanticNode::Delimited { left, right, content: Box::new(content) }
+            FormulaNode::Delimited { left, right, content: Box::new(content) }
         }
         MathExpression::Styled { style, body } => {
             let mapped = face_style(*style);
-            semantic_node(body, Some(mapped), diagnostics)
+            formula_node(body, Some(mapped), diagnostics)
         }
         MathExpression::Accent { mark, wide, base } => {
             let _ = wide;
-            SemanticNode::Accent {
-                base: Box::new(semantic_node(base, face, diagnostics)),
+            FormulaNode::Accent {
+                base: Box::new(formula_node(base, face, diagnostics)),
                 accent: GlyphKey::from_char(*mark, None, FontStyle::Normal),
             }
         }
-        MathExpression::StackAbove { over, base } => SemanticNode::OverSet {
-            top: Box::new(semantic_node(over, face, diagnostics)),
-            base: Box::new(semantic_node(base, face, diagnostics)),
+        MathExpression::StackAbove { over, base } => FormulaNode::OverSet {
+            top: Box::new(formula_node(over, face, diagnostics)),
+            base: Box::new(formula_node(base, face, diagnostics)),
         },
-        MathExpression::StackBelow { under, base } => SemanticNode::UnderSet {
-            bot: Box::new(semantic_node(under, face, diagnostics)),
-            base: Box::new(semantic_node(base, face, diagnostics)),
+        MathExpression::StackBelow { under, base } => FormulaNode::UnderSet {
+            bot: Box::new(formula_node(under, face, diagnostics)),
+            base: Box::new(formula_node(base, face, diagnostics)),
         },
-        MathExpression::Relation(inner) => SemanticNode::Relation(Box::new(semantic_node(inner, face, diagnostics))),
-        MathExpression::Space { kind } => SemanticNode::Space { width: space_width(*kind) },
-        MathExpression::StyleSwitch { style } => SemanticNode::SetMathStyle(match style {
+        MathExpression::Relation(inner) => FormulaNode::Relation(Box::new(formula_node(inner, face, diagnostics))),
+        MathExpression::Space { kind } => FormulaNode::Space { width: space_width(*kind) },
+        MathExpression::StyleSwitch { style } => FormulaNode::SetMathStyle(match style {
             MathStyleKind::Display => LayoutStyle::Display,
             MathStyleKind::Text => LayoutStyle::Text,
             MathStyleKind::Script => LayoutStyle::Script,
             MathStyleKind::ScriptScript => LayoutStyle::ScriptScript,
         }),
         MathExpression::LimitsPolicy { limits } => {
-            SemanticNode::LimitsSpec(if *limits { LimitsPolicy::Limits } else { LimitsPolicy::NoLimits })
+            FormulaNode::LimitsSpec(if *limits { LimitsPolicy::Limits } else { LimitsPolicy::NoLimits })
         }
         MathExpression::Environment(environment) => environment_node(environment, face, diagnostics),
-        MathExpression::Text { text } => SemanticNode::Text {
+        MathExpression::Text { text } => FormulaNode::Text {
             text: text.clone(),
             font_style: match face {
                 Some(FontStyle::Italic) => FontStyle::Italic,
@@ -137,22 +137,22 @@ fn semantic_node(expression: &MathExpression, face: Option<FontStyle>, diagnosti
         },
         MathExpression::Unsupported { kind, source } => {
             diagnostics.push(unsupported(kind, source));
-            SemanticNode::Text { text: source.clone(), font_style: FontStyle::Normal }
+            FormulaNode::Text { text: source.clone(), font_style: FontStyle::Normal }
         }
     }
 }
 
-fn atom_node(text: &str, class: MathClass, face: Option<FontStyle>, diagnostics: &mut Vec<Diagnostic>) -> SemanticNode {
+fn atom_node(text: &str, class: MathClass, face: Option<FontStyle>, diagnostics: &mut Vec<Diagnostic>) -> FormulaNode {
     let mut chars = text.chars();
     let Some(character) = chars.next() else {
         diagnostics.push(unsupported("empty-atom", text));
-        return SemanticNode::Sequence(Vec::new());
+        return FormulaNode::Sequence(Vec::new());
     };
     if chars.next().is_some() {
-        return SemanticNode::Text { text: text.to_string(), font_style: FontStyle::Normal };
+        return FormulaNode::Text { text: text.to_string(), font_style: FontStyle::Normal };
     }
     let style = face.unwrap_or_else(|| default_face(class));
-    SemanticNode::Symbol { glyph_key: GlyphKey::from_char(character, None, style), role: role_for(class) }
+    FormulaNode::Symbol { glyph_key: GlyphKey::from_char(character, None, style), role: role_for(class) }
 }
 
 fn default_face(class: MathClass) -> FontStyle {
@@ -206,11 +206,11 @@ fn delimiter_key(delimiter: &Option<MathDelimiter>) -> Option<GlyphKey> {
     delimiter.as_ref().and_then(|delimiter| delimiter.character).map(|character| GlyphKey::from_char(character, None, FontStyle::Normal))
 }
 
-fn environment_node(environment: &MathEnvironment, face: Option<FontStyle>, diagnostics: &mut Vec<Diagnostic>) -> SemanticNode {
-    let rows: Vec<Vec<SemanticNode>> = environment
+fn environment_node(environment: &MathEnvironment, face: Option<FontStyle>, diagnostics: &mut Vec<Diagnostic>) -> FormulaNode {
+    let rows: Vec<Vec<FormulaNode>> = environment
         .rows
         .iter()
-        .map(|row| row.cells.iter().map(|cell| semantic_node(cell, face, diagnostics)).collect())
+        .map(|row| row.cells.iter().map(|cell| formula_node(cell, face, diagnostics)).collect())
         .collect();
     match environment.kind {
         MathEnvironmentKind::Matrix | MathEnvironmentKind::Cases => {
@@ -220,7 +220,7 @@ fn environment_node(environment: &MathEnvironment, face: Option<FontStyle>, diag
                 _ => vec![Alignment::Center; columns],
             };
             let row_spacing = if environment.name == "smallmatrix" { 0.2 } else { 0.35 };
-            let matrix = SemanticNode::Matrix {
+            let matrix = FormulaNode::Matrix {
                 rows,
                 row_spacing: Fixed::from_f64(row_spacing),
                 col_spacing: Fixed::from_f64(0.8),
@@ -230,7 +230,7 @@ fn environment_node(environment: &MathEnvironment, face: Option<FontStyle>, diag
             let (left, right) = matrix_delimiters(&environment.name);
             match (left, right) {
                 (None, None) => matrix,
-                _ => SemanticNode::Delimited {
+                _ => FormulaNode::Delimited {
                     left: left.map(|character| GlyphKey::from_char(character, None, FontStyle::Normal)),
                     right: right.map(|character| GlyphKey::from_char(character, None, FontStyle::Normal)),
                     content: Box::new(matrix),
@@ -263,13 +263,13 @@ fn environment_node(environment: &MathEnvironment, face: Option<FontStyle>, diag
             let rows: Vec<EnvironmentRow> = environment
                 .rows
                 .iter()
-                .map(|row| EnvironmentRow { cells: row.cells.iter().map(|cell| semantic_node(cell, face, diagnostics)).collect(), numbering: numbering(&row.numbering) })
+                .map(|row| EnvironmentRow { cells: row.cells.iter().map(|cell| formula_node(cell, face, diagnostics)).collect(), numbering: numbering(&row.numbering) })
                 .collect();
             let col_spacing = match kind.anchors() {
                 vutex_types::math::AlignmentAnchors::ColumnPairs | vutex_types::math::AlignmentAnchors::SingleEquation => 0.0,
                 _ => 0.8,
             };
-            SemanticNode::Environment(LayoutEnvironment {
+            FormulaNode::Environment(LayoutEnvironment {
                 kind,
                 starred: environment.starred,
                 rows,
@@ -279,7 +279,7 @@ fn environment_node(environment: &MathEnvironment, face: Option<FontStyle>, diag
         }
         MathEnvironmentKind::AlignAt | MathEnvironmentKind::FlAlign | MathEnvironmentKind::EqnArray | MathEnvironmentKind::Other(_) => {
             diagnostics.push(unsupported("environment", &environment.name));
-            SemanticNode::Text { text: environment.name.clone(), font_style: FontStyle::Normal }
+            FormulaNode::Text { text: environment.name.clone(), font_style: FontStyle::Normal }
         }
     }
 }
@@ -332,11 +332,11 @@ fn is_operator_base(expression: &MathExpression) -> bool {
     }
 }
 
-fn collapse(mut items: Vec<SemanticNode>) -> SemanticNode {
+fn collapse(mut items: Vec<FormulaNode>) -> FormulaNode {
     match items.len() {
-        0 => SemanticNode::Sequence(Vec::new()),
+        0 => FormulaNode::Sequence(Vec::new()),
         1 => items.remove(0),
-        _ => SemanticNode::Sequence(items),
+        _ => FormulaNode::Sequence(items),
     }
 }
 
