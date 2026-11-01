@@ -134,24 +134,26 @@ test("measureFormula accepts the same corpus with positive widths", () => {
     }
 });
 
-test("unclosed group yields a WATEX_MATH_ERROR diagnostic without throwing", () => {
+test("unclosed group stays visible plain text with a warning without throwing", () => {
+    // Since the VuTeX-owned TeX parser was removed, malformed sources are
+    // lowered by notedown and degrade to visible plain text with a warning —
+    // the same recovery contract as unsupported commands and diagrams.
     const result = watex.renderFormula("\\frac{a");
     assert.equal(result.diagnostics.length, 1);
     const [diagnostic] = result.diagnostics;
-    assert.equal(diagnostic?.code, "WATEX_MATH_ERROR");
-    assert.equal(diagnostic?.severity, "error");
-    assert.match(diagnostic?.message ?? "", /Parse Error/);
+    assert.equal(diagnostic?.code, "vutex.math.unsupported_expression");
+    assert.equal(diagnostic?.severity, "warning");
+    assert.match(diagnostic?.message ?? "", /stays plain text/);
     assert.equal(diagnostic?.start == null, true);
     assert.equal(diagnostic?.end == null, true);
-    assert.equal(result.metrics.width, 0);
-    assert.equal(result.svg, "");
+    assert.ok(result.metrics.width > 0);
+    assert.ok(result.svg.length > 0);
 });
 
-test("unclosed environment yields a WATEX_MATH_ERROR diagnostic", () => {
+test("unclosed environment recovers upstream and paints without an error", () => {
     const result = watex.renderFormula("\\begin{pmatrix}a&b");
-    assert.ok(result.diagnostics.length > 0);
-    assert.equal(result.diagnostics.some((d) => d.code === "WATEX_MATH_ERROR" && d.severity === "error"), true);
-    assert.equal(result.svg, "");
+    assert.equal(result.diagnostics.filter((d) => d.severity === "error").length, 0);
+    assert.ok(result.svg.includes("<path"));
 });
 
 test("empty source yields WATEX_EMPTY_SOURCE anchored at zero", () => {
