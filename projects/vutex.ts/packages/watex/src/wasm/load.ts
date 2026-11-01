@@ -1,8 +1,8 @@
-import type { FormulaRender, RenderOptions, WeTeXBindings, WeTeXWasmOptions } from "../types.js";
+import type { FormulaRender, RenderOptions, WaTeXBindings, WaTeXWasmOptions } from "../types.js";
 
 type WasmBinding = {
     default: (input?: { module_or_path?: string | URL | Uint8Array }) => Promise<unknown>;
-    wetexVersion: () => string;
+    watexVersion: () => string;
     measureFormula: (source: string, optionsJson?: string) => string;
     renderSvg: (source: string, optionsJson?: string) => string;
     renderHtml: (source: string, optionsJson?: string) => string;
@@ -21,9 +21,9 @@ function decodeResult(raw: string): FormulaRender {
     return JSON.parse(raw) as FormulaRender;
 }
 
-function wrap(binding: WasmBinding): WeTeXBindings {
+function wrap(binding: WasmBinding): WaTeXBindings {
     return {
-        wetexVersion: () => binding.wetexVersion(),
+        watexVersion: () => binding.watexVersion(),
         measureFormula: (source, options) =>
             decodeResult(binding.measureFormula(source, encodeOptions(options))),
         renderSvg: (source, options) =>
@@ -38,7 +38,7 @@ function wrap(binding: WasmBinding): WeTeXBindings {
 }
 
 /** Load the WASM artifact from `@vutex/vutex-unknown-wasm32`. */
-export async function loadWeTeX(options: WeTeXWasmOptions = {}): Promise<WeTeXBindings> {
+export async function loadWaTeX(options: WaTeXWasmOptions = {}): Promise<WaTeXBindings> {
     const binding = (await import("@vutex/vutex-unknown-wasm32")) as WasmBinding;
     if (options.bytes) {
         await binding.default({ module_or_path: options.bytes });

@@ -31,7 +31,7 @@
     font-display: swap;
 }
 
-/* The wetex HTML backend emits these exact family labels; the gallery must
+/* The watex HTML backend emits these exact family labels; the gallery must
    register them or the text runs fall back to a host font. */
 @font-face {
     font-family: "xits-math";

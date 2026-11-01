@@ -6,4 +6,4 @@ VuTeX is organized around language-neutral document semantics, layout and output
 Source → Adapter → Document IR → Layout → Presentation → Output
 ```
 
-Output directions include PDF, SVG, HTML and raster formats. Formula layout uses the same internal pipeline, while WeTeX provides a standalone WASM and JavaScript facade.
+Output directions include PDF, SVG, HTML and raster formats. Formula layout uses the same internal pipeline, while WaTeX provides a standalone WASM and JavaScript facade.

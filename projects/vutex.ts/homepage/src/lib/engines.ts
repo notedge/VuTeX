@@ -4,7 +4,7 @@
  * relative imports, so nothing here may point at hand-copied files.
  */
 
-export type EngineId = "wetex" | "katex" | "mathjax";
+export type EngineId = "watex" | "katex" | "mathjax";
 export type Backend = "svg" | "mathml" | "html";
 export type FontId = "lm-math" | "xits-math";
 
@@ -48,8 +48,8 @@ export const BACKENDS: BackendMeta[] = [
 
 export const ENGINES: EngineMeta[] = [
     {
-        id: "wetex",
-        name: "WeTeX",
+        id: "watex",
+        name: "WaTeX",
         vendor: "VuTeX",
         detail: "Rust/WASM 内核，产出 HTML、SVG 与 MathML 三种后端，并回报宽度、高度与基线深度。",
         backends: ["html", "svg", "mathml"],
@@ -78,7 +78,7 @@ export function supportsBackend(id: EngineId, backend: Backend): boolean {
     return engineMeta(id).backends.includes(backend);
 }
 
-let wetexLoad: any = null;
+let watexLoad: any = null;
 let katexLoad: any = null;
 let mathjaxLoad: any = null;
 
@@ -86,14 +86,14 @@ function displayOptions(display: boolean, font: FontId) {
     return { displayMode: display ? "block" : "inline", fontFamily: font };
 }
 
-async function loadWetex(): Promise<any> {
-    if (!wetexLoad) {
-        wetexLoad = (async () => {
-            const { loadWeTeX } = await import("@vutex/wetex");
-            return await loadWeTeX();
+async function loadWatex(): Promise<any> {
+    if (!watexLoad) {
+        watexLoad = (async () => {
+            const { loadWaTeX } = await import("@vutex/watex");
+            return await loadWaTeX();
         })();
     }
-    return wetexLoad;
+    return watexLoad;
 }
 
 async function loadKatex(): Promise<any> {
@@ -131,14 +131,14 @@ async function loadMathjax(): Promise<any> {
 export async function preloadEngines(ids: EngineId[]): Promise<void> {
     await Promise.all(
         ids.map((id) => {
-            if (id === "wetex") return loadWetex();
+            if (id === "watex") return loadWatex();
             if (id === "katex") return loadKatex();
             return loadMathjax();
         }),
     );
 }
 
-function wetexNote(render: any): string {
+function watexNote(render: any): string {
     const diagnostics = render.diagnostics || [];
     const errors = diagnostics.filter((item: any) => item.severity === "error");
     if (errors.length > 0) return errors[0].message;
@@ -168,21 +168,21 @@ export async function renderFormula(
     }
 
     try {
-        if (engine === "wetex") {
-            const wetex = await loadWetex();
+        if (engine === "watex") {
+            const watex = await loadWatex();
             const render =
                 backend === "html"
-                    ? wetex.renderHtml(tex, displayOptions(display, font))
+                    ? watex.renderHtml(tex, displayOptions(display, font))
                     : backend === "svg"
-                      ? wetex.renderSvg(tex, displayOptions(display, font))
-                      : wetex.renderMathml(tex, displayOptions(display, font));
+                      ? watex.renderSvg(tex, displayOptions(display, font))
+                      : watex.renderMathml(tex, displayOptions(display, font));
             const markup =
                 backend === "html"
                     ? render.html
                     : backend === "svg"
                       ? render.svg
                       : render.mathml || render.svg;
-            return done(String(markup || "").trim().length > 0, markup || "", wetexNote(render));
+            return done(String(markup || "").trim().length > 0, markup || "", watexNote(render));
         }
         if (engine === "katex") {
             const katex = await loadKatex();

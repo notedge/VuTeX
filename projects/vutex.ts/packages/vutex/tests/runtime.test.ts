@@ -143,7 +143,7 @@ test("renderFormula decodes the binding json string into a typed result", () => 
         svg: "<svg><path/></svg>",
         mathml: "<math/>",
         diagnostics: [
-            { code: "WETEX_TEST", severity: "warning", message: "careful", start: 1, end: 2 },
+            { code: "WATEX_TEST", severity: "warning", message: "careful", start: 1, end: 2 },
         ],
     });
     const { bindings, calls } = fakeBindings({ renderFormulaResponse: raw });

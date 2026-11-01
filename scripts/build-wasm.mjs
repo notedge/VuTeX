@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const crateDir = join(root, "projects/vutex.rs/exports/wetex-wasm");
+const crateDir = join(root, "projects/vutex.rs/exports/watex-wasm");
 const outDir = join(root, "projects/vutex.ts/platforms/vutex-unknown-wasm32/lib");
 
 execFileSync("wasm-pack", ["build", crateDir, "--target", "web", "--out-dir", outDir, "--release"], {

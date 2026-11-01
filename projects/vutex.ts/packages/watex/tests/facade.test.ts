@@ -8,7 +8,7 @@ import {
     renderSvgWith,
     renderWith,
 } from "../src/index.js";
-import type { FormulaRender, RenderOptions, WeTeXBindings } from "../src/types.js";
+import type { FormulaRender, RenderOptions, WaTeXBindings } from "../src/types.js";
 
 type RecordedCall = {
     method: string;
@@ -19,7 +19,7 @@ type RecordedCall = {
 
 const emptyDiagnostics = [
     {
-        code: "WETEX_EMPTY_SOURCE",
+        code: "WATEX_EMPTY_SOURCE",
         severity: "error",
         message: "formula source must not be empty",
         start: 0,
@@ -44,7 +44,7 @@ function buildResult(method: string, source: string): FormulaRender {
     };
 }
 
-function recordingStub(): { bindings: WeTeXBindings; calls: RecordedCall[] } {
+function recordingStub(): { bindings: WaTeXBindings; calls: RecordedCall[] } {
     const calls: RecordedCall[] = [];
     const record = (method: string) =>
         (source: string, options?: RenderOptions): FormulaRender => {
@@ -56,7 +56,7 @@ function recordingStub(): { bindings: WeTeXBindings; calls: RecordedCall[] } {
     return {
         calls,
         bindings: {
-            wetexVersion: () => "stub-version",
+            watexVersion: () => "stub-version",
             measureFormula: record("measureFormula"),
             renderSvg: record("renderSvg"),
             renderHtml: record("renderHtml"),

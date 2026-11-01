@@ -1,20 +1,20 @@
-// Render oracle corpus formulas to SVG via the workspace `@vutex/wetex` API.
-//   pnpm --filter @vutex/oracle-tools render:wetex [--display] [--font lm|xits] [--outdir PATH]
-// (the script builds `@vutex/wetex` first, so its `dist` entry is current)
+// Render oracle corpus formulas to SVG via the workspace `@vutex/watex` API.
+//   pnpm --filter @vutex/oracle-tools render:watex [--display] [--font lm|xits] [--outdir PATH]
+// (the script builds `@vutex/watex` first, so its `dist` entry is current)
 
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { renderSvg } from "@vutex/wetex";
+import { renderSvg } from "@vutex/watex";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, "..", "..", "..", "..");
 
 // Node hosts cannot fetch the web-target artifact, so read its bytes and
-// hand them to the standard `@vutex/wetex` loader (WeTeXWasmOptions.bytes).
+// hand them to the standard `@vutex/watex` loader (WaTeXWasmOptions.bytes).
 const wasmEntry = fileURLToPath(import.meta.resolve("@vutex/vutex-unknown-wasm32"));
-const wasmBytes = readFileSync(resolve(dirname(wasmEntry), "wetex_wasm_bg.wasm"));
+const wasmBytes = readFileSync(resolve(dirname(wasmEntry), "watex_wasm_bg.wasm"));
 const wasmOptions = { bytes: new Uint8Array(wasmBytes) };
 
 // `--font` maps onto the wasm `RenderOptions.fontFamily` wire names (Rust
@@ -24,7 +24,7 @@ const FONT_FAMILIES = { lm: "lm-math", xits: "xits-math" };
 
 let displayMode = false;
 let font = "xits";
-let outdir = resolve(repo, "out-wetex");
+let outdir = resolve(repo, "out-watex");
 
 const args = process.argv.slice(2);
 for (let i = 0; i < args.length; i++) {
@@ -78,4 +78,4 @@ for (const formula of corpus.formulas) {
   }
 }
 
-console.log(`\nWetex render: ${ok} OK, ${fail} failed, ${skip} skipped (env bodies), mode=${displayMode ? "display" : "inline"}, font=${font}`);
+console.log(`\nWatex render: ${ok} OK, ${fail} failed, ${skip} skipped (env bodies), mode=${displayMode ? "display" : "inline"}, font=${font}`);

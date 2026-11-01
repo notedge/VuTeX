@@ -38,7 +38,7 @@ export type FormulaRender = {
     diagnostics: FormulaDiagnostic[];
 };
 
-export type WeTeXWasmOptions = {
+export type WaTeXWasmOptions = {
     /** Fetch the wasm artifact from this URL (browser hosts). */
     url?: string | URL;
     /**
@@ -48,8 +48,8 @@ export type WeTeXWasmOptions = {
     bytes?: Uint8Array;
 };
 
-export type WeTeXBindings = {
-    wetexVersion: () => string;
+export type WaTeXBindings = {
+    watexVersion: () => string;
     measureFormula: (source: string, options?: RenderOptions) => FormulaRender;
     renderSvg: (source: string, options?: RenderOptions) => FormulaRender;
     renderHtml: (source: string, options?: RenderOptions) => FormulaRender;

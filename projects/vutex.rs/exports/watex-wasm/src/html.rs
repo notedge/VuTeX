@@ -76,7 +76,7 @@ impl HtmlBackend {
         use std::fmt::Write;
         let _ = write!(
             self.buffer,
-            r#"<span class="wetex-html" style="position:relative;display:inline-block;width:{}px;height:{}px;vertical-align:-{}px">"#,
+            r#"<span class="watex-html" style="position:relative;display:inline-block;width:{}px;height:{}px;vertical-align:-{}px">"#,
             num(width),
             num(height + depth),
             num(depth)

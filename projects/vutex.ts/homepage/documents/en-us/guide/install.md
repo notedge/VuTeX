@@ -8,10 +8,10 @@
 ## Formula typesetting
 
 ```sh
-pnpm add @vutex/wetex
+pnpm add @vutex/watex
 ```
 
-`@vutex/wetex` provides formula rendering and measurement without the full document CLI.
+`@vutex/watex` provides formula rendering and measurement without the full document CLI.
 
 ## Runtime and CLI
 

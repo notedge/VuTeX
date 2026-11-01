@@ -1,13 +1,13 @@
 {
-    "name": "@vutex/wetex",
+    "name": "@vutex/watex",
     "version": "0.0.14",
-    "description": "WeTeX: VuTeX formula rendering for browser and Node (Rust/WASM)",
+    "description": "WaTeX: VuTeX formula rendering for browser and Node (Rust/WASM)",
     "type": "module",
     "license": "MPL-2.0",
     "repository": {
         "type": "git",
         "url": "git+https://github.com/notedge/VuTeX.git",
-        "directory": "projects/vutex.ts/packages/wetex"
+        "directory": "projects/vutex.ts/packages/watex"
     },
     "publishConfig": {
         "access": "public"

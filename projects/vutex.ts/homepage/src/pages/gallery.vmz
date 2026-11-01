@@ -4,7 +4,7 @@
             <p class="label">Gallery</p>
             <h1>同一份 TeX，三个引擎并排渲染</h1>
             <p class="lede">
-                画廊收录 14 组 display 公式，全部由浏览器现场渲染。WeTeX 的结果与 KaTeX、MathJax 并排对照，用于核验排版正确性；每个单元格标注各自的渲染耗时。
+                画廊收录 14 组 display 公式，全部由浏览器现场渲染。WaTeX 的结果与 KaTeX、MathJax 并排对照，用于核验排版正确性；每个单元格标注各自的渲染耗时。
             </p>
             <div class="gallery__controls">
                 <div class="segmented" role="group" aria-label="输出格式">
@@ -73,7 +73,7 @@ export default class Gallery {
     activeFont = "lm-math";
     outputs = {};
 
-    hint = "字体切换只作用于 WeTeX（KaTeX 与 MathJax 使用自带字体）。WeTeX 支持 HTML、SVG 与 MathML 三种后端；KaTeX 只有 HTML 与 MathML，MathJax 只有 SVG 与 MathML。";
+    hint = "字体切换只作用于 WaTeX（KaTeX 与 MathJax 使用自带字体）。WaTeX 支持 HTML、SVG 与 MathML 三种后端；KaTeX 只有 HTML 与 MathML，MathJax 只有 SVG 与 MathML。";
 
     onMount() {
         this.run();

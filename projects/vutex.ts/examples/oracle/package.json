@@ -10,11 +10,11 @@
     "mathjax:svg": "node emit-mathjax-svg.mjs",
     "latex:probe": "node probe-latex.mjs",
     "latex:boxes": "node emit-latex-boxes.mjs",
-    "render:wetex": "pnpm --filter @vutex/wetex build && node render-wetex.mjs"
+    "render:watex": "pnpm --filter @vutex/watex build && node render-watex.mjs"
   },
   "dependencies": {
     "@vutex/vutex-unknown-wasm32": "workspace:*",
-    "@vutex/wetex": "workspace:*"
+    "@vutex/watex": "workspace:*"
   },
   "devDependencies": {
     "katex": "0.16.22",

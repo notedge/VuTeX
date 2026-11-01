@@ -33,6 +33,6 @@ package-lock.json
 
 # Renderer
 _tmp_render/
-out-wetex/
+out-watex/
 *.png
 *.zip

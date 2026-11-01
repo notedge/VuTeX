@@ -8,9 +8,9 @@
 //! metrics describe.
 
 use serde_json::Value;
-use wetex_wasm::{render_html_wasm, render_svg_wasm};
+use watex_wasm::{render_html_wasm, render_svg_wasm};
 
-/// Syntax families shared with the TS corpus gate (`wetex/tests/syntax-corpus.test.ts`)
+/// Syntax families shared with the TS corpus gate (`watex/tests/syntax-corpus.test.ts`)
 /// and the Rust corpus gate. Every entry must keep the HTML↔SVG geometry
 /// invariants below: same leaf population, same composed anchors, same groups.
 const CORPUS: &[&str] = &[
@@ -348,7 +348,7 @@ fn group_transforms_are_relative_increments() {
 #[test]
 fn writes_an_inspectable_artifact_to_the_temp_dir() {
     let mut page =
-        String::from("<!doctype html><meta charset=\"utf-8\"><title>wetex html coords</title><body style=\"font-size:16px\">");
+        String::from("<!doctype html><meta charset=\"utf-8\"><title>watex html coords</title><body style=\"font-size:16px\">");
     for source in CORPUS {
         let html = parse(&render_html_wasm(source, None));
         page.push_str(&format!("<p>{} — {}</p>\n", source, html["html"].as_str().expect("html")));

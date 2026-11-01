@@ -2,7 +2,7 @@
     <div class="welcome">
         <header class="welcome__bar">
             <a class="welcome__back" href="/">← 概览</a>
-            <span class="meta">WeTeX · 全屏展示</span>
+            <span class="meta">WaTeX · 全屏展示</span>
         </header>
         <div class="welcome__stage">
             <p class="welcome__index">
@@ -94,7 +94,7 @@ export default class Welcome {
     async render() {
         const item = this.items[this.index];
         const backend = this.active;
-        const result = await renderFormula("wetex", backend, item.tex, true);
+        const result = await renderFormula("watex", backend, item.tex, true);
         this.markup = result.ok ? result.markup : "";
         this.name = item.name;
         this.note = result.ok ? item.note : result.note;

@@ -1,8 +1,8 @@
 [package]
-name = "wetex-wasm"
+name = "watex-wasm"
 version.workspace = true
 authors.workspace = true
-description = "WASM facade for VuTeX formula rendering (WeTeX product surface)"
+description = "WASM facade for VuTeX formula rendering (WaTeX product surface)"
 license.workspace = true
 edition.workspace = true
 readme = "readme.md"

@@ -1,5 +1,5 @@
-import { loadWeTeX } from "./wasm/load.js";
-import type { FormulaRender, RenderOptions, WeTeXBindings, WeTeXWasmOptions } from "./types.js";
+import { loadWaTeX } from "./wasm/load.js";
+import type { FormulaRender, RenderOptions, WaTeXBindings, WaTeXWasmOptions } from "./types.js";
 
 export type {
     DisplayMode,
@@ -8,17 +8,17 @@ export type {
     FormulaMetrics,
     FormulaRender,
     RenderOptions,
-    WeTeXBindings,
-    WeTeXWasmOptions,
+    WaTeXBindings,
+    WaTeXWasmOptions,
 } from "./types.js";
 
-export { loadWeTeX } from "./wasm/index.js";
+export { loadWaTeX } from "./wasm/index.js";
 
-let defaultBindings: WeTeXBindings | undefined;
+let defaultBindings: WaTeXBindings | undefined;
 
-async function bindings(options?: WeTeXWasmOptions): Promise<WeTeXBindings> {
+async function bindings(options?: WaTeXWasmOptions): Promise<WaTeXBindings> {
     if (!defaultBindings) {
-        defaultBindings = await loadWeTeX(options);
+        defaultBindings = await loadWaTeX(options);
     }
     return defaultBindings;
 }
@@ -27,89 +27,89 @@ async function bindings(options?: WeTeXWasmOptions): Promise<WeTeXBindings> {
 export async function measure(
     source: string,
     options?: RenderOptions,
-    wasmOptions?: WeTeXWasmOptions,
+    wasmOptions?: WaTeXWasmOptions,
 ): Promise<FormulaRender> {
-    const wetex = await bindings(wasmOptions);
-    return wetex.measureFormula(source, options);
+    const watex = await bindings(wasmOptions);
+    return watex.measureFormula(source, options);
 }
 
 /** Render a formula to SVG through the default WASM binding. */
 export async function renderSvg(
     source: string,
     options?: RenderOptions,
-    wasmOptions?: WeTeXWasmOptions,
+    wasmOptions?: WaTeXWasmOptions,
 ): Promise<FormulaRender> {
-    const wetex = await bindings(wasmOptions);
-    return wetex.renderSvg(source, options);
+    const watex = await bindings(wasmOptions);
+    return watex.renderSvg(source, options);
 }
 
 /** Render a formula to an HTML fragment through the default WASM binding. */
 export async function renderHtml(
     source: string,
     options?: RenderOptions,
-    wasmOptions?: WeTeXWasmOptions,
+    wasmOptions?: WaTeXWasmOptions,
 ): Promise<FormulaRender> {
-    const wetex = await bindings(wasmOptions);
-    return wetex.renderHtml(source, options);
+    const watex = await bindings(wasmOptions);
+    return watex.renderHtml(source, options);
 }
 
 /** Render a formula to MathML through the default WASM binding. */
 export async function renderMathml(
     source: string,
     options?: RenderOptions,
-    wasmOptions?: WeTeXWasmOptions,
+    wasmOptions?: WaTeXWasmOptions,
 ): Promise<FormulaRender> {
-    const wetex = await bindings(wasmOptions);
-    return wetex.renderMathml(source, options);
+    const watex = await bindings(wasmOptions);
+    return watex.renderMathml(source, options);
 }
 
 /** Render a formula with SVG and MathML through the default WASM binding. */
 export async function render(
     source: string,
     options?: RenderOptions,
-    wasmOptions?: WeTeXWasmOptions,
+    wasmOptions?: WaTeXWasmOptions,
 ): Promise<FormulaRender> {
-    const wetex = await bindings(wasmOptions);
-    return wetex.renderFormula(source, options);
+    const watex = await bindings(wasmOptions);
+    return watex.renderFormula(source, options);
 }
 
 /** Convenience helpers when bindings are already loaded. */
 export function measureWith(
-    wetex: WeTeXBindings,
+    watex: WaTeXBindings,
     source: string,
     options?: RenderOptions,
 ): FormulaRender {
-    return wetex.measureFormula(source, options);
+    return watex.measureFormula(source, options);
 }
 
 export function renderSvgWith(
-    wetex: WeTeXBindings,
+    watex: WaTeXBindings,
     source: string,
     options?: RenderOptions,
 ): FormulaRender {
-    return wetex.renderSvg(source, options);
+    return watex.renderSvg(source, options);
 }
 
 export function renderHtmlWith(
-    wetex: WeTeXBindings,
+    watex: WaTeXBindings,
     source: string,
     options?: RenderOptions,
 ): FormulaRender {
-    return wetex.renderHtml(source, options);
+    return watex.renderHtml(source, options);
 }
 
 export function renderMathmlWith(
-    wetex: WeTeXBindings,
+    watex: WaTeXBindings,
     source: string,
     options?: RenderOptions,
 ): FormulaRender {
-    return wetex.renderMathml(source, options);
+    return watex.renderMathml(source, options);
 }
 
 export function renderWith(
-    wetex: WeTeXBindings,
+    watex: WaTeXBindings,
     source: string,
     options?: RenderOptions,
 ): FormulaRender {
-    return wetex.renderFormula(source, options);
+    return watex.renderFormula(source, options);
 }

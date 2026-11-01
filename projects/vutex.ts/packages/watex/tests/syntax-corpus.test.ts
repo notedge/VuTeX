@@ -4,15 +4,15 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import test from "node:test";
 
-import { loadWeTeX } from "../src/wasm/load.js";
-import type { WeTeXBindings } from "../src/types.js";
+import { loadWaTeX } from "../src/wasm/load.js";
+import type { WaTeXBindings } from "../src/types.js";
 
 const require = createRequire(import.meta.url);
 const wasmPackageJson = require.resolve("@vutex/vutex-unknown-wasm32/package.json");
-const wasmPath = join(dirname(wasmPackageJson), "lib", "wetex_wasm_bg.wasm");
+const wasmPath = join(dirname(wasmPackageJson), "lib", "watex_wasm_bg.wasm");
 const wasmBytes = new Uint8Array(readFileSync(wasmPath));
 
-const wetex: WeTeXBindings = await loadWeTeX({ bytes: wasmBytes });
+const watex: WaTeXBindings = await loadWaTeX({ bytes: wasmBytes });
 
 type CorpusEntry = {
     /** LaTeX source of one syntax-family sample. */
@@ -112,7 +112,7 @@ const corpus: CorpusEntry[] = [
 
 test("the LaTeX corpus renders through every backend without error diagnostics", () => {
     for (const entry of corpus) {
-        const result = wetex.renderFormula(entry.source);
+        const result = watex.renderFormula(entry.source);
         const errors = result.diagnostics.filter((d) => d.severity === "error");
         assert.deepEqual(errors, [], entry.source);
         assert.ok(result.metrics.width > 0, entry.source);
@@ -128,17 +128,17 @@ test("the LaTeX corpus renders through every backend without error diagnostics",
 
 test("measureFormula accepts the same corpus with positive widths", () => {
     for (const entry of corpus) {
-        const result = wetex.measureFormula(entry.source);
+        const result = watex.measureFormula(entry.source);
         assert.equal(result.diagnostics.filter((d) => d.severity === "error").length, 0, entry.source);
         assert.ok(result.metrics.width > 0, entry.source);
     }
 });
 
-test("unclosed group yields a WETEX_MATH_ERROR diagnostic without throwing", () => {
-    const result = wetex.renderFormula("\\frac{a");
+test("unclosed group yields a WATEX_MATH_ERROR diagnostic without throwing", () => {
+    const result = watex.renderFormula("\\frac{a");
     assert.equal(result.diagnostics.length, 1);
     const [diagnostic] = result.diagnostics;
-    assert.equal(diagnostic?.code, "WETEX_MATH_ERROR");
+    assert.equal(diagnostic?.code, "WATEX_MATH_ERROR");
     assert.equal(diagnostic?.severity, "error");
     assert.match(diagnostic?.message ?? "", /Parse Error/);
     assert.equal(diagnostic?.start == null, true);
@@ -147,42 +147,42 @@ test("unclosed group yields a WETEX_MATH_ERROR diagnostic without throwing", () 
     assert.equal(result.svg, "");
 });
 
-test("unclosed environment yields a WETEX_MATH_ERROR diagnostic", () => {
-    const result = wetex.renderFormula("\\begin{pmatrix}a&b");
+test("unclosed environment yields a WATEX_MATH_ERROR diagnostic", () => {
+    const result = watex.renderFormula("\\begin{pmatrix}a&b");
     assert.ok(result.diagnostics.length > 0);
-    assert.equal(result.diagnostics.some((d) => d.code === "WETEX_MATH_ERROR" && d.severity === "error"), true);
+    assert.equal(result.diagnostics.some((d) => d.code === "WATEX_MATH_ERROR" && d.severity === "error"), true);
     assert.equal(result.svg, "");
 });
 
-test("empty source yields WETEX_EMPTY_SOURCE anchored at zero", () => {
-    const result = wetex.renderFormula("");
+test("empty source yields WATEX_EMPTY_SOURCE anchored at zero", () => {
+    const result = watex.renderFormula("");
     assert.equal(result.diagnostics.length, 1);
     const [diagnostic] = result.diagnostics;
-    assert.equal(diagnostic?.code, "WETEX_EMPTY_SOURCE");
+    assert.equal(diagnostic?.code, "WATEX_EMPTY_SOURCE");
     assert.equal(diagnostic?.severity, "error");
     assert.equal(diagnostic?.start, 0);
     assert.equal(diagnostic?.end, 0);
 });
 
 test("stix-two-math is declared but rejected as unsupported by the embedded wasm", () => {
-    const result = wetex.renderFormula("x^2", { fontFamily: "stix-two-math" });
+    const result = watex.renderFormula("x^2", { fontFamily: "stix-two-math" });
     assert.equal(
-        result.diagnostics.some((d) => d.code === "WETEX_UNSUPPORTED_FONT_FAMILY" && d.severity === "error"),
+        result.diagnostics.some((d) => d.code === "WATEX_UNSUPPORTED_FONT_FAMILY" && d.severity === "error"),
         true,
     );
     assert.equal(result.svg, "");
 });
 
 test("renderFormula mathml always carries display=\"block\" even for inline mode", () => {
-    const block = wetex.renderFormula("\\frac{a}{b}", { displayMode: "block" });
-    const inline = wetex.renderFormula("\\frac{a}{b}", { displayMode: "inline" });
+    const block = watex.renderFormula("\\frac{a}{b}", { displayMode: "block" });
+    const inline = watex.renderFormula("\\frac{a}{b}", { displayMode: "inline" });
     assert.match(block.mathml ?? "", /display="block"/);
     assert.match(inline.mathml ?? "", /display="block"/);
     assert.equal(block.mathml, inline.mathml);
 });
 
 test("a path-heavy formula renders through the single outline path", () => {
-    const result = wetex.renderFormula("\\sqrt[3]{x+y}");
+    const result = watex.renderFormula("\\sqrt[3]{x+y}");
     assert.equal(result.diagnostics.filter((d) => d.severity === "error").length, 0);
     assert.ok(result.metrics.width > 0);
     assert.ok(result.svg.length > 0);

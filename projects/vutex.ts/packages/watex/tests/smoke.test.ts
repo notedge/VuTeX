@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { measureWith, renderSvgWith } from "../src/index.js";
-import type { WeTeXBindings } from "../src/types.js";
+import type { WaTeXBindings } from "../src/types.js";
 
-const stub: WeTeXBindings = {
-    wetexVersion: () => "0.0.0",
+const stub: WaTeXBindings = {
+    watexVersion: () => "0.0.0",
     measureFormula: (source, options) => ({
         metrics: {
             width: source.length * 8,
@@ -17,7 +17,7 @@ const stub: WeTeXBindings = {
         html: "",
         diagnostics: source.trim() ? [] : [
             {
-                code: "WETEX_EMPTY_SOURCE",
+                code: "WATEX_EMPTY_SOURCE",
                 severity: "error",
                 message: "formula source must not be empty",
             },
@@ -25,11 +25,11 @@ const stub: WeTeXBindings = {
     }),
     renderSvg: (source, options) => ({
         ...stub.measureFormula(source, options),
-        svg: source.trim() ? `<svg data-wetex="stub">${source}</svg>` : "",
+        svg: source.trim() ? `<svg data-watex="stub">${source}</svg>` : "",
     }),
     renderHtml: (source, options) => ({
         ...stub.measureFormula(source, options),
-        html: source.trim() ? `<span data-wetex="stub">${source}</span>` : "",
+        html: source.trim() ? `<span data-watex="stub">${source}</span>` : "",
     }),
     renderMathml: (source, options) => ({
         ...stub.measureFormula(source, options),
@@ -49,5 +49,5 @@ test("measureWith returns metrics for non-empty source", () => {
 
 test("renderSvgWith returns svg payload", () => {
     const result = renderSvgWith(stub, "a+b");
-    assert.match(result.svg, /data-wetex="stub"/);
+    assert.match(result.svg, /data-watex="stub"/);
 });

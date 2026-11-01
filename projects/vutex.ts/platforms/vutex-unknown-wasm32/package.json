@@ -9,13 +9,13 @@
         "url": "git+https://github.com/notedge/VuTeX.git",
         "directory": "projects/vutex.ts/platforms/vutex-unknown-wasm32"
     },
-    "main": "./lib/wetex_wasm.js",
-    "types": "./lib/wetex_wasm.d.ts",
+    "main": "./lib/watex_wasm.js",
+    "types": "./lib/watex_wasm.d.ts",
     "files": [
         "lib",
         "readme.md"
     ],
     "sideEffects": [
-        "./lib/wetex_wasm.js"
+        "./lib/watex_wasm.js"
     ]
 }

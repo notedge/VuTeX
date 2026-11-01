@@ -187,7 +187,7 @@ fn layout_formula(
 ///
 /// An omitted choice resolves to the builtin default face. `None` means the
 /// requested family ships no embedded asset yet; the public entries report
-/// that with `WETEX_UNSUPPORTED_FONT_FAMILY` before layout runs.
+/// that with `WATEX_UNSUPPORTED_FONT_FAMILY` before layout runs.
 fn embedded_family(family: Option<FontFamily>) -> Option<MathFontFamily> {
     match family {
         None => MathFontFamily::builtin_default(),
@@ -204,7 +204,7 @@ fn font_family_diagnostic(options: &RenderOptions) -> Option<FormulaDiagnostic> 
         _ => return None,
     };
     Some(FormulaDiagnostic {
-        code: "WETEX_UNSUPPORTED_FONT_FAMILY".into(),
+        code: "WATEX_UNSUPPORTED_FONT_FAMILY".into(),
         severity: severity_name(Severity::Error),
         message: format!("font family `{unsupported}` is not embedded yet"),
         start: None,
@@ -235,7 +235,7 @@ fn collect_diagnostics(source: &str) -> Vec<FormulaDiagnostic> {
 
     if source.trim().is_empty() {
         diagnostics.push(FormulaDiagnostic {
-            code: "WETEX_EMPTY_SOURCE".into(),
+            code: "WATEX_EMPTY_SOURCE".into(),
             severity: severity_name(Severity::Error),
             message: "formula source must not be empty".into(),
             start: Some(0),
@@ -249,7 +249,7 @@ fn collect_diagnostics(source: &str) -> Vec<FormulaDiagnostic> {
 
 fn math_error_to_diagnostic(err: &MathError) -> FormulaDiagnostic {
     FormulaDiagnostic {
-        code: "WETEX_MATH_ERROR".into(),
+        code: "WATEX_MATH_ERROR".into(),
         severity: severity_name(Severity::Error),
         message: err.to_string(),
         start: None,

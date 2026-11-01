@@ -30,7 +30,7 @@
                         <p class="specimen-sheet__status" role="status">{{ statusText() }}</p>
                         <p class="specimen-sheet__name">{{ t(selectedKey()) }}</p>
                     </div>
-                    <div class="specimen-sheet__foot"><span lang="en">WeTeX / SVG</span><span>{{ position() }} — 03</span></div>
+                    <div class="specimen-sheet__foot"><span lang="en">WaTeX / SVG</span><span>{{ position() }} — 03</span></div>
                 </div>
                 <span class="art-coordinate art-coordinate--bottom" lang="en">THOUGHT, IN FORM.</span>
                 <div class="specimen-selector" role="group" :aria-label="t('select')">
@@ -89,7 +89,7 @@ export default class Index {
     async renderHero() {
         const request = ++this.request;
         this.failed = false;
-        const result = await renderFormula("wetex", "svg", SPECIMENS[this.selected].tex, true);
+        const result = await renderFormula("watex", "svg", SPECIMENS[this.selected].tex, true);
         if (request !== this.request) return;
         this.heroMarkup = result.ok ? result.markup : "";
         this.failed = !result.ok;

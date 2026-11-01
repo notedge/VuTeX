@@ -10,4 +10,4 @@ VuTeX 将不同输入中的文档意图交给统一的语义、布局与输出�
 ## 产品
 
 - `@vutex/vutex`：TypeScript runtime facade 与官方 CLI。
-- `@vutex/wetex`：独立的公式 WASM / JavaScript 产品面。
+- `@vutex/watex`：独立的公式 WASM / JavaScript 产品面。

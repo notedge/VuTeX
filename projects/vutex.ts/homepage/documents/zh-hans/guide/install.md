@@ -8,10 +8,10 @@
 ## 公式排版
 
 ```sh
-pnpm add @vutex/wetex
+pnpm add @vutex/watex
 ```
 
-`@vutex/wetex` 提供公式渲染与测量接口，不需要安装完整文档 CLI。
+`@vutex/watex` 提供公式渲染与测量接口，不需要安装完整文档 CLI。
 
 ## runtime 与 CLI
 

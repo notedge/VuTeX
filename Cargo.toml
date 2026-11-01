@@ -11,7 +11,7 @@ members = [
     "projects/vutex.rs/crates/vutex-render-svg",
     "projects/vutex.rs/crates/vutex-render-html",
     "projects/vutex.rs/crates/vutex-render-raster",
-    "projects/vutex.rs/exports/wetex-wasm",
+    "projects/vutex.rs/exports/watex-wasm",
     "projects/vutex.rs/exports/vutex-napi",
 ]
 default-members = [
@@ -21,7 +21,7 @@ default-members = [
     "projects/vutex.rs/crates/vutex-layout",
     "projects/vutex.rs/crates/vutex-presentation",
     "projects/vutex.rs/crates/vutex-render",
-    "projects/vutex.rs/exports/wetex-wasm",
+    "projects/vutex.rs/exports/watex-wasm",
     "projects/vutex.rs/exports/vutex-napi",
 ]
 
@@ -67,7 +67,7 @@ vutex-render-pdf = { path = "projects/vutex.rs/crates/vutex-render-pdf" }
 vutex-render-svg = { path = "projects/vutex.rs/crates/vutex-render-svg" }
 vutex-render-html = { path = "projects/vutex.rs/crates/vutex-render-html" }
 vutex-render-raster = { path = "projects/vutex.rs/crates/vutex-render-raster" }
-wetex-wasm = { path = "projects/vutex.rs/exports/wetex-wasm" }
+watex-wasm = { path = "projects/vutex.rs/exports/watex-wasm" }
 vutex-napi = { path = "projects/vutex.rs/exports/vutex-napi" }
 
 [profile.release]

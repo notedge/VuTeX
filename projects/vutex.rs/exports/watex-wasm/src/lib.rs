@@ -22,9 +22,9 @@ fn to_json<T: serde::Serialize>(value: &T) -> String {
     serde_json::to_string(value).unwrap_or_else(|_| "{}".to_string())
 }
 
-/// Returns the WeTeX WASM binding version.
-#[wasm_bindgen(js_name = wetexVersion)]
-pub fn wetex_version() -> String {
+/// Returns the WaTeX WASM binding version.
+#[wasm_bindgen(js_name = watexVersion)]
+pub fn watex_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
 

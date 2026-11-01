@@ -14,11 +14,11 @@ pub enum DisplayMode {
 
 /// Font family selection for math layout.
 ///
-/// Each family requires an OpenType MATH table — wetex reads
+/// Each family requires an OpenType MATH table — watex reads
 /// `MathConstants`, `MathVariants`, and `MathKern` from it to drive the
 /// TeXbook layout engine. [`FontFamily::XitsMath`] and [`FontFamily::LmMath`]
 /// ship as embedded assets; [`FontFamily::StixTwoMath`] reports a
-/// `WETEX_UNSUPPORTED_FONT_FAMILY` diagnostic until its asset lands.
+/// `WATEX_UNSUPPORTED_FONT_FAMILY` diagnostic until its asset lands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum FontFamily {
@@ -28,7 +28,7 @@ pub enum FontFamily {
     /// Latin Modern Math — Computer Modern's OpenType successor, also embedded.
     LmMath,
     /// STIX Two Math — full MATH table upstream, asset not embedded yet, so
-    /// renders fail with a `WETEX_UNSUPPORTED_FONT_FAMILY` diagnostic.
+    /// renders fail with a `WATEX_UNSUPPORTED_FONT_FAMILY` diagnostic.
     StixTwoMath,
 }
 
@@ -45,7 +45,7 @@ pub struct RenderOptions {
     /// Math font family. Defaults to [`FontFamily::XitsMath`] when omitted —
     /// the builtin default embedded face. [`FontFamily::LmMath`] is also
     /// embedded; [`FontFamily::StixTwoMath`] returns a
-    /// `WETEX_UNSUPPORTED_FONT_FAMILY` diagnostic until its font asset ships.
+    /// `WATEX_UNSUPPORTED_FONT_FAMILY` diagnostic until its font asset ships.
     #[serde(default)]
     pub font_family: Option<FontFamily>,
 }
@@ -80,7 +80,7 @@ impl Default for FormulaMetrics {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FormulaDiagnostic {
-    /// Stable diagnostic code, e.g. `WETEX_EMPTY_SOURCE`.
+    /// Stable diagnostic code, e.g. `WATEX_EMPTY_SOURCE`.
     pub code: String,
     /// Severity name: `info`, `warning`, or `error`.
     pub severity: String,

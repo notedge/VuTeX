@@ -4,7 +4,7 @@
 //! targets, so the JSON contract can be asserted natively.
 
 use serde_json::Value;
-use wetex_wasm::{measure_formula, render_formula, render_mathml_wasm, render_svg_wasm, wetex_version};
+use watex_wasm::{measure_formula, render_formula, render_mathml_wasm, render_svg_wasm, watex_version};
 
 fn parse(json: &str) -> Value {
     serde_json::from_str(json).expect("export must return valid JSON")
@@ -12,7 +12,7 @@ fn parse(json: &str) -> Value {
 
 #[test]
 fn version_is_exposed() {
-    assert_eq!(wetex_version(), env!("CARGO_PKG_VERSION"));
+    assert_eq!(watex_version(), env!("CARGO_PKG_VERSION"));
 }
 
 #[test]
@@ -86,7 +86,7 @@ fn empty_source_reports_a_diagnostic() {
     let value = parse(&render_svg_wasm("   ", None));
     let diagnostics = value["diagnostics"].as_array().expect("diagnostics");
     assert_eq!(diagnostics.len(), 1, "unexpected diagnostics: {value}");
-    assert_eq!(diagnostics[0]["code"].as_str(), Some("WETEX_EMPTY_SOURCE"));
+    assert_eq!(diagnostics[0]["code"].as_str(), Some("WATEX_EMPTY_SOURCE"));
     assert_eq!(diagnostics[0]["severity"].as_str(), Some("error"));
     assert_eq!(value["svg"].as_str(), Some(""));
 }
@@ -235,7 +235,7 @@ fn unsupported_font_family_reports_a_diagnostic() {
 
         let diagnostics = value["diagnostics"].as_array().expect("diagnostics");
         assert_eq!(diagnostics.len(), 1, "one unsupported family, one diagnostic: {value}");
-        assert_eq!(diagnostics[0]["code"].as_str(), Some("WETEX_UNSUPPORTED_FONT_FAMILY"));
+        assert_eq!(diagnostics[0]["code"].as_str(), Some("WATEX_UNSUPPORTED_FONT_FAMILY"));
         assert_eq!(diagnostics[0]["severity"].as_str(), Some("error"));
     }
 }

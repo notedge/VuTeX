@@ -23,7 +23,7 @@ vutex-layout (page / block / line / table / pagination)
         │
         ├── vutex-style (semantic styles, named styles, inheritance, themes)
         ├── vutex-text (shaping, font metrics, line breaking)
-        │     └── wetex (formula layout — WASM product face)
+        │     └── watex (formula layout — WASM product face)
         ▼
 vutex-presentation (display / flow)
         │
@@ -35,10 +35,10 @@ vutex-render (backend contract)
   └─ vutex-render-raster
         │
         ▼
-vutex-napi / wetex-wasm (host adapters)
+vutex-napi / watex-wasm (host adapters)
         │
         ▼
-@vutex/vutex / @vutex/wetex (TypeScript product facades)
+@vutex/vutex / @vutex/watex (TypeScript product facades)
 ```
 
 **Notedown is VuTeX's canonical document model.** VuTeX does not own a second `Document` / `Node` / `Graph` IR. Every crate that manipulates document semantics operates directly on `notedown-ir::DocumentGraph`.  Source spans, relations, assets, provenance and coverage/loss all stay attached — no projection boundary that drops provenance.
@@ -60,7 +60,7 @@ vutex-napi / wetex-wasm (host adapters)
 | `vutex-layout` | Consumes `notedown-ir::DocumentGraph` → `LayoutPlan` |
 | `vutex-presentation` | Flow/display presentation lowering |
 | `vutex-render` + backends | Renderer contracts (PDF / SVG / HTML / raster) |
-| `wetex-wasm` | Math formula distribution |
+| `watex-wasm` | Math formula distribution |
 | `vutex-napi` | Node native host |
 
 ### Backend status
@@ -83,7 +83,7 @@ cargo test --workspace           # layout, presentation, renderer, napi and wasm
 
 ```text
 @vutex/vutex              Runtime facade + CLI
-@vutex/wetex              Formula distribution
+@vutex/watex              Formula distribution
 @vutex/vutex-unknown-wasm32   wasm-pack artifact
 @vutex/vutex-<platform>   napi platform bags
 ```

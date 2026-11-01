@@ -7,26 +7,26 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import test from "node:test";
 
-import { loadWeTeX } from "../src/wasm/load.js";
+import { loadWaTeX } from "../src/wasm/load.js";
 
 const require = createRequire(import.meta.url);
 const wasmPackageJson = require.resolve("@vutex/vutex-unknown-wasm32/package.json");
-const wasmPath = join(dirname(wasmPackageJson), "lib", "wetex_wasm_bg.wasm");
+const wasmPath = join(dirname(wasmPackageJson), "lib", "watex_wasm_bg.wasm");
 const wasmBytes = new Uint8Array(readFileSync(wasmPath));
 
-const wetex = await loadWeTeX({ bytes: wasmBytes });
+const watex = await loadWaTeX({ bytes: wasmBytes });
 
-test("loadWeTeX({bytes}) instantiates and reports a semver version", () => {
-    assert.match(wetex.wetexVersion(), /^\d+\.\d+\.\d+$/);
+test("loadWaTeX({bytes}) instantiates and reports a semver version", () => {
+    assert.match(watex.watexVersion(), /^\d+\.\d+\.\d+$/);
 });
 
 test("wrapped results decode to the documented shape with null mathml outside the mathml backends", () => {
     const results = {
-        measure: wetex.measureFormula("x^2"),
-        svg: wetex.renderSvg("x^2"),
-        html: wetex.renderHtml("x^2"),
-        mathml: wetex.renderMathml("x^2"),
-        formula: wetex.renderFormula("x^2"),
+        measure: watex.measureFormula("x^2"),
+        svg: watex.renderSvg("x^2"),
+        html: watex.renderHtml("x^2"),
+        mathml: watex.renderMathml("x^2"),
+        formula: watex.renderFormula("x^2"),
     };
 
     for (const [name, result] of Object.entries(results)) {
@@ -53,47 +53,47 @@ test("wrapped results decode to the documented shape with null mathml outside th
 });
 
 test("renderHtml fills the html field and leaves svg empty", () => {
-    const result = wetex.renderHtml("x^2");
-    assert.match(result.html, /^<span class="wetex-html"/);
+    const result = watex.renderHtml("x^2");
+    assert.match(result.html, /^<span class="watex-html"/);
     assert.equal(result.svg, "");
 });
 
 test("renderMathml fills the mathml field and leaves svg and html empty", () => {
-    const result = wetex.renderMathml("x^2");
+    const result = watex.renderMathml("x^2");
     assert.ok((result.mathml ?? "").startsWith("<math xmlns"));
     assert.equal(result.svg, "");
     assert.equal(result.html, "");
 });
 
 test("encoded options round-trip: block layout is wider than inline", () => {
-    const inline = wetex.measureFormula("\\frac{a}{b}", { displayMode: "inline" });
-    const block = wetex.measureFormula("\\frac{a}{b}", { displayMode: "block" });
+    const inline = watex.measureFormula("\\frac{a}{b}", { displayMode: "inline" });
+    const block = watex.measureFormula("\\frac{a}{b}", { displayMode: "block" });
     assert.ok(block.metrics.width > inline.metrics.width);
 });
 
 test("omitted options match the inline default", () => {
-    const omitted = wetex.measureFormula("\\frac{a}{b}");
-    const inline = wetex.measureFormula("\\frac{a}{b}", { displayMode: "inline" });
+    const omitted = watex.measureFormula("\\frac{a}{b}");
+    const inline = watex.measureFormula("\\frac{a}{b}", { displayMode: "inline" });
     assert.deepEqual(omitted.metrics, inline.metrics);
 });
 
 test("fontSize scales the measured width linearly", () => {
-    const large = wetex.measureFormula("\\frac{a}{b}", { fontSize: 20 });
-    const small = wetex.measureFormula("\\frac{a}{b}", { fontSize: 10 });
+    const large = watex.measureFormula("\\frac{a}{b}", { fontSize: 20 });
+    const small = watex.measureFormula("\\frac{a}{b}", { fontSize: 10 });
     const ratio = large.metrics.width / small.metrics.width;
     assert.ok(Math.abs(ratio - 2) < 0.05, `expected ratio near 2, got ${ratio}`);
 });
 
 test("lm-math and xits-math measure and render differently", () => {
-    const lm = wetex.renderSvg("\\frac{a}{b}", { fontFamily: "lm-math" });
-    const xits = wetex.renderSvg("\\frac{a}{b}", { fontFamily: "xits-math" });
+    const lm = watex.renderSvg("\\frac{a}{b}", { fontFamily: "lm-math" });
+    const xits = watex.renderSvg("\\frac{a}{b}", { fontFamily: "xits-math" });
     assert.notEqual(lm.svg, xits.svg);
     assert.ok(lm.svg.length > 0);
     assert.equal(lm.diagnostics.length, 0);
     assert.equal(xits.diagnostics.length, 0);
 
-    const lmMetrics = wetex.measureFormula("\\frac{a}{b}", { fontFamily: "lm-math" });
-    const xitsMetrics = wetex.measureFormula("\\frac{a}{b}", { fontFamily: "xits-math" });
+    const lmMetrics = watex.measureFormula("\\frac{a}{b}", { fontFamily: "lm-math" });
+    const xitsMetrics = watex.measureFormula("\\frac{a}{b}", { fontFamily: "xits-math" });
     assert.notEqual(lmMetrics.metrics.width, xitsMetrics.metrics.width);
 });
 
@@ -111,20 +111,20 @@ const url = pathToFileURL(wasmPath);
 try {
     let bindings;
     if (scenario === "url-only") {
-        bindings = await mod.loadWeTeX({ url });
+        bindings = await mod.loadWaTeX({ url });
     } else if (scenario === "bytes-url") {
-        bindings = await mod.loadWeTeX({ bytes, url });
+        bindings = await mod.loadWaTeX({ bytes, url });
     } else {
-        bindings = await mod.loadWeTeX();
+        bindings = await mod.loadWaTeX();
     }
-    console.log(JSON.stringify({ outcome: "ok", version: bindings.wetexVersion() }));
+    console.log(JSON.stringify({ outcome: "ok", version: bindings.watexVersion() }));
 } catch (error) {
     console.log(JSON.stringify({ outcome: "threw", message: String(error) }));
 }
 `;
 
 function runColdScenario(scenario: string): { outcome: string; version?: string; message?: string } {
-    const dir = mkdtempSync(join(tmpdir(), "wetex-load-"));
+    const dir = mkdtempSync(join(tmpdir(), "watex-load-"));
     const snippetPath = join(dir, "snippet.mjs");
     writeFileSync(snippetPath, snippet, "utf8");
     try {
@@ -147,10 +147,10 @@ test("cold process: url-only loading throws in Node while bytes take precedence"
 
     const bytesUrl = runColdScenario("bytes-url");
     assert.equal(bytesUrl.outcome, "ok");
-    assert.equal(bytesUrl.version, wetex.wetexVersion());
+    assert.equal(bytesUrl.version, watex.watexVersion());
 });
 
-test("cold process: loadWeTeX() without bytes also falls back to fetch and throws in Node", () => {
+test("cold process: loadWaTeX() without bytes also falls back to fetch and throws in Node", () => {
     const cold = runColdScenario("default");
     assert.equal(cold.outcome, "threw");
     assert.match(cold.message ?? "", /fetch failed/);

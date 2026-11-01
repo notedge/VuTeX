@@ -8,7 +8,7 @@ pub mod tikz;
 
 use napi::bindgen_prelude::Buffer;
 use napi_derive::napi;
-use wetex_wasm::{RenderOptions, measure, render, render_mathml, render_svg};
+use watex_wasm::{RenderOptions, measure, render, render_mathml, render_svg};
 
 /// N-API document render response.
 #[napi(object)]

@@ -24,7 +24,7 @@ pub fn default_base_size(display: bool) -> f64 {
 /// Lower authored TeX math through Notedown's import layer into the formula tree.
 ///
 /// The syntax stays in Oak and the semantics in `notedown-ir`; this function is
-/// orchestration for hosts that own only a formula string, such as WeTeX.
+/// orchestration for hosts that own only a formula string, such as WaTeX.
 pub fn lower_formula(source: &str, display: bool) -> MathResult<(FormulaTree, Vec<Diagnostic>)> {
     let formula = notedown_formats::lower_tex_formula_source(
         source,

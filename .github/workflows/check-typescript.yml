@@ -30,6 +30,6 @@ jobs:
       - name: Typecheck packages
         run: pnpm typecheck
       - name: Test packages
-        run: pnpm --filter @vutex/vutex --filter @vutex/wetex test
+        run: pnpm --filter @vutex/vutex --filter @vutex/watex test
       - name: Build native bindings (linux)
         run: pnpm build:napi

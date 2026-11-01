@@ -4,7 +4,7 @@
             <p class="label">Playground</p>
             <h1>输入 TeX，实时对照三个引擎</h1>
             <p class="lede">
-                输入即渲染，所有计算在本地完成，不上传任何内容。WeTeX 经 WebAssembly 输出主要结果，KaTeX 与 MathJax 并排显示，作为参照。
+                输入即渲染，所有计算在本地完成，不上传任何内容。WaTeX 经 WebAssembly 输出主要结果，KaTeX 与 MathJax 并排显示，作为参照。
             </p>
 
             <div class="playground__controls">

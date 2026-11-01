@@ -10,4 +10,4 @@ VuTeX brings document intent from different source languages into a shared seman
 ## Products
 
 - `@vutex/vutex`: TypeScript runtime facade and official CLI.
-- `@vutex/wetex`: standalone formula WASM and JavaScript surface.
+- `@vutex/watex`: standalone formula WASM and JavaScript surface.
