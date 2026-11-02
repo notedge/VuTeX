@@ -1,17 +1,15 @@
 <template>
     <SiteShell page="install">
         <section class="install-page container">
-            <p class="eyebrow"><span class="eyebrow__line"></span>{{ t('installEyebrow') }}</p>
-            <h1>{{ t('installTitle') }}</h1>
+            <p class="label">{{ t('installEyebrow') }}</p>
+            <h1>{{ t('installPageTitle') }}</h1>
             <p class="install-page__lede">{{ t('installLead') }}</p>
-            <div class="install-page__rule"></div>
             <div class="install-page__grid">
-                <article><span class="install-page__index">01 / FORMULA</span><h2>{{ t('installWatex') }}</h2><p>{{ t('installWatexText') }}</p><pre><code>pnpm add @vutex/watex</code></pre></article>
-                <article><span class="install-page__index">02 / RUNTIME + CLI</span><h2>{{ t('installRuntime') }}</h2><p>{{ t('installRuntimeText') }}</p><pre><code>pnpm add @vutex/vutex
-pnpm exec vutex --help</code></pre></article>
+                <article><span class="install-page__index" lang="en">01 · Formula</span><h2>{{ t('installWatex') }}</h2><p>{{ t('installWatexText') }}</p><pre><code>{{ cmdWatex }}</code></pre></article>
+                <article><span class="install-page__index" lang="en">02 · Runtime + CLI</span><h2>{{ t('installRuntime') }}</h2><p>{{ t('installRuntimeText') }}</p><pre><code>{{ cmdRuntime }}</code></pre></article>
             </div>
-            <div class="install-page__note"><span class="install-page__index">REQUIREMENTS</span><p>{{ t('installRequirements') }}</p></div>
-            <a :href="href('/d/guide/install')" class="text-link">{{ t('installDocsLink') }}<span class="link-arrow" aria-hidden="true">↗</span></a>
+            <div class="install-page__note"><span class="install-page__index" lang="en">Requirements</span><p>{{ t('installRequirements') }}</p></div>
+            <a :href="href('/d/guide/install')" class="text-link">{{ t('installDocsLink') }}<span class="link-arrow" aria-hidden="true">→</span></a>
         </section>
     </SiteShell>
 </template>
@@ -19,6 +17,8 @@ pnpm exec vutex --help</code></pre></article>
 import { copy, readLocale, localizedHref } from "../lib/locale.ts";
 export default class InstallPage {
     locale = "zh-hans";
+    cmdWatex = "pnpm add @vutex/watex";
+    cmdRuntime = "pnpm add @vutex/vutex\npnpm exec vutex --help";
     onMount() { this.locale = readLocale(); }
     t(key) { return copy(key, this.locale); }
     href(path) { return localizedHref(path, this.locale); }

@@ -1,6 +1,6 @@
 <template>
     <SiteShell page="gallery">
-        <section class="container gallery__head">
+        <section class="container page-head">
             <p class="label">Gallery</p>
             <h1>同一份 TeX，三个引擎并排渲染</h1>
             <p class="lede">

@@ -2,15 +2,15 @@
     "entries": [
         {
             "key": { "path": ["action", "primary", "background"] },
-            "value": "#F2F2F5"
+            "value": "#18181B"
         },
         {
             "key": { "path": ["action", "primary", "foreground"] },
-            "value": "#0B0B0D"
+            "value": "#FFFFFF"
         },
         {
             "key": { "path": ["action", "primary", "hover"] },
-            "value": "#FFFFFF"
+            "value": "#000000"
         },
         {
             "key": { "path": ["action", "secondary", "background"] },
@@ -18,19 +18,19 @@
         },
         {
             "key": { "path": ["action", "secondary", "foreground"] },
-            "value": "#D9D9E0"
+            "value": "#18181B"
         },
         {
             "key": { "path": ["action", "secondary", "border"] },
-            "value": "#3A3A44"
+            "value": "rgba(24, 24, 27, 0.34)"
         },
         {
             "key": { "path": ["action", "secondary", "hover"] },
-            "value": "#1A1A20"
+            "value": "rgba(24, 24, 27, 0.06)"
         },
         {
             "key": { "path": ["focus", "ring"] },
-            "value": "rgba(230, 230, 238, .35)"
+            "value": "rgba(181, 56, 42, 0.55)"
         }
     ]
 }

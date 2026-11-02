@@ -78,7 +78,7 @@
         },
         {
             "key": { "path": ["type", "display"] },
-            "value": "clamp(2.9rem, 6.2vw, 5.6rem)"
+            "value": "clamp(2rem, 3.4vw, 2.5rem)"
         },
         {
             "key": { "path": ["type", "title"] },
@@ -98,11 +98,11 @@
         },
         {
             "key": { "path": ["type", "label"] },
-            "value": "0.6875rem"
+            "value": "0.75rem"
         },
         {
             "key": { "path": ["type", "line-height", "display"] },
-            "value": "1.04"
+            "value": "1.25"
         },
         {
             "key": { "path": ["type", "line-height", "title"] },

@@ -1,34 +1,34 @@
 {
     "brand": {
-        "primary": "#E5E2DC",
-        "ink": "#F1F0ED"
+        "primary": "#18181B",
+        "ink": "#FFFFFF"
     },
     "surface": {
-        "paper": "#111111",
-        "page": "#0C0C0C",
-        "mist": "#181818",
-        "card": "#141414",
-        "ink": "#F1F0ED",
-        "night": "#090909",
-        "code": "#101010"
+        "paper": "#FFFFFF",
+        "page": "#FFFFFF",
+        "mist": "#FFFFFF",
+        "card": "#FFFFFF",
+        "ink": "#F4F4F5",
+        "night": "#131316",
+        "code": "#161618"
     },
     "text": {
-        "ink": "#F1F0ED",
-        "steel": "#B8B6B2",
-        "muted": "#96948F",
-        "faint": "#7D7B76",
-        "on-brand": "#141414",
-        "on-night": "#F1F0ED"
+        "ink": "#18181B",
+        "steel": "#3F3F46",
+        "muted": "#52525B",
+        "faint": "#71717A",
+        "on-brand": "#FFFFFF",
+        "on-night": "#F4F4F5"
     },
     "line": {
-        "default": "#30302E",
-        "subtle": "#242423",
-        "strong": "#55534F"
+        "default": "rgba(24, 24, 27, 0.16)",
+        "subtle": "rgba(24, 24, 27, 0.10)",
+        "strong": "rgba(24, 24, 27, 0.34)"
     },
     "font": {
-        "display": "\"Atelier Display\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans CJK SC\", sans-serif",
-        "serif": "\"Atelier Serif\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans CJK SC\", sans-serif",
-        "sans": "\"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans CJK SC\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
-        "mono": "ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace"
+        "display": "\"Source Serif 4\", \"Source Serif Pro\", \"EB Garamond\", Georgia, \"Times New Roman\", \"PingFang SC\", \"Microsoft YaHei UI\", \"Noto Sans SC\", serif",
+        "serif": "\"Source Serif 4\", \"Source Serif Pro\", \"EB Garamond\", Georgia, \"Times New Roman\", \"PingFang SC\", \"Microsoft YaHei UI\", \"Noto Sans SC\", serif",
+        "sans": "\"PingFang SC\", \"Microsoft YaHei UI\", \"Noto Sans SC\", \"Source Han Sans SC\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "mono": "ui-monospace, SFMono-Regular, Menlo, Consolas, \"Liberation Mono\", monospace"
     }
 }

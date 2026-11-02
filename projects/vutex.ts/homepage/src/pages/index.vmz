@@ -1,99 +1,112 @@
 <template>
     <SiteShell page="index">
-        <section class="atelier-hero container">
-            <div class="atelier-hero__copy">
-                <p class="eyebrow"><span class="eyebrow__line"></span>{{ t('eyebrow') }}</p>
-                <h1 lang="en">The art of<br /><em>precision.</em></h1>
-                <p class="atelier-hero__intro">{{ t('intro') }}</p>
-                <p class="atelier-hero__description">{{ t('description') }}</p>
-                <div class="atelier-hero__actions">
-                    <a :href="href('/gallery')" class="btn btn--primary">{{ t('explore') }}<span class="link-arrow" aria-hidden="true">↗</span></a>
-                    <a :href="href('/playground')" class="text-link">{{ t('try') }}<span class="link-arrow" aria-hidden="true">→</span></a>
-                </div>
-                <p class="atelier-hero__signature" lang="en">A typesetting atelier <span>by VuTeX</span></p>
-            </div>
-            <div class="atelier-art">
-                <svg class="atelier-orbit" viewBox="0 0 640 640" fill="none" aria-hidden="true">
-                    <defs><linearGradient id="orbit-silver" x1="0" y1="0" x2="640" y2="640" gradientUnits="userSpaceOnUse"><stop stop-color="#fafafa" stop-opacity=".6" /><stop offset=".5" stop-color="#fafafa" stop-opacity=".02" /><stop offset="1" stop-color="#fafafa" stop-opacity=".3" /></linearGradient></defs>
-                    <circle class="orbit-track" cx="320" cy="320" r="274" />
-                    <circle class="orbit-track orbit-track--inner" cx="320" cy="320" r="224" />
-                    <ellipse class="orbit-ellipse" cx="320" cy="320" rx="310" ry="116" transform="rotate(-36 320 320)" />
-                    <g class="orbit-turn"><circle cx="320" cy="46" r="3" fill="#e9e9e9" /><path d="M308 46h24M320 34v24" stroke="#999" stroke-width=".6" /></g>
-                    <path class="orbit-measure" d="M32 320h576M320 32v576" />
-                </svg>
-                <span class="art-coordinate art-coordinate--top" lang="en">FORM / 001</span>
-                <div class="specimen-sheet">
-                    <div class="specimen-sheet__heading"><span>V.</span><span lang="en">THE MATHEMATICS<br />OF BEAUTY</span></div>
-                    <div class="specimen-sheet__body">
-                        <p class="specimen-sheet__eyebrow" lang="en">Selected expressions</p>
-                        <div class="specimen-sheet__formula" :aria-label="t(selectedKey())" v-html="heroMarkup"></div>
-                        <p class="specimen-sheet__status" role="status">{{ statusText() }}</p>
-                        <p class="specimen-sheet__name">{{ t(selectedKey()) }}</p>
+        <section class="book-hero">
+            <div class="container book-hero__frame">
+                <div class="folio rise"><span lang="en">VuTeX — Typesetting Engine</span><span lang="en">Folio 1</span></div>
+                <div class="galley rise d1">
+                    <h1>{{ t('heroTitleA') }}<br />{{ t('heroTitleB') }}</h1>
+                    <p class="standfirst" lang="en">{{ t('heroStandfirst') }}</p>
+                    <p class="body">{{ t('heroBody') }}</p>
+                    <div class="galley__actions">
+                        <a :href="href('/d')" class="btn btn--primary">{{ t('readDocs') }}</a>
+                        <a :href="href('/playground')" class="text-link">{{ t('openPlayground') }}<span class="link-arrow" aria-hidden="true">→</span></a>
                     </div>
-                    <div class="specimen-sheet__foot"><span lang="en">WaTeX / SVG</span><span>{{ position() }} — 03</span></div>
-                </div>
-                <span class="art-coordinate art-coordinate--bottom" lang="en">THOUGHT, IN FORM.</span>
-                <div class="specimen-selector" role="group" :aria-label="t('select')">
-                    <button type="button" :aria-label="t('euler')" :aria-pressed="selected === 0" @click="pick(0)"><span>01</span><span class="specimen-selector__line" :data-active="selected === 0"></span></button>
-                    <button type="button" :aria-label="t('gauss')" :aria-pressed="selected === 1" @click="pick(1)"><span>02</span><span class="specimen-selector__line" :data-active="selected === 1"></span></button>
-                    <button type="button" :aria-label="t('quadratic')" :aria-pressed="selected === 2" @click="pick(2)"><span>03</span><span class="specimen-selector__line" :data-active="selected === 2"></span></button>
+                    <div class="press-row">
+                        <p class="colophon" lang="en"><span>{{ t('colophonType') }}</span><span>{{ t('colophonMeasure') }}</span></p>
+                        <div class="seal" role="img" :aria-label="t('sealLabel')">印</div>
+                    </div>
                 </div>
             </div>
-            <div class="atelier-hero__bottom"><a href="#details" class="scroll-cue"><span aria-hidden="true">↓</span>{{ t('scroll') }}</a><span lang="en">LANGUAGE-NEUTRAL. DETAIL-OBSESSED.</span></div>
         </section>
-        <div class="format-ribbon"><div class="container format-ribbon__inner"><span lang="en">THE EXPRESSION IS YOURS.</span><p><span>SVG</span><i></i><span>HTML</span><i></i><span>MathML</span></p><span lang="en">THE DETAILS ARE OURS.</span></div></div>
-        <section class="container detail-section" id="details">
-            <div class="detail-section__heading"><p class="eyebrow" lang="en">01 / THE FINER THINGS</p><div><h2>{{ t('collection') }}</h2><p>{{ t('collectionText') }}</p></div><a :href="href('/gallery')" class="text-link">{{ t('gallery') }} <span class="link-arrow" aria-hidden="true">↗</span></a></div>
-            <div class="detail-grid">
-                <article class="detail-card">
-                    <div class="detail-card__visual glyph-study" aria-hidden="true"><span lang="en">ƒ</span><svg viewBox="0 0 300 190" fill="none"><path d="M30 42h240M30 140h240M118 16v158M188 16v158" /><circle cx="188" cy="42" r="4" /><circle cx="118" cy="140" r="4" /></svg><span class="study-label">Aa / 𝑓</span></div>
-                    <span class="detail-card__index">01 — GLYPH</span><h3>{{ t('detail1') }}</h3><p>{{ t('detail1Text') }}</p>
-                </article>
-                <article class="detail-card">
-                    <div class="detail-card__visual spacing-study" aria-hidden="true"><span class="spacing-study__symbol">a</span><span class="spacing-study__plus">+</span><span class="spacing-study__symbol">b</span><svg viewBox="0 0 300 190" fill="none"><path class="spacing-guide" d="M64 40v110M116 40v110M181 40v110M233 40v110M64 152h52M181 152h52" /><path d="m70 148-6 4 6 4m40-8 6 4-6 4m77-8-6 4 6 4m40-8 6 4-6 4" /></svg></div>
-                    <span class="detail-card__index">02 — RHYTHM</span><h3>{{ t('detail2') }}</h3><p>{{ t('detail2Text') }}</p>
-                </article>
-                <article class="detail-card">
-                    <div class="detail-card__visual output-study" aria-hidden="true"><div class="output-page output-page--back"></div><div class="output-page output-page--middle"></div><div class="output-page output-page--front"><span>∑</span><i></i><i></i><i></i></div><span class="study-label">ONE IDEA. MANY FORMS.</span></div>
-                    <span class="detail-card__index">03 — EXPRESSION</span><h3>{{ t('detail3') }}</h3><p>{{ t('detail3Text') }}</p>
-                </article>
+
+        <section class="pipeline">
+            <div class="container">
+                <p class="label label--on-night">{{ t('pipelineOver') }}</p>
+                <h2>{{ t('pipelineTitleA') }}<br />{{ t('pipelineTitleB') }}</h2>
+                <p class="pipeline__text">{{ t('pipelineText') }}</p>
+                <div class="pipeline__grid">
+                    <figure class="panel">
+                        <figcaption class="panel__head"><span>{{ t('pipelineCli') }}</span><span lang="en">vutex</span></figcaption>
+                        <pre class="panel__code"><code>{{ cliScript }}</code></pre>
+                    </figure>
+                    <figure class="panel">
+                        <figcaption class="panel__head"><span>{{ t('pipelineLive') }}</span><span lang="en">WaTeX · SVG · Latin Modern</span></figcaption>
+                        <div class="panel__formula" v-html="heroMarkup"></div>
+                        <p class="panel__note">{{ liveStatus() }}</p>
+                        <dl class="panel__metrics">
+                            <div><dt>{{ t('metricWidth') }}</dt><dd lang="en">{{ metric('width') }}</dd></div>
+                            <div><dt>{{ t('metricHeight') }}</dt><dd lang="en">{{ metric('height') }}</dd></div>
+                            <div><dt>{{ t('metricDepth') }}</dt><dd lang="en">{{ metric('depth') }}</dd></div>
+                            <div><dt>{{ t('metricBaseline') }}</dt><dd lang="en">{{ metric('baseline') }}</dd></div>
+                        </dl>
+                    </figure>
+                </div>
             </div>
         </section>
-        <section class="atelier-closing container"><span class="atelier-closing__mark" aria-hidden="true">V.</span><p class="eyebrow" lang="en">MAKE ROOM FOR YOUR IDEAS</p><h2>{{ t('closing') }}</h2><p>{{ t('closingText') }}</p><a :href="href('/playground')" class="btn btn--primary">{{ t('try') }}<span class="link-arrow" aria-hidden="true">↗</span></a></section>
+
+        <section class="discipline container">
+            <p class="label">{{ t('typeOver') }}</p>
+            <h2>{{ t('typeTitle') }}</h2>
+            <p class="lede">{{ t('typeText') }}</p>
+            <dl class="spec-list">
+                <div class="spec-list__row"><dt>{{ t('specMeasure') }}<span lang="en">Measure</span></dt><dd class="spec-list__value" lang="en">34em</dd><dd class="spec-list__note">{{ t('specMeasureNote') }}</dd></div>
+                <div class="spec-list__row"><dt>{{ t('specBaseline') }}<span lang="en">Baseline</span></dt><dd class="spec-list__value" lang="en">28px</dd><dd class="spec-list__note">{{ t('specBaselineNote') }}</dd></div>
+                <div class="spec-list__row"><dt>{{ t('specHead') }}<span lang="en">Running head</span></dt><dd class="spec-list__value" lang="en">12px</dd><dd class="spec-list__note">{{ t('specHeadNote') }}</dd></div>
+                <div class="spec-list__row"><dt>{{ t('specHairline') }}<span lang="en">Hairline</span></dt><dd class="spec-list__value" lang="en">1px</dd><dd class="spec-list__note">{{ t('specHairlineNote') }}</dd></div>
+                <div class="spec-list__row"><dt>{{ t('specSeal') }}<span lang="en">Seal</span></dt><dd class="spec-list__value spec-list__value--seal" lang="en">#B5382A</dd><dd class="spec-list__note">{{ t('specSealNote') }}</dd></div>
+            </dl>
+            <a :href="href('/gallery')" class="text-link">{{ t('compareEngines') }}<span class="link-arrow" aria-hidden="true">→</span></a>
+        </section>
+
+        <section class="install-band">
+            <div class="container">
+                <p class="label label--on-night">{{ t('installOver') }}</p>
+                <h2>{{ t('installTitle') }}</h2>
+                <div class="install-band__grid">
+                    <article><span class="install-band__index" lang="en">01 · Formula</span><h3>{{ t('installWatex') }}</h3><p>{{ t('installWatexText') }}</p><pre><code>pnpm add @vutex/watex</code></pre></article>
+                    <article><span class="install-band__index" lang="en">02 · Runtime + CLI</span><h3>{{ t('installRuntime') }}</h3><p>{{ t('installRuntimeText') }}</p><pre><code>pnpm add @vutex/vutex
+pnpm exec vutex --help</code></pre></article>
+                </div>
+                <div class="install-band__foot">
+                    <p>{{ t('installRequirements') }}</p>
+                    <a :href="href('/install')" class="btn btn--on-night">{{ t('installDocsLink') }}</a>
+                </div>
+            </div>
+        </section>
     </SiteShell>
 </template>
 <script client>
-import { renderFormula } from "../lib/engines.ts";
+import { renderMeasured } from "../lib/engines.ts";
 import { SPECIMENS } from "../lib/formulas.ts";
 import { copy, readLocale, localizedHref } from "../lib/locale.ts";
 export default class Index {
     locale = "zh-hans";
-    selected = 0;
     heroMarkup = "";
-    loading = false;
-    failed = false;
-    request = 0;
+    metrics = null;
+    liveFailed = false;
+    liveNote = "";
+    cliScript = "$ pnpm add @vutex/vutex\n$ vutex inspect chapter.tex\ntex        chapter.tex\n$ vutex render chapter.tex --output pdf\nchapter.pdf";
     t(key) { return copy(key, this.locale); }
     href(path) { return localizedHref(path, this.locale); }
-    selectedKey() { return ["euler", "gauss", "quadratic"][this.selected]; }
-    position() { return String(this.selected + 1).padStart(2, "0"); }
-    statusText() { return this.loading ? this.t("loading") : this.failed ? this.t("error") : this.t("live"); }
+    metric(name) {
+        const value = this.metrics && typeof this.metrics[name] === "number" ? this.metrics[name] : null;
+        return value === null ? "—" : `${value.toFixed(2)}px`;
+    }
+    liveStatus() { return this.liveFailed && this.liveNote ? this.liveNote : this.t("pipelineLiveNote"); }
     onMount() {
         this.locale = readLocale();
         document.documentElement.lang = this.locale === "en-us" ? "en" : "zh-CN";
-        document.title = "VuTeX — The art of precision";
-        this.renderHero();
+        document.title = this.locale === "en-us"
+            ? "VuTeX — Semantic documents in, measurable pages out"
+            : "VuTeX — 语义文档进，可测量的页面出";
+        this.renderSpecimen();
     }
-    onDestroy() { this.request += 1; }
-    pick(index) { if (index === this.selected) return; this.selected = index; this.renderHero(); }
-    async renderHero() {
-        const request = ++this.request;
-        this.failed = false;
-        const result = await renderFormula("watex", "svg", SPECIMENS[this.selected].tex, true);
-        if (request !== this.request) return;
+    async renderSpecimen() {
+        const result = await renderMeasured(SPECIMENS[0].tex);
         this.heroMarkup = result.ok ? result.markup : "";
-        this.failed = !result.ok;
-        this.loading = false;
+        this.metrics = result.ok ? result.metrics : null;
+        this.liveFailed = !result.ok;
+        this.liveNote = result.note;
     }
 }
 </script>

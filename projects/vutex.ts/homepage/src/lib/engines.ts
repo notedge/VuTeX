@@ -209,3 +209,30 @@ function describeError(error: unknown): string {
     if (error instanceof Error) return error.message;
     return String(error);
 }
+
+export interface MeasuredFormula {
+    ok: boolean;
+    markup: string;
+    metrics: { width: number; height: number; depth: number; baseline: number } | null;
+    note: string;
+}
+
+/**
+ * Render with WaTeX and keep the reported metrics — the "measurable pages"
+ * claim is only honest if the numbers come from a real render.
+ */
+export async function renderMeasured(tex: string, font: FontId = "lm-math"): Promise<MeasuredFormula> {
+    try {
+        const watex = await loadWatex();
+        const render = watex.renderSvg(tex, { displayMode: "block", fontFamily: font });
+        const markup = String(render.svg || "");
+        return {
+            ok: markup.trim().length > 0,
+            markup,
+            metrics: render.metrics ?? null,
+            note: watexNote(render),
+        };
+    } catch (error) {
+        return { ok: false, markup: "", metrics: null, note: describeError(error) };
+    }
+}
