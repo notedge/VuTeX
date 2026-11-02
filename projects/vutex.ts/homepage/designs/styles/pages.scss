@@ -321,10 +321,27 @@
 .install-page__note p { color: var(--vmz-text-muted); font-size: 14px; line-height: 1.8; }
 .install-page > .text-link { margin-top: var(--vmz-space-5); }
 
-/* ---------- documents ---------- */
+/* ---------- documents (render layer owned by another line, contained here) ---------- */
 
-.document-main { flex: 1 0 auto; }
-.document-main .container { max-width: 46rem; }
+.document-main { flex: 1 0 auto; width: 100%; max-width: var(--vmz-layout-max-width); margin: 0 auto; padding: var(--vmz-space-7) var(--vmz-layout-gutter); display: grid; grid-template-columns: minmax(180px, 240px) minmax(0, 44rem); gap: var(--vmz-space-7); align-items: start; }
+.doc-sidebar { position: sticky; top: 80px; }
+.doc-subnav ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.doc-subnav a { display: flex; align-items: center; min-height: 36px; color: var(--vmz-text-muted); font-size: 14px; transition: color 120ms ease; }
+.doc-subnav a:hover { color: var(--vmz-text-ink); }
+.doc-subnav a[aria-current="page"] { color: var(--vmz-text-ink); font-weight: 600; }
+.doc-search-fallback { margin-top: var(--vmz-space-5); padding-top: var(--vmz-space-4); border-top: 1px solid var(--vmz-line-subtle); color: var(--vmz-text-faint); font-size: 12px; line-height: 1.7; }
+.doc-content { max-width: 44rem; }
+.doc-content .toc { margin-bottom: var(--vmz-space-6); padding-left: var(--vmz-space-4); border-left: 1px solid var(--vmz-line-subtle); }
+.doc-content .toc ol { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.doc-content .toc a { color: var(--vmz-text-muted); font-size: 13px; }
+.doc-content .toc a:hover { color: var(--vmz-text-ink); }
+.doc-content h1 { font-size: var(--vmz-type-title); line-height: var(--vmz-type-line-height-title); margin-block: 0 16px; }
+.doc-content h2 { font-size: 1.25rem; margin-block: 32px 8px; }
+.doc-content p { margin-block: 10px; line-height: 1.9; }
+.doc-content ul { padding-left: 1.4em; line-height: 1.9; }
+.doc-content code { font-size: 0.875em; }
+.doc-content a { color: var(--vmz-text-ink); text-decoration: underline; }
+.doc-content a:hover { color: var(--vt-cinnabar); }
 
 /* ---------- mobile ---------- */
 
@@ -340,4 +357,6 @@
     .install-page__note { flex-direction: column; gap: 8px; }
     .playground__status { margin-left: 0; flex-basis: 100%; }
     .welcome__footer { flex-wrap: wrap; }
+    .document-main { grid-template-columns: 1fr; gap: var(--vmz-space-6); padding-block: var(--vmz-space-6); }
+    .doc-sidebar { position: static; }
 }
