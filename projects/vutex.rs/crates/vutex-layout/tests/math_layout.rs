@@ -748,14 +748,21 @@ fn beside_scripts_sit_on_the_shift_and_drop_minima() {
         // `sup1` and `sup2`: the shift up minimum, or enough to keep the
         // superscript's own bottom `SuperscriptBottomMin` above the baseline —
         // TeX's `make_scripts` measures that clearance on the script box, not
-        // from the top of the nucleus. With both scripts present, the
-        // `SubSuperscriptGapMin` clearance between the superscript's depth and
-        // the subscript's height can lift the pair further: the VBox hangs on
-        // the subscript's baseline, so the rise above the base is the baseline
-        // distance less the subscript drop.
+        // from the top of the nucleus. Beside a large operator TeX's rule 18c
+        // replaces both with `height(operator) - sup2` in every style, so the
+        // text-style `\int_0^1` raises its `1` over the sign. With both scripts
+        // present, the `SubSuperscriptGapMin` clearance between the
+        // superscript's depth and the subscript's height can lift the pair
+        // further: the VBox hangs on the subscript's baseline, so the rise
+        // above the base is the baseline distance less the subscript drop.
+        let large_op = matches!(base_char, '∫' | '∑' | '∏');
         let sup_rise = base_y - sup_y;
-        let sup_shift_term = (constant(MathConstant::SuperscriptShiftUp) * em)
+        let mut sup_shift_term = (constant(MathConstant::SuperscriptShiftUp) * em)
             .max(sup.metrics.depth.to_f64() + constant(MathConstant::SuperscriptBottomMin) * em);
+        if large_op {
+            sup_shift_term = sup_shift_term
+                .max(base.metrics.height.to_f64() - constant(MathConstant::SuperscriptBaselineDropMax) * em);
+        }
         let gap_term =
             sup.metrics.depth.to_f64() + constant(MathConstant::SubSuperscriptGapMin) * em + sub.metrics.height.to_f64()
                 - expected_drop;
@@ -770,7 +777,6 @@ fn beside_scripts_sit_on_the_shift_and_drop_minima() {
         // clearance. A large operator keeps TeX's `\nolimits` placement, where
         // that correction is reserved for the following atom and the scripts
         // take the font's script spacing instead.
-        let large_op = matches!(base_char, '∫' | '∑' | '∏');
         let gap =
             if large_op { constant(MathConstant::SpaceAfterScript) * em } else { base.metrics.italic_correction.to_f64() };
         let expected_x = base_x + base.metrics.width.to_f64() + gap;

@@ -1974,8 +1974,19 @@ impl LayoutEngine {
         // construction is an extended shape.  Clamping its scripts to the
         // design's own height and depth is what puts the limits of
         // `\int_0^1` at the top and bottom of the sign instead of beside the
-        // text baseline; the same character in text style is a plain glyph
-        // and keeps the ordinary minima.
+        // text baseline.
+        //
+        // A large operator is a tall nucleus in *every* style, though.  In
+        // text style `\int` is a plain glyph, but its ink still towers over
+        // the axis, and TeX's rule 18c does not distinguish the two: a
+        // superscript placed beside a large operator keeps its baseline at
+        // `height(operator) - sup2` (`SuperscriptBaselineDropMax` in MATH
+        // terms) whatever style selected the operator.  Only the superscript
+        // clamp carries over to the plain glyph — the subscript keeps the
+        // ordinary minima, because the reference drops a text-style integral
+        // subscript by the font's fixed amount rather than by the sign's
+        // depth.
+        let large_operator_base = class.is_large_operator();
         let extended_base = match base {
             FormulaNode::Symbol { glyph_key, .. } => {
                 if class.is_large_operator() {
@@ -2007,10 +2018,14 @@ impl LayoutEngine {
             let sup_bottom_min = self.math_constant(MathConstant::SuperscriptBottomMin, size).unwrap_or(Fixed::ZERO);
 
             calculated_sup_shift = sup_shift.max(sup_layout.depth() + sup_bottom_min);
-            if extended_base {
+            if extended_base || large_operator_base {
                 // `SuperscriptBaselineDropMax` caps how far a superscript's
-                // baseline may drop below the top of a box nucleus.
-                let drop_max = self.math_constant(MathConstant::SuperscriptBaselineDropMax, size).unwrap_or(Fixed::ZERO);
+                // baseline may drop below the top of the nucleus.  For a large
+                // operator this is the whole placement rule (TeX rule 18c),
+                // not just a lower bound: the sign is tall enough that the cap
+                // always wins over the style's own shift.
+                let drop_max = self.math_constant(MathConstant::SuperscriptBaselineDropMax, size).unwrap_or(
+                    Fixed::ZERO);
                 calculated_sup_shift = calculated_sup_shift.max(base_layout.height() - drop_max);
             }
 
