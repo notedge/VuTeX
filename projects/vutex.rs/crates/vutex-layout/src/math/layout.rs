@@ -1640,19 +1640,24 @@ impl LayoutEngine {
         }
 
         // TeX sets the sign's reference point `height(radicand) + clr` above
-        // the formula baseline (`shift_amount(y) := -(height(x)+clr)`), which
-        // works for the Computer Modern radical because its glyph is drawn
-        // with the reference point at the top of the ink (`\showbox` reports
-        // `cmex r` as `0.4 + 23.6`, i.e. the whole design sits below the
-        // reference point).  A MATH font publishes ordinary outlines instead:
-        // the LM Math variants carry real ascent and descent about their own
-        // baseline (`√` at 2.4em measures 1.45em up and 0.95em down), so
-        // keeping the reference point at the bar level would push the ink top
-        // far above the vinculum.  The invariant that actually connects the
-        // two strokes — and the one the Tectonic oracle confirms — is that the
-        // sign's ink top meets the rule's bottom edge, so the sign is shifted
-        // by its own ascent instead of anchored on its baseline.
-        let rule_bottom = radicand_layout.height() + vertical_gap;
+        // the formula baseline (`shift_amount(y) := -(height(x)+clr)`), where
+        // `clr` includes the radical rule thickness.  That works for the
+        // Computer Modern radical because its glyph is drawn with the reference
+        // point at the top of the ink (`\showbox` reports `cmex r` as
+        // `0.4 + 23.6`, i.e. the whole design sits below the reference point).
+        // A MATH font publishes ordinary outlines instead: the LM Math
+        // variants carry real ascent and descent about their own baseline
+        // (`√` at 2.4em measures 1.45em up and 0.95em down), so keeping the
+        // reference point at the bar level would push the ink top far above
+        // the vinculum.  The invariant that actually connects the two strokes —
+        // and the one the Tectonic oracle confirms — is that the sign's ink top
+        // meets the rule's *bottom* edge, because `clr` already contains the
+        // rule thickness: the vinculum is then raised one more thickness above
+        // the sign's ink, which is exactly the `height` Tectonic reports.
+        // Aligning the ink top to the rule's top edge instead drops the whole
+        // assembly by one rule thickness and leaves extra descent (the
+        // `radical` record failed G1 by 16.6% / 20.7% before this fix).
+        let rule_bottom = radicand_layout.height() + vertical_gap + rule_thickness;
         if let LayoutNode::HBox(h) = &mut radical_box {
             h.shift = radical_box_height - rule_bottom;
         }
@@ -1693,7 +1698,7 @@ impl LayoutEngine {
 
         let mut radicand_vbox = Vec::new();
         radicand_vbox.push(LayoutNode::Rule { width: radicand_layout.width(), height: rule_thickness, depth: Fixed::ZERO });
-        radicand_vbox.push(LayoutNode::Kern(vertical_gap));
+        radicand_vbox.push(LayoutNode::Kern(vertical_gap + rule_thickness));
         radicand_vbox.push(radicand_layout);
 
         let packed_radicand = self.pack_vbox(radicand_vbox, Alignment::Left);

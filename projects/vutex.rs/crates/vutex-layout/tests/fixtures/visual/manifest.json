@@ -149,8 +149,8 @@
         24.2781,
         18.4382
       ],
-      "bytes": 684,
-      "sha256": "d3126647c20f9305155fb037cea8563e59f010882413277a9009907ee049e336"
+      "bytes": 715,
+      "sha256": "9a2c9e1fa2660c17d19503179861dcd2931083793b3cfec5aae9a8b3f6f19a76"
     },
     "radical-display": {
       "tex": "\\sqrt{x}",
@@ -164,8 +164,8 @@
         24.2781,
         18.4382
       ],
-      "bytes": 713,
-      "sha256": "fe41af7c60779c2896d8fc94d01d20e99e0dd2fa2c02a199806d173b3e3ba5e4"
+      "bytes": 703,
+      "sha256": "3b236b76126157a21a4a168eb95b64f000088186623b5652cf9b9ca71ee8775a"
     },
     "radical-degree-inline": {
       "tex": "\\sqrt[3]{x}",
@@ -179,8 +179,8 @@
         23.7943,
         18.4023
       ],
-      "bytes": 769,
-      "sha256": "c36971901060c95cf1ae2e417bdd5b19fa45c4d8d9f54e4bb9d942763ca01ee7"
+      "bytes": 768,
+      "sha256": "3c1597620ab665f64c5af870353a7667dbb207f48ef1006fadac452d9e489a26"
     },
     "radical-degree-display": {
       "tex": "\\sqrt[3]{x}",
@@ -194,8 +194,8 @@
         23.7943,
         18.4023
       ],
-      "bytes": 762,
-      "sha256": "dc44d72d3fdccb0817449d5490b930e640738a2cb86e0823a8f85a7a767085eb"
+      "bytes": 760,
+      "sha256": "debaacd74c491fea2ab901e46c1c0de0120f87c402bdf4f4982794784088bb39"
     },
     "sum-limits-inline": {
       "tex": "\\sum_{i=1}^{n} i",
@@ -689,8 +689,8 @@
         53.8687,
         20.6301
       ],
-      "bytes": 1008,
-      "sha256": "982e2a1990809e26c0577beaf10f79e1f2c6fcfab2d1effd024c007b7c91684e"
+      "bytes": 1009,
+      "sha256": "964285bea96f8fd3fbb9ab6942a6bb9fac1da80d82b92a8792b228d5455786d9"
     },
     "radical-degree-sum-display": {
       "tex": "\\sqrt[3]{x+y}",
@@ -704,8 +704,8 @@
         53.8687,
         20.6301
       ],
-      "bytes": 1023,
-      "sha256": "c637affd97ac3869e15d95d67ab95c2a73ce54a9229e4f4e605874a00272ce54"
+      "bytes": 1041,
+      "sha256": "10c10eb6385c89c3e88ac415799e4847a1b929e16cdb9e13fde5bd9303838470"
     },
     "radical-fraction-inline": {
       "tex": "\\sqrt{\\frac{a}{b}}",
@@ -719,8 +719,8 @@
         27.8257,
         21.9009
       ],
-      "bytes": 760,
-      "sha256": "7c28873dfd4ca5787a74802c499e1472aa79260b3d483445ab4e592e5518463a"
+      "bytes": 810,
+      "sha256": "08982c91e2e6c51008355b29aa9528af83fedb7931a7db6dc9f058b5d36a5d74"
     },
     "radical-fraction-display": {
       "tex": "\\sqrt{\\frac{a}{b}}",
@@ -734,8 +734,8 @@
         31.4269,
         42.163
       ],
-      "bytes": 1069,
-      "sha256": "f1c2fab4becea21b39ec5fe3230aec701b955dcc2ab5165c0de8562bf1b835d5"
+      "bytes": 1075,
+      "sha256": "79b22e641ea260f355896795d93f2f7bd8adfbcbb20d0bf503c983e81e5a42f0"
     },
     "radical-nested-inline": {
       "tex": "\\sqrt{\\sqrt{x}}",
@@ -749,8 +749,8 @@
         41.5581,
         22.9181
       ],
-      "bytes": 951,
-      "sha256": "e4b4b6c5d05cbeb99989f7ddac7a27b9587db0bfd6618449cb662c8ce133c7fe"
+      "bytes": 963,
+      "sha256": "f0fd31525a3405893700ee916d4ca7da7316b060b26e0c712fff2f3a4a128f09"
     },
     "radical-nested-display": {
       "tex": "\\sqrt{\\sqrt{x}}",
@@ -764,8 +764,8 @@
         41.5581,
         32.5182
       ],
-      "bytes": 1029,
-      "sha256": "3dffe80baca45b8dd36b6294f35f88baf25df65d5e8bf4e852ce0cf8ec244afb"
+      "bytes": 1049,
+      "sha256": "d819aef9c232d9eb697910f6caf02e5ab38c9849cc28d578792ff49ec6eb05be"
     },
     "fraction-nested-inline": {
       "tex": "\\frac{\\frac{a}{b}}{c}",
@@ -1587,10 +1587,10 @@
       ],
       "svgViewport": [
         38.4864,
-        27.7151
+        27.6725
       ],
-      "bytes": 1022,
-      "sha256": "4d2d760e2125a5fbde27a5bd20183f7713e6f394dbebea30dce06741d4ea150f"
+      "bytes": 1028,
+      "sha256": "cd84efe472ac0392cda4d87a0b8ed93e69c89fd453e6102ac25e19f8734c0571"
     },
     "fraction-sum-radical-display": {
       "tex": "\\frac{\\sum_{i=1}^{n} i}{\\sqrt{n}}",
@@ -1602,10 +1602,10 @@
       ],
       "svgViewport": [
         52.8028,
-        42.191
+        41.6228
       ],
-      "bytes": 1420,
-      "sha256": "7b3df74d46517a5051686a38f2ffb11d607c729393a1c20c1cc1383962023ccb"
+      "bytes": 1416,
+      "sha256": "ae0670e4ab4c606f48d0f10898e4b689e4360c0c7a6855d11a1b06d97ee772cb"
     },
     "script-tower-inline": {
       "tex": "10^{10^{10}}",
