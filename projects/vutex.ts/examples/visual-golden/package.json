@@ -1,0 +1,15 @@
+{
+  "name": "@vutex/visual-golden",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Per-formula visual golden capture for the VuTeX layout corpus (gate N7-6).",
+  "type": "module",
+  "scripts": {
+    "capture": "pnpm --filter @vutex/watex build && node capture.mjs",
+    "verify": "pnpm --filter @vutex/watex build && node capture.mjs --verify"
+  },
+  "dependencies": {
+    "@vutex/vutex-unknown-wasm32": "workspace:*",
+    "@vutex/watex": "workspace:*"
+  }
+}
