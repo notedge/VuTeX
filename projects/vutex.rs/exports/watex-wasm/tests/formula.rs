@@ -73,10 +73,16 @@ fn a_glyph_without_an_outline_is_skipped_with_a_warning() {
 
     let diagnostics = value["diagnostics"].as_array().expect("diagnostics");
     let warnings: Vec<&Value> = diagnostics.iter().filter(|item| item["severity"] == "warning").collect();
-    assert_eq!(warnings.len(), 1, "exactly one glyph has no outline: {value}");
-    assert_eq!(warnings[0]["code"].as_str(), Some("vutex.layout.math.outline_missing"));
+    // Two records describe the one absent glyph: the G5 layout ledger notes
+    // that its metrics were synthesized (`missing_glyph`), and the paint walk
+    // notes that its outline was skipped (`outline_missing`).
+    assert_eq!(warnings.len(), 2, "the absent glyph is recorded at layout and at paint: {value}");
+    let codes: Vec<Option<&str>> = warnings.iter().map(|item| item["code"].as_str()).collect();
+    assert!(codes.contains(&Some("vutex.math.conformance.missing_glyph")), "the G5 ledger records the absent glyph: {value}");
+    assert!(codes.contains(&Some("vutex.layout.math.outline_missing")), "the paint walk records the skipped outline: {value}");
+    let outline = warnings.iter().find(|item| item["code"] == "vutex.layout.math.outline_missing").expect("outline warning");
     assert!(
-        warnings[0]["message"].as_str().unwrap_or_default().contains('字'),
+        outline["message"].as_str().unwrap_or_default().contains('字'),
         "the warning must name the glyph it skipped: {value}"
     );
 }
