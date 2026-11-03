@@ -11,7 +11,7 @@
 
 use davinci_diagram::{DiagramError, LoweredDiagram, dot_to_scene, mermaid_to_scene, plantuml_to_scene};
 use davinci_types::{Diagnostic, DiagnosticLocation};
-use notedown_ir::{Block, DocumentGraph};
+use notedown_ir::{Block, DocumentGraph, SourceSpan};
 use vutex_layout::Diagrams;
 
 use crate::document::{DiagnosticRecord, DiagnosticSpan};
@@ -72,6 +72,22 @@ fn record_span(diagnostic: &Diagnostic) -> Option<DiagnosticSpan> {
     Some(DiagnosticSpan { start: range.start() as usize, end: range.end() as usize })
 }
 
+/// Promote a frontend range, which is relative to the fence body, to the
+/// authored document.
+///
+/// Diagram frontends report offsets inside the source they received. Layout
+/// diagnostics travel next to the report's document, so hosts add the authoring
+/// block start and publish one coordinate system instead of two.
+fn document_span(block: Option<SourceSpan>, local: Option<DiagnosticSpan>) -> Option<DiagnosticSpan> {
+    match (block, local) {
+        (Some(block), Some(local)) => {
+            let base = block.start as usize;
+            Some(DiagnosticSpan { start: base + local.start, end: base + local.end })
+        }
+        (_, local) => local,
+    }
+}
+
 /// Lower every known diagram block in `graph` into a diagram scene.
 ///
 /// Only `Block::Diagram` blocks whose language tag is `mermaid`, `dot`, or
@@ -89,6 +105,7 @@ pub fn lower_diagrams(graph: &DocumentGraph, path: &str) -> LoweredDiagrams {
         else {
             continue;
         };
+        let block_span = graph.block_span(node.id);
         match (frontend.lower)(source) {
             Ok(diagram) => {
                 lowered.diagnostics.extend(diagram.diagnostics.iter().map(|diagnostic| DiagnosticRecord {
@@ -97,7 +114,7 @@ pub fn lower_diagrams(graph: &DocumentGraph, path: &str) -> LoweredDiagrams {
                     message: diagnostic.message().to_string(),
                     stage: "diagram".to_string(),
                     path: Some(path.to_string()),
-                    span: record_span(diagnostic),
+                    span: document_span(block_span, record_span(diagnostic)),
                 }));
                 let size = diagram.scene.size;
                 if size.width <= 0.0 || size.height <= 0.0 {
@@ -119,7 +136,10 @@ pub fn lower_diagrams(graph: &DocumentGraph, path: &str) -> LoweredDiagrams {
                 message: error.message().to_string(),
                 stage: "diagram".to_string(),
                 path: Some(path.to_string()),
-                span: error.span().map(|span| DiagnosticSpan { start: span.start, end: span.end }),
+                span: document_span(
+                    block_span,
+                    error.span().map(|span| DiagnosticSpan { start: span.start, end: span.end }),
+                ),
             }),
         }
     }

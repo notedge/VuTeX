@@ -1049,6 +1049,10 @@ impl<'a> PageBuilder<'a> {
                         self.emit_code(source, indent);
                     }
                 }
+                // Charts have no layout participant in this host yet, so the
+                // authored spec stays visible as code instead of disappearing
+                // from the page.
+                Block::Chart { source, .. } => self.emit_code(source, indent),
                 Block::Math { formula } => self.emit_math(formula, indent, line_right),
                 Block::Table { caption, rows } => self.emit_table(caption.as_deref(), rows, indent),
                 Block::Opaque { kind, .. } if kind == "thematic_break" => self.emit_thematic_break(indent),

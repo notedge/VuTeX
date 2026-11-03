@@ -249,6 +249,11 @@ fn collect_flow(graph: &DocumentGraph, ids: &[NodeId], blocks: &mut Vec<FlowBloc
             Block::Diagram { language, source } => {
                 blocks.push(FlowBlock::CodeBlock { language: Some(language.clone()), text: source.clone() });
             }
+            // Charts also have no scene surface in this layer, so the authored
+            // spec stays visible rather than vanishing from the reflowed page.
+            Block::Chart { language, source } => {
+                blocks.push(FlowBlock::CodeBlock { language: Some(language.clone()), text: source.clone() });
+            }
             Block::Math { formula } => {
                 blocks.push(FlowBlock::CodeBlock { language: None, text: formula.source.clone() });
             }

@@ -569,8 +569,6 @@ digraph pipeline {
 ```
 "##;
 
-const REJECTED_DOT_BODY: &str = "digraph {\n  A [label=<b>bold</b>]\n}";
-
 const REJECTED_DOT_SAMPLE: &str = r##"# 拒绝的标签
 
 ```dot
@@ -663,7 +661,7 @@ fn rejected_dot_reports_a_spanned_diagnostic_and_keeps_the_source_visible() {
     assert_eq!(diagnostics[0]["stage"], "diagram", "{payload}");
     let start = diagnostics[0]["span"]["start"].as_u64().expect("span start") as usize;
     let end = diagnostics[0]["span"]["end"].as_u64().expect("span end") as usize;
-    let rejected = &REJECTED_DOT_BODY[start..end];
+    let rejected = &REJECTED_DOT_SAMPLE[start..end];
     assert_eq!(rejected, "<b>bold</b>", "the span must cover the rejected HTML label: {payload}");
 }
 
@@ -691,8 +689,6 @@ Svc -->> User : accepted
 @enduml
 ```
 "##;
-
-const REJECTED_PLANTUML_BODY: &str = "@startuml\nclass A\nnote right of A : detail\n@enduml";
 
 const REJECTED_PLANTUML_SAMPLE: &str = r##"# 拒绝的语句
 
@@ -790,7 +786,7 @@ fn rejected_plantuml_reports_a_spanned_diagnostic_and_keeps_the_source_visible()
     assert_eq!(diagnostics[0]["stage"], "diagram", "{payload}");
     let start = diagnostics[0]["span"]["start"].as_u64().expect("span start") as usize;
     let end = diagnostics[0]["span"]["end"].as_u64().expect("span end") as usize;
-    assert_eq!(&REJECTED_PLANTUML_BODY[start..end], "note right of A : detail", "{payload}");
+    assert_eq!(&REJECTED_PLANTUML_SAMPLE[start..end], "note right of A : detail", "{payload}");
 }
 
 const TIKZ_SAMPLE: &str = r##"# TikZ
@@ -999,6 +995,54 @@ fn unsupported_mermaid_statement_keeps_the_fence_and_reports_a_diagnostic() {
     assert_eq!(diagnostics[0]["code"], "davinci.diagram.unsupported", "{payload}");
     assert_eq!(diagnostics[0]["severity"], "error", "{payload}");
     assert_eq!(diagnostics[0]["stage"], "diagram", "{payload}");
+    let start = diagnostics[0]["span"]["start"].as_u64().expect("span start") as usize;
+    let end = diagnostics[0]["span"]["end"].as_u64().expect("span end") as usize;
+    assert_eq!(
+        &UNSUPPORTED_MERMAID_SAMPLE[start..end], "Note over Alice,Bob: shared",
+        "the span covers the statement, not the fence body: {payload}"
+    );
+}
+
+/// The catalog rows shared with the panduck HTML entry.
+///
+/// Both hosts consume the same `notedown` lowering, so the same document must
+/// report the same stable code and cover the same authored bytes.
+const CROSS_ENTRY_CATALOG: [(&str, &str); 3] = [
+    (
+        "mermaid",
+        "# Catalog\n\n```mermaid\nsequenceDiagram\n  participant Alice\n  participant Bob\n  Note over Alice,Bob: shared\n  Alice->>Bob: Hello\n```\n",
+    ),
+    ("dot", "# Catalog\n\n```dot\ndigraph {\n  a [label=<b>bold</b>]\n}\n```\n"),
+    ("plantuml", "# Catalog\n\n```plantuml\n@startuml\nskinparam monochrome true\n@enduml\n```\n"),
+];
+
+const CROSS_ENTRY_SPANS: [(&str, &str, &str); 3] = [
+    ("mermaid", "davinci.diagram.unsupported", "Note over Alice,Bob: shared"),
+    ("dot", "davinci.diagram.unsupported", "<b>bold</b>"),
+    ("plantuml", "davinci.diagram.unsupported", "skinparam monochrome true"),
+];
+
+#[test]
+fn cross_entry_catalog_matches_the_shared_fixture_contract() {
+    for ((language, document), (_, code, covered)) in CROSS_ENTRY_CATALOG.iter().zip(CROSS_ENTRY_SPANS.iter()) {
+        let dir = ScratchDir::new(&format!("catalog-{language}"));
+        let path = dir.write("catalog.md", document);
+
+        let outcome = render_document(&path_string(&path), None);
+        let payload = report(&outcome);
+        assert_eq!(outcome.exit_code, 0, "{language}: {}", outcome.report_json);
+
+        let diagnostics = payload["diagnostics"].as_array().expect("diagnostics array");
+        assert_eq!(diagnostics.len(), 1, "{language}: {payload}");
+        assert_eq!(diagnostics[0]["code"], *code, "{language}: {payload}");
+        assert_eq!(diagnostics[0]["severity"], "error", "{language}: {payload}");
+        let start = diagnostics[0]["span"]["start"].as_u64().expect("span start") as usize;
+        let end = diagnostics[0]["span"]["end"].as_u64().expect("span end") as usize;
+        assert_eq!(
+            &document[start..end], *covered,
+            "{language}: the span must match the panduck catalog in document coordinates: {payload}"
+        );
+    }
 }
 
 #[test]
