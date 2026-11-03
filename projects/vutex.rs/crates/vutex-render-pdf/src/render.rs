@@ -185,6 +185,7 @@ fn render_document(
             code: "vutex.render.pdf.no_pages".into(),
             severity: Severity::Error,
             message: "PDF output needs at least one display page with page geometry".into(),
+            span: None,
         });
     }
     let objects = build_objects(presentation, policy, resources, diagnostics)?;
@@ -272,6 +273,7 @@ fn load_chain(
                     code: "vutex.render.pdf.font_unavailable".into(),
                     severity: Severity::Error,
                     message: "the explicit font file list is empty".into(),
+                    span: None,
                 });
             }
             paths.iter().map(|path| load_font_file(path)).collect::<Result<Vec<_>, _>>()?
@@ -282,6 +284,7 @@ fn load_chain(
             code: "vutex.render.pdf.font_unavailable".into(),
             severity: Severity::Error,
             message: "no system glyf TrueType font was found for the document charset".into(),
+            span: None,
         });
     }
     let chain = FontChain::build(&fonts, &charset);
@@ -291,6 +294,7 @@ fn load_chain(
             code: "vutex.render.pdf.glyph_missing".into(),
             severity: Severity::Error,
             message: format!("the embedded font chain has no glyph for {}", codepoints(&missing)),
+            span: None,
         });
     }
     Ok(Some(chain))
@@ -337,7 +341,7 @@ fn discover_fonts_with_warnings(charset: &BTreeSet<char>, diagnostics: &mut Vec<
 /// optional contexts without branching at every site.
 pub(crate) fn append_warning(diagnostics: Option<&mut Vec<Diagnostic>>, code: &str, message: String) {
     if let Some(list) = diagnostics {
-        list.push(Diagnostic { code: code.to_string(), severity: Severity::Warning, message });
+        list.push(Diagnostic { code: code.to_string(), severity: Severity::Warning, message, span: None });
     }
 }
 
@@ -347,6 +351,7 @@ fn load_font_file(path: &PathBuf) -> Result<SystemFont, Diagnostic> {
         code: "vutex.render.pdf.font_unavailable".into(),
         severity: Severity::Error,
         message: format!("font file {} is not a readable glyf TrueType font", path.display()),
+        span: None,
     })
 }
 

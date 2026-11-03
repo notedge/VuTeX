@@ -124,12 +124,14 @@ fn write_graphic(out: &mut String, graphic: &DisplayGraphic) -> Result<(), Diagn
             code: "vutex.render.svg.diagram-invalid".into(),
             severity: Severity::Error,
             message: format!("diagram `{}` has a non-positive canvas size", graphic.alt),
+            span: None,
         });
     }
     let scene = graphic.scene.to_svg().map_err(|error| Diagnostic {
         code: "vutex.render.svg.diagram-invalid".into(),
         severity: Severity::Error,
         message: format!("diagram `{}` is not serializable: {error}", graphic.alt),
+        span: None,
     })?;
     out.push_str(&format!(
         r##"<g data-diagram="{}" transform="translate({}, {}) scale({}, {})">"##,

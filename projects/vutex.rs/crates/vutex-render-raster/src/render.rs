@@ -17,6 +17,7 @@ impl RenderBackend for RasterBackend {
             code: "vutex.render.raster.unimplemented".into(),
             severity: Severity::Error,
             message: "Raster backend is not implemented yet".into(),
+            span: None,
         })
     }
 }

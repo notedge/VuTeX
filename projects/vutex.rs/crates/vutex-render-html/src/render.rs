@@ -49,6 +49,7 @@ pub fn render_html_reflow(presentation: &FlowPresentation) -> Result<String, Dia
             code: "vutex.render.html.reflow.invalid-root-tag".into(),
             severity: Severity::Error,
             message: format!("flow root tag `{}` is not a plain element name", presentation.root_tag),
+            span: None,
         });
     }
     let mut out = String::new();

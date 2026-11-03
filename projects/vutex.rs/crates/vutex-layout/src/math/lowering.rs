@@ -6,16 +6,21 @@
 //! becomes visible text plus a diagnostic.
 
 use notedown_ir::{
-    MathClass, MathColumnAlignment, MathDelimiter, MathEnvironment, MathEnvironmentKind, MathExpression, MathFormula, MathRowNumbering, MathSpace,
-    MathStyle, MathStyleKind,
+    MathClass, MathColumnAlignment, MathDelimiter, MathEnvironment, MathEnvironmentKind, MathExpression, MathFormula, MathRowNumbering,
+    MathSpace, MathSpan, MathStyle, MathStyleKind,
 };
 use vutex_types::{
-    Diagnostic, Severity,
+    Diagnostic, Severity, SourceSpan,
     math::{
         Alignment, EnvironmentKind, EnvironmentRow, Fixed, FontStyle, GlyphKey, LimitsPolicy, LineStyle, MathEnvironment as LayoutEnvironment,
         FormulaTree, MathStyle as LayoutStyle, Numbering, FormulaNode, SymbolRole,
     },
 };
+
+/// Map a notedown math span onto the layout-facing span type.
+fn span_of(span: Option<MathSpan>) -> Option<SourceSpan> {
+    span.map(|span| SourceSpan { start: span.start, end: span.end })
+}
 
 /// Lower one formula into the tree the layout engine consumes.
 pub fn formula_tree(formula: &MathFormula) -> (FormulaTree, Vec<Diagnostic>) {
@@ -42,19 +47,21 @@ fn formula_node(expression: &MathExpression, face: Option<FontStyle>, diagnostic
                         message: format!(
                             "`{command}` applies only to a large operator such as `\\sum`, so this atom keeps its scripts beside the base"
                         ),
+                        span: None,
                     });
                 }
             }
             collapse(content)
         }
-        MathExpression::Atom(atom) => atom_node(atom.text.as_str(), atom.class, face, diagnostics),
-        MathExpression::Number { text } => {
+        MathExpression::Atom(atom) => atom_node(atom.text.as_str(), atom.class, face, diagnostics, span_of(atom.span)),
+        MathExpression::Number { text, span } => {
+            let span = span_of(*span);
             if text.chars().count() > 1 && face.is_none() {
-                FormulaNode::Number { text: text.clone() }
+                FormulaNode::Number { text: text.clone(), span }
             }
             else {
                 let style = face.unwrap_or(FontStyle::Normal);
-                FormulaNode::Symbol { glyph_key: GlyphKey::from_char(text.chars().next().unwrap_or('0'), None, style), role: SymbolRole::Ordinary }
+                FormulaNode::Symbol { glyph_key: GlyphKey::from_char(text.chars().next().unwrap_or('0'), None, style), role: SymbolRole::Ordinary, span }
             }
         }
         MathExpression::Group { body } => formula_node(body, face, diagnostics),
@@ -83,29 +90,33 @@ fn formula_node(expression: &MathExpression, face: Option<FontStyle>, diagnostic
                 notedown_ir::MathFractionLine::None => LineStyle::None,
             },
         },
-        MathExpression::Radical { index, radicand } => FormulaNode::Radical {
+        MathExpression::Radical { index, radicand, span } => FormulaNode::Radical {
             degree: index.as_ref().map(|index| Box::new(formula_node(index, face, diagnostics))),
             radicand: Box::new(formula_node(radicand, face, diagnostics)),
+            span: span_of(*span),
         },
         MathExpression::Delimited { open, close, body, middles } => {
             let left = delimiter_key(open);
             let right = delimiter_key(close);
+            let left_span = open.as_ref().and_then(|delimiter| span_of(delimiter.span));
+            let right_span = close.as_ref().and_then(|delimiter| span_of(delimiter.span));
             let content = formula_node(body, face, diagnostics);
             for middle in middles {
                 let _ = formula_node(middle, face, diagnostics);
-                diagnostics.push(unsupported("middle-delimiter", "a `\\middle` delimiter has no VuTeX layout node"));
+                diagnostics.push(unsupported("middle-delimiter", "a `\\middle` delimiter has no VuTeX layout node", None));
             }
-            FormulaNode::Delimited { left, right, content: Box::new(content) }
+            FormulaNode::Delimited { left, right, content: Box::new(content), left_span, right_span }
         }
         MathExpression::Styled { style, body } => {
             let mapped = face_style(*style);
             formula_node(body, Some(mapped), diagnostics)
         }
-        MathExpression::Accent { mark, wide, base } => {
+        MathExpression::Accent { mark, wide, base, span } => {
             let _ = wide;
             FormulaNode::Accent {
                 base: Box::new(formula_node(base, face, diagnostics)),
                 accent: GlyphKey::from_char(*mark, None, FontStyle::Normal),
+                span: span_of(*span),
             }
         }
         MathExpression::StackAbove { over, base } => FormulaNode::OverSet {
@@ -128,31 +139,33 @@ fn formula_node(expression: &MathExpression, face: Option<FontStyle>, diagnostic
             FormulaNode::LimitsSpec(if *limits { LimitsPolicy::Limits } else { LimitsPolicy::NoLimits })
         }
         MathExpression::Environment(environment) => environment_node(environment, face, diagnostics),
-        MathExpression::Text { text } => FormulaNode::Text {
+        MathExpression::Text { text, span } => FormulaNode::Text {
             text: text.clone(),
             font_style: match face {
                 Some(FontStyle::Italic) => FontStyle::Italic,
                 _ => FontStyle::Normal,
             },
+            span: span_of(*span),
         },
-        MathExpression::Unsupported { kind, source } => {
-            diagnostics.push(unsupported(kind, source));
-            FormulaNode::Text { text: source.clone(), font_style: FontStyle::Normal }
+        MathExpression::Unsupported { kind, source, span } => {
+            let span = span_of(*span);
+            diagnostics.push(unsupported(kind, source, span));
+            FormulaNode::Text { text: source.clone(), font_style: FontStyle::Normal, span }
         }
     }
 }
 
-fn atom_node(text: &str, class: MathClass, face: Option<FontStyle>, diagnostics: &mut Vec<Diagnostic>) -> FormulaNode {
+fn atom_node(text: &str, class: MathClass, face: Option<FontStyle>, diagnostics: &mut Vec<Diagnostic>, span: Option<SourceSpan>) -> FormulaNode {
     let mut chars = text.chars();
     let Some(character) = chars.next() else {
-        diagnostics.push(unsupported("empty-atom", text));
+        diagnostics.push(unsupported("empty-atom", text, span));
         return FormulaNode::Sequence(Vec::new());
     };
     if chars.next().is_some() {
-        return FormulaNode::Text { text: text.to_string(), font_style: FontStyle::Normal };
+        return FormulaNode::Text { text: text.to_string(), font_style: FontStyle::Normal, span };
     }
     let style = face.unwrap_or_else(|| default_face(class));
-    FormulaNode::Symbol { glyph_key: GlyphKey::from_char(character, None, style), role: role_for(class) }
+    FormulaNode::Symbol { glyph_key: GlyphKey::from_char(character, None, style), role: role_for(class), span }
 }
 
 fn default_face(class: MathClass) -> FontStyle {
@@ -228,12 +241,17 @@ fn environment_node(environment: &MathEnvironment, face: Option<FontStyle>, diag
                 column_alignment,
             };
             let (left, right) = matrix_delimiters(&environment.name);
+            // The delimiters are implied by the environment name, so they
+            // point at the environment the author typed.
+            let environment_span = span_of(environment.span);
             match (left, right) {
                 (None, None) => matrix,
                 _ => FormulaNode::Delimited {
                     left: left.map(|character| GlyphKey::from_char(character, None, FontStyle::Normal)),
                     right: right.map(|character| GlyphKey::from_char(character, None, FontStyle::Normal)),
                     content: Box::new(matrix),
+                    left_span: environment_span,
+                    right_span: environment_span,
                 },
             }
         }
@@ -257,6 +275,7 @@ fn environment_node(environment: &MathEnvironment, face: Option<FontStyle>, diag
                             "`\\begin{{alignedat}}` declares {pairs} column pairs ({declared} columns) but its body has {typed} columns, so the grid keeps {} columns",
                             declared.max(typed)
                         ),
+                        span: span_of(environment.span),
                     });
                 }
             }
@@ -278,8 +297,9 @@ fn environment_node(environment: &MathEnvironment, face: Option<FontStyle>, diag
             })
         }
         MathEnvironmentKind::AlignAt | MathEnvironmentKind::FlAlign | MathEnvironmentKind::EqnArray | MathEnvironmentKind::Other(_) => {
-            diagnostics.push(unsupported("environment", &environment.name));
-            FormulaNode::Text { text: environment.name.clone(), font_style: FontStyle::Normal }
+            let span = span_of(environment.span);
+            diagnostics.push(unsupported("environment", &environment.name, span));
+            FormulaNode::Text { text: environment.name.clone(), font_style: FontStyle::Normal, span }
         }
     }
 }
@@ -340,11 +360,12 @@ fn collapse(mut items: Vec<FormulaNode>) -> FormulaNode {
     }
 }
 
-fn unsupported(kind: &str, source: &str) -> Diagnostic {
+fn unsupported(kind: &str, source: &str, span: Option<SourceSpan>) -> Diagnostic {
     Diagnostic {
         code: "vutex.math.unsupported_expression".into(),
         severity: Severity::Warning,
         message: format!("math {kind} has no VuTeX layout mapping and stays plain text: `{source}`"),
+        span,
     }
 }
 

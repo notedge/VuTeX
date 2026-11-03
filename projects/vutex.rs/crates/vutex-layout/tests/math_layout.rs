@@ -1754,7 +1754,7 @@ fn missing_font_ratios_fall_back_and_are_reported() {
     let scriptscript_scale = fallback(MathConstant::ScriptScriptPercentScaleDown);
     let engine = LayoutEngine::new(font).with_base_size(10.0);
     let nodes =
-        vec![FormulaNode::Symbol { glyph_key: GlyphKey::from_char('x', None, FontStyle::Math), role: SymbolRole::Ordinary }];
+        vec![FormulaNode::Symbol { glyph_key: GlyphKey::from_char('x', None, FontStyle::Math), role: SymbolRole::Ordinary, span: None }];
 
     for (style, expected) in [
         (MathStyle::Display, 10.0),
@@ -2809,7 +2809,7 @@ fn cramped_leaves_the_insensitive_formulas_unchanged() {
 
 /// One symbol atom of an environment cell.
 fn cell(c: char) -> FormulaNode {
-    FormulaNode::Symbol { glyph_key: GlyphKey::from_char(c, None, FontStyle::Math), role: SymbolRole::Ordinary }
+    FormulaNode::Symbol { glyph_key: GlyphKey::from_char(c, None, FontStyle::Math), role: SymbolRole::Ordinary, span: None }
 }
 
 /// An AMS environment block over the given rows.
@@ -3244,7 +3244,7 @@ fn mathsf_mathit_textit_and_mathit_variants_are_accepted() {
 fn greek_variant_commands_keep_their_unicode_symbols() {
     for (source, expected) in [(r"\epsilon", 'ϵ'), (r"\varepsilon", 'ε'), (r"\phi", 'ϕ'), (r"\varphi", 'φ')] {
         let tree = lower_formula(source, false).map(|(tree, _)| tree).unwrap_or_else(|error| panic!("`{source}`: {error}"));
-        let FormulaNode::Symbol { glyph_key, role } = &tree.root
+        let FormulaNode::Symbol { glyph_key, role, .. } = &tree.root
         else {
             panic!("`{source}` must parse to one symbol, got {:?}", tree.root)
         };
@@ -3259,7 +3259,7 @@ fn greek_variant_commands_keep_their_unicode_symbols() {
 #[test]
 fn mathrm_switches_the_face_without_leaving_math_mode() {
     let tree = lower_formula(r"\mathrm{\lambda}", false).map(|(tree, _)| tree).expect("`\\mathrm{\\lambda}` parses");
-    let FormulaNode::Symbol { glyph_key, role } = &tree.root
+    let FormulaNode::Symbol { glyph_key, role, .. } = &tree.root
     else {
         panic!("`\\mathrm{{\\lambda}}` must stay a symbol node, got {:?}", tree.root)
     };

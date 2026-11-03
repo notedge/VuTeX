@@ -29,7 +29,7 @@
 //! baseline offset from the box top-left, as the layout emits it.
 
 use vutex_types::{
-    Diagnostic, Severity,
+    Diagnostic, Severity, SourceSpan,
     math::{Fixed, FormulaLayoutResult, PaintNode},
 };
 
@@ -117,14 +117,15 @@ impl HtmlBackend {
                     self.end_group();
                 }
             }
-            PaintNode::GlyphRun { chars, family, positions, size, path_data, .. } => {
+            PaintNode::GlyphRun { chars, family, positions, size, path_data, spans, .. } => {
                 let size = size.to_f64();
                 for (i, d_opt) in path_data.iter().enumerate() {
                     let Some(d) = d_opt
                     else {
                         // No outline: skip and report, exactly like the SVG
                         // backend's walk over the same entry.
-                        self.diagnostics.push(outline_missing(chars.get(i).copied().flatten(), family));
+                        let span = spans.get(i).copied().flatten();
+                        self.diagnostics.push(outline_missing(chars.get(i).copied().flatten(), family, span));
                         continue;
                     };
                     let (px, py) = positions.get(i).copied().unwrap_or((Fixed::ZERO, Fixed::ZERO));
@@ -310,7 +311,7 @@ fn num(value: f64) -> String {
 ///
 /// The same contract the SVG backend reports: the entry is skipped, the box
 /// keeps its measured advance, and no host-font text run replaces the ink.
-fn outline_missing(ch: Option<char>, family: &str) -> Diagnostic {
+fn outline_missing(ch: Option<char>, family: &str, span: Option<SourceSpan>) -> Diagnostic {
     let name = match ch {
         Some(ch) => format!("'{ch}' (U+{:04X})", ch as u32),
         None => "without a character".to_string(),
@@ -321,5 +322,6 @@ fn outline_missing(ch: Option<char>, family: &str) -> Diagnostic {
         message: format!(
             "math glyph {name} in family `{family}` has no embedded outline and was not painted; the box keeps its measured advance rather than falling back to a host font"
         ),
+        span,
     }
 }

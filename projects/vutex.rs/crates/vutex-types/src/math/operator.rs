@@ -118,7 +118,7 @@ impl OperatorClass {
     /// atom for placement purposes.
     pub fn of_node(node: &FormulaNode) -> Self {
         match node {
-            FormulaNode::Symbol { glyph_key, role } => match role {
+            FormulaNode::Symbol { glyph_key, role, .. } => match role {
                 SymbolRole::LargeOperator => Self::of_char(glyph_key.char),
                 SymbolRole::Operator => Self::NamedOp,
                 _ => Self::Ord,
@@ -156,6 +156,7 @@ mod tests {
         FormulaNode::Symbol {
             glyph_key: super::super::formula::GlyphKey::from_char(c, None, super::super::formula::FontStyle::Math),
             role: SymbolRole::LargeOperator,
+            span: None,
         }
     }
 
@@ -216,6 +217,6 @@ mod tests {
     }
 
     fn named_op(text: &str) -> FormulaNode {
-        FormulaNode::Text { text: text.to_string(), font_style: super::super::formula::FontStyle::Normal }
+        FormulaNode::Text { text: text.to_string(), font_style: super::super::formula::FontStyle::Normal, span: None }
     }
 }

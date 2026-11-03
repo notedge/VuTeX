@@ -1,12 +1,12 @@
 use serde::{Deserialize, Serialize};
 
 use super::operator::LimitsPolicy;
+use crate::diagnostic::SourceSpan;
 use crate::{Diagnostic, Severity};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct FormulaTree {
     pub root: FormulaNode,
-    // TODO: Add source mapping for debugging
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -32,10 +32,17 @@ pub enum FormulaNode {
     Radical {
         degree: Option<Box<FormulaNode>>,
         radicand: Box<FormulaNode>,
+        /// Span of the radical command in the formula source, when known.
+        /// The radical glyph itself paints under this span.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        span: Option<SourceSpan>,
     },
     Symbol {
         glyph_key: GlyphKey,
         role: SymbolRole,
+        /// Where the symbol was authored, when known.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        span: Option<SourceSpan>,
     },
     /// One numeric atom — a run of digits grouped the way TeX reads a number.
     ///
@@ -47,6 +54,9 @@ pub enum FormulaNode {
     /// and lowers to the same `mn`.
     Number {
         text: String,
+        /// Where the number was authored, when known.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        span: Option<SourceSpan>,
     },
     /// Plain text atoms with an explicit font face.
     ///
@@ -57,6 +67,9 @@ pub enum FormulaNode {
     Text {
         text: String,
         font_style: FontStyle,
+        /// Where the text was authored, when known.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        span: Option<SourceSpan>,
     },
     /// Horizontal space requested by a spacing command.
     ///
@@ -103,10 +116,21 @@ pub enum FormulaNode {
         left: Option<GlyphKey>,
         right: Option<GlyphKey>,
         content: Box<FormulaNode>,
+        /// Span of the opening delimiter, when it was authored (synthesized
+        /// delimiters such as `\binom`'s parentheses carry none).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        left_span: Option<SourceSpan>,
+        /// Span of the closing delimiter, when it was authored.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        right_span: Option<SourceSpan>,
     },
     Accent {
         base: Box<FormulaNode>,
         accent: GlyphKey,
+        /// Span of the accent command, when known. The accent glyph paints
+        /// under this span while the base keeps its own.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        span: Option<SourceSpan>,
     },
     /// TeX's `\overset{top}{base}` — stack `top` above `base`.
     ///
@@ -444,6 +468,7 @@ impl MathEnvironment {
                     message: format!(
                         "`\\begin{{alignedat}}` declares {pairs} column pairs ({declared} columns) but its body has {typed} columns, so the grid keeps {declared} columns"
                     ),
+                    span: None,
                 });
             }
         }
@@ -453,6 +478,7 @@ impl MathEnvironment {
                 code: "vutex.layout.math.split_outside_equation".to_owned(),
                 severity: Severity::Warning,
                 message: "`split` breaks one equation over its rows and belongs inside `equation`".to_owned(),
+                span: None,
             });
         }
 
@@ -720,7 +746,7 @@ impl MathSemNode {
             FormulaNode::Fraction { num, den, line } => {
                 MathSemNode::Fraction { numerator: child(num), denominator: child(den), line: *line }
             }
-            FormulaNode::Radical { degree, radicand } => {
+            FormulaNode::Radical { degree, radicand, .. } => {
                 MathSemNode::Radical { radicand: child(radicand), degree: degree.as_ref().map(|degree| child(degree)) }
             }
             FormulaNode::Symbol { glyph_key, .. } => match glyph_key.char {
@@ -731,7 +757,7 @@ impl MathSemNode {
                 Some(c) => MathSemNode::Operator(c.to_string()),
                 None => MathSemNode::Empty,
             },
-            FormulaNode::Number { text } => MathSemNode::Number(text.clone()),
+            FormulaNode::Number { text, .. } => MathSemNode::Number(text.clone()),
             FormulaNode::Text { text, .. } => MathSemNode::Text(text.clone()),
             FormulaNode::Space { width } => MathSemNode::Space { width_em: width.to_f64() },
             FormulaNode::Subscript { base, sub } => MathSemNode::Sub { base: child(base), sub: child(sub) },
@@ -762,14 +788,14 @@ impl MathSemNode {
                     .collect(),
                 columnalign: environment.column_alignment(),
             },
-            FormulaNode::Delimited { left, right, content } => MathSemNode::Delimited {
+            FormulaNode::Delimited { left, right, content, .. } => MathSemNode::Delimited {
                 left: left.as_ref().and_then(delimiter_text),
                 right: right.as_ref().and_then(delimiter_text),
                 body: child(content),
             },
             // The parser only lowers over-accents (`\hat`, `\bar`, …), so every
             // authored accent sits above its base.
-            FormulaNode::Accent { base, accent } => MathSemNode::Accent {
+            FormulaNode::Accent { base, accent, .. } => MathSemNode::Accent {
                 base: child(base),
                 accent: accent.char.map(|c| c.to_string()).unwrap_or_default(),
                 position: AccentPosition::Above,
@@ -869,7 +895,7 @@ mod tests {
     use super::*;
 
     fn sym(c: char, role: SymbolRole) -> FormulaNode {
-        FormulaNode::Symbol { glyph_key: GlyphKey::from_char(c, None, FontStyle::Math), role }
+        FormulaNode::Symbol { glyph_key: GlyphKey::from_char(c, None, FontStyle::Math), role, span: None }
     }
 
     fn lower(node: &FormulaNode) -> MathSemNode {
@@ -898,6 +924,7 @@ mod tests {
         let rad = FormulaNode::Radical {
             degree: Some(Box::new(sym('3', SymbolRole::Ordinary))),
             radicand: Box::new(sym('x', SymbolRole::Ordinary)),
+            span: None,
         };
         match lower(&rad) {
             MathSemNode::Radical { radicand, degree } => {
@@ -907,7 +934,7 @@ mod tests {
             other => panic!("expected Radical, got {other:?}"),
         }
 
-        let plain = FormulaNode::Radical { degree: None, radicand: Box::new(sym('x', SymbolRole::Ordinary)) };
+        let plain = FormulaNode::Radical { degree: None, radicand: Box::new(sym('x', SymbolRole::Ordinary)), span: None };
         match lower(&plain) {
             MathSemNode::Radical { degree, .. } => assert!(degree.is_none()),
             other => panic!("expected Radical, got {other:?}"),
@@ -986,6 +1013,7 @@ mod tests {
         let accent = FormulaNode::Accent {
             base: Box::new(sym('f', SymbolRole::Ordinary)),
             accent: GlyphKey::from_char('ˆ', None, FontStyle::Normal),
+            span: None,
         };
         match lower(&accent) {
             MathSemNode::Accent { base, accent, position } => {
@@ -1003,6 +1031,8 @@ mod tests {
             left: Some(GlyphKey::from_char('(', None, FontStyle::Normal)),
             right: Some(GlyphKey::from_char(')', None, FontStyle::Normal)),
             content: Box::new(sym('x', SymbolRole::Ordinary)),
+            left_span: None,
+            right_span: None,
         };
         match lower(&delim) {
             MathSemNode::Delimited { left, right, body } => {
@@ -1020,7 +1050,7 @@ mod tests {
         assert_eq!(lower(&sym('7', SymbolRole::Ordinary)), MathSemNode::Number("7".into()));
         assert_eq!(lower(&sym('+', SymbolRole::Binary)), MathSemNode::Operator("+".into()));
         assert_eq!(
-            lower(&FormulaNode::Text { text: "sin".into(), font_style: FontStyle::Normal }),
+            lower(&FormulaNode::Text { text: "sin".into(), font_style: FontStyle::Normal, span: None }),
             MathSemNode::Text("sin".into())
         );
     }
@@ -1032,6 +1062,7 @@ mod tests {
         let face = |c: char, style: FontStyle| FormulaNode::Symbol {
             glyph_key: GlyphKey::from_char(c, None, style),
             role: SymbolRole::Ordinary,
+            span: None,
         };
         assert_eq!(
             lower(&face('R', FontStyle::DoubleStruck)),
@@ -1054,7 +1085,7 @@ mod tests {
     fn a_grouped_number_lowers_to_one_mn_atom() {
         // `10` is one numeric atom, not two digits: the whole run stays inside
         // a single `mn`, matching TeX and KaTeX.
-        assert_eq!(lower(&FormulaNode::Number { text: "10".into() }), MathSemNode::Number("10".into()));
+        assert_eq!(lower(&FormulaNode::Number { text: "10".into(), span: None }), MathSemNode::Number("10".into()));
     }
 
     #[test]

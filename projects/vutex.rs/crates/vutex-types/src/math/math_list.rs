@@ -533,7 +533,7 @@ fn project_one(
             noad.nucleus = Some(Box::new(node.clone()));
             push_noad(list, noad, pending_limits);
         }
-        FormulaNode::Delimited { left, right, content } => {
+        FormulaNode::Delimited { left, right, content, left_span, right_span } => {
             // A `\left…\right` pair is one fence split into its two spacing
             // atoms.  Both halves carry `fence` so the layout engine can pair
             // them back up and size the delimiters against the body, which the
@@ -543,7 +543,7 @@ fn project_one(
             // so the spacing engine can read its glyph for metrics.
             if let Some(gk) = left {
                 let mut open = Noad::new(NoadKind::Open, state.style, state.cramped);
-                open.nucleus = Some(Box::new(FormulaNode::Symbol { glyph_key: gk.clone(), role: SymbolRole::Opening }));
+                open.nucleus = Some(Box::new(FormulaNode::Symbol { glyph_key: gk.clone(), role: SymbolRole::Opening, span: *left_span }));
                 open.fence = paired;
                 push_noad(list, open, pending_limits);
             }
@@ -561,7 +561,7 @@ fn project_one(
             // Right delimiter → Close noad.
             if let Some(gk) = right {
                 let mut close = Noad::new(NoadKind::Close, state.style, state.cramped);
-                close.nucleus = Some(Box::new(FormulaNode::Symbol { glyph_key: gk.clone(), role: SymbolRole::Closing }));
+                close.nucleus = Some(Box::new(FormulaNode::Symbol { glyph_key: gk.clone(), role: SymbolRole::Closing, span: *right_span }));
                 close.fence = paired;
                 push_noad(list, close, pending_limits);
             }
@@ -873,19 +873,28 @@ fn merge_atoms_pass(input: Vec<MathItem>) -> Vec<MathItem> {
 /// both fragments to share the face, so the concatenation keeps it.
 fn merge_text_nodes(a: Option<&Box<FormulaNode>>, b: Option<&Box<FormulaNode>>) -> Box<FormulaNode> {
     let a_text = a.and_then(|x| match x.as_ref() {
-        FormulaNode::Text { text, font_style } => Some((text.clone(), *font_style)),
+        FormulaNode::Text { text, font_style, span } => Some((text.clone(), *font_style, *span)),
         _ => None,
     });
     let b_text = b.and_then(|x| match x.as_ref() {
-        FormulaNode::Text { text, .. } => Some(text.clone()),
+        FormulaNode::Text { text, span, .. } => Some((text.clone(), *span)),
         _ => None,
     });
     match (a_text, b_text) {
-        (Some((ta, fa)), Some(tb)) => Box::new(FormulaNode::Text { text: format!("{ta}{tb}"), font_style: fa }),
+        (Some((ta, fa, sa)), Some((tb, sb))) => {
+            // The merged run keeps a source span only when both fragments
+            // carry contiguous ones; otherwise the concatenation no longer
+            // maps to one authored range.
+            let span = match (sa, sb) {
+                (Some(left), Some(right)) if left.end == right.start => Some(crate::diagnostic::SourceSpan { start: left.start, end: right.end }),
+                _ => None,
+            };
+            Box::new(FormulaNode::Text { text: format!("{ta}{tb}"), font_style: fa, span })
+        }
         // Defensive fallback: keep b (caller already filtered).
         (_, Some(_)) => b.unwrap().clone(),
         (Some(_), None) => a.unwrap().clone(),
-        (None, None) => Box::new(FormulaNode::Text { text: String::new(), font_style: crate::math::FontStyle::Math }),
+        (None, None) => Box::new(FormulaNode::Text { text: String::new(), font_style: crate::math::FontStyle::Math, span: None }),
     }
 }
 
@@ -911,7 +920,7 @@ mod tests {
     use crate::math::{GlyphKey, LineStyle, FormulaNode, SymbolRole};
 
     fn sym(c: char, role: SymbolRole) -> FormulaNode {
-        FormulaNode::Symbol { glyph_key: GlyphKey::from_char(c, None, crate::math::FontStyle::Math), role }
+        FormulaNode::Symbol { glyph_key: GlyphKey::from_char(c, None, crate::math::FontStyle::Math), role, span: None }
     }
 
     /// An explicit math space of `mu` math units (1mu = em/18), the shape the
@@ -1112,7 +1121,7 @@ mod tests {
 
     #[test]
     fn radical_argument_is_cramped() {
-        let rad = FormulaNode::Radical { degree: None, radicand: Box::new(sym('x', SymbolRole::Ordinary)) };
+        let rad = FormulaNode::Radical { degree: None, radicand: Box::new(sym('x', SymbolRole::Ordinary)), span: None };
         let list = MathList::from(std::slice::from_ref(&rad));
         assert_eq!(noad(&list, 0).kind, NoadKind::Radical);
         assert_eq!(noad(&list, 0).style, MathStyle::Display);
@@ -1129,7 +1138,7 @@ mod tests {
             den: Box::new(sym('b', SymbolRole::Ordinary)),
             line: LineStyle::Solid,
         };
-        let rad = FormulaNode::Radical { degree: None, radicand: Box::new(frac) };
+        let rad = FormulaNode::Radical { degree: None, radicand: Box::new(frac), span: None };
         let list = MathList::from(std::slice::from_ref(&rad));
         assert!(noad(&list, 0).cramped);
 
@@ -1284,9 +1293,9 @@ mod tests {
         // nucleus carries the concatenated string.
         use crate::math::FontStyle;
         let nodes = vec![
-            FormulaNode::Text { text: "a".into(), font_style: FontStyle::Math },
-            FormulaNode::Text { text: "b".into(), font_style: FontStyle::Math },
-            FormulaNode::Text { text: "c".into(), font_style: FontStyle::Math },
+            FormulaNode::Text { text: "a".into(), font_style: FontStyle::Math, span: None },
+            FormulaNode::Text { text: "b".into(), font_style: FontStyle::Math, span: None },
+            FormulaNode::Text { text: "c".into(), font_style: FontStyle::Math, span: None },
         ];
         let projected = MathList::from(nodes.as_slice());
         let normalized = normalize_math_list(projected);
@@ -1308,8 +1317,8 @@ mod tests {
         // first fragment's face and the bold would disappear.
         use crate::math::FontStyle;
         let nodes = vec![
-            FormulaNode::Text { text: "a".into(), font_style: FontStyle::Normal },
-            FormulaNode::Text { text: "b".into(), font_style: FontStyle::Bold },
+            FormulaNode::Text { text: "a".into(), font_style: FontStyle::Normal, span: None },
+            FormulaNode::Text { text: "b".into(), font_style: FontStyle::Bold, span: None },
         ];
         let projected = project_formula(&nodes, MathStyle::Text);
         let normalized = normalize_math_list(projected);
@@ -1317,7 +1326,7 @@ mod tests {
         assert_eq!(noad(&normalized, 0).text_font_style(), Some(FontStyle::Normal));
         assert_eq!(noad(&normalized, 1).text_font_style(), Some(FontStyle::Bold), "the bold fragment keeps its face");
         match noad(&normalized, 1).nucleus.as_deref() {
-            Some(FormulaNode::Text { text, font_style }) => {
+            Some(FormulaNode::Text { text, font_style, .. }) => {
                 assert_eq!(text, "b");
                 assert_eq!(*font_style, FontStyle::Bold);
             }
@@ -1331,10 +1340,10 @@ mod tests {
         // normal run, the bold fragment and the trailing normal fragment.
         use crate::math::FontStyle;
         let nodes = vec![
-            FormulaNode::Text { text: "a".into(), font_style: FontStyle::Normal },
-            FormulaNode::Text { text: "b".into(), font_style: FontStyle::Normal },
-            FormulaNode::Text { text: "c".into(), font_style: FontStyle::Bold },
-            FormulaNode::Text { text: "d".into(), font_style: FontStyle::Normal },
+            FormulaNode::Text { text: "a".into(), font_style: FontStyle::Normal, span: None },
+            FormulaNode::Text { text: "b".into(), font_style: FontStyle::Normal, span: None },
+            FormulaNode::Text { text: "c".into(), font_style: FontStyle::Bold, span: None },
+            FormulaNode::Text { text: "d".into(), font_style: FontStyle::Normal, span: None },
         ];
         let projected = project_formula(&nodes, MathStyle::Text);
         let normalized = normalize_math_list(projected);
@@ -1355,7 +1364,7 @@ mod tests {
         use crate::math::FontStyle;
         let nodes = vec![
             sym('a', SymbolRole::Ordinary),
-            FormulaNode::Text { text: "b".into(), font_style: FontStyle::Math },
+            FormulaNode::Text { text: "b".into(), font_style: FontStyle::Math, span: None },
             sym('c', SymbolRole::Ordinary),
         ];
         let projected = MathList::from(nodes.as_slice());
@@ -1467,9 +1476,9 @@ mod tests {
         // spacing inside one word.
         use crate::math::FontStyle;
         let nodes = vec![
-            FormulaNode::Text { text: "a".into(), font_style: FontStyle::Math },
+            FormulaNode::Text { text: "a".into(), font_style: FontStyle::Math, span: None },
             space(3.0),
-            FormulaNode::Text { text: "b".into(), font_style: FontStyle::Math },
+            FormulaNode::Text { text: "b".into(), font_style: FontStyle::Math, span: None },
         ];
         let normalized = normalize_math_list(MathList::from(nodes.as_slice()));
         assert_eq!(normalized.len(), 3);
@@ -1503,6 +1512,8 @@ mod tests {
                 sym('+', SymbolRole::Binary),
                 sym('b', SymbolRole::Ordinary),
             ])),
+            left_span: None,
+            right_span: None,
         };
         let list = MathList::from(std::slice::from_ref(&delim));
         assert_eq!(list.len(), 5);
@@ -1522,6 +1533,8 @@ mod tests {
             left: Some(GlyphKey::from_char('(', None, crate::math::FontStyle::Math)),
             right: Some(GlyphKey::from_char(')', None, crate::math::FontStyle::Math)),
             content: Box::new(FormulaNode::Sequence(vec![])),
+            left_span: None,
+            right_span: None,
         };
         let list = MathList::from(std::slice::from_ref(&delim));
         assert_eq!(list.len(), 3);
@@ -1540,6 +1553,8 @@ mod tests {
                 FormulaNode::SetMathStyle(crate::math::MathStyle::Script),
                 sym('x', SymbolRole::Ordinary),
             ])),
+            left_span: None,
+            right_span: None,
         };
         let list = MathList::from(std::slice::from_ref(&delim));
         assert_eq!(list.len(), 3);
@@ -1572,6 +1587,8 @@ mod tests {
             left: Some(GlyphKey::from_char('(', None, crate::math::FontStyle::Math)),
             right: Some(GlyphKey::from_char(')', None, crate::math::FontStyle::Math)),
             content: Box::new(FormulaNode::Sequence(vec![])),
+            left_span: None,
+            right_span: None,
         };
         let projected = MathList::from(std::slice::from_ref(&delim));
         let normalized = normalize_math_list(projected);
@@ -1589,6 +1606,8 @@ mod tests {
             left: Some(GlyphKey::from_char('(', None, crate::math::FontStyle::Math)),
             right: None,
             content: Box::new(FormulaNode::Sequence(vec![sym('+', SymbolRole::Binary)])),
+            left_span: None,
+            right_span: None,
         };
         let projected = MathList::from(std::slice::from_ref(&delim));
         let normalized = normalize_math_list(projected);

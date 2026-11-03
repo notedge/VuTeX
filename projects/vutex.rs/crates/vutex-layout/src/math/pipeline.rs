@@ -67,7 +67,10 @@ pub fn layout_formula_for(
         vutex_types::math::FormulaNode::Sequence(items) => items.as_slice(),
         other => std::slice::from_ref(other),
     };
-    let (result, root) = engine.layout_formula_result(nodes, style)?;
+    let (mut result, root) = engine.layout_formula_result(nodes, style)?;
+    // Every source span in the result indexes this text, so the result
+    // carries it alongside the paint tree and diagnostics.
+    result.source = formula.source.clone();
     diagnostics.extend(result.diagnostics.iter().cloned());
     Ok((result, root, diagnostics))
 }

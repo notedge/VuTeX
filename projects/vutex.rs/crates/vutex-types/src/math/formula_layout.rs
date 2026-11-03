@@ -7,6 +7,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::diagnostic::SourceSpan;
 use crate::Diagnostic;
 
 use super::{Fixed, MathSemantics};
@@ -84,6 +85,12 @@ pub enum PaintNode {
         /// `positions`.  `None` entries mean the glyph has no outline
         /// (e.g. whitespace or a character that only has a text fallback).
         path_data: Vec<Option<String>>,
+        /// Per-glyph source span into [`FormulaLayoutResult::source`], same
+        /// length as `glyph_ids`.  `None` marks a glyph with no authored
+        /// provenance.  Stretched delimiters repeat the span of the
+        /// delimiter that authored them across every constructed glyph.
+        #[serde(default)]
+        spans: Vec<Option<SourceSpan>>,
     },
     /// A filled rectangle (rule bar, fraction line, underline, ...).
     /// `(x, y)` is the top-left corner relative to the group origin, canvas
@@ -171,6 +178,14 @@ pub struct FormulaLayoutResult {
     /// backend can prove its output describes the same formula as
     /// [`FormulaLayoutResult::paint`] because both live on this one result.
     pub semantics: MathSemantics,
+    /// The authored formula source every source span in this result indexes.
+    ///
+    /// Glyph runs carry per-glyph spans ([`PaintNode::GlyphRun`] `spans`)
+    /// and diagnostics carry their own; this text is the shared reference
+    /// those offsets resolve against.  Empty when the layout input carried
+    /// no authored source.
+    #[serde(default)]
+    pub source: String,
 }
 
 /// Layout-time snapshot of all font faces referenced by [`FormulaLayoutResult::paint`].

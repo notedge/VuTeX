@@ -21,7 +21,7 @@ use vutex_types::math::{
 
 /// Build a symbol atom for a single char.
 fn sym(c: char, role: SymbolRole) -> FormulaNode {
-    FormulaNode::Symbol { glyph_key: GlyphKey::from_char(c, None, FontStyle::Math), role }
+    FormulaNode::Symbol { glyph_key: GlyphKey::from_char(c, None, FontStyle::Math), role, span: None }
 }
 
 /// The `index`-th atom of `list`, skipping the explicit glue items that sit

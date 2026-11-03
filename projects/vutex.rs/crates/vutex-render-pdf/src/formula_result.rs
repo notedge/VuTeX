@@ -19,7 +19,7 @@
 use std::fmt::{self, Write};
 
 use vutex_types::{
-    Diagnostic, Severity,
+    Diagnostic,
     math::{Fixed, FormulaLayoutResult, PaintNode},
 };
 
@@ -90,7 +90,7 @@ fn render_paint_pdf(out: &mut String, node: &PaintNode, ox: f64, oy: f64, baseli
             // scale.
             emit_pdf_path(out, d, 4.0 + ox + x.to_f64(), baseline_y + height - (oy + y.to_f64()), scale.to_f64());
         }
-        PaintNode::GlyphRun { font_id, glyph_ids, positions, size, path_data, chars: _, family: _ } => {
+        PaintNode::GlyphRun { font_id, glyph_ids, positions, size, path_data, chars: _, family: _, spans: _ } => {
             // 每个 glyph 的 path_data 是 em 单位的 y-up SVG `d`，用 PDF `cm`
             // 矩阵做 scale (em → 画布像素) + translate（画布翻转后的基线锚点）。
             let scale = size.to_f64();
@@ -343,6 +343,7 @@ mod tests {
             diagnostics: Vec::new(),
             fonts: vutex_types::math::formula_layout::FontMetricsSnapshot::default(),
             semantics: vutex_types::math::MathSemantics::default(),
+            source: String::new(),
         }
     }
 
@@ -410,6 +411,7 @@ mod tests {
                 positions: vec![(Fixed::ZERO, Fixed::ZERO), (Fixed::from_f64(10.0), Fixed::ZERO)],
                 size: Fixed::from_f64(16.0),
                 path_data: vec![None, None],
+                spans: vec![None, None],
             }],
             translate_x: Fixed::ZERO,
             translate_y: Fixed::ZERO,
@@ -431,6 +433,7 @@ mod tests {
                 positions: vec![(Fixed::from_f64(3.0), Fixed::from_f64(4.0))],
                 size: Fixed::from_f64(16.0),
                 path_data: vec![Some("M 0 0 L 1 1 Z".to_string())],
+                spans: vec![None],
             }],
             translate_x: Fixed::ZERO,
             translate_y: Fixed::ZERO,
@@ -439,10 +442,4 @@ mod tests {
         // 16 x 16 scale at the flipped anchor: x = 4 + 3, y = (5 + 4) + 20 - 4
         assert!(pdf.contains("16.0000 0 0 16.0000 7.0000 25.0000 cm"), "{pdf}");
     }
-}
-
-// Silence unused import warning when someone wants the Diagnostic return path.
-#[allow(dead_code)]
-fn _unused_diagnostic() -> Diagnostic {
-    Diagnostic { code: String::new(), severity: Severity::Error, message: String::new() }
 }

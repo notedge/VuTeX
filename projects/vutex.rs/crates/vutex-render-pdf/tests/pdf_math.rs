@@ -206,6 +206,7 @@ fn glyph_without_an_outline_is_reported_instead_of_falling_back() {
                 positions: vec![(Fixed::ZERO, Fixed::from_f64(10.0))],
                 size: Fixed::from_f64(16.0),
                 path_data: vec![None],
+                spans: vec![None],
             }],
             translate_x: Fixed::ZERO,
             translate_y: Fixed::ZERO,
@@ -213,6 +214,7 @@ fn glyph_without_an_outline_is_reported_instead_of_falling_back() {
         diagnostics: Vec::new(),
         fonts: FontMetricsSnapshot::default(),
         semantics: MathSemantics::default(),
+        source: String::new(),
     };
 
     let mut diagnostics = Vec::new();

@@ -8,7 +8,7 @@ use vutex_text::math::builtin_font_metrics;
 use vutex_types::math::{FontStyle, GlyphKey, MathStyle, FormulaNode, SymbolRole};
 
 fn sym(c: char, role: SymbolRole) -> FormulaNode {
-    FormulaNode::Symbol { glyph_key: GlyphKey::from_char(c, None, FontStyle::Math), role }
+    FormulaNode::Symbol { glyph_key: GlyphKey::from_char(c, None, FontStyle::Math), role, span: None }
 }
 
 fn make_test_engine() -> LayoutEngine {

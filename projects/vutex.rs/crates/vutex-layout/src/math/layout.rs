@@ -6,7 +6,7 @@ use std::sync::OnceLock;
 use serde::{Deserialize, Serialize};
 use vutex_text::math::{FontMetricsSystem, GlyphId, KernCorner, MathFontFacts, StretchAxis, StretchPlan};
 use vutex_types::{
-    Diagnostic, Severity,
+    Diagnostic, Severity, SourceSpan,
     math::{
         Alignment, AlignmentAnchors, BBox, DelimiterComponent, DelimiterVariant, Fixed, FontMetricsSnapshot, FontStyle,
         FormulaLayoutResult, FormulaMetrics, GlyphKey, GlyphMetrics, LimitsPolicy, LineStyle, MathConstant, MathEnvironment,
@@ -192,6 +192,11 @@ pub struct Glyph {
     /// lacked an id (e.g. a char-only reference) or the font could not
     /// resolve one.
     pub glyph_id: Option<u16>,
+    /// Byte range into the formula source this glyph was authored at.
+    /// `None` for glyphs with no authored provenance.  Constructed glyphs
+    /// (delimiter extensions, operator size variants) inherit the span of
+    /// the authored construct they belong to.
+    pub span: Option<SourceSpan>,
 }
 
 /// Flexible space that can stretch or shrink during packing.
@@ -422,8 +427,8 @@ impl LayoutEngine {
         match node {
             FormulaNode::Symbol { glyph_key, .. } => Some(glyph_key.clone()),
             FormulaNode::Sequence(items) => items.iter().find_map(Self::authored_glyph_key),
-            FormulaNode::Number { text } => text.chars().next().map(|c| GlyphKey::from_char(c, None, FontStyle::Normal)),
-            FormulaNode::Text { text, font_style } => text.chars().next().map(|c| GlyphKey::from_char(c, None, *font_style)),
+            FormulaNode::Number { text, .. } => text.chars().next().map(|c| GlyphKey::from_char(c, None, FontStyle::Normal)),
+            FormulaNode::Text { text, font_style, .. } => text.chars().next().map(|c| GlyphKey::from_char(c, None, *font_style)),
             FormulaNode::Subscript { base, .. }
             | FormulaNode::Superscript { base, .. }
             | FormulaNode::SubSuperscript { base, .. } => Self::authored_glyph_key(base),
@@ -597,7 +602,7 @@ impl LayoutEngine {
     fn layout_node_state<'a>(&'a self, node: &'a FormulaNode, state: MathStyleState) -> MathResult<LayoutNode> {
         {
             match node {
-                FormulaNode::Symbol { glyph_key, role } => self.layout_math_symbol(glyph_key, *role, state.style),
+                FormulaNode::Symbol { glyph_key, role, span } => self.layout_math_symbol(glyph_key, *role, state.style, *span),
                 FormulaNode::Sequence(nodes) => self.layout_sequence(nodes, state),
                 FormulaNode::HorizontalBox { content, spacing } => {
                     let mut children = Vec::new();
@@ -629,7 +634,7 @@ impl LayoutEngine {
                     Ok(self.break_lines(children, vec![*width], 1.0))
                 }
                 FormulaNode::Fraction { num, den, line } => self.layout_fraction(num, den, *line, state),
-                FormulaNode::Radical { degree, radicand } => self.layout_radical(degree.as_deref(), radicand, state),
+                FormulaNode::Radical { degree, radicand, span } => self.layout_radical(degree.as_deref(), radicand, state, *span),
                 FormulaNode::VerticalBox { content, alignment } => {
                     let mut children = Vec::new();
                     for node in content {
@@ -640,15 +645,15 @@ impl LayoutEngine {
                 // A number is one ordinary atom of upright digits: every digit
                 // is laid out in the font's normal face, exactly as a single
                 // digit symbol reached through `char_node` would be.
-                FormulaNode::Number { text } => {
+                FormulaNode::Number { text, span } => {
                     let mut children = Vec::new();
                     for c in text.chars() {
                         let key = GlyphKey::from_char(c, None, FontStyle::Normal);
-                        children.push(self.layout_symbol(&key, state.style)?);
+                        children.push(self.layout_symbol(&key, state.style, *span)?);
                     }
                     Ok(self.pack_hbox(children, None))
                 }
-                FormulaNode::Text { text, font_style } => {
+                FormulaNode::Text { text, font_style, span } => {
                     let mut children = Vec::new();
                     let size = self.base_size * self.get_style_scale(state.style);
                     for c in text.chars() {
@@ -661,7 +666,7 @@ impl LayoutEngine {
                             children.push(LayoutNode::Kern(self.font_system.get_metrics(&key)?.width * size));
                         }
                         else {
-                            children.push(self.layout_symbol(&key, state.style)?);
+                            children.push(self.layout_symbol(&key, state.style, *span)?);
                         }
                     }
                     Ok(self.pack_hbox(children, None))
@@ -699,10 +704,10 @@ impl LayoutEngine {
                     self.layout_matrix(&rows, *row_spacing, *col_spacing, column_alignment, state)
                 }
                 FormulaNode::Environment(environment) => self.layout_environment(environment, state),
-                FormulaNode::Delimited { left, right, content } => {
-                    self.layout_delimited(left.as_ref(), right.as_ref(), content, state)
+                FormulaNode::Delimited { left, right, content, left_span, right_span } => {
+                    self.layout_delimited(left.as_ref(), right.as_ref(), content, state, *left_span, *right_span)
                 }
-                FormulaNode::Accent { accent, base } => self.layout_accent(accent, base, state),
+                FormulaNode::Accent { accent, base, span } => self.layout_accent(accent, base, state, *span),
                 FormulaNode::OverSet { top, base } => self.layout_overset(top, base, state),
                 FormulaNode::UnderSet { bot, base } => self.layout_underset(bot, base, state),
                 // `Relation` is a spacing wrapper, not a layout wrapper — the
@@ -786,6 +791,9 @@ impl LayoutEngine {
                 diagnostics: self.script_scale_diagnostics(),
                 fonts,
                 semantics: vutex_types::math::MathSemantics::from_nodes(nodes),
+                // The pipeline owns the authored source and fills this in;
+                // the engine itself only sees layout nodes.
+                source: String::new(),
             },
             layout_node,
         ))
@@ -889,10 +897,14 @@ impl LayoutEngine {
             // follows the pair in this formula.
             if noad.fence && noad.kind == NoadKind::Open {
                 if let Some(close) = Self::fence_close(items, i) {
-                    let left = Self::delimiter_key(items[i].as_noad().and_then(|noad| noad.nucleus.as_deref()));
-                    let right = Self::delimiter_key(items[close].as_noad().and_then(|noad| noad.nucleus.as_deref()));
+                    let left_nucleus = items[i].as_noad().and_then(|noad| noad.nucleus.as_deref());
+                    let right_nucleus = items[close].as_noad().and_then(|noad| noad.nucleus.as_deref());
+                    let left = Self::delimiter_key(left_nucleus);
+                    let right = Self::delimiter_key(right_nucleus);
+                    let left_span = Self::delimiter_span(left_nucleus);
+                    let right_span = Self::delimiter_span(right_nucleus);
                     let body = self.pack_hbox(self.layout_noad_run(&items[i + 1..close])?, None);
-                    children.push(self.layout_fence(left.as_ref(), right.as_ref(), body, state)?);
+                    children.push(self.layout_fence(left.as_ref(), right.as_ref(), body, state, left_span, right_span)?);
                     // The pair ends on its `Close` atom, which is the left
                     // neighbour of whatever follows the fence.
                     previous = items[close].as_noad();
@@ -982,10 +994,18 @@ impl LayoutEngine {
         }
     }
 
-    fn layout_symbol(&self, key: &GlyphKey, style: MathStyle) -> MathResult<LayoutNode> {
+    /// The source span a fence delimiter nucleus carries, when any.
+    fn delimiter_span(nucleus: Option<&FormulaNode>) -> Option<SourceSpan> {
+        match nucleus? {
+            FormulaNode::Symbol { span, .. } => *span,
+            _ => None,
+        }
+    }
+
+    fn layout_symbol(&self, key: &GlyphKey, style: MathStyle, span: Option<SourceSpan>) -> MathResult<LayoutNode> {
         let style_scale = self.get_style_scale(style);
         let size = self.base_size * style_scale;
-        self.layout_scaled_symbol(key, size)
+        self.layout_scaled_symbol(key, size, span)
     }
 
     /// Lay out a math symbol, preferring the font's display-size design for a
@@ -995,14 +1015,14 @@ impl LayoutEngine {
     /// keeps the text-size design otherwise. MATH publishes those designs as the
     /// size variants of the operator's glyph construction, so they come from the
     /// font instead of being scaled up here.
-    fn layout_math_symbol(&self, key: &GlyphKey, role: SymbolRole, style: MathStyle) -> MathResult<LayoutNode> {
+    fn layout_math_symbol(&self, key: &GlyphKey, role: SymbolRole, style: MathStyle, span: Option<SourceSpan>) -> MathResult<LayoutNode> {
         if matches!(role, SymbolRole::LargeOperator) && matches!(style, MathStyle::Display) {
             if let Some(variant) = self.display_operator_variant(key)? {
                 let size = self.base_size * self.get_style_scale(style);
-                return self.layout_scaled_symbol(&variant, size);
+                return self.layout_scaled_symbol(&variant, size, span);
             }
         }
-        self.layout_symbol(key, style)
+        self.layout_symbol(key, style, span)
     }
 
     /// Size variant of a large operator that reaches `DisplayOperatorMinHeight`,
@@ -1047,7 +1067,7 @@ impl LayoutEngine {
         if self.font_system.has_glyph(&redirected) { redirected } else { key.clone() }
     }
 
-    fn layout_scaled_symbol(&self, key: &GlyphKey, size: Fixed) -> MathResult<LayoutNode> {
+    fn layout_scaled_symbol(&self, key: &GlyphKey, size: Fixed, span: Option<SourceSpan>) -> MathResult<LayoutNode> {
         let authored_style = key.style;
         let key = &self.alphalect_key(key);
         let metrics = self.font_system.get_metrics(key)?;
@@ -1074,6 +1094,7 @@ impl LayoutEngine {
             path_data,
             font_id,
             glyph_id,
+            span,
         }))
     }
 
@@ -1147,6 +1168,7 @@ impl LayoutEngine {
                     "the math font publishes no {} for family `default`, so script sizes use the synthetic MATH ratios",
                     missing_ratios.join("` or `")
                 ),
+                span: None,
             });
         }
 
@@ -1172,6 +1194,7 @@ impl LayoutEngine {
                     "the math font publishes no {} for family `default`, so accent and limit gaps use the synthetic MATH values",
                     missing_constants.join("`, `")
                 ),
+                span: None,
             });
         }
 
@@ -1446,6 +1469,7 @@ impl LayoutEngine {
         degree: Option<&FormulaNode>,
         radicand: &FormulaNode,
         state: MathStyleState,
+        radical_span: Option<SourceSpan>,
     ) -> MathResult<LayoutNode> {
         // A radical's radicand is cramped, so any superscript inside it takes
         // `SuperscriptShiftUpCramped`.
@@ -1481,7 +1505,7 @@ impl LayoutEngine {
         // that would be an invented design, not a font fact.
         let radical_key = GlyphKey::from_char('√', Some("default".to_string()), FontStyle::Normal);
         let min_hdp = radicand_layout.height() + radicand_layout.depth() + vertical_gap + rule_thickness;
-        let radical_symbol = self.radical_sign(&radical_key, min_hdp, size)?;
+        let radical_symbol = self.radical_sign(&radical_key, min_hdp, size, radical_span)?;
 
         // Height of the nominal radical bar above the radicand baseline, before
         // the delta adjustment below. The engine raises the degree by a
@@ -1563,7 +1587,7 @@ impl LayoutEngine {
     /// cache only carries the base sign's outline, so a prepared design without
     /// an outline there is not paintable yet and the base sign is used as-is:
     /// stretching the base outline would invent a design the font never drew.
-    fn radical_sign(&self, key: &GlyphKey, target: Fixed, size: Fixed) -> MathResult<LayoutNode> {
+    fn radical_sign(&self, key: &GlyphKey, target: Fixed, size: Fixed, span: Option<SourceSpan>) -> MathResult<LayoutNode> {
         if let Some(facts) = self.facts.as_ref() {
             if let Some(glyph) = self.facts_glyph(key) {
                 if let Some(StretchPlan::Variant(variant)) =
@@ -1571,12 +1595,12 @@ impl LayoutEngine {
                 {
                     let variant_key = GlyphKey { glyph_id: Some(variant.glyph.get()), ..key.clone() };
                     if self.font_system.get_glyph_path(&variant_key).is_ok() {
-                        return self.layout_scaled_symbol(&variant_key, size);
+                        return self.layout_scaled_symbol(&variant_key, size, span);
                     }
                 }
             }
         }
-        self.layout_scaled_symbol(key, size)
+        self.layout_scaled_symbol(key, size, span)
     }
 
     fn layout_limits(
@@ -2344,9 +2368,11 @@ impl LayoutEngine {
         right: Option<&GlyphKey>,
         content: &FormulaNode,
         state: MathStyleState,
+        left_span: Option<SourceSpan>,
+        right_span: Option<SourceSpan>,
     ) -> MathResult<LayoutNode> {
         let content_layout = self.layout_node_state(content, state)?;
-        self.layout_fence(left, right, content_layout, state)
+        self.layout_fence(left, right, content_layout, state, left_span, right_span)
     }
 
     /// Size a `\left…\right` pair around an already-laid-out body.
@@ -2361,6 +2387,8 @@ impl LayoutEngine {
         right: Option<&GlyphKey>,
         content_layout: LayoutNode,
         state: MathStyleState,
+        left_span: Option<SourceSpan>,
+        right_span: Option<SourceSpan>,
     ) -> MathResult<LayoutNode> {
         let style = state.style;
         let style_scale = self.get_style_scale(style);
@@ -2380,13 +2408,13 @@ impl LayoutEngine {
         let mut children = Vec::new();
 
         if let Some(left_key) = left {
-            children.push(self.construct_delimiter(left_key, target_height, size, axis_height)?);
+            children.push(self.construct_delimiter(left_key, target_height, size, axis_height, left_span)?);
         }
 
         children.push(content_layout);
 
         if let Some(right_key) = right {
-            children.push(self.construct_delimiter(right_key, target_height, size, axis_height)?);
+            children.push(self.construct_delimiter(right_key, target_height, size, axis_height, right_span)?);
         }
 
         Ok(self.pack_hbox(children, None))
@@ -2398,6 +2426,7 @@ impl LayoutEngine {
         target_height: Fixed,
         size: Fixed,
         axis_height: Fixed,
+        span: Option<SourceSpan>,
     ) -> MathResult<LayoutNode> {
         let construction = self.font_system.get_delimiter_construction(key)?;
 
@@ -2411,7 +2440,7 @@ impl LayoutEngine {
             .and_then(|facts| self.facts_glyph(key).map(|glyph| (facts, glyph)))
             .and_then(|(facts, glyph)| facts.variants().stretch(glyph, StretchAxis::Vertical, target_height / size))
         {
-            if let Some(node) = self.draw_stretch_plan(&plan, &construction.variants, &construction.components, size)? {
+            if let Some(node) = self.draw_stretch_plan(&plan, &construction.variants, &construction.components, size, span)? {
                 return Ok(self.center_delimiter(node, axis_height));
             }
         }
@@ -2424,7 +2453,7 @@ impl LayoutEngine {
             let metrics = self.font_system.get_metrics(&variant.glyph)?;
             let extent = (metrics.height + metrics.depth) * size;
             if extent >= target_height {
-                let glyph = self.layout_scaled_symbol(&variant.glyph, size)?;
+                let glyph = self.layout_scaled_symbol(&variant.glyph, size, span)?;
                 return Ok(self.center_delimiter(glyph, axis_height));
             }
             if extent > tallest_extent {
@@ -2435,7 +2464,7 @@ impl LayoutEngine {
 
         // 3. No declared design reaches the target; the tallest one still covers
         // best and the base glyph is the last resort.
-        let glyph = self.layout_scaled_symbol(tallest.unwrap_or(key), size)?;
+        let glyph = self.layout_scaled_symbol(tallest.unwrap_or(key), size, span)?;
         Ok(self.center_delimiter(glyph, axis_height))
     }
 
@@ -2443,13 +2472,15 @@ impl LayoutEngine {
     ///
     /// Returns `Ok(None)` when the cache holds no outline for a piece the plan
     /// needs, so the caller can fall back to a declared size instead of drawing
-    /// an invented design.
+    /// an invented design.  Every constructed piece inherits the span of the
+    /// delimiter the author typed.
     fn draw_stretch_plan(
         &self,
         plan: &StretchPlan<'_>,
         variants: &[DelimiterVariant],
         components: &[DelimiterComponent],
         size: Fixed,
+        span: Option<SourceSpan>,
     ) -> MathResult<Option<LayoutNode>> {
         let find_variant =
             |glyph: u16| variants.iter().map(|variant| &variant.glyph).find(|key| key.glyph_id == Some(glyph)).cloned();
@@ -2463,7 +2494,7 @@ impl LayoutEngine {
                 if self.font_system.get_glyph_path(&key).is_err() {
                     return Ok(None);
                 }
-                Ok(Some(self.layout_scaled_symbol(&key, size)?))
+                Ok(Some(self.layout_scaled_symbol(&key, size, span)?))
             }
             StretchPlan::Assembly(plan) => {
                 // Parts stack bottom-up: each piece sits on the previous one with
@@ -2483,7 +2514,7 @@ impl LayoutEngine {
                     if !parts.is_empty() {
                         parts.push(LayoutNode::Kern(Fixed::ZERO - plan.overlap * size));
                     }
-                    parts.push(self.layout_scaled_symbol(key, size)?);
+                    parts.push(self.layout_scaled_symbol(key, size, span)?);
                 }
                 Ok(Some(self.pack_vbox(parts, Alignment::Center)))
             }
@@ -2500,7 +2531,7 @@ impl LayoutEngine {
         wrapper
     }
 
-    fn layout_accent(&self, accent: &GlyphKey, base: &FormulaNode, state: MathStyleState) -> MathResult<LayoutNode> {
+    fn layout_accent(&self, accent: &GlyphKey, base: &FormulaNode, state: MathStyleState, span: Option<SourceSpan>) -> MathResult<LayoutNode> {
         let base_layout = self.layout_node_state(base, state)?;
         let style = state.style;
         let style_scale = self.get_style_scale(style);
@@ -2510,7 +2541,7 @@ impl LayoutEngine {
             return Ok(self.layout_overbar(base_layout, size));
         }
 
-        let accent_layout = self.layout_symbol(accent, style)?;
+        let accent_layout = self.layout_symbol(accent, style, span)?;
 
         let total_width = base_layout.width().max(accent_layout.width());
 
@@ -2757,6 +2788,7 @@ fn lower_layout_to_paint(node: &LayoutNode, x: Fixed, y: Fixed) -> Option<PaintN
                 positions: vec![(x, y)],
                 size: glyph.size,
                 path_data: vec![glyph.path_data.clone()],
+                spans: vec![glyph.span],
             })
         }
         LayoutNode::Rule { width, height, depth } => Some(PaintNode::Rect {

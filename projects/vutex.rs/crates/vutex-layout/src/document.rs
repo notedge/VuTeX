@@ -141,6 +141,7 @@ fn unsupported_math_language_diagnostic(language: &str) -> Diagnostic {
         code: "vutex.layout.math.unsupported_language".to_string(),
         severity: Severity::Warning,
         message: format!("math language `{language}` has no lowering in the TeX formula engine, the source was kept as text"),
+        span: None,
     }
 }
 

@@ -225,6 +225,7 @@ fn outline_missing_entry(ch: Option<char>, family: &str) -> Diagnostic {
         message: format!(
             "math glyph {name} in family `{family}` has no embedded outline and was not painted; the box keeps its measured advance rather than falling back to a host font"
         ),
+        span: None,
     }
 }
 

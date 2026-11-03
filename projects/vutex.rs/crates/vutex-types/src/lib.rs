@@ -6,6 +6,6 @@ pub mod conversion;
 pub mod diagnostic;
 
 pub use conversion::{ConversionReport, CoverageSummary, LossyItem, OpaqueItem, PreservedItem, UnsupportedItem};
-pub use diagnostic::{Diagnostic, Severity};
+pub use diagnostic::{Diagnostic, Severity, SourceSpan};
 
 pub mod math;

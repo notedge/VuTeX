@@ -9,7 +9,7 @@
 use std::fmt::Write;
 
 use vutex_types::{
-    Diagnostic, Severity,
+    Diagnostic, Severity, SourceSpan,
     math::{Fixed, FormulaLayoutResult, PaintNode},
 };
 
@@ -98,7 +98,7 @@ impl SvgWalk {
                     self.buffer.push_str("</g>");
                 }
             }
-            PaintNode::GlyphRun { glyph_ids: _, chars, family, positions, size, path_data, font_id: _ } => {
+            PaintNode::GlyphRun { glyph_ids: _, chars, family, positions, size, path_data, font_id: _, spans } => {
                 let scale = size.to_f64();
                 for (i, d_opt) in path_data.iter().enumerate() {
                     let (px, py) = positions.get(i).copied().unwrap_or((Fixed::ZERO, Fixed::ZERO));
@@ -107,7 +107,8 @@ impl SvgWalk {
                     else {
                         // No outline: the entry is reported whether or not it
                         // paints, matching the document collector this mirrors.
-                        self.diagnostics.push(outline_missing(chars.get(i).copied().flatten(), family));
+                        let span = spans.get(i).copied().flatten();
+                        self.diagnostics.push(outline_missing(chars.get(i).copied().flatten(), family, span));
                         continue;
                     };
                     self.path(d, ox + rx, oy + ry, rx, ry, scale);
@@ -208,7 +209,7 @@ impl SvgWalk {
 }
 
 /// Structure diagnostic for a glyph the math font ships no outline for.
-fn outline_missing(ch: Option<char>, family: &str) -> Diagnostic {
+fn outline_missing(ch: Option<char>, family: &str, span: Option<SourceSpan>) -> Diagnostic {
     let name = match ch {
         Some(ch) => format!("'{ch}' (U+{:04X})", ch as u32),
         None => "without a character".to_string(),
@@ -219,6 +220,7 @@ fn outline_missing(ch: Option<char>, family: &str) -> Diagnostic {
         message: format!(
             "math glyph {name} in family `{family}` has no embedded outline and was not painted; the box keeps its measured advance rather than falling back to a host font"
         ),
+        span,
     }
 }
 
@@ -337,6 +339,7 @@ mod tests {
             diagnostics: Vec::new(),
             fonts: FontMetricsSnapshot::default(),
             semantics: MathSemantics::default(),
+            source: String::new(),
         }
     }
 
@@ -412,6 +415,7 @@ mod tests {
                 positions: vec![(Fixed::from_f64(3.0), Fixed::from_f64(4.0))],
                 size: Fixed::from_f64(16.0),
                 path_data: vec![Some("M 0 0 L 1 1 Z".to_string())],
+                spans: vec![None],
             }],
             translate_x: Fixed::ZERO,
             translate_y: Fixed::ZERO,
@@ -424,10 +428,12 @@ mod tests {
     }
 
     /// A glyph the face ships no outline for is skipped with a warning and
-    /// never pulled in through a host font, matching the document path.
+    /// never pulled in through a host font, matching the document path.  The
+    /// warning keeps the glyph's source span so a host can point at it.
     #[test]
     fn glyph_run_without_outline_is_skipped_and_diagnosed() {
         let mut res = rect_result();
+        res.source = "字".to_string();
         res.paint = PaintNode::Group {
             children: vec![
                 PaintNode::GlyphRun {
@@ -438,6 +444,7 @@ mod tests {
                     positions: vec![(Fixed::from_f64(3.0), Fixed::from_f64(4.0))],
                     size: Fixed::from_f64(16.0),
                     path_data: vec![None],
+                    spans: vec![Some(SourceSpan { start: 0, end: 3 })],
                 },
                 PaintNode::GlyphRun {
                     font_id: "lmr".to_string(),
@@ -447,6 +454,7 @@ mod tests {
                     positions: vec![(Fixed::from_f64(10.0), Fixed::from_f64(4.0))],
                     size: Fixed::from_f64(16.0),
                     path_data: vec![Some("M 0 0 L 1 1 Z".to_string())],
+                    spans: vec![None],
                 },
             ],
             translate_x: Fixed::ZERO,
@@ -458,6 +466,7 @@ mod tests {
         assert_eq!(out.diagnostics.len(), 1);
         assert_eq!(out.diagnostics[0].code, "vutex.layout.math.outline_missing");
         assert_eq!(out.diagnostics[0].severity, Severity::Warning);
+        assert_eq!(out.diagnostics[0].span, Some(SourceSpan { start: 0, end: 3 }));
     }
 
     /// A group whose whole subtree paints nothing is dropped instead of
@@ -475,6 +484,7 @@ mod tests {
                     positions: vec![(Fixed::from_f64(3.0), Fixed::from_f64(4.0))],
                     size: Fixed::from_f64(16.0),
                     path_data: vec![None],
+                    spans: vec![None],
                 }],
                 translate_x: Fixed::from_f64(7.0),
                 translate_y: Fixed::from_f64(8.0),
