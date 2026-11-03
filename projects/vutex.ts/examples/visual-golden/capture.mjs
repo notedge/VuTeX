@@ -11,7 +11,7 @@
 
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -92,9 +92,7 @@ function wrapperHtml(svg) {
 }
 
 mkdirSync(goldenDir, { recursive: true });
-const workDir = join(tmpdir(), "vutex-visual-golden");
-rmSync(workDir, { recursive: true, force: true });
-mkdirSync(workDir, { recursive: true });
+const workDir = mkdtempSync(join(tmpdir(), "vutex-visual-golden-"));
 
 const probed = chromeVersion(RASTERIZER.executable);
 if (probed && probed !== RASTERIZER.version) {
