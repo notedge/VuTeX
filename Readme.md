@@ -72,6 +72,20 @@ vutex-napi / watex-wasm (host adapters)
 | `vutex-render-pdf` | Implemented: dependency-free PDF 1.7 writer over the base-14 fonts, plus a subset of a discovered system TrueType font for text outside WinAnsi. |
 | `vutex-render-raster` | Stub: returns the `vutex.render.raster.unimplemented` diagnostic. |
 
+## Math reference and conformance
+
+Formula geometry is not validated against a local TeX Live installation. The
+reference oracle is **Tectonic `0.17.0` with `default_bundle_v33.tar`**, using
+**amsmath 2021/10/15 v2.17l** for the corpus constructs. Gate tolerances are
+width 5%, height 10% and depth 15%; the geometry gate is
+`cargo test -p vutex-layout --test oracle_latex_geometry -- --include-ignored`.
+
+VuTeX is not a TeX engine. It implements the authoring constructs listed in
+`projects/vutex.rs/crates/vutex-layout/tests/fixtures/oracle/corpus.json`; other
+TeX macros, `\input`, TeX font metrics and unrestricted macro expansion are out
+of scope. Unsupported input must produce a structured diagnostic rather than a
+silently substituted glyph.
+
 ## Quick start
 
 ```bash
@@ -94,9 +108,18 @@ Design truth lives in the VuTeX Living docs. Implementation follows Notedown's i
 
 The code is licensed under MPL-2.0 (see [`License.md`](./License.md)). The two
 math fonts embedded from `projects/vutex.rs/crates/vutex-text/assets` keep
-their own licenses, and each license text ships next to its font:
+their own licenses, and each license text ships next to its font. Font
+substitution is recorded as `vutex.math.conformance.*`; strict mode fails on a
+fallback instead of silently accepting it.
 
 | Font | License | License file | Source | SHA-256 |
 |---|---|---|---|---|
 | `XITSMath-Regular.otf` | SIL Open Font License 1.1 | `XITSMath-Regular.OFL.txt` | <https://github.com/alif-type/xits/releases/tag/v1.302> | `3025792ADB0B7072ACE08BF5726D341DE32F2254612DDEC6DD98271A8DD29689` |
 | `LatinModernMath-Regular.otf` | GUST Font License 1.0 (legally equivalent to LPPL 1.3c or later) | `LatinModernMath-Regular.GUST-FONT-LICENSE.txt` | <https://www.gust.org.pl/projects/e-foundry/lm-math> | `6075562B771F8B82F0C179E363389684F2DD09DE30038269E2628E504BD7BE0F` |
+
+## Known limitations
+
+- `vutex-render-raster` is a stub and returns `vutex.render.raster.unimplemented`; use the SVG, HTML or PDF backends.
+- Formula support is the gated corpus, not arbitrary TeX. Unknown commands and unsupported environments report errors.
+- The PDF backend writes base-14 text plus a subset of a discovered system TrueType font; it is not a full Unicode font pipeline.
+- Glyph advances still differ from the Tectonic reference where the embedded Latin Modern Math design departs from the Computer Modern faces: `\sqrt[3]{x}` is 6.2% narrower and the inline `\frac{\sum_{i=1}^{n} i}{\sqrt{n}}` 16.6% narrower, while radical heights and depths agree within 0.25%. These width gaps come from font data, not from layout rules, and the geometry gate only covers a four-formula subset.
