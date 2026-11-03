@@ -151,3 +151,97 @@ fn semantics_serialize_in_crate_naming() {
     let width = json["semantics"]["nodes"][0]["space"]["widthEm"].as_f64().expect("widthEm");
     assert!((width - 3.0 / 18.0).abs() < 1e-3, "a thin space is 3mu, got {width} in {json}");
 }
+
+// ——— G4: numeric consistency of the derived surfaces ——— //
+
+/// Formatting rounds emitted coordinates to 4 decimal places, so half a unit
+/// in the last place is the most any parsed number can drift.
+const ROUND: f64 = 5e-5;
+
+/// The viewport numbers the SVG document carries: `(viewBox x, y, w, h,
+/// width attribute, height attribute)`.
+fn parse_svg_viewport(svg: &str, source: &str) -> (f64, f64, f64, f64, f64, f64) {
+    let head = svg.split_once('>').unwrap_or_else(|| panic!("{source}: svg has no opening tag")).0;
+    let attr = |key: &str| -> String {
+        let rest = head.split_once(key).unwrap_or_else(|| panic!("{source}: svg missing {key} attribute")).1;
+        rest.split_once('"').unwrap_or_else(|| panic!("{source}: svg attribute {key} is not quoted")).0.to_string()
+    };
+    let attr_w: f64 = attr("width=\"").parse().expect("svg width number");
+    let attr_h: f64 = attr("height=\"").parse().expect("svg height number");
+    let box_attr = attr("viewBox=\"");
+    let nums: Vec<f64> = box_attr
+        .split_whitespace()
+        .map(|token| token.parse().unwrap_or_else(|_| panic!("{source}: bad viewBox number {token}")))
+        .collect();
+    assert_eq!(nums.len(), 4, "{source}: viewBox carries four numbers, got {box_attr}");
+    (nums[0], nums[1], nums[2], nums[3], attr_w, attr_h)
+}
+
+/// G4 (design doc 16): every geometry backend derives its canvas from the
+/// single [`FormulaMetrics`] this result carries, and the derivation must be
+/// exact up to number formatting — the 0.01em budget the gate allows is far
+/// wider than the formatting rounding checked here.  `measure` is
+/// `result.metrics` itself; the SVG viewport and the PDF page are the
+/// derived surfaces.  Drift beyond rounding is a renderer bug.
+#[test]
+fn backend_canvases_derive_from_the_single_metrics() {
+    for (source, _, _) in CASES {
+        let result = layout(source);
+        let w = result.metrics.width.to_f64();
+        let hd = result.metrics.height.to_f64() + result.metrics.depth.to_f64();
+
+        // PDF: the page is the formula box padded by 4 pt on every side, so
+        // the MediaBox minus the padding must equal the metrics exactly.
+        let pdf = render_pdf_result(&result).unwrap_or_else(|e| panic!("pdf failed for {source}: {e:?}"));
+        let text = String::from_utf8_lossy(&pdf);
+        let after = text
+            .split_once("/MediaBox [0 0 ")
+            .unwrap_or_else(|| panic!("{source}: pdf lost its MediaBox"))
+            .1;
+        let (pw, rest) = after.split_once(' ').expect("MediaBox width");
+        let (ph, _) = rest.split_once(']').expect("MediaBox height");
+        let page_w: f64 = pw.parse().expect("MediaBox width number");
+        let page_h: f64 = ph.parse().expect("MediaBox height number");
+        assert!(
+            (page_w - (w.max(1.0) + 8.0)).abs() <= ROUND,
+            "{source}: pdf page width {page_w} must be the metrics width {w} plus 8pt padding"
+        );
+        assert!(
+            (page_h - (hd.max(1.0) + 8.0)).abs() <= ROUND,
+            "{source}: pdf page height {page_h} must be the metrics extent {hd} plus 8pt padding"
+        );
+
+        // SVG: the viewport is the union of the formula box and the painted
+        // ink, padded by `max(4% of the span, 0.5px)`.  The box alone pins
+        // one-sided bounds: the viewport starts no later than `-pad_min` and
+        // reaches at least `extent + pad_min` on both axes, whatever the ink.
+        let svg = render_svg_result(&result).markup;
+        let (vb_x, vb_y, vb_w, vb_h, attr_w, attr_h) = parse_svg_viewport(&svg, source);
+        let pad_min = (w.max(hd) * 0.04).max(0.5);
+        let slack = ROUND * 2.0;
+        assert!(
+            vb_x <= -pad_min + slack,
+            "{source}: viewport must pad left of the box: vb_x={vb_x}, pad_min={pad_min}"
+        );
+        assert!(
+            vb_y <= -pad_min + slack,
+            "{source}: viewport must pad above the box: vb_y={vb_y}, pad_min={pad_min}"
+        );
+        assert!(
+            vb_x + vb_w >= w + pad_min - slack,
+            "{source}: viewport must reach the box right edge plus padding: vb_x+vb_w={}, need {}",
+            vb_x + vb_w,
+            w + pad_min
+        );
+        assert!(
+            vb_y + vb_h >= hd + pad_min - slack,
+            "{source}: viewport must reach the box bottom plus padding: vb_y+vb_h={}, need {}",
+            vb_y + vb_h,
+            hd + pad_min
+        );
+        assert!(
+            (attr_w - vb_w).abs() <= slack && (attr_h - vb_h).abs() <= slack,
+            "{source}: svg width/height attributes must equal the viewBox extent"
+        );
+    }
+}

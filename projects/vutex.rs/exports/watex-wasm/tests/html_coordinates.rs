@@ -342,6 +342,39 @@ fn group_transforms_are_relative_increments() {
     }
 }
 
+/// The container span is the measure surface of the HTML backend: its style
+/// dimensions must equal the metrics the result carries — width is the
+/// advance, height is the full vertical extent, and `vertical-align` drops
+/// the box by the depth so the formula baseline lands on the host text line
+/// exactly like a text glyph would.  No rendering step may resize the
+/// container.
+#[test]
+fn container_dimensions_derive_from_the_metrics() {
+    for source in CORPUS {
+        let html = parse(&render_html_wasm(source, None));
+        let markup = html["html"].as_str().expect("html");
+        let m = metrics_of(&html);
+        let container = tags(markup)
+            .into_iter()
+            .find(|tag| tag.starts_with("<span") && tag.contains("watex-html"))
+            .unwrap_or_else(|| panic!("{source}: html lost its container span"));
+        let width = css_px(&container, "width:");
+        let height = css_px(&container, "height:");
+        let descent_shift = css_px(&container, "vertical-align:-");
+        assert!((width - m.width).abs() < 1e-3, "{source}: container width {width} != metrics width {}", m.width);
+        assert!(
+            (height - (m.height + m.depth)).abs() < 1e-3,
+            "{source}: container height {height} != metrics extent {}",
+            m.height + m.depth
+        );
+        assert!(
+            (descent_shift - m.depth).abs() < 1e-3,
+            "{source}: vertical-align shift {descent_shift} != metrics depth {}",
+            m.depth
+        );
+    }
+}
+
 /// Dump the rendered fragments to the system temp directory so the produced
 /// markup can be inspected outside the test run. The assertions above are the
 /// gate; this file is the human-visible artifact.
