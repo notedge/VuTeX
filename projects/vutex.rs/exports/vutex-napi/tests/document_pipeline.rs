@@ -588,10 +588,27 @@ fn assert_no_error_diagnostic(payload: &Value) {
     assert!(!has_error, "unexpected error diagnostic: {payload}");
 }
 
+fn artifact_dir() -> std::path::PathBuf {
+    let base = std::env::var_os("VUTEX_ARTIFACT_DIR")
+        .map(std::path::PathBuf::from)
+        .or_else(|| std::env::var_os("CARGO_TARGET_TMPDIR").map(std::path::PathBuf::from))
+        .unwrap_or_else(|| {
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .ancestors()
+                .map(|ancestor| ancestor.join("target"))
+                .find(|target| target.is_dir())
+                .expect("the workspace target directory")
+        });
+    let dir = base.join("diagram-artifacts");
+    std::fs::create_dir_all(&dir).expect("create the diagram artifact directory");
+    dir
+}
+
 #[test]
 fn dot_diagram_renders_across_svg_snapshot_and_pdf() {
     let dir = ScratchDir::new("dot");
     let path = dir.write("pipeline.md", DOT_SAMPLE);
+    let artifacts = artifact_dir();
 
     let svg_outcome = render_document(&path_string(&path), None);
     assert_eq!(svg_outcome.exit_code, 0, "{}", svg_outcome.report_json);
@@ -601,6 +618,7 @@ fn dot_diagram_renders_across_svg_snapshot_and_pdf() {
     assert!(svg.contains(">Fetch</text>") && svg.contains(">Store</text>"), "node labels are painted: {svg}");
     assert!(svg.contains(">persist</text>"), "the edge label is painted: {svg}");
     assert!(!svg.contains("digraph pipeline"), "the lowered scene replaces the fence text: {svg}");
+    std::fs::write(artifacts.join("dot-pipeline.svg"), &svg).expect("write the svg artifact");
 
     let snapshot_outcome = render_document(&path_string(&path), Some(r#"{"output":"snapshot"}"#));
     assert_eq!(snapshot_outcome.exit_code, 0, "{}", snapshot_outcome.report_json);
@@ -609,6 +627,7 @@ fn dot_diagram_renders_across_svg_snapshot_and_pdf() {
     assert!(snapshot.contains("<svg"), "snapshot embeds the scene svg: {snapshot}");
     assert!(snapshot.contains("<path"), "snapshot paints vector geometry: {snapshot}");
     assert!(!snapshot.contains("digraph pipeline"), "snapshot replaces the fence text: {snapshot}");
+    std::fs::write(artifacts.join("dot-pipeline.html"), &snapshot).expect("write the snapshot artifact");
 
     let pdf_outcome = render_document(&path_string(&path), Some(r#"{"output":"pdf"}"#));
     assert_eq!(pdf_outcome.exit_code, 0, "{}", pdf_outcome.report_json);
@@ -620,6 +639,7 @@ fn dot_diagram_renders_across_svg_snapshot_and_pdf() {
     assert!(text.contains("(Fetch) Tj") && text.contains("(Store) Tj"), "node labels are painted: {text}");
     assert!(text.contains("(persist) Tj"), "the edge label is painted: {text}");
     assert!(!text.contains("digraph pipeline"), "the lowered scene replaces the fence text: {text}");
+    std::fs::write(artifacts.join("dot-pipeline.pdf"), &pdf).expect("write the pdf artifact");
 }
 
 #[test]
