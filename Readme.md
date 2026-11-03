@@ -80,6 +80,13 @@ reference oracle is **Tectonic `0.17.0` with `default_bundle_v33.tar`**, using
 width 5%, height 10% and depth 15%; the geometry gate is
 `cargo test -p vutex-layout --test oracle_latex_geometry -- --include-ignored`.
 
+The gate walks the whole corpus in both styles rather than a curated subset.
+`split` is the one entry amsmath refuses inside a box, so its two records carry
+`status: unsupported` with the engine's message instead of a measurement. Two
+width checks are documented font-data exceptions — the radical degree advance
+and the inline sum-over-radical fraction — and every other divergence stays
+blocking.
+
 VuTeX is not a TeX engine. It implements the authoring constructs listed in
 `projects/vutex.rs/crates/vutex-layout/tests/fixtures/oracle/corpus.json`; other
 TeX macros, `\input`, TeX font metrics and unrestricted macro expansion are out
