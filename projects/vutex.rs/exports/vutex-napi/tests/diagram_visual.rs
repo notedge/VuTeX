@@ -1,4 +1,4 @@
-//! Programmatic visual acceptance for a lowered DOT diagram.
+//! Programmatic visual acceptance for lowered DOT and PlantUML diagrams.
 //!
 //! The Rust-side tests assert the SVG the pipeline emits; this file asserts the
 //! pixels that renderer produces. A pinned headless Chrome rasterizes the scene
@@ -48,6 +48,19 @@ digraph pipeline {
   Store [shape=box]
   Fetch -> Store [label="persist"]
 }
+```
+"##;
+
+const PLANTUML_SAMPLE: &str = r##"# 类图
+
+```plantuml
+@startuml
+class Order {
+  +id : String
+}
+class Payable
+Order o-- Payable
+@enduml
 ```
 "##;
 
@@ -173,22 +186,22 @@ fn file_url(path: &Path) -> String {
     format!("file:///{}", path.to_string_lossy().replace('\\', "/"))
 }
 
-#[test]
-#[ignore = "requires the pinned headless Chrome build (see module docs)"]
-fn dot_scene_rasterizes_with_visible_ink_and_a_png_screenshot() {
+/// Rasterize one fixture scene and assert the pixels and the screenshot.
+fn assert_scene_rasterizes(name: &str, label: &str, source: &str) {
     let chrome = chrome_executable();
     assert_pinned_chrome(&chrome);
-    let scratch = Scratch::new("dot");
+    let scratch = Scratch::new(name);
 
-    let input = scratch.write("pipeline.md", DOT_SAMPLE);
+    let input = scratch.write("pipeline.md", source);
     let outcome = render_document(&input.to_string_lossy(), Some(r#"{"output":"snapshot"}"#));
     assert_eq!(outcome.exit_code, 0, "{}", outcome.report_json);
     let html = outcome.html.expect("snapshot payload");
-    assert!(html.contains(r#"data-diagram="DOT graph""#), "the snapshot carries the lowered DOT scene: {html}");
+    assert!(html.contains(&format!(r#"data-diagram="{label}""#)), "the snapshot carries the lowered {label} scene: {html}");
 
     let svg = embedded_svg(&html);
-    let width: u32 = svg_attribute(svg, "width").parse().expect("svg width is an integer");
-    let height: u32 = svg_attribute(svg, "height").parse().expect("svg height is an integer");
+    let width = svg_attribute(svg, "width").parse::<f64>().map(|extent| extent.ceil() as u32).expect("svg width is a number");
+    let height =
+        svg_attribute(svg, "height").parse::<f64>().map(|extent| extent.ceil() as u32).expect("svg height is a number");
     assert!(width > 0 && height > 0, "the scene canvas is positive: {width}x{height}");
 
     let page = scratch.write("measure.html", &measurement_page(svg, width, height));
@@ -216,12 +229,12 @@ fn dot_scene_rasterizes_with_visible_ink_and_a_png_screenshot() {
     let ratio = ink as f64 / total as f64;
     assert!(ratio > 0.01, "the diagram must cover a visible share of the canvas, got {ratio:.4} ({ink}/{total})");
     assert!(ratio < 0.90, "the diagram must not flood the canvas, got {ratio:.4} ({ink}/{total})");
-    println!("dot raster: {ink}/{total} ink pixels ({ratio:.4}) on {width}x{height}");
+    println!("{name} raster: {ink}/{total} ink pixels ({ratio:.4}) on {width}x{height}");
 
     // A real screenshot artifact, not just a computed count.
     let window_width = width.max(400);
     let window_height = height.max(300);
-    let screenshot = scratch.path.join("dot-snapshot.png");
+    let screenshot = scratch.path.join(format!("{name}-snapshot.png"));
     let shot = Command::new(&chrome)
         .args(CHROME_FLAGS)
         .arg(format!("--window-size={window_width},{window_height}"))
@@ -235,5 +248,17 @@ fn dot_scene_rasterizes_with_visible_ink_and_a_png_screenshot() {
     let (png_width, png_height) = png_extent(&png);
     assert_eq!((png_width, png_height), (window_width, window_height), "the screenshot keeps the requested viewport");
     assert!(png.len() > 1024, "a blank frame compresses below this; got {} bytes", png.len());
-    println!("dot screenshot: {} bytes at {png_width}x{png_height}", png.len());
+    println!("{name} screenshot: {} bytes at {png_width}x{png_height}", png.len());
+}
+
+#[test]
+#[ignore = "requires the pinned headless Chrome build (see module docs)"]
+fn dot_scene_rasterizes_with_visible_ink_and_a_png_screenshot() {
+    assert_scene_rasterizes("dot", "DOT graph", DOT_SAMPLE);
+}
+
+#[test]
+#[ignore = "requires the pinned headless Chrome build (see module docs)"]
+fn plantuml_scene_rasterizes_with_visible_ink_and_a_png_screenshot() {
+    assert_scene_rasterizes("plantuml", "PlantUML diagram", PLANTUML_SAMPLE);
 }
