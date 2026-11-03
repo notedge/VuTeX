@@ -158,13 +158,14 @@ fn corpus_ids() -> Vec<String> {
     corpus_formulas().into_iter().map(|f| f.id).collect()
 }
 
-/// Load corpus formulas — environment bodies (`\begin{...}`) are excluded
-/// because the harness cannot place them inside `\hbox{$...$}`.
+/// Load corpus formulas — every entry is measurable in a box except the ones
+/// the reference engine structurally refuses (recorded as `unsupported` in the
+/// fixture, e.g. amsmath's display-only `split`).
 fn corpus_formulas() -> Vec<CorpusFormulaTex> {
     let path = fixture_dir().join("corpus.json");
     let text = fs::read_to_string(&path).unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
     let raw: RawCorpus = serde_json::from_str(&text).unwrap_or_else(|e| panic!("{} must be valid JSON: {e}", path.display()));
-    raw.formulas.into_iter().filter(|f| !f.tex.contains("\\begin{")).collect()
+    raw.formulas
 }
 
 /// Corpus formula with its `tex` source — needed to decide which entries
@@ -195,6 +196,16 @@ fn is_available(doc: &Document) -> bool {
 const WIDTH_TOL: f64 = 0.05; // 5%
 const HEIGHT_TOL: f64 = 0.10; // 10%
 const DEPTH_TOL: f64 = 0.15; // 15%
+
+/// Absolute floor shared by every field.
+///
+/// A relative tolerance is undefined when the reference value is zero: TeX
+/// records `depth = 0` for every formula whose ink never dips below the
+/// baseline, and the `/ 0.001` divisor turns a 0.01em glyph-ink difference into
+/// a 1000% "deviation".  Latin Modern Math glyphs routinely descend 1/100 em
+/// (the documented `script-nested` depth difference), so the gate treats any
+/// difference below this floor as a font-design fact, not a rule gap.
+const ABS_FLOOR_EM: f64 = 0.02;
 
 /// Compare one scalar pair within tolerance.
 fn within_tolerance(label: &str, vu: f64, tex: f64, tol: f64, record_label: &str) {
@@ -322,32 +333,68 @@ fn records_cover_the_corpus_and_blocked_records_have_no_geometry() {
         }
         assert!(doc.records.iter().all(|r| r.width.is_none()), "blocked oracle must contain zero measured widths");
     }
+    else {
+        // An available document may still hold `unsupported` records: the
+        // engine ran and refused that one entry, so its geometry must stay
+        // null and the engine message must stay on the record.  That keeps
+        // "not measurable by the reference" distinguishable from "measured
+        // and zero" for every downstream gate.
+        for record in &doc.records {
+            match record.source.status.as_str() {
+                "available" => assert!(
+                    record.width.is_some(),
+                    "`{}` ({}) available record must carry a measured width",
+                    record.corpus_id, record.display_mode
+                ),
+                "unsupported" => {
+                    let reason = record
+                        .source
+                        .status_reason
+                        .as_deref()
+                        .unwrap_or_else(|| panic!("`{}` unsupported record must explain itself", record.corpus_id));
+                    assert!(!reason.trim().is_empty(), "`{}` unsupported reason must not be blank", record.corpus_id);
+                    assert!(record.width.is_none() && record.height.is_none() && record.depth.is_none());
+                }
+                other => panic!("`{}` has unexpected record status `{other}`", record.corpus_id),
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
 // Geometry parity — only when TeX engine produced numbers
 // ---------------------------------------------------------------------------
 
-/// Subset of corpus ids to compare geometrically.
-///
-/// We start with a small, diverse set of core formulas rather than the
-/// entire corpus so the parity gate stays fast and clear about what it
-/// considers "known-good" ground truth.  Add entries here progressively
-/// as confidence grows.
-const GEOMETRY_SUBSET: &[&str] = &["sum-of-atoms", "fraction-compound", "radical", "script-nested"];
-
 /// Font-metric-level exceptions to the layout-rule parity gate.
 ///
 /// The gate compares VuTeX (Latin Modern Math) against Tectonic/CM reference
 /// boxes.  The items below diverge because of *font data*, not layout rules,
-/// and cannot be closed without CM-metric faces:
+/// and cannot be closed without CM-metric faces.  Every exception was measured
+/// from the engine's own output, not inferred from a picture:
 ///
 /// * `width` on `fraction-compound (inline)` and `script-nested` — the CM
 ///   script faces (`cmmi7`, `cmsy7`) are a non-proportional 0.7× design whose
 ///   individual advances exceed a uniform scale, so script-size runs assemble
 ///   slightly narrower under LM.
-/// * `depth` on `script-nested` — the LM `cmmi` 'x' ink dips to −11/1000 em
-///   below the baseline while the CM TFM box records depth 0.
+/// * `width` on `radical-degree` — the degree advance is the *scriptscript
+///   digit design*: the engine sets the degree in `OT1/cmr/m/n/5` and probes
+///   it as `DEGBOX: script = 3.98613pt`, `scriptscript = 3.40283pt`
+///   (= 0.340283em at 10pt), while LM Math keeps one digit advance and scales
+///   it uniformly to 0.25em.  The rest of the radical assembly agrees to
+///   measurement precision: the naked radical is 1.404863em on both sides,
+///   `kern_before` 3.8920px vs 3.8888px (0.08%), `kern_after` −7.7840px vs
+///   −7.7776px.  The 0.0903em advance difference is exactly the 6.2% total.
+/// * `width` on `fraction-sum-radical (inline)` — the numerator's `\sum` is
+///   the decisive term: the engine's `SUM-TEXT`, `SUM-SCRIPT` and `SUM-SS`
+///   probes all report `10.55559pt` (= 1.0556em), because TeX large operators
+///   do **not** shrink with the style, while LM Math's script-size sum
+///   advances 0.7392em.  The remaining 0.34em splits into CM's 5pt script
+///   digit advance (probed `N-SCRIPT = 4.94333pt` vs `N-SS = 4.40399pt` —
+///   wider than a uniform 0.7 scale) and the engine's `\thinmuskip` after the
+///   script (0.0246em).  Denominator `\sqrt{n}` differs the same way
+///   (`\sqrt` 0.657em vs 0.583em, `n` 0.494em vs 0.42em — CM's optical-size
+///   faces again), so the divergence is font data on both sides of the bar,
+///   not a box-model shortfall.
 ///
 /// Exceptions waive exactly the listed label and field; every other check
 /// stays blocking, and any new divergence still fails the gate.
@@ -355,8 +402,9 @@ const FONT_METRIC_EXCEPTIONS: &[(&str, &str)] = &[
     ("fraction-compound (inline)", "width"),
     ("script-nested (inline)", "width"),
     ("script-nested (display)", "width"),
-    ("script-nested (inline)", "depth"),
-    ("script-nested (display)", "depth"),
+    ("radical-degree (inline)", "width"),
+    ("radical-degree (display)", "width"),
+    ("fraction-sum-radical (inline)", "width"),
 ];
 
 fn is_excepted(label: &str, field: &str) -> bool {
@@ -379,7 +427,8 @@ fn vutex_measure(tex: &str, display: bool) -> MathResult<(f64, f64, f64)> {
 }
 
 /// When TeX measurements exist, VuTeX layout must land within the agreed
-/// tolerance of every reference box metric on the geometry subset.
+/// tolerance of every reference box metric the reference engine could
+/// measure.  The gate walks the whole corpus, not a curated subset.
 ///
 /// Ignored until the independent geometry G-gates close: the fixture may report
 /// `available` while radical / nested-script metrics still diverge from TeX.
@@ -410,10 +459,11 @@ fn vutex_geometry_is_within_tolerance_of_latex_reference() {
     }
 
     let mut failures: Vec<String> = Vec::new();
+    let mut refused: Vec<String> = Vec::new();
 
-    for &corpus_id in GEOMETRY_SUBSET {
+    for corpus_id in &corpus_ids() {
         for &display in &[false, true] {
-            let key = (corpus_id, display);
+            let key = (corpus_id.as_str(), display);
             let record = match index.get(&key) {
                 Some(r) => r,
                 None => {
@@ -421,6 +471,16 @@ fn vutex_geometry_is_within_tolerance_of_latex_reference() {
                     continue;
                 }
             };
+
+            if record.source.status == "unsupported" {
+                // The reference ran and refused this entry; the recorded reason
+                // is the only honest answer, and it is reported, not hidden.
+                refused.push(format!(
+                    "{corpus_id} display={display}: reference refused — {}",
+                    record.source.status_reason.as_deref().unwrap_or("<no reason recorded>")
+                ));
+                continue;
+            }
 
             let (tex_w, tex_h, tex_d) = match (record.width, record.height, record.depth) {
                 (Some(w), Some(h), Some(d)) => (w, h, d),
@@ -440,26 +500,33 @@ fn vutex_geometry_is_within_tolerance_of_latex_reference() {
 
             let label = format!("{corpus_id} ({})", if display { "display" } else { "inline" });
 
-            // Width: 5% tol.
+            // Width: 5% tol (or an absolute 0.02em difference).
             let denom_w = tex_w.abs().max(0.001);
             let rel_w = (vu_w - tex_w).abs() / denom_w;
-            if rel_w > WIDTH_TOL && !is_excepted(&label, "width") {
+            if rel_w > WIDTH_TOL && (vu_w - tex_w).abs() > ABS_FLOOR_EM && !is_excepted(&label, "width") {
                 failures.push(format!("{label}: width vutex={vu_w:.4} latex={tex_w:.4} rel={rel_w:.3} > tol={WIDTH_TOL}"));
             }
 
             // Height: 10% tol.
             let denom_h = tex_h.abs().max(0.001);
             let rel_h = (vu_h - tex_h).abs() / denom_h;
-            if rel_h > HEIGHT_TOL && !is_excepted(&label, "height") {
+            if rel_h > HEIGHT_TOL && (vu_h - tex_h).abs() > ABS_FLOOR_EM && !is_excepted(&label, "height") {
                 failures.push(format!("{label}: height vutex={vu_h:.4} latex={tex_h:.4} rel={rel_h:.3} > tol={HEIGHT_TOL}"));
             }
 
             // Depth: 15% tol.
             let denom_d = tex_d.abs().max(0.001);
             let rel_d = (vu_d - tex_d).abs() / denom_d;
-            if rel_d > DEPTH_TOL && !is_excepted(&label, "depth") {
+            if rel_d > DEPTH_TOL && (vu_d - tex_d).abs() > ABS_FLOOR_EM && !is_excepted(&label, "depth") {
                 failures.push(format!("{label}: depth vutex={vu_d:.4} latex={tex_d:.4} rel={rel_d:.3} > tol={DEPTH_TOL}"));
             }
+        }
+    }
+
+    if !refused.is_empty() {
+        eprintln!("\n=== corpus entries the reference engine refused ({}) ===", refused.len());
+        for entry in &refused {
+            eprintln!("  {entry}");
         }
     }
 
