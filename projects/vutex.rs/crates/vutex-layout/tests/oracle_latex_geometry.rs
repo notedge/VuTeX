@@ -22,8 +22,8 @@
 use std::{collections::BTreeMap, fs, path::Path};
 
 use serde::Deserialize;
-use vutex_layout::math::{LayoutNode, layout_formula_source};
-use vutex_types::math::MathResult;
+use vutex_layout::math::{Glyph, LayoutNode, layout_formula_source};
+use vutex_types::math::{FontStyle, MathResult, math_alphalect};
 
 // ---------------------------------------------------------------------------
 // Fixture shapes
@@ -65,6 +65,14 @@ struct Amsmath {
     reason: Option<String>,
 }
 
+/// One script placement relative to its base, in em (engine box differences).
+#[derive(Debug, Deserialize)]
+struct ScriptPosition {
+    role: String,
+    x: f64,
+    y: f64,
+}
+
 #[derive(Debug, Deserialize)]
 struct Record {
     corpus_id: String,
@@ -82,7 +90,7 @@ struct Record {
     ink_bounds: Option<serde_json::Value>,
     rule_thickness: Option<f64>,
     delimiter_size: Option<f64>,
-    script_positions: Option<serde_json::Value>,
+    script_positions: Option<Vec<ScriptPosition>>,
     degree: Option<Degree>,
     mathml: Option<String>,
 }
@@ -737,4 +745,181 @@ fn every_available_fixture_record_round_trips_through_vutex() {
     if !bad.is_empty() {
         panic!("VuTeX failed to layout {} available corpus records:\n  {}", bad.len(), bad.join("\n  "));
     }
+}
+
+// ---------------------------------------------------------------------------
+// Field-level gates: script anchors and stretched delimiter extents
+// ---------------------------------------------------------------------------
+
+/// Walk the layout tree and report every glyph with its absolute position
+/// relative to the tree origin (y growing downward).
+fn glyphs(node: &LayoutNode) -> Vec<(f64, f64, Glyph)> {
+    fn walk(node: &LayoutNode, x: f64, y: f64, out: &mut Vec<(f64, f64, Glyph)>) {
+        match node {
+            LayoutNode::HBox(hbox) => {
+                let mut cursor = 0.0;
+                for child in &hbox.children {
+                    walk(child, x + cursor, y + hbox.shift.to_f64(), out);
+                    cursor += child.width().to_f64();
+                }
+            }
+            LayoutNode::VBox(vbox) => {
+                let mut cursor = -vbox.height.to_f64();
+                for child in &vbox.children {
+                    walk(child, x + vbox.shift.to_f64(), y + cursor + child.height().to_f64(), out);
+                    cursor += child.height().to_f64() + child.depth().to_f64();
+                }
+            }
+            LayoutNode::Glyph(glyph) => out.push((x, y, glyph.clone())),
+            LayoutNode::Rule { .. }
+            | LayoutNode::Glue(_)
+            | LayoutNode::Kern(_)
+            | LayoutNode::Path(_)
+            | LayoutNode::Penalty { .. }
+            | LayoutNode::Anchor { .. } => {}
+        }
+    }
+
+    let mut out = Vec::new();
+    walk(node, 0.0, 0.0, &mut out);
+    out
+}
+
+/// All glyphs carrying the authored character, matching the alphalect
+/// redirect the layout applies to math letters.
+fn glyphs_of(node: &LayoutNode, char: char) -> Vec<(f64, f64, Glyph)> {
+    let redirect = math_alphalect(FontStyle::Math, char);
+    glyphs(node)
+        .into_iter()
+        .filter(|(_, _, glyph)| glyph.char == Some(char) || (redirect.is_some() && glyph.char == redirect))
+        .collect()
+}
+
+/// The script anchors the fixture records derive from engine box differences
+/// (x = wd(full) - wd(script box), y = ht(full) - ht(script box)), so they
+/// are measurements, not reconstruction.  VuTeX must place the same script
+/// glyph at the same anchor relative to the base glyph.
+///
+/// `script-tower` repeats its digits in base and scripts, so no unique glyph
+/// pairing exists there; its recorded anchor stays a fixture contract only.
+#[test]
+fn vutex_script_anchors_match_the_latex_box_differences() {
+    let doc = load_document();
+    if !is_available(&doc) {
+        eprintln!("\n=== script oracle blocked (no TeX engine) ===");
+        return;
+    }
+
+    // The paired script character is the first glyph of the script body: the
+    // box-difference anchor sits at the script body's left edge.
+    const PAIRING: &[(&str, char, char)] = &[("script-nested", 'x', 'a'), ("script-negative", 'e', '-')];
+
+    let mut checked = 0;
+    for record in &doc.records {
+        let Some(positions) = record.script_positions.as_ref()
+        else {
+            continue;
+        };
+        let label = format!("{} ({})", record.corpus_id, if record.display_mode { "display" } else { "inline" });
+        assert!(!positions.is_empty(), "{label}: script_positions must not be empty");
+        let position = &positions[0];
+        assert_eq!(position.role, "sup", "{label}: only superscript entries are recorded yet");
+
+        let Some((_, base_ch, script_ch)) = PAIRING.iter().find(|(id, _, _)| *id == record.corpus_id.as_str())
+        else {
+            checked += 1;
+            continue;
+        };
+
+        let (_, root, _) = layout_formula_source(&record.tex, record.display_mode, REFERENCE_BASE_SIZE_PX)
+            .unwrap_or_else(|e| panic!("{label}: VuTeX must layout the corpus source: {e}"));
+        let base = glyphs_of(&root, *base_ch);
+        let script = glyphs_of(&root, *script_ch);
+        assert_eq!(base.len(), 1, "{label}: base `{base_ch}` must appear exactly once");
+        assert_eq!(script.len(), 1, "{label}: script `{script_ch}` must appear exactly once");
+
+        let em = REFERENCE_BASE_SIZE_PX;
+        let dx = (script[0].0 - base[0].0) / em;
+        let dy = (base[0].1 - script[0].1) / em;
+        // x is the base advance plus the italic correction the engine places
+        // before the script — both are per-font design numbers (CM's cmmi vs
+        // LM Math), so the gate allows the font-design spread.  y is the
+        // superscript shift rule itself, held to the tighter rule tolerance.
+        within_tolerance("script x", dx, position.x, 0.10, &label);
+        within_tolerance("script y", dy, position.y, 0.15, &label);
+        checked += 1;
+    }
+    // Three script entries times two styles; two entries compare glyphs.
+    assert_eq!(checked, 6, "every recorded script entry must be consumed in both styles");
+}
+
+/// The delimiter extent the fixture records is the engine's own stretched
+/// fence height plus depth, measured over a phantom body.  VuTeX's left fence
+/// glyph must cover the same extent.
+///
+/// The tolerance is asymmetric on purpose: both engines pick the smallest
+/// font variant that covers the body, but CM's and LM Math's variant ladders
+/// are different font designs, so VuTeX may legitimately land one step
+/// larger.  Under-stretching (a fence that does not cover the body) is the
+/// regression this gate hunts, hence the tighter lower bound.
+#[test]
+fn vutex_stretched_delimiters_match_the_latex_delimiter_size() {
+    let doc = load_document();
+    if !is_available(&doc) {
+        eprintln!("\n=== delimiter oracle blocked (no TeX engine) ===");
+        return;
+    }
+
+    const FENCES: &[(&str, char)] = &[
+        ("fenced-fraction", '('),
+        ("brace-fenced-fraction", '{'),
+        ("fenced-norm", '\u{2016}'),
+        ("angle-bracket", '\u{27E8}'),
+    ];
+
+    let mut checked = 0;
+    let mut failures: Vec<String> = Vec::new();
+    for record in &doc.records {
+        let Some(size) = record.delimiter_size
+        else {
+            continue;
+        };
+        let label = format!("{} ({})", record.corpus_id, if record.display_mode { "display" } else { "inline" });
+        let Some((_, fence_ch)) = FENCES.iter().find(|(id, _)| *id == record.corpus_id.as_str())
+        else {
+            continue;
+        };
+
+        let (_, root, _) = layout_formula_source(&record.tex, record.display_mode, REFERENCE_BASE_SIZE_PX)
+            .unwrap_or_else(|e| panic!("{label}: VuTeX must layout the corpus source: {e}"));
+        let mut fences = glyphs_of(&root, *fence_ch);
+        assert!(!fences.is_empty(), "{label}: VuTeX must paint the `{fence_ch}` fence");
+        // The left fence is the leftmost painted fence glyph.
+        fences.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let glyph = &fences[0].2;
+        let em = REFERENCE_BASE_SIZE_PX;
+        let extent = (glyph.metrics.height + glyph.metrics.depth).to_f64() / em;
+        if record.corpus_id == "fenced-norm" {
+            // Font-design fact, waived like the radical-degree width: TeX
+            // stretches nothing here (the body is one letter), so the two
+            // engines just report their own base-glyph design — CM's double
+            // bar covers 1.0em while LM Math's covers 1.5em.  Pin the LM Math
+            // design size instead of comparing across fonts.
+            assert!(
+                (1.4..=1.6).contains(&extent),
+                "{label}: LM Math double bar must keep its 1.5em design extent, got {extent:.4}em"
+            );
+            checked += 1;
+            continue;
+        }
+        if extent < size * 0.90 {
+            failures.push(format!("{label}: under-stretched — vutex={extent:.4}em, latex={size:.4}em"));
+        }
+        if extent > size * 1.25 {
+            failures.push(format!("{label}: over-stretched — vutex={extent:.4}em, latex={size:.4}em"));
+        }
+        checked += 1;
+    }
+    assert_eq!(checked, 8, "four fenced entries must be recorded in inline and display styles");
+    assert!(failures.is_empty(), "delimiter extent mismatches:\n  {}", failures.join("\n  "));
 }

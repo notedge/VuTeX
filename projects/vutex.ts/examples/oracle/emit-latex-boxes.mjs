@@ -25,7 +25,7 @@
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { mkdtempSync } from "node:fs";
 import { platform } from "node:os";
 import { dirname, resolve } from "node:path";
@@ -106,15 +106,64 @@ function probe({ name, argv, note }) {
   };
 }
 
-/** Probe amsmath.sty via kpsewhen it exists. */
+/**
+ * Locate `amsmath.sty` inside the Tectonic bundle cache.
+ *
+ * Tectonic is the reference engine here and ships its TeX tree as a bundle
+ * snapshot, so the macro versions come from the bundle, not from a TeX Live
+ * installation.  The cache unpacks every bundle file under
+ * `<cache>/bundles/data/<bundle-sha256>/`; the directory name is the bundle
+ * tar's SHA-256, which doubles as the bundle identifier this oracle pins.
+ */
+function tectonicBundleAmsmath() {
+  const home = process.env.HOME ?? process.env.USERPROFILE ?? "";
+  const candidates = [
+    process.env.TECTONIC_CACHE_DIR,
+    process.env.LOCALAPPDATA ? resolve(process.env.LOCALAPPDATA, "TectonicProject", "Tectonic", "cache") : null,
+    home ? resolve(home, ".cache", "TectonicProject", "Tectonic", "cache") : null,
+    home ? resolve(home, ".cache", "tectonic") : null,
+  ].filter(Boolean);
+  for (const cacheDir of candidates) {
+    const dataDir = resolve(cacheDir, "bundles", "data");
+    let entries = [];
+    try {
+      entries = readdirSync(dataDir);
+    } catch (_err) {
+      continue;
+    }
+    for (const entry of entries) {
+      if (!/^[0-9a-f]{64}$/u.test(entry)) continue;
+      const stylePath = resolve(dataDir, entry, "amsmath.sty");
+      try {
+        const style = readFileSync(stylePath, "utf8");
+        const m = style.match(/\\ProvidesPackage\{amsmath\}\[([^\]]*)\]/);
+        if (!m) continue;
+        return {
+          name: "amsmath",
+          found: true,
+          path: stylePath,
+          version: m[1].trim(),
+          reason: `located in the Tectonic bundle cache (bundle tar sha256 ${entry})`,
+        };
+      } catch (_err) {
+        continue;
+      }
+    }
+  }
+  return null;
+}
+
+/** Probe amsmath.sty via kpsewhich when it exists, else via the Tectonic bundle cache. */
 function probeAmsmath(kpseProbe) {
   if (!kpseProbe.found) {
+    const bundled = tectonicBundleAmsmath();
+    if (bundled) return bundled;
     return {
       name: "amsmath",
       found: false,
       path: null,
       version: null,
-      reason: "`kpsewhich` not on PATH — cannot locate amsmath.sty",
+      reason: "`kpsewhich` not on PATH and no Tectonic bundle cache found — cannot locate amsmath.sty",
     };
   }
   const located = spawnSync("kpsewhich", ["amsmath.sty"], {
@@ -158,9 +207,11 @@ const PROCEDURE = [
   "For every corpus formula, set it in a box in both styles: inline via `\\setbox0=\\hbox{$<tex>$}`, display via `\\setbox0=\\hbox{\\displaystyle $<tex>$}`.",
   "Emit box dimensions to the log with explicit markers: `\\typeout{BOXMETRIC: <inline|display> <corpus_id> \\the\\wd0 \\the\\ht0 \\the\\dp0}`.",
   "Parse the log, convert TeX points to em: `em = pt / 10.0` (normalsize = 10pt, so 1em == 10pt).",
-  "Only `width`, `height`, `depth` are reliable: `ink_bounds`, `script_positions`, `delimiter_size` stay null.",
+  "`ink_bounds` stays null: TeX box metrics are advance boxes and the harness does not extract glyph outlines from the engine's PDF.",
   "For every formula carrying a radical degree (`\\sqrt[...]{...}`), also measure the naked radical and the degree content in both superscript-demoted candidate styles with `\\typeout{NAKED: ...}` / `\\typeout{DEGBOX: ...}`.",
   "Then run one dedicated `\\showbox` pass per degree entry (with `\\showboxdepth` and `\\showboxbreadth` raised): the engine's box-structure dump reveals the degree assembly `kern, shifted degree box, kern`, so the degree anchor, box and kerns are engine output, not reconstruction. `\\showbox` halts the engine (Tectonic treats it as an error), hence the dedicated pass and `--keep-logs`.",
+  "For script entries whose script box is the trailing item of the formula box, measure the script content alone in its own style (`\\typeout{SCRIPTBOX: ...}`) and derive the script anchor from engine box differences: x = wd(full) - wd(script box), y = ht(full) - ht(script box) for a superscript.",
+  "For fenced entries, measure the left delimiter stretched over a zero-width phantom of the body (`\\typeout{DELIMSIZE: ...}`): the phantom keeps the body's height and depth, so the delimiter grows exactly as in the full formula, and its height plus depth is the recorded `delimiter_size`.",
 ];
 
 function blockedReason(probes, primary) {
@@ -369,6 +420,33 @@ function buildDegreeRecord(parts, fullWidthEm, naked, candidates, assembly) {
 // TeX file generation + compile
 // ---------------------------------------------------------------------------
 
+/**
+ * Script entries whose script box is the trailing item of the formula box and
+ * determines the formula's vertical extent.  The script anchor then derives
+ * from pure engine box differences (no reconstruction): for a superscript
+ * x = wd(full) - wd(script box) and y = ht(full) - ht(script box).  An entry
+ * joins this table only while that shape holds for its source.
+ */
+const SCRIPT_BODIES = new Map([
+  ["script-nested", { role: "sup", body: "a_b" }],
+  ["script-tower", { role: "sup", body: "10^{10}" }],
+  ["script-negative", { role: "sup", body: "-x^2" }],
+]);
+
+/**
+ * Fenced entries whose left delimiter stretches over the body.  The companion
+ * box sets the same delimiter over a zero-width `\vphantom` of the body — the
+ * phantom keeps the body's height and depth, so TeX sizes the delimiter
+ * exactly as in the full formula, and the companion box height plus depth is
+ * the delimiter's stretched extent.
+ */
+const DELIMITER_BODIES = new Map([
+  ["fenced-fraction", { left: "(", body: "\\frac{a}{b}" }],
+  ["brace-fenced-fraction", { left: "\\{", body: "\\frac{a}{b}" }],
+  ["fenced-norm", { left: "\\lVert", body: "x" }],
+  ["angle-bracket", { left: "\\langle", body: "v" }],
+]);
+
 /** Build a .tex document that typeouts box metrics for every corpus entry. */
 function buildTexDocument(corpus) {
   const lines = [
@@ -413,6 +491,26 @@ function buildTexDocument(corpus) {
       lines.push(`\\typeout{DEGBOX: ${formula.id} script \\the\\wd2 \\the\\ht2 \\the\\dp2}`);
       lines.push(`\\setbox3=\\hbox{$\\scriptscriptstyle ${parts.degree}$}`);
       lines.push(`\\typeout{DEGBOX: ${formula.id} scriptscript \\the\\wd3 \\the\\ht3 \\the\\dp3}`);
+    }
+
+    // Script companion: the script content alone in its own style.  Scripts
+    // keep their style across inline/display, so one measurement serves both.
+    const script = SCRIPT_BODIES.get(formula.id);
+    if (script) {
+      lines.push(`% --- script companion ${formula.id} ---`);
+      lines.push(`\\setbox4=\\hbox{$\\scriptstyle ${script.body}$}`);
+      lines.push(`\\typeout{SCRIPTBOX: ${formula.id} ${script.role} \\the\\wd4 \\the\\ht4 \\the\\dp4}`);
+    }
+
+    // Delimiter companion: the left fence stretched over a phantom body, in
+    // both styles (display fractions grow taller and stretch the fence more).
+    const delim = DELIMITER_BODIES.get(formula.id);
+    if (delim) {
+      lines.push(`% --- delimiter companion ${formula.id} ---`);
+      lines.push(`\\setbox5=\\hbox{$\\left${delim.left}\\vphantom{${delim.body}}\\right.$}`);
+      lines.push(`\\typeout{DELIMSIZE: inline ${formula.id} \\the\\ht5 \\the\\dp5}`);
+      lines.push(`\\setbox5=\\hbox{$\\displaystyle\\left${delim.left}\\vphantom{${delim.body}}\\right.$}`);
+      lines.push(`\\typeout{DELIMSIZE: display ${formula.id} \\the\\ht5 \\the\\dp5}`);
     }
     lines.push("");
   }
@@ -590,6 +688,54 @@ function parseDegreeCandidateBoxes(log) {
   return out;
 }
 
+// TeX swallows the space after each `\the\wdN` control word, so the emitted
+// dimensions are glued together (`8.00432pt3.01389pt1.06111pt`) — the `pt`
+// suffix is the only separator.
+const SCRIPTBOX_RE = /^SCRIPTBOX: (\S+) (sup|sub) ([\d.]+pt)([\d.]+pt)([\d.]+pt)$/gm;
+const DELIMSIZE_RE = /^DELIMSIZE: (inline|display) (\S+) ([\d.]+pt)([\d.]+pt)$/gm;
+
+/** Parse `SCRIPTBOX` lines: the script content box in its own style. */
+function parseScriptBoxes(log) {
+  const out = new Map(); // key = corpus_id → { role, width, height, depth } (em)
+  let m;
+  SCRIPTBOX_RE.lastIndex = 0;
+  while ((m = SCRIPTBOX_RE.exec(log)) !== null) {
+    const [, id, role, wPt, hPt, dPt] = m;
+    out.set(id, {
+      role,
+      width: ptToEm(parseFloat(wPt)),
+      height: ptToEm(parseFloat(hPt)),
+      depth: ptToEm(parseFloat(dPt)),
+    });
+  }
+  return out;
+}
+
+/** Parse `DELIMSIZE` lines: the stretched left delimiter extent per mode. */
+function parseDelimiterSizes(log) {
+  const out = new Map(); // key = "<corpus_id>|<inline|display>" → extent (em)
+  let m;
+  DELIMSIZE_RE.lastIndex = 0;
+  while ((m = DELIMSIZE_RE.exec(log)) !== null) {
+    const [, mode, id, hPt, dPt] = m;
+    out.set(`${id}|${mode}`, ptToEm(parseFloat(hPt) + parseFloat(dPt)));
+  }
+  return out;
+}
+
+/**
+ * Derive the script anchor from engine box differences.  The script box is
+ * the trailing item of the formula box and determines its vertical extent,
+ * so for a superscript x = wd(full) - wd(script) and y = ht(full) - ht(script).
+ */
+function buildScriptPositions(script, scriptBox, full) {
+  if (!script || !scriptBox || !full) return null;
+  if (script.role === "sup") {
+    return [{ role: "sup", x: full.width - scriptBox.width, y: full.height - scriptBox.height }];
+  }
+  return [{ role: "sub", x: full.width - scriptBox.width, y: -(full.depth - scriptBox.depth) }];
+}
+
 /** Convert TeX pt to em (BASE_SIZE_PT = 10, normalsize = 10pt → 1em). */
 function ptToEm(pt) {
   return pt / BASE_SIZE_PT;
@@ -599,7 +745,7 @@ function ptToEm(pt) {
 // Available record (engine produced numbers)
 // ---------------------------------------------------------------------------
 
-function recordAvailable(formula, displayMode, metrics, fontInfo, engineVersion, command, degree = null) {
+function recordAvailable(formula, displayMode, metrics, fontInfo, engineVersion, command, degree = null, scriptPositions = null, delimiterSize = null) {
   const key = `${formula.id}|${displayMode ? "display" : "inline"}`;
   const m = metrics.get(key);
   if (!m) return null;
@@ -626,8 +772,8 @@ function recordAvailable(formula, displayMode, metrics, fontInfo, engineVersion,
     axis: null,
     ink_bounds: null,
     rule_thickness: null,
-    delimiter_size: null,
-    script_positions: null,
+    delimiter_size: delimiterSize,
+    script_positions: scriptPositions,
     degree,
     mathml: null,
   };
@@ -716,6 +862,8 @@ function main() {
     const metrics = parseBoxMetrics(combined);
     const nakedBoxes = parseNakedBoxes(combined);
     const candidateBoxes = parseDegreeCandidateBoxes(combined);
+    const scriptBoxes = parseScriptBoxes(combined);
+    const delimiterSizes = parseDelimiterSizes(combined);
     const anyMetrics = metrics.size > 0;
 
     if (!anyMetrics) {
@@ -796,6 +944,15 @@ function main() {
             assemblies.get(key) ?? null,
           );
         }
+        const script = SCRIPT_BODIES.get(formula.id);
+        const scriptPositions = m && script
+          ? buildScriptPositions(script, scriptBoxes.get(formula.id) ?? null, {
+              width: ptToEm(m.width_pt),
+              height: ptToEm(m.height_pt),
+              depth: ptToEm(m.depth_pt),
+            })
+          : null;
+        const delimiterSize = delimiterSizes.get(key) ?? null;
         const rec = recordAvailable(
           formula,
           displayMode,
@@ -804,6 +961,8 @@ function main() {
           engineVersion,
           COMMAND,
           degree,
+          scriptPositions,
+          delimiterSize,
         );
         if (rec) records.push(rec);
         else missingKeys.push(key);

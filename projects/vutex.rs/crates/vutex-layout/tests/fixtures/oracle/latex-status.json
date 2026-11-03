@@ -13,9 +13,11 @@
     "For every corpus formula, set it in a box in both styles: inline via `\\setbox0=\\hbox{$<tex>$}`, display via `\\setbox0=\\hbox{\\displaystyle $<tex>$}`.",
     "Emit box dimensions to the log with explicit markers: `\\typeout{BOXMETRIC: <inline|display> <corpus_id> \\the\\wd0 \\the\\ht0 \\the\\dp0}`.",
     "Parse the log, convert TeX points to em: `em = pt / 10.0` (normalsize = 10pt, so 1em == 10pt).",
-    "Only `width`, `height`, `depth` are reliable: `ink_bounds`, `script_positions`, `delimiter_size` stay null.",
+    "`ink_bounds` stays null: TeX box metrics are advance boxes and the harness does not extract glyph outlines from the engine's PDF.",
     "For every formula carrying a radical degree (`\\sqrt[...]{...}`), also measure the naked radical and the degree content in both superscript-demoted candidate styles with `\\typeout{NAKED: ...}` / `\\typeout{DEGBOX: ...}`.",
-    "Then run one dedicated `\\showbox` pass per degree entry (with `\\showboxdepth` and `\\showboxbreadth` raised): the engine's box-structure dump reveals the degree assembly `kern, shifted degree box, kern`, so the degree anchor, box and kerns are engine output, not reconstruction. `\\showbox` halts the engine (Tectonic treats it as an error), hence the dedicated pass and `--keep-logs`."
+    "Then run one dedicated `\\showbox` pass per degree entry (with `\\showboxdepth` and `\\showboxbreadth` raised): the engine's box-structure dump reveals the degree assembly `kern, shifted degree box, kern`, so the degree anchor, box and kerns are engine output, not reconstruction. `\\showbox` halts the engine (Tectonic treats it as an error), hence the dedicated pass and `--keep-logs`.",
+    "For script entries whose script box is the trailing item of the formula box, measure the script content alone in its own style (`\\typeout{SCRIPTBOX: ...}`) and derive the script anchor from engine box differences: x = wd(full) - wd(script box), y = ht(full) - ht(script box) for a superscript.",
+    "For fenced entries, measure the left delimiter stretched over a zero-width phantom of the body (`\\typeout{DELIMSIZE: ...}`): the phantom keeps the body's height and depth, so the delimiter grows exactly as in the full formula, and its height plus depth is the recorded `delimiter_size`."
   ],
   "probes": [
     {
@@ -74,10 +76,10 @@
   ],
   "amsmath": {
     "name": "amsmath",
-    "found": false,
-    "path": null,
-    "version": null,
-    "reason": "`kpsewhich` not on PATH — cannot locate amsmath.sty"
+    "found": true,
+    "path": "C:\\Users\\Administrator\\AppData\\Local\\TectonicProject\\Tectonic\\cache\\bundles\\data\\6ffe055852f8faf66c0acbe1a7fb27f87b869a90bad1204f3bf4d9683f597c7c\\amsmath.sty",
+    "version": "2021/10/15 v2.17l AMS math features",
+    "reason": "located in the Tectonic bundle cache (bundle tar sha256 6ffe055852f8faf66c0acbe1a7fb27f87b869a90bad1204f3bf4d9683f597c7c)"
   },
   "records": [
     {
@@ -300,7 +302,13 @@
       "ink_bounds": null,
       "rule_thickness": null,
       "delimiter_size": null,
-      "script_positions": null,
+      "script_positions": [
+        {
+          "role": "sup",
+          "x": 0.6215269999999999,
+          "y": 0.36289099999999996
+        }
+      ],
       "degree": null,
       "mathml": null
     },
@@ -332,7 +340,13 @@
       "ink_bounds": null,
       "rule_thickness": null,
       "delimiter_size": null,
-      "script_positions": null,
+      "script_positions": [
+        {
+          "role": "sup",
+          "x": 0.6215269999999999,
+          "y": 0.412891
+        }
+      ],
       "degree": null,
       "mathml": null
     },
@@ -679,7 +693,7 @@
       "axis": null,
       "ink_bounds": null,
       "rule_thickness": null,
-      "delimiter_size": null,
+      "delimiter_size": 1.200011,
       "script_positions": null,
       "degree": null,
       "mathml": null
@@ -711,7 +725,7 @@
       "axis": null,
       "ink_bounds": null,
       "rule_thickness": null,
-      "delimiter_size": null,
+      "delimiter_size": 1.8359590000000001,
       "script_positions": null,
       "degree": null,
       "mathml": null
@@ -743,7 +757,7 @@
       "axis": null,
       "ink_bounds": null,
       "rule_thickness": null,
-      "delimiter_size": null,
+      "delimiter_size": 1,
       "script_positions": null,
       "degree": null,
       "mathml": null
@@ -775,7 +789,7 @@
       "axis": null,
       "ink_bounds": null,
       "rule_thickness": null,
-      "delimiter_size": null,
+      "delimiter_size": 1,
       "script_positions": null,
       "degree": null,
       "mathml": null
@@ -1828,7 +1842,13 @@
       "ink_bounds": null,
       "rule_thickness": null,
       "delimiter_size": null,
-      "script_positions": null,
+      "script_positions": [
+        {
+          "role": "sup",
+          "x": 0.5156259999999999,
+          "y": 0.362893
+        }
+      ],
       "degree": null,
       "mathml": null
     },
@@ -1860,7 +1880,13 @@
       "ink_bounds": null,
       "rule_thickness": null,
       "delimiter_size": null,
-      "script_positions": null,
+      "script_positions": [
+        {
+          "role": "sup",
+          "x": 0.5156259999999999,
+          "y": 0.41289300000000007
+        }
+      ],
       "degree": null,
       "mathml": null
     },
@@ -1891,7 +1917,7 @@
       "axis": null,
       "ink_bounds": null,
       "rule_thickness": null,
-      "delimiter_size": null,
+      "delimiter_size": 1.200011,
       "script_positions": null,
       "degree": null,
       "mathml": null
@@ -1923,7 +1949,7 @@
       "axis": null,
       "ink_bounds": null,
       "rule_thickness": null,
-      "delimiter_size": null,
+      "delimiter_size": 1.8359590000000001,
       "script_positions": null,
       "degree": null,
       "mathml": null
@@ -1955,7 +1981,7 @@
       "axis": null,
       "ink_bounds": null,
       "rule_thickness": null,
-      "delimiter_size": null,
+      "delimiter_size": 1,
       "script_positions": null,
       "degree": null,
       "mathml": null
@@ -1987,7 +2013,7 @@
       "axis": null,
       "ink_bounds": null,
       "rule_thickness": null,
-      "delimiter_size": null,
+      "delimiter_size": 1,
       "script_positions": null,
       "degree": null,
       "mathml": null
@@ -2916,7 +2942,13 @@
       "ink_bounds": null,
       "rule_thickness": null,
       "delimiter_size": null,
-      "script_positions": null,
+      "script_positions": [
+        {
+          "role": "sup",
+          "x": 1.050003,
+          "y": 0.362893
+        }
+      ],
       "degree": null,
       "mathml": null
     },
@@ -2948,7 +2980,13 @@
       "ink_bounds": null,
       "rule_thickness": null,
       "delimiter_size": null,
-      "script_positions": null,
+      "script_positions": [
+        {
+          "role": "sup",
+          "x": 1.050003,
+          "y": 0.41289300000000007
+        }
+      ],
       "degree": null,
       "mathml": null
     },
