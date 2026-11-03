@@ -1,7 +1,7 @@
 //! HTML output for fixed-geometry snapshots and semantic reflow.
 
 use vutex_presentation::{
-    display::{DisplayItem, DisplayPath, DisplayPresentation, DisplayTextRun},
+    display::{DisplayGraphic, DisplayItem, DisplayPath, DisplayPresentation, DisplayTextRun},
     flow::{FlowBlock, FlowPresentation, FlowRun, FlowTableRow},
 };
 use vutex_render::is_safe_href;
@@ -20,7 +20,7 @@ body{margin:0;padding:24px;background:#f5f5f5}\
 .vutex-text{position:absolute;white-space:pre;line-height:1}\
 .vutex-rule{position:absolute;background:#111}\
 .vutex-image{position:absolute;box-sizing:border-box;border:1px dashed #999;color:#666;font:8pt sans-serif}\
-.vutex-graphic{position:absolute;box-sizing:border-box;border:1px dashed #999;color:#666;font:8pt sans-serif}\
+.vutex-graphic{position:absolute;overflow:hidden}\
 </style>\n</head>\n<body>\n",
     );
     for (index, page) in presentation.pages.iter().enumerate() {
@@ -31,7 +31,7 @@ body{margin:0;padding:24px;background:#f5f5f5}\
             num(page.height),
         ));
         for item in &page.items {
-            write_item(&mut out, item);
+            write_item(&mut out, item)?;
         }
         out.push_str("</section>\n");
     }
@@ -64,7 +64,7 @@ pub fn render_html_reflow(presentation: &FlowPresentation) -> Result<String, Dia
     Ok(out)
 }
 
-fn write_item(out: &mut String, item: &DisplayItem) {
+fn write_item(out: &mut String, item: &DisplayItem) -> Result<(), Diagnostic> {
     match item {
         DisplayItem::TextRun(run) => {
             out.push_str(&format!(
@@ -116,21 +116,48 @@ fn write_item(out: &mut String, item: &DisplayItem) {
                 escape_text(&image.alt),
             ));
         }
-        DisplayItem::Graphic(graphic) => {
-            // Snapshot HTML cannot paint a vector scene in page coordinates, so
-            // it reserves the same box and keeps the alternative text reachable.
-            out.push_str(&format!(
-                "<div class=\"vutex-graphic\" data-vutex-item=\"graphic\" role=\"img\" aria-label=\"{}\" style=\"left:{}pt;top:{}pt;width:{}pt;height:{}pt\">{}</div>\n",
-                escape_attribute(&graphic.alt),
-                num(graphic.x),
-                num(graphic.y),
-                num(graphic.width),
-                num(graphic.height),
-                escape_text(&graphic.alt),
-            ));
-        }
+        DisplayItem::Graphic(graphic) => write_graphic(out, graphic)?,
         DisplayItem::Path(path) => write_path(out, path),
     }
+    Ok(())
+}
+
+/// Embed one placed diagram scene as an inline SVG inside its layout box.
+///
+/// The scene serializes as a standalone `<svg>` document carrying its own
+/// intrinsic size and `viewBox`; stretching it to the positioned box scales
+/// that viewBox onto the layout geometry — the same placement the SVG backend
+/// achieves with a translated, scaled group.  A scene that cannot serialize
+/// fails the render instead of leaving a blank hole, matching the SVG
+/// backend's policy.
+fn write_graphic(out: &mut String, graphic: &DisplayGraphic) -> Result<(), Diagnostic> {
+    let intrinsic = graphic.scene.size;
+    if intrinsic.width <= 0.0 || intrinsic.height <= 0.0 {
+        return Err(Diagnostic {
+            code: "vutex.render.html.diagram-invalid".into(),
+            severity: Severity::Error,
+            message: format!("diagram `{}` has a non-positive canvas size", graphic.alt),
+            span: None,
+        });
+    }
+    let scene = graphic.scene.to_svg().map_err(|error| Diagnostic {
+        code: "vutex.render.html.diagram-invalid".into(),
+        severity: Severity::Error,
+        message: format!("diagram `{}` is not serializable: {error}", graphic.alt),
+        span: None,
+    })?;
+    let embedded = scene.replacen("<svg ", "<svg style=\"width:100%;height:100%;display:block\" ", 1);
+    out.push_str(&format!(
+        "<div class=\"vutex-graphic\" data-vutex-item=\"graphic\" data-diagram=\"{}\" role=\"img\" aria-label=\"{}\" style=\"left:{}pt;top:{}pt;width:{}pt;height:{}pt\">{}\n</div>\n",
+        escape_attribute(&graphic.alt),
+        escape_attribute(&graphic.alt),
+        num(graphic.x),
+        num(graphic.y),
+        num(graphic.width),
+        num(graphic.height),
+        embedded,
+    ));
+    Ok(())
 }
 
 /// Write the text of a fixed snapshot run, wrapping it in its anchor.

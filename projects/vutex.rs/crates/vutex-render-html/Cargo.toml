@@ -14,4 +14,5 @@ vutex-render = { workspace = true }
 
 [dev-dependencies]
 notedown-ir = { workspace = true }
+davinci-diagram = { workspace = true }
 vutex-layout = { workspace = true }
