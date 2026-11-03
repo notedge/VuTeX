@@ -535,18 +535,23 @@ fn project_one(
         }
         FormulaNode::Delimited { left, right, content, left_span, right_span } => {
             // A `\left…\right` pair is one fence split into its two spacing
-            // atoms.  Both halves carry `fence` so the layout engine can pair
-            // them back up and size the delimiters against the body, which the
-            // flattened list no longer exposes on its own.
-            let paired = left.is_some() && right.is_some();
+            // atoms.  Every pair produces both atoms, even when one side is a
+            // null delimiter (`\left.` / `\right.`) or an environment supplies
+            // only its opening brace (`cases`): the missing half is a
+            // zero-width Open / Close atom without a nucleus, not a missing
+            // fence.  That is what lets the layout engine pair the halves back
+            // up and size the delimiters against the body, which the flattened
+            // list no longer exposes on its own.  Emitting only the side that
+            // carries a glyph left `cases` with a text-size brace that never
+            // covered its two rows.
             // Left delimiter → Open noad with a synthetic Symbol nucleus
             // so the spacing engine can read its glyph for metrics.
+            let mut open = Noad::new(NoadKind::Open, state.style, state.cramped);
             if let Some(gk) = left {
-                let mut open = Noad::new(NoadKind::Open, state.style, state.cramped);
                 open.nucleus = Some(Box::new(FormulaNode::Symbol { glyph_key: gk.clone(), role: SymbolRole::Opening, span: *left_span }));
-                open.fence = paired;
-                push_noad(list, open, pending_limits);
             }
+            open.fence = true;
+            push_noad(list, open, pending_limits);
 
             // Content → recursive projection, preserving its internal spacing
             // classes (Atom / Bin / Rel / ...).  When the body is completely
@@ -558,13 +563,13 @@ fn project_one(
                 push_noad(list, Noad::new(NoadKind::Inner, state.style, state.cramped), pending_limits);
             }
 
-            // Right delimiter → Close noad.
+            // Right delimiter → Close noad, or the null `\right.` close.
+            let mut close = Noad::new(NoadKind::Close, state.style, state.cramped);
             if let Some(gk) = right {
-                let mut close = Noad::new(NoadKind::Close, state.style, state.cramped);
                 close.nucleus = Some(Box::new(FormulaNode::Symbol { glyph_key: gk.clone(), role: SymbolRole::Closing, span: *right_span }));
-                close.fence = paired;
-                push_noad(list, close, pending_limits);
             }
+            close.fence = true;
+            push_noad(list, close, pending_limits);
         }
         FormulaNode::Accent { .. } => {
             let mut noad = Noad::new(NoadKind::Atom, state.style, state.cramped);
@@ -699,16 +704,22 @@ pub fn normalize_math_list(mut list: MathList) -> MathList {
 ///
 /// Open/Close atoms at the boundaries never have a useful neighbour on
 /// the outer side, so their spacing contribution is zero.  Bare atoms of
-/// those kinds that carry no glyph (no nucleus) are pure artifacts and
-/// can be dropped safely.  Delimiter atoms emitted by the
-/// [`FormulaNode::Delimited`] projector always carry a synthetic
-/// `Symbol` nucleus, so they survive this pass — only placeholder atoms
-/// from other sources are trimmed.  Explicit glue is never a placeholder:
-/// `\,x` really is spaced, so the glue at either end stays.
+/// those kinds that carry no glyph (no nucleus) and no fence are pure
+/// artifacts and can be dropped safely.  Atoms projected from a
+/// [`FormulaNode::Delimited`] call themselves a fence and always stay,
+/// glyph or not: the layout engine pairs the two halves to size the
+/// delimiter.  Explicit glue is never a placeholder: `\,x` really is
+/// spaced, so the glue at either end stays.
 fn trim_boundary(list: &mut MathList) {
     /// True when the atom is a bare grouping artifact with nothing to set.
+    ///
+    /// A fence half is never an artifact even when it carries no glyph: the
+    /// null side of `\left.` / `\right.` and the missing close of `cases` are
+    /// zero-width atoms the layout engine pairs with their opposite half to
+    /// size the delimiter, so trimming them would leave the surviving half
+    /// unpaired and drawn at text size.
     fn droppable(noad: &Noad) -> bool {
-        noad.nucleus.is_none() && matches!(noad.kind, NoadKind::Open | NoadKind::Close | NoadKind::Punct)
+        noad.nucleus.is_none() && !noad.fence && matches!(noad.kind, NoadKind::Open | NoadKind::Close | NoadKind::Punct)
     }
 
     // Trim leading.

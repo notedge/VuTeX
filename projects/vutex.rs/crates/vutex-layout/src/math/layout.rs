@@ -1354,8 +1354,16 @@ impl LayoutEngine {
 
         for child in &children {
             width = width + child.width();
-            max_height = max_height.max(child.height());
-            max_depth = max_depth.max(child.depth());
+            // Horizontal spacing carries no extent: a kern advances the pen
+            // and nothing else, and `LayoutNode::height` / `depth` read a
+            // kern's value as *vertical* space for vlists.  Counting it here
+            // would let a column-padding kern inflate the row's height (a
+            // `cases` row grew to the width of the padding it needed), so
+            // only nodes with real ink contribute extents.
+            if !matches!(child, LayoutNode::Kern(_) | LayoutNode::Glue(_) | LayoutNode::Penalty { .. } | LayoutNode::Anchor { .. }) {
+                max_height = max_height.max(child.height());
+                max_depth = max_depth.max(child.depth());
+            }
 
             if let LayoutNode::Glue(g) = child {
                 total_stretch = total_stretch + g.stretch;
@@ -1615,21 +1623,38 @@ impl LayoutEngine {
         // percentage of this nominal ascent, not of the adjusted one.
         let degree_bar_top = radicand_layout.height() + vertical_gap + rule_thickness;
 
-        // TeX's `delta`: when the chosen sign's own depth exceeds the radicand's
-        // top plus the clearance, the excess splits in halves — the bar rises
-        // by half, the sign's bottom drops by the other half.
+        // TeX's `delta`: the chosen sign is always at least as large as the
+        // extent it must cover, so the surplus splits in halves — the bar rises
+        // by half and the sign's bottom drops by the other half.  TeX measures
+        // the surplus off the sign's depth because the Computer Modern radical
+        // keeps its whole design below the reference point; a MATH font spreads
+        // the same design over ascent and depth, so the surplus is the design's
+        // full extent minus what the radicand plus clearance and rule need.
         let mut radical_box = self.pack_hbox(vec![radical_symbol], None);
-        let excess = radical_box.depth() - (radicand_layout.height() + radicand_layout.depth() + vertical_gap);
+        let radical_box_height = radical_box.height();
+        let design_extent = radical_box_height + radical_box.depth();
+        let requirement = radicand_layout.height() + radicand_layout.depth() + vertical_gap + rule_thickness;
+        let excess = design_extent - requirement;
         if excess > Fixed::ZERO {
             vertical_gap = vertical_gap + excess / Fixed::from_f64(2.0);
         }
 
-        // TeX sets the sign's baseline `height(radicand) + clr` above the
-        // formula baseline (`shift_amount(y) := -(height(x)+clr)`). The sign's
-        // own top bar then meets the overbar rule, whose bottom sits on the
-        // same line, so the two strokes read as one continuous rule.
+        // TeX sets the sign's reference point `height(radicand) + clr` above
+        // the formula baseline (`shift_amount(y) := -(height(x)+clr)`), which
+        // works for the Computer Modern radical because its glyph is drawn
+        // with the reference point at the top of the ink (`\showbox` reports
+        // `cmex r` as `0.4 + 23.6`, i.e. the whole design sits below the
+        // reference point).  A MATH font publishes ordinary outlines instead:
+        // the LM Math variants carry real ascent and descent about their own
+        // baseline (`√` at 2.4em measures 1.45em up and 0.95em down), so
+        // keeping the reference point at the bar level would push the ink top
+        // far above the vinculum.  The invariant that actually connects the
+        // two strokes — and the one the Tectonic oracle confirms — is that the
+        // sign's ink top meets the rule's bottom edge, so the sign is shifted
+        // by its own ascent instead of anchored on its baseline.
+        let rule_bottom = radicand_layout.height() + vertical_gap;
         if let LayoutNode::HBox(h) = &mut radical_box {
-            h.shift = Fixed::ZERO - (radicand_layout.height() + vertical_gap);
+            h.shift = radical_box_height - rule_bottom;
         }
 
         let mut children = Vec::new();
@@ -1679,23 +1704,30 @@ impl LayoutEngine {
 
     /// The radical sign the font would draw for an extent of `target`.
     ///
-    /// `MathVariants` publishes the radical as a construction, so the sign must
-    /// be the prepared design the font's own size search picks. The metrics
-    /// cache only carries the base sign's outline, so a prepared design without
-    /// an outline there is not paintable yet and the base sign is used as-is:
-    /// stretching the base outline would invent a design the font never drew.
+    /// TeX's `make_radical` picks the sign from the same `MathVariants`
+    /// construction machinery as a fence: the smallest prepared design covering
+    /// the radicand plus clearance and rule, or the connector assembly beyond
+    /// the tallest design. The variants and their outlines are projected into
+    /// the metrics cache from the font (see `RADICAL_CHARS`), so both plan
+    /// shapes are paintable. A plan the cache cannot draw is a G5 fallback and
+    /// is recorded before the base sign is used as the last resort — stretching
+    /// the base outline would invent a design the font never drew.
     fn radical_sign(&self, key: &GlyphKey, target: Fixed, size: Fixed, span: Option<SourceSpan>) -> MathResult<LayoutNode> {
         if let Some(facts) = self.facts.as_ref() {
             if let Some(glyph) = self.facts_glyph(key) {
-                if let Some(StretchPlan::Variant(variant)) =
-                    facts.variants().stretch(glyph, StretchAxis::Vertical, target / size)
-                {
-                    let variant_key = GlyphKey { glyph_id: Some(variant.glyph.get()), ..key.clone() };
-                    if self.font_system.get_glyph_path(&variant_key).is_ok() {
-                        return self.layout_scaled_symbol(&variant_key, size, span);
+                if let Some(plan) = facts.variants().stretch(glyph, StretchAxis::Vertical, target / size) {
+                    let construction = self.font_system.get_delimiter_construction(key)?;
+                    match self.draw_stretch_plan(&plan, &construction.variants, &construction.components, size, span)? {
+                        Some(node) => return Ok(node),
+                        None => {
+                            self.record_fallback(FontFallback::MissingAssemblyPiece('√'));
+                        }
                     }
                 }
             }
+        }
+        else if let Some(ch) = key.char {
+            self.record_fallback(FontFallback::MissingGlyphVariant(ch));
         }
         self.layout_scaled_symbol(key, size, span)
     }
@@ -1928,19 +1960,28 @@ impl LayoutEngine {
         let mut sup_correction_height = Fixed::ZERO;
         let mut sub_correction_depth = Fixed::ZERO;
 
-        // Script minima depend on the kind of nucleus. The MATH table publishes
-        // baseline drop limits for a base that is a box or an extended shape,
-        // while a plain glyph keeps its own shift minima. A large operator
-        // instead follows the `op` atom rules `layout_limits` and the shift
-        // minima below already encode, so it is not treated as extended here.
         let base_key = self.first_glyph_key(base);
+        // Script minima depend on the shape of the nucleus. The MATH table
+        // publishes baseline drop limits for a base that is a box or an
+        // extended shape, while a plain glyph keeps its own shift minima.
+        // A display-style large operator is drawn from the font's
+        // `MathVariants` construction (see `layout_symbol`), and that
+        // construction is an extended shape.  Clamping its scripts to the
+        // design's own height and depth is what puts the limits of
+        // `\int_0^1` at the top and bottom of the sign instead of beside the
+        // text baseline; the same character in text style is a plain glyph
+        // and keeps the ordinary minima.
         let extended_base = match base {
             FormulaNode::Symbol { glyph_key, .. } => {
-                !class.is_large_operator()
-                    && match (self.facts.as_ref(), self.facts_glyph(&self.alphalect_key(glyph_key))) {
+                if class.is_large_operator() {
+                    matches!(style, MathStyle::Display)
+                }
+                else {
+                    match (self.facts.as_ref(), self.facts_glyph(&self.alphalect_key(glyph_key))) {
                         (Some(facts), Some(glyph)) => facts.is_extended_shape(glyph),
                         _ => false,
                     }
+                }
             }
             FormulaNode::Number { .. } | FormulaNode::Text { .. } => false,
             _ => true,

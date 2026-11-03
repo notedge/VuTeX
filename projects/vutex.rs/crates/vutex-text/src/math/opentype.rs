@@ -234,6 +234,15 @@ const DELIMITER_CHARS: &[char] = &['(', ')', '[', ']', '{', '}', '|', '‖', '�
 /// `SymbolRole::LargeOperator`.
 const LARGE_OPERATOR_CHARS: &[char] = &['∑', '∏', '∐', '∫', '∬', '∮'];
 
+/// The radical sign, whose growing designs live in the same `MathVariants`
+/// table.
+///
+/// `√` is not a delimiter — it never seeds the synthetic fallback variants in
+/// `font_metrics` — but TeX's `make_radical` picks the sign from exactly this
+/// construction machinery, so the projection must carry its prepared designs
+/// and assembly pieces just like a fence.
+const RADICAL_CHARS: &[char] = &['√'];
+
 // ---------------------------------------------------------------------------
 // Synthesized fallbacks
 // ---------------------------------------------------------------------------
@@ -395,7 +404,7 @@ fn extract_delimiter_constructions(
 ) {
     let family = Some(family.to_string());
 
-    for &ch in DELIMITER_CHARS.iter().chain(LARGE_OPERATOR_CHARS) {
+    for &ch in DELIMITER_CHARS.iter().chain(LARGE_OPERATOR_CHARS).chain(RADICAL_CHARS) {
         let Some(glyph) = facts.glyph_for_char(ch)
         else {
             continue;

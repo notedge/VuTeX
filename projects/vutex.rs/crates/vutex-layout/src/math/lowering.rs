@@ -233,10 +233,17 @@ fn environment_node(environment: &MathEnvironment, face: Option<FontStyle>, diag
                 _ => vec![Alignment::Center; columns],
             };
             let row_spacing = if environment.name == "smallmatrix" { 0.2 } else { 0.35 };
+            // amsmath declares `cases` as `\array{@{}l@{\quad}l@{}}`: the
+            // gutter between the value and its condition is one `\quad`, i.e.
+            // 1em, not the 0.8em gutter a plain matrix uses.
+            let col_spacing = match environment.kind {
+                MathEnvironmentKind::Cases => 1.0,
+                _ => 0.8,
+            };
             let matrix = FormulaNode::Matrix {
                 rows,
                 row_spacing: Fixed::from_f64(row_spacing),
-                col_spacing: Fixed::from_f64(0.8),
+                col_spacing: Fixed::from_f64(col_spacing),
                 display_style: false,
                 column_alignment,
             };
