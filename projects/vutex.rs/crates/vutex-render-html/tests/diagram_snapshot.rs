@@ -3,9 +3,9 @@
 //! The production chains are `notedown-ir` diagram block → `davinci-diagram`
 //! scene lowering → `vutex-layout` placement → display presentation. Only the
 //! final sink differs: this file asserts the HTML snapshot backend embeds the
-//! scene's own SVG inside the placed box for both Mermaid and DOT.
+//! scene's own SVG inside the placed box for Mermaid, DOT, and PlantUML.
 
-use davinci_diagram::{dot_to_scene, mermaid_to_scene};
+use davinci_diagram::{dot_to_scene, mermaid_to_scene, plantuml_to_scene};
 use notedown_ir::{Block, DocumentGraph, DocumentId, Inline};
 use vutex_layout::{Diagrams, LayoutHint, layout_with_diagrams};
 use vutex_presentation::{build_display_presentation, display::DisplayPresentation};
@@ -15,6 +15,8 @@ const MERMAID: &str = "flowchart LR\n    A[TeX source] --> B[SVG output]\n";
 
 const DOT: &str =
     "digraph pipeline {\n  rankdir=LR;\n  Fetch [shape=box]\n  Store [shape=box]\n  Fetch -> Store [label=\"persist\"]\n}\n";
+
+const PLANTUML: &str = "@startuml\nclass Order {\n  +id : String\n}\nclass Payable\nOrder o-- Payable\n@enduml\n";
 
 /// One page carrying a lowered Mermaid diagram followed by a paragraph.
 fn diagram_presentation() -> DisplayPresentation {
@@ -44,6 +46,20 @@ fn dot_presentation() -> DisplayPresentation {
     build_display_presentation(&plan)
 }
 
+/// One page carrying a lowered PlantUML class diagram followed by a paragraph.
+fn plantuml_presentation() -> DisplayPresentation {
+    let mut graph = DocumentGraph::new(DocumentId(9));
+    let node = graph.push_block(Block::Diagram { language: "plantuml".into(), source: PLANTUML.into() });
+    graph.push_block(Block::Paragraph { content: vec![Inline::Text { text: "after diagram".into() }] });
+
+    let lowered = plantuml_to_scene(PLANTUML).expect("the plantuml source must lower");
+    let mut diagrams = Diagrams::new();
+    diagrams.insert(node, lowered.scene, "PlantUML diagram");
+
+    let plan = layout_with_diagrams(&graph, &LayoutHint::a4(), &diagrams);
+    build_display_presentation(&plan)
+}
+
 /// The graphic box of the snapshot.
 fn graphic_box(html: &str) -> &str {
     let after = html.split("data-vutex-item=\"graphic\"").nth(1).expect("snapshot must carry a graphic item");
@@ -53,9 +69,11 @@ fn graphic_box(html: &str) -> &str {
 
 #[test]
 fn snapshot_html_embeds_the_diagram_scene_as_svg() {
-    for (language, alt, presentation) in
-        [("mermaid", "Mermaid diagram", diagram_presentation()), ("dot", "DOT graph", dot_presentation())]
-    {
+    for (language, alt, presentation) in [
+        ("mermaid", "Mermaid diagram", diagram_presentation()),
+        ("dot", "DOT graph", dot_presentation()),
+        ("plantuml", "PlantUML diagram", plantuml_presentation()),
+    ] {
         let html = render_html_snapshot(&presentation).expect("snapshot html");
         assert!(
             html.contains(&format!("data-diagram=\"{alt}\"")),
@@ -73,7 +91,7 @@ fn snapshot_html_embeds_the_diagram_scene_as_svg() {
 
 #[test]
 fn snapshot_html_keeps_the_diagram_box_geometry() {
-    for presentation in [diagram_presentation(), dot_presentation()] {
+    for presentation in [diagram_presentation(), dot_presentation(), plantuml_presentation()] {
         let html = render_html_snapshot(&presentation).expect("snapshot html");
         let box_markup = graphic_box(&html);
         let style = box_markup.split("style=\"").nth(1).expect("graphic style").split('"').next().expect("style end");

@@ -34,6 +34,12 @@ fn dot_diagram(graph: &mut DocumentGraph, source: &str) -> notedown_ir::NodeId {
     graph.push_block(Block::Diagram { language: "dot".to_string(), source: source.to_string() })
 }
 
+fn plantuml_diagram(graph: &mut DocumentGraph, source: &str) -> notedown_ir::NodeId {
+    graph.push_block(Block::Diagram { language: "plantuml".to_string(), source: source.to_string() })
+}
+
+const PLANTUML: &str = "@startuml\nclass Order\nclass Payable\nOrder o-- Payable\n@enduml\n";
+
 fn graphics(plan: &vutex_layout::LayoutPlan) -> Vec<&Graphic> {
     plan.pages
         .iter()
@@ -138,4 +144,31 @@ fn keeps_dot_source_visible_without_a_registered_scene() {
     let text = laid_out_text(&plan);
     assert!(text.contains("digraph pipeline"), "{text}");
     assert!(text.contains("Fetch -> Store"), "{text}");
+}
+
+#[test]
+fn places_a_registered_scene_for_a_plantuml_diagram() {
+    let mut graph = DocumentGraph::new(DocumentId(14));
+    let id = plantuml_diagram(&mut graph, PLANTUML);
+    let mut diagrams = Diagrams::new();
+    diagrams.insert(id, text_scene(400.0, 300.0), "PlantUML diagram");
+
+    let plan = layout_with_diagrams(&graph, &LayoutHint::a4(), &diagrams);
+    let placed = &graphics(&plan)[0];
+
+    assert_eq!(placed.alt, "PlantUML diagram");
+    assert!(placed.scene.nodes.iter().any(|node| matches!(&node.kind, NodeKind::Text { text, .. } if text == "diagram")));
+    assert_eq!(graphics(&plan).len(), 1, "the diagram occupies one graphic box");
+}
+
+#[test]
+fn keeps_plantuml_source_visible_without_a_registered_scene() {
+    let mut graph = DocumentGraph::new(DocumentId(15));
+    plantuml_diagram(&mut graph, PLANTUML);
+
+    let plan = layout_with_diagrams(&graph, &LayoutHint::a4(), &Diagrams::new());
+    assert!(graphics(&plan).is_empty());
+    let text = laid_out_text(&plan);
+    assert!(text.contains("@startuml"), "{text}");
+    assert!(text.contains("class Order"), "{text}");
 }

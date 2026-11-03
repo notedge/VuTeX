@@ -1,14 +1,15 @@
-//! Host-side Mermaid and DOT lowering into resolved DaVinci display scenes.
+//! Host-side Mermaid, DOT, and PlantUML lowering into resolved DaVinci display
+//! scenes.
 //!
-//! `notedown-formats` lowers an explicit `mermaid` or `dot` fence to
-//! `Block::Diagram`, so this adapter lowers those blocks through
+//! `notedown-formats` lowers an explicit `mermaid`, `dot`, or `plantuml` fence
+//! to `Block::Diagram`, so this adapter lowers those blocks through
 //! `davinci-diagram` and registers each display scene under the block id that
 //! authored it. Layout then places the scene instead of the source text. A
 //! failed lowering registers no scene, which keeps the authored source visible
 //! and never invents diagram geometry. Rejections carry the byte range the
 //! producer reported, so hosts can point at the rejected source.
 
-use davinci_diagram::{DiagramError, LoweredDiagram, dot_to_scene, mermaid_to_scene};
+use davinci_diagram::{DiagramError, LoweredDiagram, dot_to_scene, mermaid_to_scene, plantuml_to_scene};
 use davinci_types::{Diagnostic, DiagnosticLocation};
 use notedown_ir::{Block, DocumentGraph};
 use vutex_layout::Diagrams;
@@ -20,6 +21,9 @@ pub const MERMAID_ALT: &str = "Mermaid diagram";
 
 /// Alternative text carried by every lowered DOT graph.
 pub const DOT_ALT: &str = "DOT graph";
+
+/// Alternative text carried by every lowered PlantUML diagram.
+pub const PLANTUML_ALT: &str = "PlantUML diagram";
 
 /// Diagnostic code for a scene whose canvas cannot be placed.
 pub const DIAGRAM_INVALID_CANVAS: &str = "VUTEX_DIAGRAM_INVALID_CANVAS";
@@ -51,6 +55,9 @@ fn frontend_for(language: &str) -> Option<Frontend> {
     else if language.eq_ignore_ascii_case("dot") {
         Some(Frontend { lower: dot_to_scene, alt: DOT_ALT })
     }
+    else if language.eq_ignore_ascii_case("plantuml") {
+        Some(Frontend { lower: plantuml_to_scene, alt: PLANTUML_ALT })
+    }
     else {
         None
     }
@@ -67,8 +74,8 @@ fn record_span(diagnostic: &Diagnostic) -> Option<DiagnosticSpan> {
 
 /// Lower every known diagram block in `graph` into a diagram scene.
 ///
-/// Only `Block::Diagram` blocks whose language tag is `mermaid` or `dot` are
-/// considered. Fatal lowering failures and non-fatal layout loss both become
+/// Only `Block::Diagram` blocks whose language tag is `mermaid`, `dot`, or
+/// `plantuml` are considered. Fatal lowering failures and non-fatal layout loss both become
 /// diagnostics; a block with a fatal failure or an unplaceable canvas keeps no
 /// scene, so layout falls back to the authored source text.
 pub fn lower_diagrams(graph: &DocumentGraph, path: &str) -> LoweredDiagrams {

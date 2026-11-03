@@ -667,6 +667,132 @@ fn rejected_dot_reports_a_spanned_diagnostic_and_keeps_the_source_visible() {
     assert_eq!(rejected, "<b>bold</b>", "the span must cover the rejected HTML label: {payload}");
 }
 
+const PLANTUML_SAMPLE: &str = r##"# 类图
+
+```plantuml
+@startuml
+class Order {
+  +id : String
+}
+class Payable
+Order o-- Payable
+@enduml
+```
+"##;
+
+const PLANTUML_SEQUENCE_SAMPLE: &str = r##"# 时序图
+
+```plantuml
+@startuml
+actor User
+participant "Order Service" as Svc
+User ->> Svc : place
+Svc -->> User : accepted
+@enduml
+```
+"##;
+
+const REJECTED_PLANTUML_BODY: &str = "@startuml\nclass A\nnote right of A : detail\n@enduml";
+
+const REJECTED_PLANTUML_SAMPLE: &str = r##"# 拒绝的语句
+
+```plantuml
+@startuml
+class A
+note right of A : detail
+@enduml
+```
+"##;
+
+#[test]
+fn plantuml_class_diagram_renders_across_svg_snapshot_and_pdf() {
+    let dir = ScratchDir::new("plantuml");
+    let path = dir.write("class.md", PLANTUML_SAMPLE);
+    let artifacts = artifact_dir();
+
+    let svg_outcome = render_document(&path_string(&path), None);
+    assert_eq!(svg_outcome.exit_code, 0, "{}", svg_outcome.report_json);
+    assert_no_error_diagnostic(&report(&svg_outcome));
+    let svg = svg_outcome.svg.expect("svg payload");
+    assert!(svg.contains(r#"data-diagram="PlantUML diagram""#), "the scene carries the PlantUML label: {svg}");
+    assert_eq!(svg.matches(r#"data-role="node""#).count(), 2, "both classes become boxes: {svg}");
+    assert!(svg.contains(r#"id="node-Order""#) && svg.contains(r#"id="node-Payable""#), "{svg}");
+    assert!(svg.contains(">Order</text>") && svg.contains(">+id : String</text>"), "the class label keeps its members: {svg}");
+    assert!(svg.contains(r#"data-source="Payable-&gt;Order""#), "the aggregation runs from the owner to the part: {svg}");
+    assert!(!svg.contains("@startuml"), "the lowered scene replaces the fence text: {svg}");
+    std::fs::write(artifacts.join("plantuml-class.svg"), &svg).expect("write the svg artifact");
+
+    let snapshot_outcome = render_document(&path_string(&path), Some(r#"{"output":"snapshot"}"#));
+    assert_eq!(snapshot_outcome.exit_code, 0, "{}", snapshot_outcome.report_json);
+    let snapshot = snapshot_outcome.html.expect("snapshot payload");
+    assert!(snapshot.contains(r#"data-diagram="PlantUML diagram""#), "snapshot carries the scene label: {snapshot}");
+    assert!(snapshot.contains("<svg") && snapshot.contains("<path"), "snapshot paints the scene svg: {snapshot}");
+    assert!(!snapshot.contains("@startuml"), "snapshot replaces the fence text: {snapshot}");
+    std::fs::write(artifacts.join("plantuml-class.html"), &snapshot).expect("write the snapshot artifact");
+
+    let pdf_outcome = render_document(&path_string(&path), Some(r#"{"output":"pdf"}"#));
+    assert_eq!(pdf_outcome.exit_code, 0, "{}", pdf_outcome.report_json);
+    let pdf = pdf_outcome.pdf.expect("pdf payload");
+    let text = String::from_utf8_lossy(&pdf);
+    assert!(pdf.starts_with(b"%PDF-1.7\n"), "pdf header");
+    assert!(text.contains("\nW n\n"), "the scene clips to its placed box: {text}");
+    assert!(text.contains("(Order) Tj") && text.contains("(Payable) Tj"), "class labels are painted: {text}");
+    assert!(text.contains("(+id : String) Tj"), "class members are painted: {text}");
+    assert!(!text.contains("@startuml"), "the lowered scene replaces the fence text: {text}");
+    std::fs::write(artifacts.join("plantuml-class.pdf"), &pdf).expect("write the pdf artifact");
+}
+
+#[test]
+fn plantuml_sequence_diagram_renders_participants_and_messages() {
+    let dir = ScratchDir::new("plantuml-sequence");
+    let path = dir.write("sequence.md", PLANTUML_SEQUENCE_SAMPLE);
+    let artifacts = artifact_dir();
+
+    let svg_outcome = render_document(&path_string(&path), None);
+    assert_eq!(svg_outcome.exit_code, 0, "{}", svg_outcome.report_json);
+    assert_no_error_diagnostic(&report(&svg_outcome));
+    let svg = svg_outcome.svg.expect("svg payload");
+    assert!(svg.contains(r#"data-diagram="PlantUML diagram""#), "{svg}");
+    assert!(svg.contains(r#"id="sequence-lifeline-User""#) && svg.contains(r#"id="sequence-lifeline-Svc""#), "{svg}");
+    assert!(svg.contains(">Order Service</text>"), "the quoted display name is painted: {svg}");
+    assert_eq!(svg.matches(r#"data-role="edge""#).count(), 2, "both messages become edges: {svg}");
+    assert!(svg.contains(">place</text>") && svg.contains(">accepted</text>"), "{svg}");
+    assert!(!svg.contains("->>"), "the lowered scene replaces the fence text: {svg}");
+    std::fs::write(artifacts.join("plantuml-sequence.svg"), &svg).expect("write the svg artifact");
+
+    let pdf_outcome = render_document(&path_string(&path), Some(r#"{"output":"pdf"}"#));
+    assert_eq!(pdf_outcome.exit_code, 0, "{}", pdf_outcome.report_json);
+    let pdf = pdf_outcome.pdf.expect("pdf payload");
+    let text = String::from_utf8_lossy(&pdf);
+    assert!(text.contains("(User) Tj") && text.contains("(Order Service) Tj"), "participants are painted: {text}");
+    assert!(text.contains("(place) Tj") && text.contains("(accepted) Tj"), "messages are painted: {text}");
+    std::fs::write(artifacts.join("plantuml-sequence.pdf"), &pdf).expect("write the pdf artifact");
+}
+
+#[test]
+fn rejected_plantuml_reports_a_spanned_diagnostic_and_keeps_the_source_visible() {
+    let dir = ScratchDir::new("plantuml-rejected");
+    let path = dir.write("rejected.md", REJECTED_PLANTUML_SAMPLE);
+
+    let outcome = render_document(&path_string(&path), None);
+    let payload = report(&outcome);
+
+    assert_eq!(outcome.exit_code, 0, "{}", outcome.report_json);
+    let svg = outcome.svg.expect("svg payload");
+    assert!(svg.contains("@startuml"), "the authored fence stays visible: {svg}");
+    assert!(svg.contains("note right of A : detail"), "the rejected statement stays visible: {svg}");
+    assert!(!svg.contains(r#"data-diagram="#), "a rejected lowering invents no geometry: {svg}");
+
+    let diagnostics = payload["diagnostics"].as_array().expect("diagnostics array");
+    assert_eq!(diagnostics.len(), 1, "{payload}");
+    assert_eq!(diagnostics[0]["code"], "davinci.diagram.unsupported", "{payload}");
+    assert_eq!(diagnostics[0]["severity"], "error", "{payload}");
+    assert_eq!(diagnostics[0]["stage"], "diagram", "{payload}");
+    let start = diagnostics[0]["span"]["start"].as_u64().expect("span start") as usize;
+    let end = diagnostics[0]["span"]["end"].as_u64().expect("span end") as usize;
+    assert_eq!(&REJECTED_PLANTUML_BODY[start..end], "note right of A : detail", "{payload}");
+}
+
 const TIKZ_SAMPLE: &str = r##"# TikZ
 
 ```tikz
