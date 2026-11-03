@@ -263,6 +263,45 @@ function recordBlocked(formula, displayMode, reason, command) {
   };
 }
 
+/**
+ * A record the reference engine *ran* but rejected.
+ *
+ * Unlike a `blocked` record (no engine in this environment), an `unsupported`
+ * record proves the engine executed and refused this specific corpus entry, so
+ * the null measurement carries the engine's own message as evidence.  The
+ * down-stream geometry gate must treat such a record as "not measurable by the
+ * reference", never as "measurable and zero".
+ */
+function recordUnsupported(formula, displayMode, reason, command, engineVersion) {
+  return {
+    schema_version: "v0",
+    corpus_id: formula.id,
+    tex: formula.tex,
+    display_mode: displayMode,
+    source: {
+      engine: "latex",
+      version: engineVersion,
+      command,
+      status: "unsupported",
+      status_reason: reason,
+    },
+    font: null,
+    size: null,
+    normalized_atoms: null,
+    style_cramped: null,
+    width: null,
+    height: null,
+    depth: null,
+    axis: null,
+    ink_bounds: null,
+    rule_thickness: null,
+    delimiter_size: null,
+    script_positions: null,
+    degree: null,
+    mathml: null,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Radical-degree helpers
 // ---------------------------------------------------------------------------
@@ -447,6 +486,28 @@ const DELIMITER_BODIES = new Map([
   ["angle-bracket", { left: "\\langle", body: "v" }],
 ]);
 
+/**
+ * Corpus entries the reference engine cannot set inside `\hbox{$...$}`.
+ *
+ * Every other environment (`matrix`, `cases`, `aligned`, `alignedat`,
+ * `gathered`, `smallmatrix`, `bmatrix`, `vmatrix`, `Vmatrix` and a fenced
+ * matrix) sets fine in both styles — amsmath builds those boxes from their own
+ * alignment context, so a box is enough.
+ *
+ * `split` is the exception: amsmath defines it as a display-only environment
+ * and rejects inner math outright (`\ifinner` → `\@badmath`).  A `\hbox`
+ * is always inner math, in both `$...$` and `\displaystyle $...$`, so the
+ * engine runs and refuses the entry while still measuring everything else.
+ * The record keeps the engine's own message as `status: "unsupported"`.
+ */
+const UNMEASURABLE_IN_BOX = new Map([
+  [
+    "split",
+    "Package amsmath Error: \\begin{split} won't work here. " +
+      "(amsmath rejects `split` in inner math, and a box is always inner math, in both `$...$` and `\\displaystyle $...$`)",
+  ],
+]);
+
 /** Build a .tex document that typeouts box metrics for every corpus entry. */
 function buildTexDocument(corpus) {
   const lines = [
@@ -459,12 +520,9 @@ function buildTexDocument(corpus) {
   ];
 
   for (const formula of corpus.formulas) {
-    // Skip environments (matrix/cases/aligned/...) — they cannot be placed
-    // inside `\hbox{$...$}` because their internal alignment separators (`&`,
-    // `\\`) need the alignment context TeX provides only inside display math.
-    // These are still covered by VuTeX's own layout tests; the box-metrics
-    // oracle focuses on inline-expressible forms.
-    if (/\\begin\{/.test(formula.tex)) continue;
+    // Only entries the engine structurally refuses are skipped; a box gives
+    // every amsmath alignment environment the context it needs.
+    if (UNMEASURABLE_IN_BOX.has(formula.id)) continue;
 
     const texEscaped = escapeTexForHbox(formula.tex);
     // Inline
@@ -912,7 +970,6 @@ function main() {
     // directory and a non-zero exit is expected.
     const assemblies = new Map(); // key = "<corpus_id>|<inline|display>"
     for (const formula of corpus.formulas) {
-      if (/\\begin\{/.test(formula.tex)) continue;
       if (!degreeParts(formula.tex)) continue;
       for (const displayMode of [false, true]) {
         const mode = displayMode ? "display" : "inline";
@@ -964,8 +1021,17 @@ function main() {
           scriptPositions,
           delimiterSize,
         );
-        if (rec) records.push(rec);
-        else missingKeys.push(key);
+        if (rec) {
+          records.push(rec);
+          continue;
+        }
+        const rejected = UNMEASURABLE_IN_BOX.get(formula.id);
+        if (rejected) {
+          records.push(recordUnsupported(formula, displayMode, rejected, COMMAND, engineVersion));
+        }
+        else {
+          missingKeys.push(key);
+        }
       }
     }
 
