@@ -966,19 +966,6 @@ fn vutex_stretched_delimiters_match_the_latex_delimiter_size() {
         let glyph = &fences[0].2;
         let em = REFERENCE_BASE_SIZE_PX;
         let extent = (glyph.metrics.height + glyph.metrics.depth).to_f64() / em;
-        if record.corpus_id == "fenced-norm" {
-            // Font-design fact, waived like the radical-degree width: TeX
-            // stretches nothing here (the body is one letter), so the two
-            // engines just report their own base-glyph design — CM's double
-            // bar covers 1.0em while LM Math's covers 1.5em.  Pin the LM Math
-            // design size instead of comparing across fonts.
-            assert!(
-                (1.4..=1.6).contains(&extent),
-                "{label}: LM Math double bar must keep its 1.5em design extent, got {extent:.4}em"
-            );
-            checked += 1;
-            continue;
-        }
         if extent < size * 0.90 {
             failures.push(format!("{label}: under-stretched — vutex={extent:.4}em, latex={size:.4}em"));
         }

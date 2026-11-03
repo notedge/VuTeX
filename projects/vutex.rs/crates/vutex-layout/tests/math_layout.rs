@@ -1537,11 +1537,24 @@ fn delimited_and_matrix_bodies_are_centred_on_the_math_axis() {
         let (__r3, tree, _) = layout_formula_source("\\left(\\frac{a}{b}\\right)", display, default_base_size(display))
             .expect("`\\left(\\frac{a}{b}\\right)` should lay out");
         let metrics = extents(&__r3);
-        let box_centre = (metrics.height - metrics.depth) / 2.0;
-        assert!(
-            (box_centre - axis).abs() < tolerance,
-            "`\\left(\\frac{{a}}{{b}}\\right)` box centre {box_centre} must sit on the axis {axis} (display={display})"
-        );
+
+        // The fence itself is centred on the axis (checked per glyph below).
+        // The group box is only centred when the fence is the tallest element:
+        // TeX accepts a fence up to `\delimiterfactor` short of the body, so a
+        // body that reaches further than its fence on one side legitimately
+        // makes the group box asymmetric.  Coverage is gated separately by
+        // `vutex_stretched_delimiters_match_the_latex_delimiter_size`.
+        let fence_half = {
+            let (_, _, glyph) = glyph_at(&tree, '(');
+            (glyph.metrics.height + glyph.metrics.depth).to_f64() / 2.0
+        };
+        if metrics.height <= fence_half && metrics.depth <= fence_half {
+            let box_centre = (metrics.height - metrics.depth) / 2.0;
+            assert!(
+                (box_centre - axis).abs() < tolerance,
+                "`\\left(\\frac{{a}}{{b}}\\right)` box centre {box_centre} must sit on the axis {axis} (display={display})"
+            );
+        }
 
         // The fraction keeps its own baseline inside the delimiters, so its bar
         // is the same axis landmark the bare fraction uses.

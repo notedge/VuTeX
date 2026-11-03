@@ -496,11 +496,19 @@ fn builtin_font_metrics_from(opentype_data: Option<FontMetricsData>) -> FontMetr
     // Bars are geometry, not letterforms: emit exact rectangles so `vmatrix`
     // (one stroke) and `Vmatrix` (two strokes) stay distinct at every size and
     // a stretched bar keeps its thickness instead of scaling sideways.
-    let bar_variants: &[(f64, f64)] = &[(0.70, 0.30), (1.10, 0.40), (1.60, 0.50), (2.20, 0.60), (3.00, 0.80)];
-    let bar_specs: &[(char, f64, &[f64])] = &[('|', 0.28, &[0.11]), ('‖', 0.40, &[0.10, 0.24])];
-    for &(ch, advance, offsets) in bar_specs {
+    //
+    // The ladder is `cmex10`'s, which the reference engine measures: the base
+    // design is one em (`\vert` at 0.75/0.25) and every stretched size is a
+    // whole number of 0.6em connector pieces (`^^L` / `^^M`), so the extents run
+    // 1.0, 1.2, 1.8, 2.4, 3.0, 3.6.  A stretched piece keeps the thickness of
+    // its own design: 0.3333em for a single bar and 0.5556em for a double one,
+    // while the base glyphs advance 0.2778em and 0.5em.
+    let bar_variants: &[(f64, f64)] = &[(0.75, 0.25), (0.60, 0.60), (0.90, 0.90), (1.20, 1.20), (1.50, 1.50), (1.80, 1.80)];
+    let bar_specs: &[(char, f64, f64, &[f64])] =
+        &[('|', 0.2778, 0.3333, &[0.11]), ('‖', 0.5000, 0.5556, &[0.10, 0.24])];
+    for &(ch, base_advance, stretched_advance, offsets) in bar_specs {
         let base_metrics = GlyphMetrics {
-            width: Fixed::from_f64(advance),
+            width: Fixed::from_f64(base_advance),
             height: Fixed::from_f64(bar_variants[0].0),
             depth: Fixed::from_f64(bar_variants[0].1),
             // Synthetic fixture: bars are geometry, not font glyphs.
@@ -516,6 +524,7 @@ fn builtin_font_metrics_from(opentype_data: Option<FontMetricsData>) -> FontMetr
                 font_family: family.clone(),
                 style: FontStyle::Math,
             };
+            let advance = if index == 0 { base_advance } else { stretched_advance };
             data.glyphs.insert(
                 variant_key.clone(),
                 GlyphMetrics {

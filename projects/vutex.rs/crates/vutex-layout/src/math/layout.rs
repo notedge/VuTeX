@@ -318,6 +318,20 @@ const ARRAY_STRUT_BASELINE_SKIP_EM: f64 = 1.2;
 const ARRAY_STRUT_ABOVE_FRACTION: f64 = 0.7;
 const ARRAY_STRUT_BELOW_FRACTION: f64 = 0.3;
 
+/// `\delimiterfactor` = 901 (TeX's default).
+///
+/// Appendix G lets a delimiter be up to 9.9% shorter than the extent the body
+/// requires.  The factor exists so a font's coarse ladder of prepared sizes
+/// does not force a jump to the next design over a few thousandths of an em.
+const DELIMITER_FACTOR: f64 = 0.901;
+
+/// `\delimitershortfall` = 5pt, in em of the 10pt design size.
+///
+/// The shortfall is an absolute dimension in TeX, so at the 10pt design size it
+/// is exactly half an em.  Every geometry here is compared at that reference
+/// size, so the em fraction is the value the oracle records.
+const DELIMITER_SHORTFALL_EM: f64 = 0.5;
+
 /// The `(\strut height, \strut depth)` of an `\arraystretch` value, in em.
 pub(crate) fn array_strut(arraystretch: f64) -> (f64, f64) {
     (
@@ -2651,28 +2665,43 @@ impl LayoutEngine {
         // around the axis. Summing `height + depth` instead under-sizes every
         // asymmetric body such as a fraction, whose extents sit mostly below the
         // axis once the denominator is packed.
+        //
+        // Appendix G then accepts the smallest available design at
+        // `max(0.901 × required, required − \delimitershortfall)`, never below
+        // the font's own base design (one em).  Both terms are TeX's, not
+        // presets: `\delimiterfactor` trades a little coverage for a smaller
+        // step, and `\delimitershortfall` bounds the absolute slack.
         let delta = (content_layout.height() - axis_height).max(content_layout.depth() + axis_height);
-        let target_height = (delta * Fixed::from_f64(2.0)).max(size);
+        let required = delta * Fixed::from_f64(2.0);
+        let minimum = (required * Fixed::from_f64(DELIMITER_FACTOR))
+            .max(required - size * Fixed::from_f64(DELIMITER_SHORTFALL_EM))
+            .max(size);
 
         let mut children = Vec::new();
 
         if let Some(left_key) = left {
-            children.push(self.construct_delimiter(left_key, target_height, size, axis_height, left_span)?);
+            children.push(self.construct_delimiter(left_key, minimum, size, axis_height, left_span)?);
         }
 
         children.push(content_layout);
 
         if let Some(right_key) = right {
-            children.push(self.construct_delimiter(right_key, target_height, size, axis_height, right_span)?);
+            children.push(self.construct_delimiter(right_key, minimum, size, axis_height, right_span)?);
         }
 
         Ok(self.pack_hbox(children, None))
     }
 
+    /// Build one delimiter design that covers `minimum`.
+    ///
+    /// `minimum` is already TeX's acceptance threshold (see `layout_fence`), so
+    /// the search below is the same one `make_delimiter` performs: the smallest
+    /// prepared variant whose measured extent covers the target, then an
+    /// assembly, then the base glyph.
     fn construct_delimiter(
         &self,
         key: &GlyphKey,
-        target_height: Fixed,
+        minimum: Fixed,
         size: Fixed,
         axis_height: Fixed,
         span: Option<SourceSpan>,
@@ -2703,7 +2732,7 @@ impl LayoutEngine {
             .as_ref()
             .filter(|_| !is_declared_bar)
             .and_then(|facts| self.facts_glyph(key).map(|glyph| (facts, glyph)))
-            .and_then(|(facts, glyph)| facts.variants().stretch(glyph, StretchAxis::Vertical, target_height / size))
+            .and_then(|(facts, glyph)| facts.variants().stretch(glyph, StretchAxis::Vertical, minimum / size))
         {
             match self.draw_stretch_plan(&plan, &construction.variants, &construction.components, size, span)? {
                 Some(node) => return Ok(self.center_delimiter(node, axis_height)),
@@ -2724,7 +2753,7 @@ impl LayoutEngine {
         for variant in &construction.variants {
             let metrics = self.font_system.get_metrics(&variant.glyph)?;
             let extent = (metrics.height + metrics.depth) * size;
-            if extent >= target_height {
+            if extent >= minimum {
                 let glyph = self.layout_scaled_symbol(&variant.glyph, size, span)?;
                 return Ok(self.center_delimiter(glyph, axis_height));
             }
