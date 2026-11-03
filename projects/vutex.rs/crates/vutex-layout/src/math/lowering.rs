@@ -117,7 +117,7 @@ fn formula_node(expression: &MathExpression, face: Option<FontStyle>, diagnostic
             let _ = wide;
             FormulaNode::Accent {
                 base: Box::new(formula_node(base, face, diagnostics)),
-                accent: GlyphKey::from_char(*mark, None, FontStyle::Normal),
+                accent: GlyphKey::from_char(accent_mark(*mark), None, FontStyle::Normal),
                 span: span_of(*span),
             }
         }
@@ -188,6 +188,20 @@ fn role_for(class: MathClass) -> SymbolRole {
         MathClass::LargeOperator => SymbolRole::LargeOperator,
         MathClass::Inner => SymbolRole::Inner,
         MathClass::Identifier | MathClass::Number | MathClass::Ordinary | MathClass::Space => SymbolRole::Ordinary,
+    }
+}
+
+/// Glyph an authored accent mark lays out as.
+///
+/// `\vec` and `\overrightarrow` both arrive as `→`, a spacing arrow with a full
+/// em of advance and ink that reaches down to the baseline. A mark has to be a
+/// zero-advance glyph whose ink sits above the nucleus, which is exactly the
+/// combining arrow. Every other mark the importer emits is already the accent
+/// design, so it passes through unchanged.
+fn accent_mark(mark: char) -> char {
+    match mark {
+        '→' => '\u{20D7}',
+        other => other,
     }
 }
 

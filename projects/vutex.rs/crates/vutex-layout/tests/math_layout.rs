@@ -1332,45 +1332,36 @@ fn bar_accent_is_a_rule_covering_the_base() {
     );
 }
 
-/// Glyph accents clear the base ink by `FractionRuleThickness`, the MATH
-/// table's `\defaultrulethickness`, and not by the much larger overbar gap.
+/// An accent mark keeps the clearance the font drew it with.
 ///
-/// `OverbarVerticalGap` is 0.12 em and belongs to `\bar`, so `\hat` and
-/// `\tilde` floated 1.68 px above the letter at 14 px. `FractionRuleThickness`
-/// is 0.039993 em, a 0.5599 px clearance.
-///
-/// The clearance only holds while the base stays under
-/// `FlattenedAccentBaseHeight` (0.664 em here).  A taller base such as `f`
-/// (0.705 em) flattens the accent onto it, so the ink overlaps by
-/// `base_height - FlattenedAccentBaseHeight` instead.
+/// TeX shifts the nucleus down by the x-height font parameter, published here as
+/// `AccentBaseHeight`, and lets the accent keep its own glyph height: `\hat{f}`
+/// measures 0.958 em in the reference engine, the hat's 0.694 em plus `f`'s
+/// 0.694 em minus the 0.431 em shift. The embedded font draws its marks for text
+/// use, so the mark's ink already floats `ink bottom - AccentBaseHeight` above the
+/// baseline it was drawn for. That distance is the clearance, and it does not
+/// depend on the base height.
 #[test]
-fn glyph_accents_clear_the_base_ink_by_the_rule_thickness() {
+fn glyph_accents_keep_the_fonts_design_clearance() {
     let system = builtin_font_metrics();
-    let thickness = system.get_math_constant("default", MathConstant::FractionRuleThickness).expect("font constant").to_f64();
-    let flattened =
-        system.get_math_constant("default", MathConstant::FlattenedAccentBaseHeight).expect("font constant").to_f64();
+    let accent_base = system.get_math_constant("default", MathConstant::AccentBaseHeight).expect("font constant").to_f64();
 
     for (source, accent_char, base_char) in [("\\hat{f}", 'ˆ', 'f'), ("\\tilde{x}", '˜', 'x')] {
-        let (_, tree, _) = layout_formula_source(source, false, default_base_size(false)).expect(source);
-        let (_, accent_y, accent) = glyph_at(&tree, accent_char);
-        let (_, base_y, base) = glyph_at(&tree, base_char);
+        let (result, tree, _) = layout_formula_source(source, false, default_base_size(false)).expect(source);
+        let (_, _, accent) = glyph_at(&tree, accent_char);
+        let (_, _, base) = glyph_at(&tree, base_char);
 
         let accent_ink = accent.path_data.as_deref().expect("the accent must paint the font outline");
-        let base_ink = base.path_data.as_deref().expect("the base must paint its own outline");
-        let (_, _, accent_min_y, _) = ink_bounds(accent_ink);
-        let (_, _, _, base_max_y) = ink_bounds(base_ink);
+        let (_, _, accent_min_y, accent_max_y) = ink_bounds(accent_ink);
 
-        let ink_bottom = accent_y - accent_min_y * accent.size.to_f64();
-        let ink_top = base_y - base_max_y * base.size.to_f64();
-        let clearance = ink_top - ink_bottom;
         let size = accent.size.to_f64();
         let base_height = base.metrics.height.to_f64();
-        let flattened_limit = flattened * size;
-        let expected =
-            if base_height > flattened_limit { (thickness + flattened) * size - base_height } else { thickness * size };
+        let accent_ink_height = (accent_max_y - accent_min_y) * size;
+        let clearance = result.metrics.height.to_f64() - base_height - accent_ink_height;
+        let expected = (accent_min_y - accent_base) * size;
         assert!(
             (clearance - expected).abs() < 1e-3,
-            "`{source}` accent ink must sit {expected} from the base ink at base height {base_height}, not {clearance}"
+            "`{source}` accent ink must sit {expected} above the base ink at base height {base_height}, not {clearance}"
         );
     }
 

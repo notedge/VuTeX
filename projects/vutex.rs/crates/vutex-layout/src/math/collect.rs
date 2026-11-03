@@ -299,13 +299,26 @@ pub(crate) fn scale_svg_path_d(raw: &str, scale_x: f64, scale_y: f64) -> String 
     out
 }
 
+/// Horizontal extent `(min_x, max_x)` of an em-unit outline relative to the
+/// glyph origin.
+pub(crate) fn path_horizontal_extent(raw: &str) -> (f64, f64) {
+    path_extent(raw).0
+}
+
 /// Vertical extent `(min_y, max_y)` of an em-unit outline whose y axis grows
 /// upward from the baseline.
 ///
 /// Used to keep a stretched outline's metrics in step with the geometry it
 /// actually paints, so the layout box never hides ink below the baseline.
 pub(crate) fn path_vertical_extent(raw: &str) -> (f64, f64) {
+    path_extent(raw).1
+}
+
+/// `((min_x, max_x), (min_y, max_y))` of an em-unit outline.
+fn path_extent(raw: &str) -> ((f64, f64), (f64, f64)) {
     let chars: Vec<char> = raw.chars().collect();
+    let mut min_x = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
     let mut min_y = f64::INFINITY;
     let mut max_y = f64::NEG_INFINITY;
     let mut is_x = true;
@@ -335,7 +348,11 @@ pub(crate) fn path_vertical_extent(raw: &str) -> (f64, f64) {
             }
             let num_str: String = chars[start..i].iter().collect();
             if let Ok(v) = num_str.parse::<f64>() {
-                if !is_x {
+                if is_x {
+                    min_x = min_x.min(v);
+                    max_x = max_x.max(v);
+                }
+                else {
                     min_y = min_y.min(v);
                     max_y = max_y.max(v);
                 }
@@ -347,5 +364,10 @@ pub(crate) fn path_vertical_extent(raw: &str) -> (f64, f64) {
         i += 1;
     }
 
-    if min_y.is_finite() { (min_y, max_y) } else { (0.0, 0.0) }
+    if min_x.is_finite() && min_y.is_finite() {
+        ((min_x, max_x), (min_y, max_y))
+    }
+    else {
+        ((0.0, 0.0), (0.0, 0.0))
+    }
 }

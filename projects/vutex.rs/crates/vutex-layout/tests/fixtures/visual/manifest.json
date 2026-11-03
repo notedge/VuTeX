@@ -326,11 +326,11 @@
         64
       ],
       "svgViewport": [
-        11.2446,
-        18.7484
+        11.3304,
+        19.9064
       ],
-      "bytes": 457,
-      "sha256": "348848c78a2089209fe81c8ce4be5d3eb9efdebc464e01b43dbf791f62530398"
+      "bytes": 471,
+      "sha256": "e621c0aed6882d583e6a38dcd55315dd10bf938b7fc1762f710ebca3a96e03a2"
     },
     "accent-hat-display": {
       "tex": "\\hat{f}",
@@ -341,11 +341,11 @@
         64
       ],
       "svgViewport": [
-        11.2446,
-        18.7484
+        11.3304,
+        19.9064
       ],
-      "bytes": 457,
-      "sha256": "348848c78a2089209fe81c8ce4be5d3eb9efdebc464e01b43dbf791f62530398"
+      "bytes": 471,
+      "sha256": "e621c0aed6882d583e6a38dcd55315dd10bf938b7fc1762f710ebca3a96e03a2"
     },
     "accent-bar-inline": {
       "tex": "\\bar{AB}",
@@ -536,11 +536,11 @@
         64
       ],
       "svgViewport": [
-        17.2966,
-        17.5043
+        9.0319,
+        12.4238
       ],
-      "bytes": 496,
-      "sha256": "4d62ed7f4c26726b706d300d70127e3ffefe5979a436d6e92c5e36ddcc520009"
+      "bytes": 426,
+      "sha256": "a07515b7d9e4bb30d6d9259e0b8d4d61d8cf62712efe9b13d9203745ad8d399a"
     },
     "accent-vec-display": {
       "tex": "\\vec{v}",
@@ -551,11 +551,11 @@
         64
       ],
       "svgViewport": [
-        17.2966,
-        17.5043
+        9.0319,
+        12.4238
       ],
-      "bytes": 496,
-      "sha256": "4d62ed7f4c26726b706d300d70127e3ffefe5979a436d6e92c5e36ddcc520009"
+      "bytes": 426,
+      "sha256": "a07515b7d9e4bb30d6d9259e0b8d4d61d8cf62712efe9b13d9203745ad8d399a"
     },
     "accent-tilde-inline": {
       "tex": "\\tilde{a}",
@@ -567,10 +567,10 @@
       ],
       "svgViewport": [
         9.4639,
-        10.3757
+        11.4638
       ],
-      "bytes": 412,
-      "sha256": "1042bc789e2be09e4faac00d4b3741ebcd5a10ed6df88dceee085cfd81fb8a3f"
+      "bytes": 407,
+      "sha256": "791bc5b0cf145014ae517a64389dbe65abd51993d47fae1a24acde5f062a3b0a"
     },
     "accent-tilde-display": {
       "tex": "\\tilde{a}",
@@ -582,10 +582,10 @@
       ],
       "svgViewport": [
         9.4639,
-        10.3757
+        11.4638
       ],
-      "bytes": 412,
-      "sha256": "1042bc789e2be09e4faac00d4b3741ebcd5a10ed6df88dceee085cfd81fb8a3f"
+      "bytes": 407,
+      "sha256": "791bc5b0cf145014ae517a64389dbe65abd51993d47fae1a24acde5f062a3b0a"
     },
     "accent-dot-inline": {
       "tex": "\\dot{x}",
@@ -597,10 +597,10 @@
       ],
       "svgViewport": [
         10.1519,
-        10.5837
+        11.5598
       ],
-      "bytes": 403,
-      "sha256": "d2e5e24375014dfeedf8bd1b37946e489982622df992b69ccf57fadcc719f77f"
+      "bytes": 408,
+      "sha256": "3d50567ad3704fe59a546d6f796d809798c8f93be13616ed14dbccebfbddb930"
     },
     "accent-dot-display": {
       "tex": "\\dot{x}",
@@ -612,10 +612,10 @@
       ],
       "svgViewport": [
         10.1519,
-        10.5837
+        11.5598
       ],
-      "bytes": 403,
-      "sha256": "d2e5e24375014dfeedf8bd1b37946e489982622df992b69ccf57fadcc719f77f"
+      "bytes": 408,
+      "sha256": "3d50567ad3704fe59a546d6f796d809798c8f93be13616ed14dbccebfbddb930"
     },
     "accent-ddot-inline": {
       "tex": "\\ddot{y}",
@@ -626,11 +626,11 @@
         64
       ],
       "svgViewport": [
-        9.2888,
-        13.5126
+        9.3745,
+        14.6705
       ],
-      "bytes": 466,
-      "sha256": "7546656a8ab4fe3b1ab4760a39e62cafe7e6179b1a987ea2b73e95ef09fc8c39"
+      "bytes": 462,
+      "sha256": "8377b3c3f67572f8a8f0cd9d19f40171c975dc683d313a0f9264e8bed095526b"
     },
     "accent-ddot-display": {
       "tex": "\\ddot{y}",
@@ -641,11 +641,11 @@
         64
       ],
       "svgViewport": [
-        9.2888,
-        13.5126
+        9.3745,
+        14.6705
       ],
-      "bytes": 466,
-      "sha256": "7546656a8ab4fe3b1ab4760a39e62cafe7e6179b1a987ea2b73e95ef09fc8c39"
+      "bytes": 462,
+      "sha256": "8377b3c3f67572f8a8f0cd9d19f40171c975dc683d313a0f9264e8bed095526b"
     },
     "accent-widehat-inline": {
       "tex": "\\widehat{CD}",
@@ -657,10 +657,10 @@
       ],
       "svgViewport": [
         27.9933,
-        16.5052
+        17.5774
       ],
-      "bytes": 761,
-      "sha256": "32671a2495c07b235ac399440047b849e2ca6459ba378f364be889e72cb8c0d1"
+      "bytes": 792,
+      "sha256": "76b8b83e6a9f15be9a5761b74df9c84c08a8d6a0da6b9a0db8da91d6ddfbc2bd"
     },
     "accent-widehat-display": {
       "tex": "\\widehat{CD}",
@@ -672,10 +672,10 @@
       ],
       "svgViewport": [
         27.9933,
-        16.5052
+        17.5774
       ],
-      "bytes": 761,
-      "sha256": "32671a2495c07b235ac399440047b849e2ca6459ba378f364be889e72cb8c0d1"
+      "bytes": 792,
+      "sha256": "76b8b83e6a9f15be9a5761b74df9c84c08a8d6a0da6b9a0db8da91d6ddfbc2bd"
     },
     "radical-degree-sum-inline": {
       "tex": "\\sqrt[3]{x+y}",
@@ -1797,10 +1797,10 @@
       ],
       "svgViewport": [
         9.4639,
-        11.6397
+        12.0878
       ],
-      "bytes": 442,
-      "sha256": "2130ab0f0e7735c319a685a7106b51f6db685bba2b827a7b242e2153aa58d163"
+      "bytes": 453,
+      "sha256": "b76f0f0651833f337ae5d9dcdc72f5a0450b61cd29525901db61c234cf178af1"
     },
     "accent-breve-display": {
       "tex": "\\breve{a}",
@@ -1812,10 +1812,10 @@
       ],
       "svgViewport": [
         9.4639,
-        11.6397
+        12.0878
       ],
-      "bytes": 442,
-      "sha256": "2130ab0f0e7735c319a685a7106b51f6db685bba2b827a7b242e2153aa58d163"
+      "bytes": 453,
+      "sha256": "b76f0f0651833f337ae5d9dcdc72f5a0450b61cd29525901db61c234cf178af1"
     },
     "accent-check-inline": {
       "tex": "\\check{a}",
@@ -1827,10 +1827,10 @@
       ],
       "svgViewport": [
         9.4639,
-        11.7037
+        12.1198
       ],
-      "bytes": 454,
-      "sha256": "69919d5b505d65f172e3d6604e1da1f08ca7863fb070531c1895e9c5836de8b4"
+      "bytes": 459,
+      "sha256": "868bd9db709cfa700397748c36cad7ae76c617311b51c6f3bf32eaf731028f50"
     },
     "accent-check-display": {
       "tex": "\\check{a}",
@@ -1842,10 +1842,10 @@
       ],
       "svgViewport": [
         9.4639,
-        11.7037
+        12.1198
       ],
-      "bytes": 454,
-      "sha256": "69919d5b505d65f172e3d6604e1da1f08ca7863fb070531c1895e9c5836de8b4"
+      "bytes": 459,
+      "sha256": "868bd9db709cfa700397748c36cad7ae76c617311b51c6f3bf32eaf731028f50"
     },
     "accent-overrightarrow-inline": {
       "tex": "\\overrightarrow{AB}",
@@ -1857,10 +1857,10 @@
       ],
       "svgViewport": [
         26.5072,
-        21.5472
+        17.5954
       ],
-      "bytes": 812,
-      "sha256": "717fa016000c56b83873e0090f749be3fda787161ac2405f5cca1329060a79b9"
+      "bytes": 726,
+      "sha256": "8af305f90fb0cccfd7de567b71456b59096d25b5fa2fd995c88564b646b740d8"
     },
     "accent-overrightarrow-display": {
       "tex": "\\overrightarrow{AB}",
@@ -1872,10 +1872,10 @@
       ],
       "svgViewport": [
         26.5072,
-        21.5472
+        17.5954
       ],
-      "bytes": 812,
-      "sha256": "717fa016000c56b83873e0090f749be3fda787161ac2405f5cca1329060a79b9"
+      "bytes": 726,
+      "sha256": "8af305f90fb0cccfd7de567b71456b59096d25b5fa2fd995c88564b646b740d8"
     }
   }
 }

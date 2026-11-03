@@ -2848,55 +2848,37 @@ impl LayoutEngine {
 
         // TeX aligns the accent's ink centre with the base's top accent
         // attachment point published by the font's MATH table, so the accent
-        // left edge sits at `attachment - accent_width / 2` measured from the
-        // base's own left edge. Glyphs without a MATH entry fall back to plain
+        // left edge sits at `attachment - accent_ink_centre` measured from the
+        // base's own left edge. The ink centre, not the advance centre, is what
+        // the reader sees: a zero-advance mark like `→` paints half an em to the
+        // right of its origin, and centring its advance box would push the mark
+        // off the letter. Glyphs without a MATH entry fall back to plain
         // centring.
         let centered_accent = (total_width - accent_layout.width()) / Fixed::from_f64(2.0);
+        let accent_center = accent_ink_center(&accent_layout).unwrap_or(accent_layout.width() / Fixed::from_f64(2.0));
         let base_offset = (total_width - base_layout.width()) / Fixed::from_f64(2.0);
         let accent_layout = match self.top_accent_offset(&base_layout) {
             Some(attachment) => {
-                let left = base_offset + attachment - accent_layout.width() / Fixed::from_f64(2.0);
+                let left = base_offset + attachment - accent_center;
                 self.pack_hbox(vec![LayoutNode::Kern(left), accent_layout], Some(total_width))
             }
             None => self.pack_hbox(vec![LayoutNode::Kern(centered_accent), accent_layout], Some(total_width)),
         };
 
-        // The embedded font draws its modifier marks for text use, so their ink
-        // sits high above their own baseline (`ˆ` starts at 0.516 em). Stacking
-        // the mark's baseline on the base's ink top would therefore leave it
-        // floating most of an em above the letter. Replace the accent box's
-        // extents with the ink it really paints, plus the gap underneath, so the
-        // VBox below lands the ink bottom at that gap above the base's height.
-        // TeX clears an accent glyph from the nucleus by the default rule
-        // thickness, which the MATH table publishes as
-        // `FractionRuleThickness`, while `\bar` keeps the overbar gap in
+        // TeX shifts the nucleus down by the x-height font parameter, which the
+        // MATH table publishes as `AccentBaseHeight`, and lets the accent keep
+        // its own glyph height. The embedded font draws its modifier marks for
+        // text use, so their ink floats most of an em above their own baseline
+        // (`ˆ` starts at 0.516 em); replacing the accent box's extents with the
+        // ink it really paints puts the mark where the reference does, instead
+        // of a baseline's worth above it. `\bar` keeps its overbar gap in
         // `layout_overbar`.
-        let clearance = self.math_constant(MathConstant::FractionRuleThickness, size).unwrap_or(Fixed::ZERO);
-        let flat_limit = self.math_constant(MathConstant::AccentBaseHeight, size);
-        let flattened_limit = self.math_constant(MathConstant::FlattenedAccentBaseHeight, size);
-        let gap = Self::accent_gap(base_layout.height(), clearance, flat_limit, flattened_limit);
-        let accent_layout = fit_accent_extents(accent_layout, gap);
+        let accent_base = self.math_constant(MathConstant::AccentBaseHeight, size).unwrap_or(Fixed::ZERO);
+        let accent_layout = fit_accent_extents(accent_layout, accent_base);
 
         let base_hbox = self.pack_hbox(vec![LayoutNode::Kern(base_offset), base_layout], Some(total_width));
 
         Ok(self.pack_vbox(vec![accent_layout, base_hbox], Alignment::Center))
-    }
-
-    /// Vertical gap between the base's ink top and the accent's ink bottom.
-    ///
-    /// `AccentBaseHeight` is the tallest base an accent may sit on flat, so a
-    /// taller nucleus is raised until the accent clears it by `clearance`.
-    /// `FlattenedAccentBaseHeight` is the height past which an accent must not
-    /// grow the formula any further: above it the accent stays at that height
-    /// and its ink overlaps the base's upper region instead of following the
-    /// base up. A font that publishes only the flat limit caps the accent there.
-    fn accent_gap(base_height: Fixed, clearance: Fixed, flat_limit: Option<Fixed>, flattened_limit: Option<Fixed>) -> Fixed {
-        let flattened = flattened_limit.or(flat_limit);
-        let rise = match flattened {
-            Some(flattened) if base_height > flattened => flattened,
-            _ => base_height,
-        };
-        rise + clearance - base_height
     }
 
     /// Lay out `\bar` / `\overline` as a rule over the base.
@@ -2963,31 +2945,47 @@ impl LayoutEngine {
 /// The box that carries an accent is a plain HBox, so its extents come from the
 /// mark's advance metrics. Those metrics describe the whole em box, not where
 /// the ink actually sits, and the embedded font draws its marks high above the
-/// baseline. Rewriting the extents to `ink top` and `gap` below the ink bottom
-/// makes the enclosing VBox land the mark's ink at that gap above the base
+/// baseline. Rewriting the extents to `ink top` and the baseline offset below
+/// makes the enclosing VBox land the mark's ink at the height TeX asks for
 /// instead of floating a baseline's worth above it.
 ///
-/// `gap` is the clearance the MATH constants call for, and it is negative for an
-/// accent that has flattened against a tall base: then the VBox lets the mark's
-/// ink overlap the base by exactly that much.
+/// TeX shifts the nucleus down by the x-height font parameter and lets the accent
+/// keep its own height, so the box under the mark contributes `-AccentBaseHeight`
+/// and the VBox measures `ink top + height(nucleus) - AccentBaseHeight`. The
+/// reference engine applies that shift whatever the nucleus height is: `\hat{f}`
+/// measures 0.958 em there, which is the hat's 0.694 em plus `f`'s 0.694 em minus
+/// the 0.431 em shift. Taking the nucleus height as the shift instead would
+/// collapse that formula to the accent's own height.
 ///
 /// A glyph the font ships no outline for keeps its measured extents, so the
 /// synthetic mark still stacks predictably.
-fn fit_accent_extents(accent: LayoutNode, gap: Fixed) -> LayoutNode {
+fn fit_accent_extents(accent: LayoutNode, accent_base: Fixed) -> LayoutNode {
     let LayoutNode::HBox(mut hbox) = accent
     else {
         return accent;
     };
-    let Some((ink_bottom, ink_top)) = hbox.children.iter().find_map(accent_ink_extents)
+    let Some((_, ink_top)) = hbox.children.iter().find_map(accent_ink_extents)
     else {
         return LayoutNode::HBox(hbox);
     };
     hbox.height = ink_top;
-    // The ink starts above the accent's own baseline, so this depth is usually
-    // negative. The VBox still sees the ink's height plus the gap as the accent's
-    // line height, and the base follows it.
-    hbox.depth = gap - ink_bottom;
+    hbox.depth = Fixed::ZERO - accent_base;
     LayoutNode::HBox(hbox)
+}
+
+/// Horizontal centre of the ink the first glyph inside `node` paints, in pixels
+/// from the glyph origin, or `None` when that glyph has no outline to measure.
+fn accent_ink_center(node: &LayoutNode) -> Option<Fixed> {
+    match node {
+        LayoutNode::Glyph(glyph) => {
+            let path = glyph.path_data.as_deref()?;
+            let (left, right) = super::collect::path_horizontal_extent(path);
+            let size = glyph.size.to_f64();
+            Some(Fixed::from_f64((left + right) / 2.0 * size))
+        }
+        LayoutNode::HBox(hbox) => hbox.children.iter().find_map(accent_ink_center),
+        _ => None,
+    }
 }
 
 /// `(ink bottom, ink top)` of the first glyph inside `node`, in pixels above the
