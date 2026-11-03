@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use super::formula::{Fixed, GlyphKey};
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum MathConstant {
     ScriptPercentScaleDown,
     ScriptScriptPercentScaleDown,

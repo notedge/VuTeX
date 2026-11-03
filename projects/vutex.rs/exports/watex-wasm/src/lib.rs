@@ -7,7 +7,7 @@ mod html;
 mod types;
 
 pub use formula::{measure, render, render_html, render_mathml, render_svg};
-pub use types::{DisplayMode, FormulaDiagnostic, FormulaMetrics, FormulaRender, RenderOptions};
+pub use types::{ConformanceMode, DisplayMode, FormulaDiagnostic, FormulaMetrics, FormulaRender, RenderOptions};
 
 use wasm_bindgen::prelude::*;
 

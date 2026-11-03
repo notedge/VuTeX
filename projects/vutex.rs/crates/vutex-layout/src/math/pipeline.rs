@@ -12,7 +12,7 @@ use vutex_types::{
 };
 
 use super::{
-    LayoutEngine, LayoutNode,
+    FontConformance, LayoutEngine, LayoutNode,
     lowering::{is_tex_formula, formula_tree},
 };
 
@@ -56,13 +56,29 @@ pub fn layout_formula_for(
     base_size: f64,
     family: MathFontFamily,
 ) -> MathResult<(FormulaLayoutResult, LayoutNode, Vec<Diagnostic>)> {
+    layout_formula_for_with_conformance(formula, base_size, family, FontConformance::default())
+}
+
+/// Lay out one `notedown-ir` formula under an explicit G5 conformance mode.
+///
+/// [`FontConformance::Strict`] fails the layout the moment any font fallback
+/// is consumed (gate G5); the default production mode keeps the fallbacks as
+/// countable warning diagnostics on the result.
+pub fn layout_formula_for_with_conformance(
+    formula: &MathFormula,
+    base_size: f64,
+    family: MathFontFamily,
+    conformance: FontConformance,
+) -> MathResult<(FormulaLayoutResult, LayoutNode, Vec<Diagnostic>)> {
     let (tree, mut diagnostics) = lower_formula_tree(formula)?;
     let style = match formula.display {
         MathDisplay::Display => MathStyle::Display,
         MathDisplay::Inline => MathStyle::Text,
     };
     let font_system = builtin_font_metrics_for(family);
-    let engine = LayoutEngine::with_facts(font_system, MathFontFacts::for_family(family)).with_base_size(base_size);
+    let engine = LayoutEngine::with_facts(font_system, MathFontFacts::for_family(family))
+        .with_base_size(base_size)
+        .with_font_conformance(conformance);
     let nodes: &[vutex_types::math::FormulaNode] = match &tree.root {
         vutex_types::math::FormulaNode::Sequence(items) => items.as_slice(),
         other => std::slice::from_ref(other),
@@ -92,9 +108,21 @@ pub fn layout_formula_source_for(
     base_size: f64,
     family: MathFontFamily,
 ) -> MathResult<(FormulaLayoutResult, LayoutNode, Vec<Diagnostic>)> {
+    layout_formula_source_with_conformance(source, display, base_size, family, FontConformance::default())
+}
+
+/// Lower and lay out an authored TeX formula string under an explicit G5
+/// conformance mode; see [`layout_formula_for_with_conformance`].
+pub fn layout_formula_source_with_conformance(
+    source: &str,
+    display: bool,
+    base_size: f64,
+    family: MathFontFamily,
+    conformance: FontConformance,
+) -> MathResult<(FormulaLayoutResult, LayoutNode, Vec<Diagnostic>)> {
     let formula = notedown_formats::lower_tex_formula_source(
         source,
         if display { MathDisplay::Display } else { MathDisplay::Inline },
     );
-    layout_formula_for(&formula, base_size, family)
+    layout_formula_for_with_conformance(&formula, base_size, family, conformance)
 }

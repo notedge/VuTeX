@@ -12,6 +12,13 @@ export type RenderOptions = {
     fontSize?: number;
     /** Math font family. Defaults to `"xits-math"` — the builtin embedded face. */
     fontFamily?: FontFamily;
+    /**
+     * G5 font conformance mode. `"strict"` fails the render when any font
+     * fallback (missing MATH constant, glyph variant, assembly piece, italic
+     * correction or accent attachment) is consumed; the default keeps each
+     * fallback as a countable warning diagnostic.
+     */
+    fontConformance?: "allow-fallbacks" | "strict";
 };
 
 export type FormulaMetrics = {

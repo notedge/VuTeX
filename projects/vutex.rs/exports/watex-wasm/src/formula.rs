@@ -1,4 +1,4 @@
-use vutex_layout::math::{LayoutNode, default_base_size, layout_formula_source_for};
+use vutex_layout::math::{FontConformance, LayoutNode, default_base_size, layout_formula_source_with_conformance};
 use vutex_render_svg::math::{render_formula_result, render_mathml_result};
 use vutex_text::math::MathFontFamily;
 use vutex_types::{
@@ -180,7 +180,8 @@ fn layout_formula(
     let display = options.display_mode == DisplayMode::Block;
     let base = options.font_size.unwrap_or_else(|| default_base_size(display));
     let family = embedded_family(options.font_family).expect("entries reject unsupported families before layout");
-    layout_formula_source_for(source, display, base, family)
+    let conformance = options.font_conformance.map(|mode| mode.engine_mode()).unwrap_or(FontConformance::AllowFallbacks);
+    layout_formula_source_with_conformance(source, display, base, family, conformance)
 }
 
 /// Map the host's `fontFamily` choice onto an embedded layout family.

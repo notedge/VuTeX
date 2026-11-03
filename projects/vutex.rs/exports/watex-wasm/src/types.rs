@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use vutex_layout::math::FontConformance;
 use vutex_types::math::MathSemantics;
 
 /// Inline or block formula layout mode.
@@ -48,11 +49,37 @@ pub struct RenderOptions {
     /// `WATEX_UNSUPPORTED_FONT_FAMILY` diagnostic until its font asset ships.
     #[serde(default)]
     pub font_family: Option<FontFamily>,
+    /// G5 font conformance mode: `strict` fails the layout when any font
+    /// fallback (missing MATH constant, glyph variant, assembly piece, italic
+    /// correction or accent attachment) is consumed; the default keeps each
+    /// fallback as a countable warning diagnostic.
+    #[serde(default)]
+    pub font_conformance: Option<ConformanceMode>,
+}
+
+/// G5 font conformance mode selected by the host.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ConformanceMode {
+    /// Fallbacks are allowed and reported as warning diagnostics.
+    AllowFallbacks,
+    /// Any consumed font fallback fails the layout.
+    Strict,
+}
+
+impl ConformanceMode {
+    /// The layout engine's mode matching this host selection.
+    pub fn engine_mode(self) -> FontConformance {
+        match self {
+            Self::AllowFallbacks => FontConformance::AllowFallbacks,
+            Self::Strict => FontConformance::Strict,
+        }
+    }
 }
 
 impl Default for RenderOptions {
     fn default() -> Self {
-        Self { display_mode: DisplayMode::Inline, font_size: None, font_family: None }
+        Self { display_mode: DisplayMode::Inline, font_size: None, font_family: None, font_conformance: None }
     }
 }
 

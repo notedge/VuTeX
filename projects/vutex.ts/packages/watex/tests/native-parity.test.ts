@@ -80,3 +80,18 @@ test("render options reach both backends identically", () => {
     const block = wasm.measureFormula("\\frac{a}{b}", { displayMode: "block" });
     assert.notDeepEqual(inline.metrics, block.metrics, "display mode must change the metrics");
 });
+
+test("strict font conformance renders the corpus cleanly through both backends", () => {
+    // Gate G5 on the host surface: the embedded font publishes every fact the
+    // corpus consumes, so `strict` must render identically to the default
+    // instead of failing — on the real wasm artifact and on native alike.
+    const options = { fontConformance: "strict" as const };
+    for (const source of CORPUS) {
+        const fromWasm = wasm.renderFormula(source, options);
+        const fromNative = nativeRender(native.renderFormula(source, JSON.stringify(options)));
+        assert.deepEqual(fromWasm.metrics, fromNative.metrics, `${source}: strict metrics must agree`);
+        assert.equal(fromWasm.svg, fromNative.svg, `${source}: strict svg must be identical`);
+        const conformanceDiagnostics = fromWasm.diagnostics.filter((d) => d.code.startsWith("vutex.math.conformance."));
+        assert.deepEqual(conformanceDiagnostics, [], `${source}: strict mode must consume only font-published facts`);
+    }
+});

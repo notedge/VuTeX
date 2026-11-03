@@ -50,7 +50,7 @@ jobs:
   # Tectonic snapshot (`latex-status.json`, status=available), so no TeX
   # engine is required on the runner.
   quality-gates:
-    name: quality gates (G1-G4)
+    name: quality gates (G1-G5)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -80,6 +80,12 @@ jobs:
           --test formula_backend_consistency
       - name: G4 cross-backend consistency
         run: cargo test -p vutex-layout --test cross_backend
+      # G5: strict font-conformance mode — the corpus must paint without a
+      # single fallback (missing MATH constant, glyph variant, assembly piece,
+      # italic correction or accent attachment), and the production-mode
+      # ledger must report every substituted value with a structured code.
+      - name: G5 font conformance
+        run: cargo test -p vutex-layout --test font_conformance_gate
       # Error corpus: malformed input must really fail to parse.
       - name: math gate corpus coverage and error records
         run: cargo test -p vutex-layout --test math_gate_corpus

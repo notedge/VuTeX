@@ -1,16 +1,20 @@
 //! Layout tree (boxes, glue, kerns, glyphs) and the layout engine that lowers a
 //! `FormulaNode` tree into it.
 
+use std::cell::RefCell;
+use std::collections::BTreeSet;
 use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
 use vutex_text::math::{FontMetricsSystem, GlyphId, KernCorner, MathFontFacts, StretchAxis, StretchPlan};
+
+use super::conformance::{FontConformance, FontFallback};
 use vutex_types::{
     Diagnostic, Severity, SourceSpan,
     math::{
         Alignment, AlignmentAnchors, BBox, DelimiterComponent, DelimiterVariant, Fixed, FontMetricsSnapshot, FontStyle,
         FormulaLayoutResult, FormulaMetrics, GlyphKey, GlyphMetrics, LimitsPolicy, LineStyle, MathConstant, MathEnvironment,
-        MathItem, MathList, MathResult, MathStyle, MathStyleState, Noad, NoadKind, Numbering, OperatorClass, PaintNode,
+        MathError, MathItem, MathList, MathResult, MathStyle, MathStyleState, Noad, NoadKind, Numbering, OperatorClass, PaintNode,
         RowPlacement, FormulaNode, SpacingRule, SymbolRole, math_alphalect, normalize_math_list, project_formula_with_state,
     },
 };
@@ -321,6 +325,12 @@ pub struct LayoutEngine {
     font_system: FontMetricsSystem,
     facts: Option<MathFontFacts>,
     base_size: Fixed,
+    conformance: FontConformance,
+    /// Every font fallback layout consumes, deduplicated and ordered.
+    ///
+    /// The ledger is the G5 record: production mode turns it into countable
+    /// warning diagnostics, [`FontConformance::Strict`] fails the layout.
+    fallbacks: RefCell<BTreeSet<FontFallback>>,
 }
 
 impl LayoutEngine {
@@ -331,7 +341,13 @@ impl LayoutEngine {
     /// resolves, so a caller that built the metrics cache that way gets facts
     /// describing the very same font.
     pub fn new(font_system: FontMetricsSystem) -> Self {
-        Self { font_system, facts: font_facts().cloned(), base_size: Fixed::ONE }
+        Self {
+            font_system,
+            facts: font_facts().cloned(),
+            base_size: Fixed::ONE,
+            conformance: FontConformance::default(),
+            fallbacks: RefCell::new(BTreeSet::new()),
+        }
     }
 
     /// Create an engine whose `MATH` facts come from `facts`.
@@ -342,7 +358,80 @@ impl LayoutEngine {
     /// describe one font. `None` keeps the engine on the metrics cache's
     /// synthetic answers.
     pub fn with_facts(font_system: FontMetricsSystem, facts: Option<MathFontFacts>) -> Self {
-        Self { font_system, facts, base_size: Fixed::ONE }
+        Self {
+            font_system,
+            facts,
+            base_size: Fixed::ONE,
+            conformance: FontConformance::default(),
+            fallbacks: RefCell::new(BTreeSet::new()),
+        }
+    }
+
+    /// Set the G5 conformance mode deciding how font fallbacks are treated.
+    ///
+    /// [`FontConformance::AllowFallbacks`] (the default) keeps layout working
+    /// and reports every consumed fallback as a warning diagnostic on the
+    /// layout result. [`FontConformance::Strict`] fails
+    /// [`Self::layout_formula_result`] the moment any fallback is consumed.
+    pub fn with_font_conformance(mut self, conformance: FontConformance) -> Self {
+        self.conformance = conformance;
+        self
+    }
+
+    /// Every font fallback this engine has consumed, deduplicated and ordered.
+    pub fn font_fallbacks(&self) -> Vec<FontFallback> {
+        self.fallbacks.borrow().iter().cloned().collect()
+    }
+
+    /// Record one consumed font fallback in the G5 ledger.
+    fn record_fallback(&self, fallback: FontFallback) {
+        self.fallbacks.borrow_mut().insert(fallback);
+    }
+
+    /// A `MATH` constant in em, recording the lookup in the G5 ledger.
+    ///
+    /// The font's own table is the truth source. A constant the font does not
+    /// publish falls back to the crate's synthetic stand-in and lands in the
+    /// ledger as [`FontFallback::MissingConstant`], so a gate can tell the
+    /// measured layout from a substituted one. The returned value is always
+    /// usable; the ledger carries the provenance.
+    fn constant_em(&self, family: &str, constant: MathConstant) -> MathResult<Fixed> {
+        // Facts first: they know whether the font's own table published the
+        // value, a synthetic stand-in answered, or nobody did.
+        if let Some(facts) = self.facts.as_ref() {
+            let resolved = facts.constants().resolve(constant);
+            if !resolved.is_from_font() {
+                self.record_fallback(FontFallback::MissingConstant(constant));
+            }
+            if let Some(value) = resolved.value() {
+                return Ok(value);
+            }
+        }
+        if self.font_system.font_math_constant(family, constant).is_none() {
+            self.record_fallback(FontFallback::MissingConstant(constant));
+        }
+        self.font_system.get_math_constant(family, constant)
+    }
+
+    /// One G5 diagnostic per consumed fallback, in ledger order.
+    ///
+    /// Severity follows the mode: production keeps every record a countable
+    /// warning, strict mode already failed the layout so its diagnostics are
+    /// errors for the failing caller's report.
+    pub fn font_fallback_diagnostics(&self) -> Vec<Diagnostic> {
+        let severity = match self.conformance {
+            FontConformance::AllowFallbacks => Severity::Warning,
+            FontConformance::Strict => Severity::Error,
+        };
+        self.font_fallbacks()
+            .into_iter()
+            .map(|fallback| Diagnostic {
+                code: fallback.code().to_string(),
+                severity,
+                message: format!("the math font publishes no {}, so layout substituted a synthetic value", fallback.subject()),
+                span: None,
+            })
+            .collect()
     }
 
     /// The facts font's glyph for a layout key.
@@ -784,11 +873,20 @@ impl LayoutEngine {
         let mut glyph_paths = Vec::new();
         collect_glyph_paths(&layout_node, &mut glyph_paths);
         let fonts = FontMetricsSnapshot { faces: Vec::new(), glyph_paths };
+        // Gate G5: every fallback the layout consumed is on the result as one
+        // structured diagnostic; strict mode turns the ledger into a hard
+        // failure instead of a painted formula.
+        let mut diagnostics = self.script_scale_diagnostics();
+        diagnostics.extend(self.font_fallback_diagnostics());
+        if self.conformance == FontConformance::Strict && !self.fallbacks.borrow().is_empty() {
+            let report = self.font_fallbacks().iter().map(|f| f.to_string()).collect::<Vec<_>>().join(", ");
+            return Err(MathError::font_error("font", format!("G5 conformance mode forbids font fallbacks, consumed: {report}")));
+        }
         Ok((
             FormulaLayoutResult {
                 metrics,
                 paint,
-                diagnostics: self.script_scale_diagnostics(),
+                diagnostics,
                 fonts,
                 semantics: vutex_types::math::MathSemantics::from_nodes(nodes),
                 // The pipeline owns the authored source and fills this in;
@@ -1034,7 +1132,7 @@ impl LayoutEngine {
     /// is synthesised. A font without a construction keeps the base glyph.
     fn display_operator_variant(&self, key: &GlyphKey) -> MathResult<Option<GlyphKey>> {
         let construction = self.font_system.get_delimiter_construction(key)?;
-        let min_height = self.font_system.get_math_constant("default", MathConstant::DisplayOperatorMinHeight)?.to_f64();
+        let min_height = self.constant_em("default", MathConstant::DisplayOperatorMinHeight)?.to_f64();
         let mut tallest: Option<(Fixed, GlyphKey)> = None;
         for variant in construction.variants {
             let metrics = self.font_system.get_metrics(&variant.glyph)?;
@@ -1070,6 +1168,25 @@ impl LayoutEngine {
     fn layout_scaled_symbol(&self, key: &GlyphKey, size: Fixed, span: Option<SourceSpan>) -> MathResult<LayoutNode> {
         let authored_style = key.style;
         let key = &self.alphalect_key(key);
+        // G5 ledger: a glyph the font does not ship is laid out from the
+        // synthetic default metrics, and a bold/italic face the font never
+        // designed is derived from the upright metrics with a widened advance.
+        // Both substitute invented values for font facts, so both are recorded
+        // for a gate to refuse.
+        if let Some(ch) = key.char {
+            if !self.font_system.has_glyph(key) {
+                let upright_exists = matches!(authored_style, FontStyle::Bold | FontStyle::Italic)
+                    && [FontStyle::Normal, FontStyle::Math]
+                        .into_iter()
+                        .any(|style| self.font_system.has_glyph(&GlyphKey { style, ..key.clone() }));
+                if upright_exists {
+                    self.record_fallback(FontFallback::MissingItalicCorrection(ch));
+                }
+                else {
+                    self.record_fallback(FontFallback::MissingGlyph(ch));
+                }
+            }
+        }
         let metrics = self.font_system.get_metrics(key)?;
         let path_data = self.font_system.get_glyph_path(key).ok();
         let font_family = key.font_family.clone().unwrap_or_else(|| "default".to_string());
@@ -1124,6 +1241,7 @@ impl LayoutEngine {
         if let Some(ratio) = self.font_system.font_math_constant("default", constant) {
             return ratio;
         }
+        self.record_fallback(FontFallback::MissingConstant(constant));
         self.font_system.get_math_constant("default", constant).unwrap_or(Fixed::ONE)
     }
 
@@ -1137,8 +1255,14 @@ impl LayoutEngine {
     /// measurement. [`Self::script_scale_diagnostics`] reports every such
     /// substitution.
     fn math_constant(&self, constant: MathConstant, size: Fixed) -> Option<Fixed> {
-        if let Some(em) = self.facts.as_ref().and_then(|facts| facts.constants().resolve(constant).value()) {
-            return Some(em * size);
+        if let Some(facts) = self.facts.as_ref() {
+            let resolved = facts.constants().resolve(constant);
+            if resolved.is_synthetic() {
+                self.record_fallback(FontFallback::MissingConstant(constant));
+            }
+            if let Some(em) = resolved.value() {
+                return Some(em * size);
+            }
         }
         self.font_system.font_math_constant("default", constant).map(|em| em * size)
     }
@@ -1150,6 +1274,12 @@ impl LayoutEngine {
     /// the synthetic MATH values, so a font that failed to parse keeps laying
     /// out. This warning is the record of that substitution: a caller can tell a
     /// font-derived number from a fallback instead of both looking measured.
+    ///
+    /// New code should consume the G5 ledger through
+    /// [`Self::font_fallback_diagnostics`], which reports every fallback class
+    /// layout actually consumed instead of probing two constant groups up
+    /// front. This wrapper keeps the historical codes alive for its existing
+    /// consumers.
     pub fn script_scale_diagnostics(&self) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
         let missing_ratios: Vec<&str> = [
@@ -1347,61 +1477,39 @@ impl LayoutEngine {
         let size = self.base_size * style_scale;
 
         let rule_thickness = match line_style {
-            LineStyle::Solid => {
-                self.font_system.get_math_constant(family, MathConstant::FractionRuleThickness).unwrap_or(Fixed::from_f64(0.06))
-                    * size
-            }
+            LineStyle::Solid => self.constant_em(family, MathConstant::FractionRuleThickness)? * size,
             LineStyle::None => Fixed::ZERO,
         };
 
         let num_shift = if style == MathStyle::Display {
-            self.font_system
-                .get_math_constant(family, MathConstant::FractionNumeratorDisplayStyleShiftUp)
-                .unwrap_or(Fixed::from_f64(0.6))
-                * size
+            self.constant_em(family, MathConstant::FractionNumeratorDisplayStyleShiftUp)? * size
         }
         else {
-            self.font_system.get_math_constant(family, MathConstant::FractionNumeratorShiftUp).unwrap_or(Fixed::from_f64(0.35))
-                * size
+            self.constant_em(family, MathConstant::FractionNumeratorShiftUp)? * size
         };
 
         let den_shift = if style == MathStyle::Display {
-            self.font_system
-                .get_math_constant(family, MathConstant::FractionDenominatorDisplayStyleShiftDown)
-                .unwrap_or(Fixed::from_f64(0.6))
-                * size
+            self.constant_em(family, MathConstant::FractionDenominatorDisplayStyleShiftDown)? * size
         }
         else {
-            self.font_system
-                .get_math_constant(family, MathConstant::FractionDenominatorShiftDown)
-                .unwrap_or(Fixed::from_f64(0.35))
-                * size
+            self.constant_em(family, MathConstant::FractionDenominatorShiftDown)? * size
         };
 
         let num_gap = if style == MathStyle::Display {
-            self.font_system
-                .get_math_constant(family, MathConstant::FractionNumDisplayStyleGapMin)
-                .unwrap_or(Fixed::from_f64(0.1))
-                * size
+            self.constant_em(family, MathConstant::FractionNumDisplayStyleGapMin)? * size
         }
         else {
-            self.font_system.get_math_constant(family, MathConstant::FractionNumeratorGapMin).unwrap_or(Fixed::from_f64(0.05))
-                * size
+            self.constant_em(family, MathConstant::FractionNumeratorGapMin)? * size
         };
 
         let den_gap = if style == MathStyle::Display {
-            self.font_system
-                .get_math_constant(family, MathConstant::FractionDenomDisplayStyleGapMin)
-                .unwrap_or(Fixed::from_f64(0.1))
-                * size
+            self.constant_em(family, MathConstant::FractionDenomDisplayStyleGapMin)? * size
         }
         else {
-            self.font_system.get_math_constant(family, MathConstant::FractionDenominatorGapMin).unwrap_or(Fixed::from_f64(0.05))
-                * size
+            self.constant_em(family, MathConstant::FractionDenominatorGapMin)? * size
         };
 
-        let axis_height =
-            self.font_system.get_math_constant(family, MathConstant::AxisHeight).unwrap_or(Fixed::from_f64(0.25)) * size;
+        let axis_height = self.constant_em(family, MathConstant::AxisHeight)? * size;
 
         let num_width = num_layout.width();
         let num_depth = num_layout.depth();
@@ -1480,21 +1588,16 @@ impl LayoutEngine {
         let style_scale = self.get_style_scale(style);
         let size = self.base_size * style_scale;
 
-        let rule_thickness =
-            self.font_system.get_math_constant(family, MathConstant::RadicalRuleThickness).unwrap_or(Fixed::from_f64(0.06))
-                * size;
+        let rule_thickness = self.constant_em(family, MathConstant::RadicalRuleThickness)? * size;
         // TeX's clearance between the radicand's ink and the rule: the MATH
         // table publishes the display and text values that equal TeX's
         // `drt + xh/4` and `drt + drt/4`; do not inflate them, the table already
         // carries the value that reads correctly with its own radical design.
         let mut vertical_gap = if style == MathStyle::Display {
-            self.font_system
-                .get_math_constant(family, MathConstant::RadicalDisplayStyleVerticalGap)
-                .unwrap_or(Fixed::from_f64(0.1))
-                * size
+            self.constant_em(family, MathConstant::RadicalDisplayStyleVerticalGap)? * size
         }
         else {
-            self.font_system.get_math_constant(family, MathConstant::RadicalVerticalGap).unwrap_or(Fixed::from_f64(0.05)) * size
+            self.constant_em(family, MathConstant::RadicalVerticalGap)? * size
         };
 
         // The font grows the radical sign with `MathVariants`: a prepared design
@@ -1548,20 +1651,9 @@ impl LayoutEngine {
             // surd.
             let deg_state = MathStyleState::from_style(MathStyle::ScriptScript);
             let deg_layout = self.layout_node_state(deg_node, deg_state)?;
-            let kern_before = self
-                .font_system
-                .get_math_constant(family, MathConstant::RadicalKernBeforeDegree)
-                .unwrap_or(Fixed::from_f64(0.2))
-                * size;
-            let kern_after = self
-                .font_system
-                .get_math_constant(family, MathConstant::RadicalKernAfterDegree)
-                .unwrap_or(Fixed::from_f64(-0.2))
-                * size;
-            let raise_percent = self
-                .font_system
-                .get_math_constant(family, MathConstant::RadicalDegreeBottomRaisePercent)
-                .unwrap_or(Fixed::from_f64(0.6));
+            let kern_before = self.constant_em(family, MathConstant::RadicalKernBeforeDegree)? * size;
+            let kern_after = self.constant_em(family, MathConstant::RadicalKernAfterDegree)? * size;
+            let raise_percent = self.constant_em(family, MathConstant::RadicalDegreeBottomRaisePercent)?;
             let raise = raise_percent * (degree_bar_top - radicand_layout.depth());
 
             let mut deg_vbox = Vec::new();
@@ -2399,8 +2491,7 @@ impl LayoutEngine {
         let style_scale = self.get_style_scale(style);
         let size = self.base_size * style_scale;
         let family = "default";
-        let axis_height =
-            self.font_system.get_math_constant(family, MathConstant::AxisHeight).unwrap_or(Fixed::from_f64(0.25)) * size;
+        let axis_height = self.constant_em(family, MathConstant::AxisHeight)? * size;
 
         // TeX sizes a delimiter from how far the content reaches away from the
         // math axis: the glyph must cover the taller of the two sides, mirrored
@@ -2435,18 +2526,41 @@ impl LayoutEngine {
     ) -> MathResult<LayoutNode> {
         let construction = self.font_system.get_delimiter_construction(key)?;
 
+        // G5 ledger: the font publishes no construction for this delimiter at
+        // all, so any stretch below comes from synthetic rectangles or the base
+        // glyph rather than from `MATH` Variants.
+        if construction.variants.is_empty() && construction.components.is_empty() {
+            if let Some(ch) = key.char {
+                self.record_fallback(FontFallback::MissingGlyphVariant(ch));
+            }
+        }
+
         // 1. The font's own size search. `MathVariants` decides which prepared
         // design covers the target and how an assembly repeats its connectors,
         // while the metrics cache supplies the outlines those pieces are drawn
         // with. Never scale a delimiter: a font publishes larger designs instead.
+        //
+        // The bar delimiters are exempt: `vutex-text` declares them as exact
+        // rectangle geometry (see `bar_specs`), so the metrics cache carries no
+        // font construction for them and the facts' assembly plan would name
+        // pieces the cache deliberately replaced.
+        let is_declared_bar = matches!(key.char, Some('|') | Some('‖'));
         if let Some(plan) = self
             .facts
             .as_ref()
+            .filter(|_| !is_declared_bar)
             .and_then(|facts| self.facts_glyph(key).map(|glyph| (facts, glyph)))
             .and_then(|(facts, glyph)| facts.variants().stretch(glyph, StretchAxis::Vertical, target_height / size))
         {
-            if let Some(node) = self.draw_stretch_plan(&plan, &construction.variants, &construction.components, size, span)? {
-                return Ok(self.center_delimiter(node, axis_height));
+            match self.draw_stretch_plan(&plan, &construction.variants, &construction.components, size, span)? {
+                Some(node) => return Ok(self.center_delimiter(node, axis_height)),
+                // The plan named a variant or assembly piece the cache cannot
+                // draw — a font fact with no outline behind it.
+                None => {
+                    if let Some(ch) = key.char {
+                        self.record_fallback(FontFallback::MissingAssemblyPiece(ch));
+                    }
+                }
             }
         }
 
