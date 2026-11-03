@@ -1537,11 +1537,16 @@ impl LayoutEngine {
             // under the index, and a bottom raise taken as a percentage of the
             // radical's own ascent above the radicand.
             //
-            // The degree follows the superscript style demotion from the parent:
-            // display/text → script, script/scriptscript → scriptscript.  Unlike
-            // the radicand, the degree is *not* cramped — it sits outside the
-            // radical, above and forward of the surd.
-            let deg_state = state.sup();
+            // The degree style is TeX's macro-level contract, not a tex.web
+            // demotion: LaTeX's `\sqrt[...]` delegates to plain TeX's `\root`,
+            // which sets the degree in `\scriptscriptstyle` whatever the
+            // surrounding style (verified against the LaTeX kernel definition
+            // under the oracle's Tectonic).  The superscript demotion would
+            // stop at script in display/text and draw the index one level too
+            // large.  Like the radicand's scripts, the degree itself is *not*
+            // cramped — it sits outside the radical, above and forward of the
+            // surd.
+            let deg_state = MathStyleState::from_style(MathStyle::ScriptScript);
             let deg_layout = self.layout_node_state(deg_node, deg_state)?;
             let kern_before = self
                 .font_system

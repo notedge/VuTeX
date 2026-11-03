@@ -366,24 +366,24 @@ fn fence_delimiters_ignore_the_preceding_atom() {
     }
 }
 
-/// The radical index follows the superscript demotion of its parent style and
-/// is placed with the MATH table's radical constants instead of fixed fractions
-/// of an em.
+/// The radical index keeps TeX's scriptscript degree style and is placed with
+/// the MATH table's radical constants instead of fixed fractions of an em.
 ///
-/// TeXbook rule 11 says the degree uses `sup()`: display/text → script,
-/// script/scriptscript → scriptscript.  This test covers both the outer
-/// demotion and the nested demotion (a radical inside a superscript drops one
-/// extra level).
+/// TeX's degree style is a macro contract, not a tex.web demotion: LaTeX's
+/// `\sqrt[...]` delegates to plain TeX's `\root`, which sets the degree in
+/// `\scriptscriptstyle` whatever the surrounding style (kernel definition
+/// probed under the oracle's Tectonic).  This test covers the constant style
+/// and the nested case (a radical inside a superscript keeps its
+/// scriptscript degree while the surd follows the enclosing script style).
 ///
 /// Every expected offset is derived from the embedded font: the index size
-/// from `ScriptPercentScaleDown` / `ScriptScriptPercentScaleDown`, the
-/// horizontal position from `RadicalKernBeforeDegree` / `RadicalKernAfterDegree`,
-/// and the bottom raise from `RadicalDegreeBottomRaisePercent` applied to the
-/// surd's ascent over the radicand. That ascent comes back from
-/// `RadicalVerticalGap` plus `RadicalRuleThickness` over the radicand's own
-/// height.
+/// from `ScriptScriptPercentScaleDown`, the horizontal position from
+/// `RadicalKernBeforeDegree` / `RadicalKernAfterDegree`, and the bottom raise
+/// from `RadicalDegreeBottomRaisePercent` applied to the surd's ascent over
+/// the radicand. That ascent comes back from `RadicalVerticalGap` plus
+/// `RadicalRuleThickness` over the radicand's own height.
 #[test]
-fn radical_index_follows_superscript_style_and_the_math_constants() {
+fn radical_index_keeps_scriptscript_style_and_the_math_constants() {
     let system = builtin_font_metrics();
     let constant = |name: MathConstant| system.get_math_constant("default", name).expect("font constant").to_f64();
 
@@ -396,14 +396,12 @@ fn radical_index_follows_superscript_style_and_the_math_constants() {
     let display_gap = constant(MathConstant::RadicalDisplayStyleVerticalGap);
     let rule_thickness = constant(MathConstant::RadicalRuleThickness);
 
-    // Outer style  → degree style : TeX demotion via MathStyleState::sup()
-    // display     → script       : demote_script(Display) = Script
-    // text        → script       : demote_script(Text)    = Script
-    // script      → scriptscript : demote_script(Script)  = ScriptScript
-    // scriptscript→ scriptscript : demote_script(ScriptScript) = ScriptScript
+    // Degree style is scriptscript in every surrounding style — plain TeX's
+    // `\root` sets `\scriptscriptstyle` unconditionally, so a display/text
+    // radical does not demote through `sup()` to script.
 
     // Top-level radical: the surd size equals the outer display/text size, so
-    // the degree is directly `script * em`.
+    // the degree is directly `scriptscript * em`.
     for (label, display, gap, src) in [
         ("display radical degree", true, display_gap, "\\sqrt[3]{x}"),
         ("text radical degree", false, vertical_gap, "\\sqrt[3]{x}"),
@@ -415,11 +413,11 @@ fn radical_index_follows_superscript_style_and_the_math_constants() {
         let (_, base_y, base) = glyph_at(&tree, 'x');
         let em = surd.size.to_f64();
 
-        // Degree follows MathStyleState::sup() one level down → script size.
-        let expected_index_size = script * em;
+        // Degree keeps the scriptscript size whatever the outer style.
+        let expected_index_size = scriptscript * em;
         assert!(
             (index.size.to_f64() - expected_index_size).abs() < 1e-3,
-            "{label}: index must be set at script size {expected_index_size}, not {}",
+            "{label}: index must be set at scriptscript size {expected_index_size}, not {}",
             index.size.to_f64()
         );
 
@@ -446,9 +444,9 @@ fn radical_index_follows_superscript_style_and_the_math_constants() {
     }
 
     // Nested radical inside a superscript: the radical's own style is Script,
-    // so the degree demotes one more level to ScriptScript.  Position is not
-    // asserted here because the whole radical box is subject to the superscript
-    // placement of the enclosing sub/sup layout.
+    // and the degree still keeps scriptscript.  Position is not asserted here
+    // because the whole radical box is subject to the superscript placement of
+    // the enclosing sub/sup layout.
     {
         let (_, tree, _) = layout_formula_source("y^{\\sqrt[3]{x}}", true, default_base_size(true))
             .expect("nested radical should lay out");
@@ -461,7 +459,7 @@ fn radical_index_follows_superscript_style_and_the_math_constants() {
         let actual_ratio = index.size.to_f64() / surd.size.to_f64();
         assert!(
             (actual_ratio - expected_ratio).abs() < 1e-3,
-            "nested radical degree must be scriptscript relative to its enclosing script radical: \
+            "nested radical degree must keep scriptscript relative to its enclosing script radical: \
              ratio {actual_ratio}, expected {expected_ratio}"
         );
     }

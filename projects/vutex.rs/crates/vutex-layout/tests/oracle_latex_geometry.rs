@@ -615,7 +615,7 @@ fn degree_records_agree_with_the_engines_own_cross_measurements() {
 }
 
 /// Per-field parity between VuTeX's assembled degree geometry and the
-/// reference engine's measurements for `radical-degree`.
+/// reference engine's measurements for every degree-carrying corpus entry.
 ///
 /// Tolerances and their evidence, all relative deviations:
 ///
@@ -624,23 +624,29 @@ fn degree_records_agree_with_the_engines_own_cross_measurements() {
 ///   (278/-556 per 1000 em → 0.277/0.556 at 10px); the LaTeX kernel hard-codes
 ///   the same design values as 0.277771/-0.555542 em — 0.3% apart.  A 2% gate
 ///   is a real equality check, not a shrug.
-/// - anchor height: 25%.  The kernel raises the degree by its own fraction of
-///   the radical clearance (≈0.42 inline / ≈0.465 display, visible as the
-///   recorded shift), while VuTeX follows tex.web
-///   `RadicalDegreeBottomRaisePercent` = 60% of `bar_top - radicand depth`.
-///   That is a documented algorithm difference (the parity fixture records
-///   0.336/0.395 against VuTeX's 0.416/0.489 — 24%); the gate pins that VuTeX
-///   stays on the tex.web rule instead of drifting.
-/// - degree box: 15% against the engine's own `script` candidate box.  The
-///   kernel packs the degree in scriptscript (recorded in `style`), VuTeX
-///   demotes it through the superscript rule to script — comparing VuTeX
-///   against the assembled scriptscript box would conflate the style choice
-///   with glyph metrics, so the same-style candidate is the honest reference.
-///   LM Math's script "3" (0.375, 0.507 em) against the engine's
-///   `\scriptstyle 3` hbox (0.399, 0.451 em) is 6%/12% — font design, not
-///   layout structure.  Depth gets a 0.02em absolute bound instead: the
-///   reference digit depth is exactly 0 (relative tolerance degenerates) and
-///   LM Math's script "3" descends ~0.01em — a glyph-design fact.
+/// - anchor height: 25%.  The kernel raises the degree by 0.6 of the radical
+///   sign box's own `height - depth` (plain TeX `\r@@t`), while VuTeX follows
+///   the MATH table's `RadicalDegreeBottomRaisePercent` = 60% of
+///   `bar_top - radicand depth`.  Same 60% coefficient, different measured
+///   quantity — a documented rule difference, and the gate pins VuTeX to its
+///   own rule instead of drifting.
+/// - degree height: 15% against the engine's own `scriptscript` candidate
+///   box.  LaTeX's `\sqrt[...]` delegates to plain TeX's `\root`, which sets
+///   the degree in `\scriptscriptstyle` whatever the surrounding style
+///   (kernel definition probed under the oracle's Tectonic: `\@sqrt` →
+///   `\root` → `\hbox{$\m@th\scriptscriptstyle{#1}$}`), and VuTeX follows the
+///   same contract, so same-style candidate boxes are the honest reference.
+///   Depth gets a 0.02em absolute bound instead: the reference digit depth is
+///   exactly 0 (relative tolerance degenerates) and LM Math's scriptscript
+///   digit descends slightly below the baseline — a glyph-design fact.
+///
+/// Degree **width** is waived as a font-design fact, not a layout rule: the
+/// engine's `\showbox` dump proves the degree is set in `OT1/cmr/m/n/5`, and
+/// CM's 5pt design physically widens its digits (advance 3.40283pt = 0.68em,
+/// probed directly) while LM Math scales one digit advance uniformly (0.5em
+/// × the MATH scriptscript ratio = 0.25em).  The same small-design expansion
+/// already waives script-size widths in `FONT_METRIC_EXCEPTIONS`; the height
+/// check still pins the scriptscript size choice itself.
 #[test]
 fn vutex_radical_degree_matches_the_latex_degree_assembly() {
     let doc = load_document();
@@ -652,10 +658,10 @@ fn vutex_radical_degree_matches_the_latex_degree_assembly() {
 
     let mut checked = 0;
     for record in &doc.records {
-        if record.corpus_id != "radical-degree" {
+        if record.corpus_id != "radical-degree" && record.corpus_id != "radical-degree-sum" {
             continue;
         }
-        let label = format!("radical-degree ({})", if record.display_mode { "display" } else { "inline" });
+        let label = format!("{} ({})", record.corpus_id, if record.display_mode { "display" } else { "inline" });
         let degree =
             record.degree.as_ref().unwrap_or_else(|| panic!("{label}: degree-carrying record must have a `degree` object"));
         let want = |field: &str, value: Option<f64>| {
@@ -676,10 +682,9 @@ fn vutex_radical_degree_matches_the_latex_degree_assembly() {
 
         let cand = degree
             .candidate_boxes
-            .script
+            .scriptscript
             .as_ref()
-            .unwrap_or_else(|| panic!("{label}: reference `script` candidate box missing"));
-        within_tolerance("degree width", vu.degree_width / em, cand.width, 0.15, &label);
+            .unwrap_or_else(|| panic!("{label}: reference `scriptscript` candidate box missing"));
         within_tolerance("degree height", vu.degree_height / em, cand.height, 0.15, &label);
         let depth_diff = (vu.degree_depth / em - cand.depth).abs();
         assert!(
@@ -690,7 +695,7 @@ fn vutex_radical_degree_matches_the_latex_degree_assembly() {
         );
         checked += 1;
     }
-    assert_eq!(checked, 2, "radical-degree must be recorded in both inline and display styles");
+    assert_eq!(checked, 4, "both degree corpus entries must be recorded in inline and display styles");
 }
 
 // ---------------------------------------------------------------------------
