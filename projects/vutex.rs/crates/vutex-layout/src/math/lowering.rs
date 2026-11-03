@@ -17,6 +17,8 @@ use vutex_types::{
     },
 };
 
+use super::layout::array_strut;
+
 /// Map a notedown math span onto the layout-facing span type.
 fn span_of(span: Option<MathSpan>) -> Option<SourceSpan> {
     span.map(|span| SourceSpan { start: span.start, end: span.end })
@@ -232,19 +234,33 @@ fn environment_node(environment: &MathEnvironment, face: Option<FontStyle>, diag
                 MathEnvironmentKind::Cases => vec![Alignment::Left; columns],
                 _ => vec![Alignment::Center; columns],
             };
-            let row_spacing = if environment.name == "smallmatrix" { 0.2 } else { 0.35 };
-            // amsmath declares `cases` as `\array{@{}l@{\quad}l@{}}`: the
-            // gutter between the value and its condition is one `\quad`, i.e.
-            // 1em, not the 0.8em gutter a plain matrix uses.
-            let col_spacing = match environment.kind {
-                MathEnvironmentKind::Cases => 1.0,
-                _ => 0.8,
+            // `smallmatrix` sets its entries in `\scriptstyle` and uses
+            // `\lineskip 1.5pt` between rows, `\thickspace` (5mu) between
+            // columns and a `\,` (3mu) on each outer edge.  Everything else is
+            // a plain `\array`: one strut per row, one `\quad`-wide gutter and
+            // no row gap.
+            let smallmatrix = environment.name == "smallmatrix";
+            // amsmath declares `cases` as `\array{@{}l@{\quad}l@{}}` under
+            // `\arraystretch{1.2}`, so its row struts grow by 20%.
+            let arraystretch = match environment.kind {
+                MathEnvironmentKind::Cases => 1.2,
+                _ => 1.0,
+            };
+            let (strut_height, strut_depth) = if smallmatrix { (0.0, 0.0) } else { array_strut(arraystretch) };
+            let (row_spacing, col_spacing, outer_spacing, cell_style) = if smallmatrix {
+                (0.15, 5.0 / 18.0, 3.0 / 18.0, Some(LayoutStyle::Script))
+            }
+            else {
+                (0.0, 1.0, 0.0, None)
             };
             let matrix = FormulaNode::Matrix {
                 rows,
                 row_spacing: Fixed::from_f64(row_spacing),
                 col_spacing: Fixed::from_f64(col_spacing),
-                display_style: false,
+                outer_spacing: Fixed::from_f64(outer_spacing),
+                strut_height: Fixed::from_f64(strut_height),
+                strut_depth: Fixed::from_f64(strut_depth),
+                cell_style,
                 column_alignment,
             };
             let (left, right) = matrix_delimiters(&environment.name);
@@ -299,7 +315,9 @@ fn environment_node(environment: &MathEnvironment, face: Option<FontStyle>, diag
                 kind,
                 starred: environment.starred,
                 rows,
-                row_spacing: Fixed::from_f64(0.35),
+                // amsmath separates environment rows by `\jot`, which is 3pt
+                // at a 10pt base em.
+                row_spacing: Fixed::from_f64(0.3),
                 col_spacing: Fixed::from_f64(col_spacing),
             })
         }

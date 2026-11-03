@@ -386,11 +386,11 @@
         64
       ],
       "svgViewport": [
-        32.3647,
-        30.5568
+        36.2394,
+        41.4714
       ],
-      "bytes": 937,
-      "sha256": "f1ee337fa3792472f8bf38a54c8b3151b7dc4e5e8dba4ce67288792d3ae7920b"
+      "bytes": 940,
+      "sha256": "6e544bc73b902373aab0fde75456538832ec17ec0c645f13539b927f9b04cd8c"
     },
     "matrix-display": {
       "tex": "\\begin{matrix} a & b \\\\ c & d \\end{matrix}",
@@ -401,41 +401,41 @@
         64
       ],
       "svgViewport": [
-        32.3647,
-        30.5568
+        36.2394,
+        41.4714
       ],
-      "bytes": 937,
-      "sha256": "f1ee337fa3792472f8bf38a54c8b3151b7dc4e5e8dba4ce67288792d3ae7920b"
+      "bytes": 940,
+      "sha256": "6e544bc73b902373aab0fde75456538832ec17ec0c645f13539b927f9b04cd8c"
     },
     "cases-inline": {
       "tex": "\\begin{cases} x & x > 0 \\\\ 0 & \\text{otherwise} \\end{cases}",
       "display": false,
       "file": "cases-inline.png",
       "window": [
-        126,
-        64
+        130,
+        73
       ],
       "svgViewport": [
-        109.865,
-        36.9381
+        113.9258,
+        56.4389
       ],
-      "bytes": 2313,
-      "sha256": "92681ac7478efdcdbaa79484d5145ff2d95050aa90ba112a09a1946a32a17fb3"
+      "bytes": 2586,
+      "sha256": "d27844f15df1ab5edba6428d378e3cbab6043a7605508b2919c7b131f1ce52b8"
     },
     "cases-display": {
       "tex": "\\begin{cases} x & x > 0 \\\\ 0 & \\text{otherwise} \\end{cases}",
       "display": true,
       "file": "cases-display.png",
       "window": [
-        126,
-        64
+        130,
+        73
       ],
       "svgViewport": [
-        109.865,
-        36.9381
+        113.9258,
+        56.4389
       ],
-      "bytes": 2313,
-      "sha256": "92681ac7478efdcdbaa79484d5145ff2d95050aa90ba112a09a1946a32a17fb3"
+      "bytes": 2586,
+      "sha256": "d27844f15df1ab5edba6428d378e3cbab6043a7605508b2919c7b131f1ce52b8"
     },
     "aligned-inline": {
       "tex": "\\begin{aligned} a &= b + c \\\\ d &= e \\end{aligned}",
@@ -443,14 +443,14 @@
       "file": "aligned-inline.png",
       "window": [
         86,
-        64
+        65
       ],
       "svgViewport": [
         69.1358,
-        34.4327
+        48.3204
       ],
-      "bytes": 1246,
-      "sha256": "72265f1fe8158739b17b8b1730eedefaa9b6b97abc2600dcbf20a3e9296076fe"
+      "bytes": 1224,
+      "sha256": "8565d12a3d4f458e8fec807fcb0f5a595eea777a6a439f84397e6c31f8d23c31"
     },
     "aligned-display": {
       "tex": "\\begin{aligned} a &= b + c \\\\ d &= e \\end{aligned}",
@@ -458,14 +458,14 @@
       "file": "aligned-display.png",
       "window": [
         86,
-        64
+        65
       ],
       "svgViewport": [
         69.1358,
-        34.4327
+        48.3204
       ],
-      "bytes": 1246,
-      "sha256": "72265f1fe8158739b17b8b1730eedefaa9b6b97abc2600dcbf20a3e9296076fe"
+      "bytes": 1224,
+      "sha256": "8565d12a3d4f458e8fec807fcb0f5a595eea777a6a439f84397e6c31f8d23c31"
     },
     "alignedat-inline": {
       "tex": "\\begin{alignedat}{2} a &= b & c &= d \\end{alignedat}",
@@ -477,10 +477,10 @@
       ],
       "svgViewport": [
         80.1969,
-        17.2205
+        25.1402
       ],
-      "bytes": 1040,
-      "sha256": "ded3544089d015be3a75895338e8f43f36235a4f66dd5ec540398514a6649468"
+      "bytes": 1064,
+      "sha256": "5c912958df86e94a00391aa530369248524373ba5270446c1d1cb5401ca264f4"
     },
     "alignedat-display": {
       "tex": "\\begin{alignedat}{2} a &= b & c &= d \\end{alignedat}",
@@ -492,10 +492,10 @@
       ],
       "svgViewport": [
         80.1969,
-        17.2205
+        25.1402
       ],
-      "bytes": 1040,
-      "sha256": "ded3544089d015be3a75895338e8f43f36235a4f66dd5ec540398514a6649468"
+      "bytes": 1064,
+      "sha256": "5c912958df86e94a00391aa530369248524373ba5270446c1d1cb5401ca264f4"
     },
     "split-inline": {
       "tex": "\\begin{split} a &= b \\\\ &= c \\end{split}",
@@ -506,11 +506,11 @@
         64
       ],
       "svgViewport": [
-        40.0987,
-        27.0977
+        40.5844,
+        46.6552
       ],
-      "bytes": 828,
-      "sha256": "93d7efe03a8072717326b048d536c437e2986dd8bcf0df153742919c424185c4"
+      "bytes": 814,
+      "sha256": "0a0ad9893bd3499623e4433816d1d02237635908d608a2bb520a4ad971933940"
     },
     "split-display": {
       "tex": "\\begin{split} a &= b \\\\ &= c \\end{split}",
@@ -521,11 +521,11 @@
         64
       ],
       "svgViewport": [
-        40.0987,
-        27.0977
+        40.5844,
+        46.6552
       ],
-      "bytes": 828,
-      "sha256": "93d7efe03a8072717326b048d536c437e2986dd8bcf0df153742919c424185c4"
+      "bytes": 814,
+      "sha256": "0a0ad9893bd3499623e4433816d1d02237635908d608a2bb520a4ad971933940"
     },
     "accent-vec-inline": {
       "tex": "\\vec{v}",
@@ -1042,30 +1042,30 @@
       "display": false,
       "file": "fenced-matrix-inline.png",
       "window": [
-        65,
+        71,
         64
       ],
       "svgViewport": [
-        48.6765,
-        32.4057
+        54.0686,
+        42.4051
       ],
-      "bytes": 1050,
-      "sha256": "8bf55c1bc1441fc389c9f33222cf544e65633866f0567eabe5f524507675a10b"
+      "bytes": 1081,
+      "sha256": "a08cd88bc8119529b7ecc7384128cb4e373ed6ff550850cc1cfb06b5c04022c2"
     },
     "fenced-matrix-display": {
       "tex": "\\left[ \\begin{matrix} a & b \\\\ c & d \\end{matrix} \\right]",
       "display": true,
       "file": "fenced-matrix-display.png",
       "window": [
-        65,
+        71,
         64
       ],
       "svgViewport": [
-        48.6765,
-        32.4057
+        54.0686,
+        42.4051
       ],
-      "bytes": 1050,
-      "sha256": "8bf55c1bc1441fc389c9f33222cf544e65633866f0567eabe5f524507675a10b"
+      "bytes": 1081,
+      "sha256": "a08cd88bc8119529b7ecc7384128cb4e373ed6ff550850cc1cfb06b5c04022c2"
     },
     "smallmatrix-inline": {
       "tex": "\\begin{smallmatrix} a & b \\\\ c & d \\end{smallmatrix}",
@@ -1076,11 +1076,11 @@
         64
       ],
       "svgViewport": [
-        32.3647,
-        28.1569
+        23.5381,
+        19.935
       ],
-      "bytes": 924,
-      "sha256": "ba05c55878768178ad0cae7bdba0feeb6c2d472b96b00df9b743ab9a3a737081"
+      "bytes": 641,
+      "sha256": "2f975c2ae828912f22b95c545f018f878ddce0d959d2438b44699bfb42b187a3"
     },
     "smallmatrix-display": {
       "tex": "\\begin{smallmatrix} a & b \\\\ c & d \\end{smallmatrix}",
@@ -1091,11 +1091,11 @@
         64
       ],
       "svgViewport": [
-        32.3647,
-        28.1569
+        23.5381,
+        19.935
       ],
-      "bytes": 924,
-      "sha256": "ba05c55878768178ad0cae7bdba0feeb6c2d472b96b00df9b743ab9a3a737081"
+      "bytes": 641,
+      "sha256": "2f975c2ae828912f22b95c545f018f878ddce0d959d2438b44699bfb42b187a3"
     },
     "gathered-inline": {
       "tex": "\\begin{gathered} a+b \\\\ c+d \\end{gathered}",
@@ -1106,11 +1106,11 @@
         64
       ],
       "svgViewport": [
-        38.4376,
-        33.3107
+        39.0463,
+        46.6552
       ],
-      "bytes": 1041,
-      "sha256": "3026756202d5e3e388465838b940bf40e492cc7fb43b7e3bcf8500b0a731703a"
+      "bytes": 1109,
+      "sha256": "8eb877690420f7b64981f0b70c2a07c2f457a3badae9a70269ab56b18f124f15"
     },
     "gathered-display": {
       "tex": "\\begin{gathered} a+b \\\\ c+d \\end{gathered}",
@@ -1121,41 +1121,41 @@
         64
       ],
       "svgViewport": [
-        38.4376,
-        33.3107
+        39.0463,
+        46.6552
       ],
-      "bytes": 1041,
-      "sha256": "3026756202d5e3e388465838b940bf40e492cc7fb43b7e3bcf8500b0a731703a"
+      "bytes": 1109,
+      "sha256": "8eb877690420f7b64981f0b70c2a07c2f457a3badae9a70269ab56b18f124f15"
     },
     "bmatrix-inline": {
       "tex": "\\begin{bmatrix} a & b \\\\ c & d \\end{bmatrix}",
       "display": false,
       "file": "bmatrix-inline.png",
       "window": [
-        65,
+        71,
         64
       ],
       "svgViewport": [
-        48.6765,
-        32.4057
+        54.0686,
+        42.4051
       ],
-      "bytes": 1050,
-      "sha256": "8bf55c1bc1441fc389c9f33222cf544e65633866f0567eabe5f524507675a10b"
+      "bytes": 1081,
+      "sha256": "a08cd88bc8119529b7ecc7384128cb4e373ed6ff550850cc1cfb06b5c04022c2"
     },
     "bmatrix-display": {
       "tex": "\\begin{bmatrix} a & b \\\\ c & d \\end{bmatrix}",
       "display": true,
       "file": "bmatrix-display.png",
       "window": [
-        65,
+        71,
         64
       ],
       "svgViewport": [
-        48.6765,
-        32.4057
+        54.0686,
+        42.4051
       ],
-      "bytes": 1050,
-      "sha256": "8bf55c1bc1441fc389c9f33222cf544e65633866f0567eabe5f524507675a10b"
+      "bytes": 1081,
+      "sha256": "a08cd88bc8119529b7ecc7384128cb4e373ed6ff550850cc1cfb06b5c04022c2"
     },
     "vmatrix-inline": {
       "tex": "\\begin{vmatrix} a & b \\\\ c & d \\end{vmatrix}",
@@ -1163,14 +1163,14 @@
       "file": "vmatrix-inline.png",
       "window": [
         64,
-        64
+        65
       ],
       "svgViewport": [
-        42.0414,
-        36.7142
+        45.7114,
+        48.384
       ],
-      "bytes": 1012,
-      "sha256": "8cb56fc6c6e23595d82a4f2359e82723a55cb7c984d22aa681e4d657ff93d959"
+      "bytes": 1020,
+      "sha256": "ff7ca174ac7abe56188cf4b102af42be2f128255190ae1c0643a3c3f66a2d60d"
     },
     "vmatrix-display": {
       "tex": "\\begin{vmatrix} a & b \\\\ c & d \\end{vmatrix}",
@@ -1178,44 +1178,44 @@
       "file": "vmatrix-display.png",
       "window": [
         64,
-        64
+        65
       ],
       "svgViewport": [
-        42.0414,
-        36.7142
+        45.7114,
+        48.384
       ],
-      "bytes": 1012,
-      "sha256": "8cb56fc6c6e23595d82a4f2359e82723a55cb7c984d22aa681e4d657ff93d959"
+      "bytes": 1020,
+      "sha256": "ff7ca174ac7abe56188cf4b102af42be2f128255190ae1c0643a3c3f66a2d60d"
     },
     "Vmatrix-inline": {
       "tex": "\\begin{Vmatrix} a & b \\\\ c & d \\end{Vmatrix}",
       "display": false,
       "file": "!vmatrix-inline.png",
       "window": [
-        64,
-        64
+        66,
+        65
       ],
       "svgViewport": [
-        46.1885,
-        37.0214
+        49.6447,
+        48.4774
       ],
-      "bytes": 1055,
-      "sha256": "a092c79c7722178c1160c40b5fd48048b46665c5939ba3ce4aa90c66c5c3dbea"
+      "bytes": 1033,
+      "sha256": "2e469bfa0be402de63bb4b38a31cb961d2cf10c9b0d3e3124c824c04a6102a77"
     },
     "Vmatrix-display": {
       "tex": "\\begin{Vmatrix} a & b \\\\ c & d \\end{Vmatrix}",
       "display": true,
       "file": "!vmatrix-display.png",
       "window": [
-        64,
-        64
+        66,
+        65
       ],
       "svgViewport": [
-        46.1885,
-        37.0214
+        49.6447,
+        48.4774
       ],
-      "bytes": 1055,
-      "sha256": "a092c79c7722178c1160c40b5fd48048b46665c5939ba3ce4aa90c66c5c3dbea"
+      "bytes": 1033,
+      "sha256": "2e469bfa0be402de63bb4b38a31cb961d2cf10c9b0d3e3124c824c04a6102a77"
     },
     "thin-space-inline": {
       "tex": "a\\,b",

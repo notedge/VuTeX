@@ -43,20 +43,24 @@ fn formulas() -> &'static [&'static str] {
 
 /// Number of vector primitives a layout tree paints: every outlined glyph, every
 /// rule, and every standalone path.
+///
+/// A rule of zero width paints nothing, which is how TeX's invisible `\@arstrut`
+/// reaches the page: it sets a row's minimum height and depth without adding ink.
 fn path_primitives(node: &LayoutNode) -> usize {
     match node {
         LayoutNode::Glyph(glyph) => usize::from(glyph.path_data.is_some()),
-        LayoutNode::Rule { .. } | LayoutNode::Path(_) => 1,
+        LayoutNode::Rule { width, .. } => usize::from(width.to_f64() > 0.0),
+        LayoutNode::Path(_) => 1,
         LayoutNode::HBox(hbox) => hbox.children.iter().map(path_primitives).sum(),
         LayoutNode::VBox(vbox) => vbox.children.iter().map(path_primitives).sum(),
         _ => 0,
     }
 }
 
-/// Number of `LayoutNode::Rule` boxes a layout tree paints.
+/// Number of painted `LayoutNode::Rule` boxes a layout tree carries.
 fn rule_primitives(node: &LayoutNode) -> usize {
     match node {
-        LayoutNode::Rule { .. } => 1,
+        LayoutNode::Rule { width, .. } => usize::from(width.to_f64() > 0.0),
         LayoutNode::HBox(hbox) => hbox.children.iter().map(rule_primitives).sum(),
         LayoutNode::VBox(vbox) => vbox.children.iter().map(rule_primitives).sum(),
         _ => 0,

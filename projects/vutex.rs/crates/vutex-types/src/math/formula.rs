@@ -96,14 +96,37 @@ pub enum FormulaNode {
     },
     Matrix {
         rows: Vec<Vec<FormulaNode>>,
+        /// Vertical gap between adjacent rows, in em of the grid's own size.
         row_spacing: Fixed,
+        /// Horizontal gap between adjacent columns, in em of the grid's own
+        /// size.
         col_spacing: Fixed,
-        /// Whether the grid is always set at display style.
+        /// Horizontal gap before the first and after the last column, in em.
         ///
-        /// `align` and `align*` are display-level environments, so an enclosing
-        /// `\scriptstyle` must not demote their cells. Every other matrix
-        /// environment follows the style around it.
-        display_style: bool,
+        /// AMS `matrix` cancels its `\tabskip` at both edges, so the gutter
+        /// shows up only *between* columns.  `smallmatrix` keeps a `\,` on each
+        /// side, which is exactly this padding.
+        #[serde(default)]
+        outer_spacing: Fixed,
+        /// Height of the per-row strut above the baseline, in em.
+        ///
+        /// AMS puts `\@arstrut` — an invisible `\rule` of
+        /// `0.7 × \arraystretch × \baselineskip` — in every row of `matrix`,
+        /// `cases` and the `aligned` family, so an all-empty or short row still
+        /// occupies a full baseline.  `smallmatrix` carries no strut.
+        #[serde(default)]
+        strut_height: Fixed,
+        /// Depth of the per-row strut below the baseline, in em
+        /// (`0.3 × \arraystretch × \baselineskip`).
+        #[serde(default)]
+        strut_depth: Fixed,
+        /// Math style the cells are set in, when the environment pins one.
+        ///
+        /// `smallmatrix` sets its entries in `\scriptstyle` while keeping its
+        /// gutters at the surrounding size.  Every other matrix environment
+        /// follows the style around it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cell_style: Option<MathStyle>,
         /// Alignment of each column, left to right.
         ///
         /// `matrix` centre-aligns every column, `cases` left-aligns both of its
@@ -992,7 +1015,10 @@ mod tests {
             ],
             row_spacing: Fixed::ZERO,
             col_spacing: Fixed::ZERO,
-            display_style: true,
+            outer_spacing: Fixed::ZERO,
+            strut_height: Fixed::ZERO,
+            strut_depth: Fixed::ZERO,
+            cell_style: None,
             column_alignment: vec![Alignment::Center; 2],
         };
         match lower(&matrix) {

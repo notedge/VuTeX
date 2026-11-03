@@ -12,7 +12,7 @@ use super::conformance::{FontConformance, FontFallback};
 use vutex_types::{
     Diagnostic, Severity, SourceSpan,
     math::{
-        Alignment, AlignmentAnchors, BBox, DelimiterComponent, DelimiterVariant, Fixed, FontMetricsSnapshot, FontStyle,
+        Alignment, AlignmentAnchors, BBox, DelimiterComponent, DelimiterVariant, EnvironmentKind, Fixed, FontMetricsSnapshot, FontStyle,
         FormulaLayoutResult, FormulaMetrics, GlyphKey, GlyphMetrics, LimitsPolicy, LineStyle, MathConstant, MathEnvironment,
         MathError, MathItem, MathList, MathResult, MathStyle, MathStyleState, Noad, NoadKind, Numbering, OperatorClass, PaintNode,
         RowPlacement, FormulaNode, SpacingRule, SymbolRole, math_alphalect, normalize_math_list, project_formula_with_state,
@@ -306,6 +306,25 @@ const OVERBAR_ACCENT: char = '¯';
 const THICK_MUSIP_EM: f64 = 5.0 / 18.0;
 const MEDIUM_MUSIP_EM: f64 = 4.0 / 18.0;
 const THIN_MUSIP_EM: f64 = 3.0 / 18.0;
+
+/// TeX's strut box split around the baseline, as a multiple of the em.
+///
+/// amsmath's `\@arstrut` is a zero-width `\rule` of `\ht\strutbox` /
+/// `\dp\strutbox`, and `\strutbox` is `\arraystretch × \baselineskip` split
+/// 70/30 above and below the baseline.  LaTeX's default `\baselineskip` for a
+/// 10pt math list is 12pt and `\arraystretch` is 1, so the raw split is
+/// `0.7 × 1.2 = 0.84em` above and `0.3 × 1.2 = 0.36em` below.
+const ARRAY_STRUT_BASELINE_SKIP_EM: f64 = 1.2;
+const ARRAY_STRUT_ABOVE_FRACTION: f64 = 0.7;
+const ARRAY_STRUT_BELOW_FRACTION: f64 = 0.3;
+
+/// The `(\strut height, \strut depth)` of an `\arraystretch` value, in em.
+pub(crate) fn array_strut(arraystretch: f64) -> (f64, f64) {
+    (
+        ARRAY_STRUT_BASELINE_SKIP_EM * ARRAY_STRUT_ABOVE_FRACTION * arraystretch,
+        ARRAY_STRUT_BASELINE_SKIP_EM * ARRAY_STRUT_BELOW_FRACTION * arraystretch,
+    )
+}
 
 /// The embedded math font's `MATH` facts, parsed once per process.
 ///
@@ -784,13 +803,35 @@ impl LayoutEngine {
                     let size = self.base_size * self.get_style_scale(state.style);
                     Ok(LayoutNode::Kern(*width * size))
                 }
-                FormulaNode::Matrix { rows, row_spacing, col_spacing, display_style, column_alignment } => {
-                    // `align` / `align*` pin their cells to display style so an
-                    // enclosing `\scriptstyle` cannot demote the grid.  The
-                    // cramped flag still follows the surrounding formula.
-                    let state = if *display_style { MathStyleState { style: MathStyle::Display, ..state } } else { state };
+                FormulaNode::Matrix {
+                    rows,
+                    row_spacing,
+                    col_spacing,
+                    outer_spacing,
+                    strut_height,
+                    strut_depth,
+                    cell_style,
+                    column_alignment,
+                } => {
+                    // `smallmatrix` pins its entries to `\scriptstyle` and
+                    // `align` / `align*` pin display style, so an enclosing
+                    // `\scriptstyle` cannot demote their cells.  The cramped
+                    // flag still follows the surrounding formula.
+                    let cell_state = match cell_style {
+                        Some(style) => MathStyleState { style: *style, ..state },
+                        None => state,
+                    };
                     let rows: Vec<&[FormulaNode]> = rows.iter().map(|row| row.as_slice()).collect();
-                    self.layout_matrix(&rows, *row_spacing, *col_spacing, column_alignment, state)
+                    self.layout_matrix(
+                        &rows,
+                        *row_spacing,
+                        *col_spacing,
+                        *outer_spacing,
+                        (*strut_height, *strut_depth),
+                        column_alignment,
+                        cell_state,
+                        state,
+                    )
                 }
                 FormulaNode::Environment(environment) => self.layout_environment(environment, state),
                 FormulaNode::Delimited { left, right, content, left_span, right_span } => {
@@ -2314,6 +2355,22 @@ impl LayoutEngine {
             }
         }
 
+        // amsmath gives every row of an `aligned` / `alignedat` / `split` /
+        // `align` / `gather` / `gathered` / `multline` block the same
+        // `\@arstrut` its matrix rows carry, so a short row still occupies a
+        // full baseline.  `equation` is a plain single-row wrapper without one.
+        let row_strut = match environment.kind {
+            EnvironmentKind::Equation => None,
+            _ => {
+                let (height, depth) = array_strut(1.0);
+                Some(LayoutNode::Rule {
+                    width: Fixed::ZERO,
+                    height: Fixed::from_f64(height) * size,
+                    depth: Fixed::from_f64(depth) * size,
+                })
+            }
+        };
+
         // A block that places whole rows pads each row to the widest one, so the
         // rows share one box width and the `VBox` can stack them at one left
         // edge.  Where a row sits inside that width comes from the environment's
@@ -2336,6 +2393,13 @@ impl LayoutEngine {
                 let padded = std::mem::replace(row, LayoutNode::Kern(Fixed::ZERO));
                 *row = self.pack_hbox(vec![LayoutNode::Kern(left), padded, LayoutNode::Kern(right)], None);
             }
+        }
+
+        // The strut lives inside each row (not beside it in the `VBox`), so it
+        // sets the row's minimum extents instead of adding a baseline of its
+        // own.
+        if let Some(strut) = row_strut {
+            row_boxes = row_boxes.into_iter().map(|row| self.pack_hbox(vec![strut.clone(), row], None)).collect();
         }
 
         let mut stacked = Vec::new();
@@ -2426,12 +2490,25 @@ impl LayoutEngine {
         wrapper
     }
 
+    /// Lay out a `matrix`-family grid.
+    ///
+    /// `cell_state` is the style the cells are set in; `state` stays the style
+    /// around the grid and sizes every gutter, the inter-row gap and the strut.
+    /// `smallmatrix` is the one grid where the two differ: its entries are
+    /// `\scriptstyle` while its `\,` padding, `\thickspace` gutter and
+    /// `\lineskip` row gap keep the surrounding em.
+    ///
+    /// `strut` is the `(\@arstrut height, depth)` in em that amsmath puts in
+    /// every row of `matrix` and `cases`; `smallmatrix` passes `(0, 0)`.
     fn layout_matrix(
         &self,
         rows: &[&[FormulaNode]],
         row_spacing: Fixed,
         col_spacing: Fixed,
+        outer_spacing: Fixed,
+        strut: (Fixed, Fixed),
         column_alignment: &[Alignment],
+        cell_state: MathStyleState,
         state: MathStyleState,
     ) -> MathResult<LayoutNode> {
         if rows.is_empty() {
@@ -2445,11 +2522,13 @@ impl LayoutEngine {
             return Ok(LayoutNode::Kern(Fixed::ZERO));
         }
 
-        let style_scale = self.get_style_scale(state.style);
-        let size = self.base_size * style_scale;
+        let grid_size = self.base_size * self.get_style_scale(state.style);
+        let cell_size = self.base_size * self.get_style_scale(cell_state.style);
 
-        let row_spacing = row_spacing * size;
-        let col_spacing = col_spacing * size;
+        let row_spacing = row_spacing * grid_size;
+        let col_spacing = col_spacing * grid_size;
+        let outer_spacing = outer_spacing * grid_size;
+        let strut = (strut.0 * grid_size, strut.1 * grid_size);
 
         // 1. Layout all cells and find column widths and row heights/depths
         let mut cell_layouts = vec![vec![None; num_cols]; num_rows];
@@ -2457,7 +2536,7 @@ impl LayoutEngine {
 
         for r in 0..num_rows {
             for c in 0..rows[r].len() {
-                let layout = self.layout_node_state(&rows[r][c], state)?;
+                let layout = self.layout_node_state(&rows[r][c], cell_state)?;
                 col_widths[c] = col_widths[c].max(layout.width());
                 cell_layouts[r][c] = Some(layout);
             }
@@ -2481,6 +2560,16 @@ impl LayoutEngine {
         let mut packed_rows = Vec::new();
         for r in 0..num_rows {
             let mut row_children = Vec::new();
+            // amsmath's `\@arstrut`: a zero-width rule whose height and depth
+            // are the row's minimum extents, so a short row still occupies a
+            // full baseline and the grid height does not depend on the ink of
+            // its cells.
+            if strut.0 > Fixed::ZERO || strut.1 > Fixed::ZERO {
+                row_children.push(LayoutNode::Rule { width: Fixed::ZERO, height: strut.0, depth: strut.1 });
+            }
+            if outer_spacing > Fixed::ZERO {
+                row_children.push(LayoutNode::Kern(outer_spacing));
+            }
             for c in 0..num_cols {
                 if let Some(cell) = cell_layouts[r][c].take() {
                     let diff = col_widths[c] - cell.width();
@@ -2497,7 +2586,7 @@ impl LayoutEngine {
                         Alignment::Right => self.pack_hbox(vec![LayoutNode::Kern(diff), cell], Some(col_widths[c])),
                     };
                     if c > 0 && rl_grid && Self::leading_role(&rows[r][c]) == Some(SymbolRole::Relation) {
-                        row_children.push(LayoutNode::Kern(Fixed::from_f64(THICK_MUSIP_EM) * size));
+                        row_children.push(LayoutNode::Kern(Fixed::from_f64(THICK_MUSIP_EM) * cell_size));
                     }
                     row_children.push(cell_node);
                 }
@@ -2509,6 +2598,9 @@ impl LayoutEngine {
                     row_children.push(LayoutNode::Kern(col_spacing));
                 }
             }
+            if outer_spacing > Fixed::ZERO {
+                row_children.push(LayoutNode::Kern(outer_spacing));
+            }
             packed_rows.push(self.pack_hbox(row_children, None));
 
             if r + 1 < num_rows {
@@ -2517,7 +2609,7 @@ impl LayoutEngine {
         }
 
         let matrix_vbox = self.pack_vbox(packed_rows, Alignment::Center);
-        Ok(self.centre_block_on_axis(matrix_vbox, size))
+        Ok(self.centre_block_on_axis(matrix_vbox, grid_size))
     }
 
     fn layout_delimited(
