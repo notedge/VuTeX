@@ -121,5 +121,6 @@ fallback instead of silently accepting it.
 
 - `vutex-render-raster` is a stub and returns `vutex.render.raster.unimplemented`; use the SVG, HTML or PDF backends.
 - Formula support is the gated corpus, not arbitrary TeX. Unknown commands and unsupported environments report errors.
+- The native `.nd` Notedown format has no math syntax and keeps `$…$` as text; author math in Markdown with `$…$` inline or `$$…$$` display.
 - The PDF backend writes base-14 text plus a subset of a discovered system TrueType font; it is not a full Unicode font pipeline.
 - Glyph advances still differ from the Tectonic reference where the embedded Latin Modern Math design departs from the Computer Modern faces: `\sqrt[3]{x}` is 6.2% narrower and the inline `\frac{\sum_{i=1}^{n} i}{\sqrt{n}}` 16.6% narrower, while radical heights and depths agree within 0.25%. These width gaps come from font data, not from layout rules, and the geometry gate only covers a four-formula subset.

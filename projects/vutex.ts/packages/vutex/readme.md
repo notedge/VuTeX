@@ -15,8 +15,9 @@ JavaScript-only hosts use `@vutex/watex` instead.
 ## Usage
 
 ```bash
-vutex render sample.nd --output out.svg
-vutex inspect sample.nd
+vutex render sample.md --output svg > out.svg
+vutex render sample.md --output pdf   # writes sample.pdf next to the input
+vutex inspect sample.md
 vutex package doctor
 ```
 
@@ -24,8 +25,12 @@ vutex package doctor
 import { createVuTeX } from "@vutex/vutex";
 
 const vutex = await createVuTeX({ projectRoot: process.cwd() });
-const result = await vutex.render("sample.nd", { output: "svg" });
+const result = await vutex.render("sample.md", { output: "svg" });
 ```
+
+`--output` takes a format id (`svg`, `html`, `snapshot`, `pdf`), not a path.
+Markdown input (`$…$` inline, `$$…$$` display) is laid out as real math. The
+native `.nd` Notedown format has no math syntax and keeps `$…$` as text.
 
 Resource packages (fonts, templates, profiles) are managed by the VuTeX package manager via `vutex.toml`, not npm.
 
