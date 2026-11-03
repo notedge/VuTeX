@@ -557,6 +557,96 @@ fn mermaid_diagram_reaches_the_pdf_as_vector_geometry() {
     assert!(!text.contains("flowchart TD"), "the lowered scene replaces the fence text: {text}");
 }
 
+const DOT_SAMPLE: &str = r##"# 有向图
+
+```dot
+digraph pipeline {
+  rankdir=LR
+  Fetch [shape=box]
+  Store [shape=box]
+  Fetch -> Store [label="persist"]
+}
+```
+"##;
+
+const REJECTED_DOT_BODY: &str = "digraph {\n  A [label=<b>bold</b>]\n}";
+
+const REJECTED_DOT_SAMPLE: &str = r##"# 拒绝的标签
+
+```dot
+digraph {
+  A [label=<b>bold</b>]
+}
+```
+"##;
+
+fn assert_no_error_diagnostic(payload: &Value) {
+    let has_error = payload["diagnostics"]
+        .as_array()
+        .map(|arr| arr.iter().any(|d| d.get("severity").and_then(|s| s.as_str()) == Some("error")))
+        .unwrap_or(false);
+    assert!(!has_error, "unexpected error diagnostic: {payload}");
+}
+
+#[test]
+fn dot_diagram_renders_across_svg_snapshot_and_pdf() {
+    let dir = ScratchDir::new("dot");
+    let path = dir.write("pipeline.md", DOT_SAMPLE);
+
+    let svg_outcome = render_document(&path_string(&path), None);
+    assert_eq!(svg_outcome.exit_code, 0, "{}", svg_outcome.report_json);
+    assert_no_error_diagnostic(&report(&svg_outcome));
+    let svg = svg_outcome.svg.expect("svg payload");
+    assert!(svg.contains(r#"data-diagram="DOT graph""#), "the scene carries the DOT label: {svg}");
+    assert!(svg.contains(">Fetch</text>") && svg.contains(">Store</text>"), "node labels are painted: {svg}");
+    assert!(svg.contains(">persist</text>"), "the edge label is painted: {svg}");
+    assert!(!svg.contains("digraph pipeline"), "the lowered scene replaces the fence text: {svg}");
+
+    let snapshot_outcome = render_document(&path_string(&path), Some(r#"{"output":"snapshot"}"#));
+    assert_eq!(snapshot_outcome.exit_code, 0, "{}", snapshot_outcome.report_json);
+    let snapshot = snapshot_outcome.html.expect("snapshot payload");
+    assert!(snapshot.contains(r#"data-diagram="DOT graph""#), "snapshot carries the scene label: {snapshot}");
+    assert!(snapshot.contains("<svg"), "snapshot embeds the scene svg: {snapshot}");
+    assert!(snapshot.contains("<path"), "snapshot paints vector geometry: {snapshot}");
+    assert!(!snapshot.contains("digraph pipeline"), "snapshot replaces the fence text: {snapshot}");
+
+    let pdf_outcome = render_document(&path_string(&path), Some(r#"{"output":"pdf"}"#));
+    assert_eq!(pdf_outcome.exit_code, 0, "{}", pdf_outcome.report_json);
+    let pdf = pdf_outcome.pdf.expect("pdf payload");
+    let text = String::from_utf8_lossy(&pdf);
+    assert!(pdf.starts_with(b"%PDF-1.7\n"), "pdf header");
+    assert!(text.contains("/Type /Page "), "the page object exists");
+    assert!(text.contains("\nW n\n"), "the scene clips to its placed box: {text}");
+    assert!(text.contains("(Fetch) Tj") && text.contains("(Store) Tj"), "node labels are painted: {text}");
+    assert!(text.contains("(persist) Tj"), "the edge label is painted: {text}");
+    assert!(!text.contains("digraph pipeline"), "the lowered scene replaces the fence text: {text}");
+}
+
+#[test]
+fn rejected_dot_reports_a_spanned_diagnostic_and_keeps_the_source_visible() {
+    let dir = ScratchDir::new("dot-rejected");
+    let path = dir.write("rejected.md", REJECTED_DOT_SAMPLE);
+
+    let outcome = render_document(&path_string(&path), None);
+    let payload = report(&outcome);
+
+    assert_eq!(outcome.exit_code, 0, "{}", outcome.report_json);
+    let svg = outcome.svg.expect("svg payload");
+    assert!(svg.contains("digraph {"), "the authored fence stays visible: {svg}");
+    assert!(svg.contains("&lt;b&gt;bold&lt;/b&gt;"), "the rejected label stays visible escaped: {svg}");
+    assert!(!svg.contains(r#"data-diagram="#), "a rejected lowering invents no geometry: {svg}");
+
+    let diagnostics = payload["diagnostics"].as_array().expect("diagnostics array");
+    assert_eq!(diagnostics.len(), 1, "{payload}");
+    assert_eq!(diagnostics[0]["code"], "davinci.diagram.unsupported", "{payload}");
+    assert_eq!(diagnostics[0]["severity"], "error", "{payload}");
+    assert_eq!(diagnostics[0]["stage"], "diagram", "{payload}");
+    let start = diagnostics[0]["span"]["start"].as_u64().expect("span start") as usize;
+    let end = diagnostics[0]["span"]["end"].as_u64().expect("span end") as usize;
+    let rejected = &REJECTED_DOT_BODY[start..end];
+    assert_eq!(rejected, "<b>bold</b>", "the span must cover the rejected HTML label: {payload}");
+}
+
 const TIKZ_SAMPLE: &str = r##"# TikZ
 
 ```tikz

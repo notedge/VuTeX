@@ -24,7 +24,7 @@ use vutex_render_pdf::{PdfFontPolicy, PdfResources, render_pdf_with_resources_an
 use vutex_render_svg::render_svg;
 use vutex_types::{Diagnostic as RenderDiagnostic, Severity};
 
-use crate::{diagram::lower_mermaid_diagrams, tikz::lower_tikz_diagrams};
+use crate::{diagram::lower_diagrams, tikz::lower_tikz_diagrams};
 
 /// Report schema version stamped on every report payload.
 pub const REPORT_SCHEMA_VERSION: &str = "vutex.report/v0";
@@ -200,6 +200,18 @@ pub struct InspectOutcome {
     pub report_json: String,
 }
 
+/// Byte range inside the input source that a diagnostic refers to.
+///
+/// Offsets are UTF-8 byte offsets into the block source the producer lowered,
+/// so a host can slice the authored text and show exactly what was rejected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct DiagnosticSpan {
+    /// First byte offset of the diagnosed range.
+    pub start: usize,
+    /// Exclusive end byte offset of the diagnosed range.
+    pub end: usize,
+}
+
 /// Diagnostic record serialized into a report payload.
 #[derive(Debug, Serialize)]
 pub struct DiagnosticRecord {
@@ -213,6 +225,9 @@ pub struct DiagnosticRecord {
     pub stage: String,
     /// Input path the diagnostic refers to.
     pub path: Option<String>,
+    /// Source byte range the producer reported, when it reported one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub span: Option<DiagnosticSpan>,
 }
 
 /// Import a document and render it into SVG, reflow HTML, snapshot HTML, or PDF.
@@ -255,7 +270,7 @@ pub fn render_document(input_path: &str, options_json: Option<&str>) -> RenderOu
         }
     };
 
-    let mut diagrams = lower_mermaid_diagrams(&graph, input_path);
+    let mut diagrams = lower_diagrams(&graph, input_path);
     lower_tikz_diagrams(&graph, input_path, &mut diagrams);
     let (plan, layout_diagnostics) = layout_with_diagnostics(&graph, &LayoutHint::a4(), &diagrams.diagrams);
     for diagnostic in &layout_diagnostics {
@@ -472,6 +487,7 @@ fn error(code: &str, message: String, stage: &str, path: &str) -> DiagnosticReco
         message,
         stage: stage.to_string(),
         path: Some(path.to_string()),
+        span: None,
     }
 }
 
@@ -483,6 +499,7 @@ fn render_diagnostic_to_record(d: &RenderDiagnostic, path: &str) -> DiagnosticRe
         message: d.message.clone(),
         stage: "render".to_string(),
         path: Some(path.to_string()),
+        span: None,
     }
 }
 
@@ -494,6 +511,7 @@ fn layout_diagnostic_to_record(d: &RenderDiagnostic, path: &str) -> DiagnosticRe
         message: d.message.clone(),
         stage: "layout".to_string(),
         path: Some(path.to_string()),
+        span: None,
     }
 }
 

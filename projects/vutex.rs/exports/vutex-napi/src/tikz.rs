@@ -151,6 +151,7 @@ pub fn lower_tikz_diagrams(graph: &DocumentGraph, path: &str, lowered: &mut Lowe
                 message: error.message().to_string(),
                 stage: "diagram".to_string(),
                 path: Some(path.to_string()),
+                span: None,
             }),
         }
     }

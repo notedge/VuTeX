@@ -15,6 +15,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 davinci-diagram = { workspace = true }
 davinci-scene = { workspace = true }
+davinci-types = { workspace = true }
 napi = { workspace = true }
 napi-derive = { workspace = true }
 notedown-formats = { workspace = true }

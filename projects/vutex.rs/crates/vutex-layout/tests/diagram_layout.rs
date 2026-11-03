@@ -30,6 +30,10 @@ fn mermaid_diagram(graph: &mut DocumentGraph, source: &str) -> notedown_ir::Node
     graph.push_block(Block::Diagram { language: "mermaid".to_string(), source: source.to_string() })
 }
 
+fn dot_diagram(graph: &mut DocumentGraph, source: &str) -> notedown_ir::NodeId {
+    graph.push_block(Block::Diagram { language: "dot".to_string(), source: source.to_string() })
+}
+
 fn graphics(plan: &vutex_layout::LayoutPlan) -> Vec<&Graphic> {
     plan.pages
         .iter()
@@ -111,15 +115,27 @@ fn falls_back_to_source_for_a_scene_without_a_positive_canvas() {
 }
 
 #[test]
-fn places_a_registered_scene_for_a_mermaid_diagram() {
-    let mut graph = DocumentGraph::new(DocumentId(11));
-    let id = mermaid_diagram(&mut graph, "flowchart TD\n  A[Start] --> B[Stop]\n");
+fn places_a_registered_scene_for_a_dot_diagram() {
+    let mut graph = DocumentGraph::new(DocumentId(12));
+    let id = dot_diagram(&mut graph, "digraph pipeline {\n  rankdir=LR;\n  Fetch -> Store [label=\"persist\"]\n}\n");
     let mut diagrams = Diagrams::new();
-    diagrams.insert(id, text_scene(400.0, 300.0), "flow chart");
+    diagrams.insert(id, text_scene(400.0, 300.0), "DOT graph");
 
     let plan = layout_with_diagrams(&graph, &LayoutHint::a4(), &diagrams);
     let placed = &graphics(&plan)[0];
 
-    assert_eq!(placed.alt, "flow chart");
+    assert_eq!(placed.alt, "DOT graph");
     assert!(placed.scene.nodes.iter().any(|node| matches!(&node.kind, NodeKind::Text { text, .. } if text == "diagram")));
+}
+
+#[test]
+fn keeps_dot_source_visible_without_a_registered_scene() {
+    let mut graph = DocumentGraph::new(DocumentId(13));
+    dot_diagram(&mut graph, "digraph pipeline {\n  rankdir=LR;\n  Fetch -> Store [label=\"persist\"]\n}\n");
+
+    let plan = layout_with_diagrams(&graph, &LayoutHint::a4(), &Diagrams::new());
+    assert!(graphics(&plan).is_empty());
+    let text = laid_out_text(&plan);
+    assert!(text.contains("digraph pipeline"), "{text}");
+    assert!(text.contains("Fetch -> Store"), "{text}");
 }
