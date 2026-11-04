@@ -138,3 +138,21 @@ Frequency cannot be measured from this repository: `document.rs` mentions
 `tikzpicture` only in that crate's readme, and VuTeX carries no TikZ corpus.
 The audit therefore records the constructs and the verdict change, and leaves
 the frequency judgment to document owners.
+
+The six regressions are handed to the `plotter` side (`\node` branch and the
+colour table). This repository adds no local fallback and waits for a rev bump.
+
+## Evidence state, not repository state
+
+Two caveats on how the first run was produced:
+
+- The `sub` depth, `frac` size and untypeset-PDF-maths rows stay `real-defect`.
+  Both independent references agree with each other and with TeX semantics, so
+  there is no specification reading under which our values are correct.
+- The smoke build needed a local, git-ignored `.cargo` override that drops the
+  `oak-mermaid` path patch and resolves the pinned git rev. The overlay adds
+  `MermaidDiagram::State` and `EntityRelationship` before
+  `plotter.input.mermaid` handles them, so the build breaks until the
+  `plotter` side catches up. That override is only for collecting evidence. It
+  is not a fix and it is never committed. The repository is not buildable in
+  that window.
