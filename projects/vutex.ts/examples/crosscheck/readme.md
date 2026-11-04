@@ -22,11 +22,13 @@ crosscheck/
   diagram/        @viz-js/viz (Graphviz npm build) and mermaid-cli
   pdf/            pdfjs-dist on the TS side, pymupdf and pdfminer.six on the Python side
   tikz/           capability audit before and after lowering moved upstream
+  tex/            tectonic reference PDF and pymupdf-normalised layout facts
   results/        generated evidence, git-ignored
 ```
 
-`node run-all.mjs` runs math, diagram, both PDF passes, and the TikZ audit in
-that order. The Python pass reuses the PDFs written by the TypeScript pass.
+`node run-all.mjs` runs math, diagram, both PDF passes, the TikZ audit and the
+TeX reference in that order. The Python pass reuses the PDFs written by the
+TypeScript pass.
 
 `pdf/python/` is its own directory with its own `requirements.txt` and virtual
 environment. Third-party packages live only in this example's
@@ -168,6 +170,24 @@ the frequency judgment to document owners.
 
 The six regressions are handed to the `plotter` side (`\node` branch and the
 colour table). This repository adds no local fallback and waits for a rev bump.
+
+## TeX reference
+
+`tex/compare.mjs` compiles `tex/corpus/display.tex` with `tectonic` (0.17.0) and
+renders the same formulas from `tex/corpus/display.md`, then `PyMuPDF` measures
+both PDFs. Reference formulas are glyph spans and ours are vector outlines, so
+the facts are normalised by the body font size instead of absolute points:
+
+| fact | meaning |
+| --- | --- |
+| `advance` | formula width in body sizes |
+| `height` | formula height in body sizes |
+| `baseline_offset` | formula centre relative to the marker baseline |
+| `gap_above` / `gap_below` | spacing to the surrounding text |
+
+Judgments are thresholds on the worst delta: `equivalent` up to 0.25,
+`minor-diff` up to 0.5, `significant-diff` beyond that. They are deliberately
+generous because Computer Modern and the bundled faces do not share metrics.
 
 ## Evidence state, not repository state
 
