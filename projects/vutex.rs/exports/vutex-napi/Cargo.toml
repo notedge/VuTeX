@@ -13,18 +13,20 @@ repository = "https://github.com/notedge/VuTeX"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-davinci-diagram = { workspace = true }
-davinci-scene = { workspace = true }
-davinci-types = { workspace = true }
 # `document-layout` uses `document-formats::lower_tex_formula_source` but declares
 # that dependency with `default-features = false` only, so the `tex` feature is
 # claimed here to keep the math pipeline compiling. Drop this line once the upstream
 # crate declares the feature itself.
 document-formats = { workspace = true, features = ["tex"] }
+document-ir = { workspace = true }
+plotter-diagram = { workspace = true }
+plotter-input-dot = { workspace = true }
+plotter-input-mermaid = { workspace = true }
+plotter-input-plantuml = { workspace = true }
+plotter-scene = { workspace = true }
+plotter-types = { workspace = true }
 napi = { workspace = true }
 napi-derive = { workspace = true }
-notedown-formats = { workspace = true }
-notedown-ir = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 vutex-layout = { workspace = true }

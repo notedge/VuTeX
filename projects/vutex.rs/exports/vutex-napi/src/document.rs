@@ -9,13 +9,13 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use notedown_formats::{
+use document_formats::{
     FormatError,
     import::{
         html::import_html_bytes, markdown::import_markdown, notedown::import_notedown, tex::import_tex, typst::import_typst,
     },
 };
-use notedown_ir::{Block, DocumentGraph};
+use document_ir::{Block, DocumentGraph};
 use serde::{Deserialize, Serialize};
 use vutex_layout::{LayoutHint, document::layout_with_diagnostics};
 use vutex_presentation::builder::{build_display_presentation, build_flow_presentation};

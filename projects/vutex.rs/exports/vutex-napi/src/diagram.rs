@@ -1,17 +1,20 @@
-//! Host-side Mermaid, DOT, and PlantUML lowering into resolved DaVinci display
+//! Host-side Mermaid, DOT, and PlantUML lowering into resolved plotter display
 //! scenes.
 //!
-//! `notedown-formats` lowers an explicit `mermaid`, `dot`, or `plantuml` fence
-//! to `Block::Diagram`, so this adapter lowers those blocks through
-//! `davinci-diagram` and registers each display scene under the block id that
+//! `document-formats` lowers an explicit `mermaid`, `dot`, or `plantuml` fence
+//! to `Block::Diagram`, so this adapter lowers those blocks through the
+//! `plotter-input-*` frontends and registers each display scene under the block id that
 //! authored it. Layout then places the scene instead of the source text. A
 //! failed lowering registers no scene, which keeps the authored source visible
 //! and never invents diagram geometry. Rejections carry the byte range the
 //! producer reported, so hosts can point at the rejected source.
 
-use davinci_diagram::{DiagramError, LoweredDiagram, dot_to_scene, mermaid_to_scene, plantuml_to_scene};
-use davinci_types::{Diagnostic, DiagnosticLocation};
-use notedown_ir::{Block, DocumentGraph, SourceSpan};
+use document_ir::{Block, DocumentGraph, SourceSpan};
+use plotter_diagram::{DiagramError, LoweredDiagram};
+use plotter_input_dot::dot_to_scene;
+use plotter_input_mermaid::mermaid_to_scene;
+use plotter_input_plantuml::plantuml_to_scene;
+use plotter_types::{Diagnostic, DiagnosticLocation};
 use vutex_layout::Diagrams;
 
 use crate::document::{DiagnosticRecord, DiagnosticSpan};

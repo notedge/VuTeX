@@ -1,4 +1,11 @@
-//! Host-side TikZ picture lowering into resolved DaVinci display scenes.
+//! Host-side TikZ picture lowering into resolved display scenes.
+//!
+//! # Upstream status
+//!
+//! This lowering is a pending upstream asset. `plotter.input.tikz` does not
+//! exist yet, so the implementation stays host-side; once that frontend lands,
+//! this module should be deleted and replaced by a call into it. Treat this as
+//! a temporary gap owner, not as the final shape.
 //!
 //! Notedown delivers a TikZ picture in one of two shapes. A Markdown or
 //! Notedown fence tagged `tikz` stays a `Block::Code` with its language tag, and
@@ -48,10 +55,10 @@
 //! `\path`, no clipping, no coordinate transformations beyond `scale`, and no
 //! pattern or gradient fills.
 
-use davinci_scene::{
+use document_ir::{Block, DocumentGraph};
+use plotter_scene::{
     Color, DisplayScene, NodeKind, PathCommand, PathData, Point, SceneNode, ShapeStyle, Size, TextAnchor, TextStyle, Transform,
 };
-use notedown_ir::{Block, DocumentGraph};
 
 use crate::{diagram::LoweredDiagrams, document::DiagnosticRecord};
 
