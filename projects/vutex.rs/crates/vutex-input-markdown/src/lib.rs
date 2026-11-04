@@ -5,10 +5,14 @@
 use std::{
     error::Error,
     fmt::{Display, Formatter, Result as FmtResult},
+    path::Path,
 };
 
 use notedown_formats::import::markdown::import_markdown_bytes;
 use notedown_ir::{Block, DocumentGraph, SemanticStatus};
+use vutex_layout::{Diagrams, LayoutHint, document::layout_with_diagnostics};
+use vutex_presentation::build_display_presentation;
+use vutex_render_svg::render_svg as render_display_svg;
 use vutex_types::{
     ConversionReport, CoverageSummary, Diagnostic, LossyItem, OpaqueItem, PreservedItem, Severity, SourceSpan, UnsupportedItem,
 };
@@ -17,6 +21,8 @@ use vutex_types::{
 pub mod codes {
     /// The selected Markdown import profile failed to parse the source.
     pub const PARSE_FAILED: &str = "vutex.input.markdown.parse_failed";
+    /// The source file could not be read.
+    pub const FILE_READ_FAILED: &str = "vutex.input.markdown.file_read_failed";
     /// The imported graph violates a `notedown-ir` structural invariant.
     pub const INVALID_GRAPH: &str = "vutex.input.markdown.invalid_graph";
     /// A block was retained as an opaque boundary instead of being lowered.
@@ -25,9 +31,10 @@ pub mod codes {
     pub const PRESERVED_RAW_HTML: &str = "vutex.input.markdown.preserved_raw_html";
 }
 
-/// Result of importing one Markdown source into `notedown-ir`.
+/// Outcome of a Markdown import: the document graph, its conversion report, and
+/// the diagnostics the lowering produced.
 #[derive(Debug)]
-pub struct MarkdownImport {
+pub struct MarkdownDocument {
     /// The imported semantic graph consumed by the layout stage.
     pub graph: DocumentGraph,
     /// Normalized coverage and loss report for the import.
@@ -36,50 +43,62 @@ pub struct MarkdownImport {
     pub diagnostics: Vec<Diagnostic>,
 }
 
-/// Why a Markdown source could not be imported into a usable graph.
+/// Outcome of the closed loop from Markdown source to SVG output.
+#[derive(Debug)]
+pub struct MarkdownRender {
+    /// Rendered SVG document.
+    pub svg: String,
+    /// Shared conversion report projected from the imported graph.
+    pub report: ConversionReport,
+    /// Import diagnostics followed by the layout stage diagnostics.
+    pub diagnostics: Vec<Diagnostic>,
+    /// Number of laid out pages.
+    pub pages: usize,
+    /// Number of positioned items across all pages.
+    pub items: usize,
+}
+
+/// Why a Markdown source could not be imported or rendered.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum MarkdownInputError {
-    /// The selected import profile rejected the source.
-    Parse {
-        /// The structured parse diagnostic.
-        diagnostic: Diagnostic,
-    },
-    /// The graph broke a `notedown-ir` invariant before any layout ran.
-    InvalidGraph {
-        /// One diagnostic per invariant violation.
-        diagnostics: Vec<Diagnostic>,
-    },
-    /// The source used a construct this profile cannot lower.
-    Unsupported {
-        /// All diagnostics collected for the import, including the errors.
-        diagnostics: Vec<Diagnostic>,
-    },
+pub struct MarkdownInputError {
+    diagnostics: Vec<Diagnostic>,
 }
 
 impl MarkdownInputError {
-    /// Diagnostics associated with the failure.
+    /// Stable diagnostic code of the first failure.
+    #[must_use]
+    pub fn code(&self) -> &str {
+        self.diagnostics.first().map_or("", |diagnostic| diagnostic.code.as_str())
+    }
+
+    /// Human-readable message of the first failure.
+    #[must_use]
+    pub fn message(&self) -> &str {
+        self.diagnostics.first().map_or("", |diagnostic| diagnostic.message.as_str())
+    }
+
+    /// All diagnostics associated with the failure.
     #[must_use]
     pub fn diagnostics(&self) -> &[Diagnostic] {
-        match self {
-            Self::Parse { diagnostic } => std::slice::from_ref(diagnostic),
-            Self::InvalidGraph { diagnostics } | Self::Unsupported { diagnostics } => diagnostics,
-        }
+        &self.diagnostics
+    }
+}
+
+impl From<Diagnostic> for MarkdownInputError {
+    fn from(diagnostic: Diagnostic) -> Self {
+        Self { diagnostics: vec![diagnostic] }
+    }
+}
+
+impl From<Vec<Diagnostic>> for MarkdownInputError {
+    fn from(diagnostics: Vec<Diagnostic>) -> Self {
+        Self { diagnostics }
     }
 }
 
 impl Display for MarkdownInputError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
-        match self {
-            Self::Parse { diagnostic } => {
-                write!(formatter, "markdown import failed: {}", diagnostic.message)
-            }
-            Self::InvalidGraph { diagnostics } => {
-                write!(formatter, "markdown import produced {} graph invariant violation(s)", diagnostics.len())
-            }
-            Self::Unsupported { diagnostics } => {
-                write!(formatter, "markdown import contains {} unsupported construct(s)", diagnostics.len())
-            }
-        }
+        write!(formatter, "{}: {}", self.code(), self.message())
     }
 }
 
@@ -90,19 +109,49 @@ impl Error for MarkdownInputError {}
 /// The graph is validated before it is returned. A source that the profile
 /// reports as unsupported fails closed instead of yielding a graph whose
 /// content would be dropped later in the pipeline without a diagnostic.
-pub fn import_markdown(label: &str, text: &str) -> Result<MarkdownImport, MarkdownInputError> {
-    let graph = import_markdown_bytes(label, text).map_err(|error| MarkdownInputError::Parse {
-        diagnostic: Diagnostic {
+pub fn import_source(label: &str, source: &str) -> Result<MarkdownDocument, MarkdownInputError> {
+    let graph = import_markdown_bytes(label, source).map_err(|error| {
+        MarkdownInputError::from(Diagnostic {
             code: codes::PARSE_FAILED.to_owned(),
             severity: Severity::Error,
             message: error.to_string(),
             span: None,
-        },
+        })
     })?;
     finish(graph)
 }
 
-fn finish(graph: DocumentGraph) -> Result<MarkdownImport, MarkdownInputError> {
+/// Read a Markdown file and import it with the file path as the document label.
+pub fn import_file(path: impl AsRef<Path>) -> Result<MarkdownDocument, MarkdownInputError> {
+    let path = path.as_ref();
+    let source = std::fs::read_to_string(path).map_err(|error| {
+        MarkdownInputError::from(Diagnostic {
+            code: codes::FILE_READ_FAILED.to_owned(),
+            severity: Severity::Error,
+            message: format!("failed to read {}: {error}", path.display()),
+            span: None,
+        })
+    })?;
+    import_source(&path.display().to_string(), &source)
+}
+
+/// Import Markdown source and run it through layout, presentation, and SVG output.
+///
+/// Diagram fences stay owned by the host: register their lowerings in `diagrams`
+/// before calling. An unregistered diagram is left to the layout stage, which
+/// keeps the authored source visible instead of guessing at a scene.
+pub fn render_svg(label: &str, source: &str, diagrams: &Diagrams) -> Result<MarkdownRender, MarkdownInputError> {
+    let MarkdownDocument { graph, report, mut diagnostics } = import_source(label, source)?;
+    let (plan, layout_diagnostics) = layout_with_diagnostics(&graph, &LayoutHint::a4(), diagrams);
+    diagnostics.extend(layout_diagnostics);
+    let display = build_display_presentation(&plan);
+    let pages = display.pages.len();
+    let items = display.pages.iter().map(|page| page.items.len()).sum();
+    let svg = render_display_svg(&display).map_err(MarkdownInputError::from)?;
+    Ok(MarkdownRender { svg, report, diagnostics, pages, items })
+}
+
+fn finish(graph: DocumentGraph) -> Result<MarkdownDocument, MarkdownInputError> {
     let validation = graph.validate();
     let (report, diagnostics) = analyze(&graph);
     if !validation.is_valid() {
@@ -117,12 +166,12 @@ fn finish(graph: DocumentGraph) -> Result<MarkdownImport, MarkdownInputError> {
             })
             .collect();
         collected.extend(diagnostics);
-        return Err(MarkdownInputError::InvalidGraph { diagnostics: collected });
+        return Err(MarkdownInputError::from(collected));
     }
     if !report.unsupported.is_empty() {
-        return Err(MarkdownInputError::Unsupported { diagnostics });
+        return Err(MarkdownInputError::from(diagnostics));
     }
-    Ok(MarkdownImport { graph, report, diagnostics })
+    Ok(MarkdownDocument { graph, report, diagnostics })
 }
 
 fn analyze(graph: &DocumentGraph) -> (ConversionReport, Vec<Diagnostic>) {
@@ -221,14 +270,9 @@ mod tests {
 
         let error = finish(graph).expect_err("unsupported constructs must fail closed");
 
-        match error {
-            MarkdownInputError::Unsupported { diagnostics } => {
-                assert_eq!(diagnostics.len(), 1);
-                assert_eq!(diagnostics[0].code, "import.markdown.unsupported_block");
-                assert_eq!(diagnostics[0].severity, Severity::Error);
-            }
-            other => panic!("expected unsupported error, got {other:?}"),
-        }
+        assert_eq!(error.code(), "import.markdown.unsupported_block");
+        assert_eq!(error.diagnostics().len(), 1);
+        assert_eq!(error.diagnostics()[0].severity, Severity::Error);
     }
 
     #[test]
@@ -242,16 +286,12 @@ mod tests {
 
         let error = finish(graph).expect_err("unsupported opaque payloads must fail closed");
 
-        match error {
-            MarkdownInputError::Unsupported { diagnostics } => {
-                assert!(
-                    diagnostics
-                        .iter()
-                        .any(|diagnostic| { diagnostic.code == codes::OPAQUE_BLOCK && diagnostic.severity == Severity::Error })
-                );
-            }
-            other => panic!("expected unsupported error, got {other:?}"),
-        }
+        assert!(
+            error
+                .diagnostics()
+                .iter()
+                .any(|diagnostic| { diagnostic.code == codes::OPAQUE_BLOCK && diagnostic.severity == Severity::Error })
+        );
     }
 
     #[test]
@@ -265,13 +305,8 @@ mod tests {
 
         let error = finish(graph).expect_err("dangling section children must be rejected");
 
-        match error {
-            MarkdownInputError::InvalidGraph { diagnostics } => {
-                assert!(!diagnostics.is_empty());
-                assert!(diagnostics.iter().all(|diagnostic| diagnostic.severity == Severity::Error));
-                assert!(diagnostics.iter().all(|diagnostic| diagnostic.code == codes::INVALID_GRAPH));
-            }
-            other => panic!("expected invalid graph error, got {other:?}"),
-        }
+        assert!(!error.diagnostics().is_empty());
+        assert!(error.diagnostics().iter().all(|diagnostic| diagnostic.severity == Severity::Error));
+        assert!(error.diagnostics().iter().any(|diagnostic| diagnostic.code == codes::INVALID_GRAPH));
     }
 }

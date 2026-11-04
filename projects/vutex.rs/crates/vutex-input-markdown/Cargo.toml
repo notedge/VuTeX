@@ -10,10 +10,10 @@ readme = "readme.md"
 [dependencies]
 notedown-ir = { workspace = true }
 notedown-formats = { workspace = true }
+vutex-layout = { workspace = true }
+vutex-presentation = { workspace = true }
+vutex-render-svg = { workspace = true }
 vutex-types = { workspace = true }
 
 [dev-dependencies]
 davinci-diagram = { workspace = true }
-vutex-layout = { workspace = true }
-vutex-presentation = { workspace = true }
-vutex-render-svg = { workspace = true }
