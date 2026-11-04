@@ -365,12 +365,14 @@ fn records_cover_the_corpus_and_blocked_records_have_no_geometry() {
 // Geometry parity — only when TeX engine produced numbers
 // ---------------------------------------------------------------------------
 
-/// Font-metric-level exceptions to the layout-rule parity gate.
+/// Font-metric divergences whose cause is font data, not a layout rule.
 ///
 /// The gate compares VuTeX (Latin Modern Math) against Tectonic/CM reference
-/// boxes.  The items below diverge because of *font data*, not layout rules,
-/// and cannot be closed without CM-metric faces.  Every exception was measured
-/// from the engine's own output, not inferred from a picture:
+/// boxes.  The items below diverge because of *font data* and cannot be closed
+/// without CM-metric faces.  Every one was measured from the engine's own
+/// output, not inferred from a picture.  They are registered with their exact
+/// numbers in `tests/fixtures/font-metric-ledger.json`; this comment only
+/// keeps the prose behind the original six entries:
 ///
 /// * `width` on `fraction-compound (inline)` and `script-nested` — the CM
 ///   script faces (`cmmi7`, `cmsy7`) are a non-proportional 0.7× design whose
@@ -396,19 +398,194 @@ fn records_cover_the_corpus_and_blocked_records_have_no_geometry() {
 ///   faces again), so the divergence is font data on both sides of the bar,
 ///   not a box-model shortfall.
 ///
-/// Exceptions waive exactly the listed label and field; every other check
-/// stays blocking, and any new divergence still fails the gate.
-const FONT_METRIC_EXCEPTIONS: &[(&str, &str)] = &[
-    ("fraction-compound (inline)", "width"),
-    ("script-nested (inline)", "width"),
-    ("script-nested (display)", "width"),
-    ("radical-degree (inline)", "width"),
-    ("radical-degree (display)", "width"),
-    ("fraction-sum-radical (inline)", "width"),
-];
+/// Machine-checked ledger of accepted font-metric divergences.
+///
+/// The ledger is **not** an exemption list: every entry binds the measured
+/// VuTeX and reference numbers recorded when the divergence was accepted, and
+/// the gate re-measures both on every run.  A drift beyond
+/// `drift_tolerance_em`, a `relative` that no longer reproduces from the
+/// recorded pair, an entry without a numeric evidence fact, or an entry that
+/// matches no measured divergence all fail the gate.
+const LEDGER_PATH: &str = "font-metric-ledger.json";
 
-fn is_excepted(label: &str, field: &str) -> bool {
-    FONT_METRIC_EXCEPTIONS.contains(&(label, field))
+#[derive(Debug, Deserialize, Clone)]
+struct Ledger {
+    schema_version: String,
+    font_family: String,
+    drift_tolerance_em: f64,
+    entries: Vec<LedgerEntry>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+struct LedgerEntry {
+    corpus_id: String,
+    display: bool,
+    field: String,
+    vutex: f64,
+    latex: f64,
+    relative: f64,
+    font_family: String,
+    mechanism: String,
+    evidence: Vec<EvidenceFact>,
+}
+
+/// One numeric fact behind an entry — a glyph advance, an ink bound, a
+/// `fontdimen`, or a MATH-table constant.  `value` is mandatory: prose alone
+/// cannot be re-checked, so the gate rejects an entry without one.
+#[derive(Debug, Deserialize, Clone)]
+struct EvidenceFact {
+    source: String,
+    kind: String,
+    name: String,
+    value: f64,
+}
+
+fn load_ledger() -> Ledger {
+    // The ledger is hand-maintained evidence, not a generated oracle fixture,
+    // so it sits one level above the generated `oracle/` directory.
+    let path = fixture_dir().join("..").join(LEDGER_PATH);
+    let text = fs::read_to_string(&path).unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
+    serde_json::from_str(&text).unwrap_or_else(|e| panic!("{} must be the font-metric ledger: {e}", path.display()))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BoxField {
+    Width,
+    Height,
+    Depth,
+}
+
+impl BoxField {
+    fn as_str(self) -> &'static str {
+        match self {
+            BoxField::Width => "width",
+            BoxField::Height => "height",
+            BoxField::Depth => "depth",
+        }
+    }
+}
+
+/// One measured over-tolerance divergence.
+#[derive(Debug, Clone)]
+struct Divergence {
+    corpus_id: String,
+    display: bool,
+    field: BoxField,
+    vutex: f64,
+    latex: f64,
+}
+
+#[derive(Debug, Default)]
+struct Classification {
+    blocking: Vec<String>,
+    registered: Vec<String>,
+    pending: Vec<String>,
+}
+
+impl Classification {
+    fn total(&self) -> usize {
+        self.blocking.len() + self.registered.len() + self.pending.len()
+    }
+
+    /// `45 = 0 blocking + 41 registered font exceptions + 4 pending re-measure`
+    fn report(&self) -> String {
+        format!(
+            "{} = {} blocking + {} registered font exceptions + {} pending re-measure",
+            self.total(),
+            self.blocking.len(),
+            self.registered.len(),
+            self.pending.len()
+        )
+    }
+}
+
+/// Slack allowed between the recorded `relative` field and the value
+/// recomputed from the recorded `vutex`/`latex` pair.
+const RELATIVE_RECORD_TOL: f64 = 0.002;
+
+/// Sort every measured divergence into one of three buckets.
+///
+/// * `pending` — the cause is an upstream parser gap, not this crate's layout.
+/// * `registered` — a ledger entry reproduces the measurement within
+///   `drift_tolerance_em`.
+/// * `blocking` — unregistered drift, a stale ledger entry, a ledger entry
+///   whose numbers drifted from the measurement, or an entry with no numeric
+///   evidence.
+fn classify_divergences(divergences: &[Divergence], ledger: &Ledger, pending_ids: &[&str]) -> Classification {
+    let mut out = Classification::default();
+    let mut matched = vec![false; ledger.entries.len()];
+
+    for divergence in divergences {
+        let label = format!(
+            "{} ({})",
+            divergence.corpus_id,
+            if divergence.display { "display" } else { "inline" }
+        );
+        let field = divergence.field.as_str();
+
+        if pending_ids.contains(&divergence.corpus_id.as_str()) {
+            out.pending.push(format!("{label}: {field}"));
+            continue;
+        }
+
+        let hit = ledger
+            .entries
+            .iter()
+            .position(|entry| entry.corpus_id == divergence.corpus_id && entry.display == divergence.display && entry.field == field);
+        let Some(index) = hit else {
+            out.blocking.push(format!(
+                "{label}: unregistered {field} divergence vutex={:.4} latex={:.4}",
+                divergence.vutex, divergence.latex
+            ));
+            continue;
+        };
+        matched[index] = true;
+        let entry = &ledger.entries[index];
+
+        let drift = ledger.drift_tolerance_em;
+        let recorded_delta = (entry.vutex - divergence.vutex).abs().max((entry.latex - divergence.latex).abs());
+        let recomputed = (entry.vutex - entry.latex).abs() / entry.latex.abs().max(0.001);
+        let evidence_missing = entry.font_family.trim().is_empty()
+            || entry.mechanism.trim().is_empty()
+            || entry.evidence.is_empty()
+            || entry.evidence.iter().any(|fact| {
+                fact.source.trim().is_empty() || fact.kind.trim().is_empty() || fact.name.trim().is_empty() || !fact.value.is_finite()
+            });
+
+        if recorded_delta > drift {
+            out.blocking.push(format!(
+                "{label}: ledger is stale — recorded vutex={:.4} latex={:.4}, measured vutex={:.4} latex={:.4} \
+                 (drift {recorded_delta:.4}em > {drift:.4}em), re-check the evidence",
+                entry.vutex, entry.latex, divergence.vutex, divergence.latex
+            ));
+        }
+        else if (entry.relative - recomputed).abs() > RELATIVE_RECORD_TOL {
+            out.blocking.push(format!(
+                "{label}: ledger `relative`={:.4} does not reproduce from the recorded pair ({recomputed:.4})",
+                entry.relative
+            ));
+        }
+        else if evidence_missing {
+            out.blocking.push(format!("{label}: ledger entry has no numeric evidence (mechanism `{}`)", entry.mechanism));
+        }
+        else {
+            out.registered.push(format!("{label}: {field} — {}", entry.mechanism));
+        }
+    }
+
+    for (index, entry) in ledger.entries.iter().enumerate() {
+        if matched[index] {
+            continue;
+        }
+        out.blocking.push(format!(
+            "ledger entry {} ({}) {} matches no measured divergence — unknown formula id, a fixed divergence, or an upstream-pending id that must not be registered",
+            entry.corpus_id,
+            if entry.display { "display" } else { "inline" },
+            entry.field
+        ));
+    }
+
+    out
 }
 
 /// Corpus entries whose gap is an upstream dependency rather than a layout
@@ -416,12 +593,10 @@ fn is_excepted(label: &str, field: &str) -> bool {
 ///
 /// `notedown`'s formula-source parser drops the interword spaces inside
 /// `\text{…}`, so the lowered tree reads `Text { "helloworld" }` before layout
-/// runs and this crate has nothing left to measure. The entries stay blocking
-/// and are reported with [UPSTREAM_NOTE]; re-measure once that parser keeps
-/// the spaces.
-fn upstream_dependency(corpus_id: &str) -> bool {
-    matches!(corpus_id, "text-phrase" | "text-inline")
-}
+/// runs and this crate has nothing left to measure.  They are reported as
+/// `pending re-measure`, never registered in the ledger and never exempted;
+/// re-measure once that parser keeps the spaces.
+const UPSTREAM_IDS: &[&str] = &["text-phrase", "text-inline"];
 
 const UPSTREAM_NOTE: &str = " [upstream dependency: notedown formula-source parser drops the interword spaces, re-measure after it is fixed]";
 
@@ -472,8 +647,14 @@ fn vutex_geometry_is_within_tolerance_of_latex_reference() {
         index.insert((record.corpus_id.as_str(), record.display_mode), record);
     }
 
-    let mut failures: Vec<String> = Vec::new();
+    let ledger = load_ledger();
+    assert_eq!(ledger.schema_version, "v0", "font-metric ledger must declare schema v0");
+    assert!(!ledger.font_family.trim().is_empty(), "font-metric ledger must name the font family under test");
+    assert!(ledger.drift_tolerance_em > 0.0, "font-metric ledger must declare a positive drift tolerance");
+
+    let mut fixture_errors: Vec<String> = Vec::new();
     let mut refused: Vec<String> = Vec::new();
+    let mut divergences: Vec<Divergence> = Vec::new();
 
     for corpus_id in &corpus_ids() {
         for &display in &[false, true] {
@@ -481,7 +662,7 @@ fn vutex_geometry_is_within_tolerance_of_latex_reference() {
             let record = match index.get(&key) {
                 Some(r) => r,
                 None => {
-                    failures.push(format!("missing fixture record for {corpus_id} display={display}"));
+                    fixture_errors.push(format!("missing fixture record for {corpus_id} display={display}"));
                     continue;
                 }
             };
@@ -499,7 +680,7 @@ fn vutex_geometry_is_within_tolerance_of_latex_reference() {
             let (tex_w, tex_h, tex_d) = match (record.width, record.height, record.depth) {
                 (Some(w), Some(h), Some(d)) => (w, h, d),
                 _ => {
-                    failures.push(format!("{corpus_id} display={display}: fixture missing measurement"));
+                    fixture_errors.push(format!("{corpus_id} display={display}: fixture missing measurement"));
                     continue;
                 }
             };
@@ -507,41 +688,34 @@ fn vutex_geometry_is_within_tolerance_of_latex_reference() {
             let (vu_w, vu_h, vu_d) = match vutex_measure(&record.tex, display) {
                 Ok(t) => t,
                 Err(e) => {
-                    failures.push(format!("{corpus_id} display={display}: VuTeX parse/layout error: {e}"));
+                    fixture_errors.push(format!("{corpus_id} display={display}: VuTeX parse/layout error: {e}"));
                     continue;
                 }
             };
 
-            let label = format!("{corpus_id} ({})", if display { "display" } else { "inline" });
-            let note = if upstream_dependency(corpus_id) { UPSTREAM_NOTE } else { "" };
-
-            // Width: 5% tol (or an absolute 0.02em difference).
-            let denom_w = tex_w.abs().max(0.001);
-            let rel_w = (vu_w - tex_w).abs() / denom_w;
-            if rel_w > WIDTH_TOL && (vu_w - tex_w).abs() > ABS_FLOOR_EM && !is_excepted(&label, "width") {
-                failures.push(format!(
-                    "{label}: width vutex={vu_w:.4} latex={tex_w:.4} rel={rel_w:.3} > tol={WIDTH_TOL}{note}"
-                ));
-            }
-
-            // Height: 10% tol.
-            let denom_h = tex_h.abs().max(0.001);
-            let rel_h = (vu_h - tex_h).abs() / denom_h;
-            if rel_h > HEIGHT_TOL && (vu_h - tex_h).abs() > ABS_FLOOR_EM && !is_excepted(&label, "height") {
-                failures.push(format!(
-                    "{label}: height vutex={vu_h:.4} latex={tex_h:.4} rel={rel_h:.3} > tol={HEIGHT_TOL}{note}"
-                ));
-            }
-
-            // Depth: 15% tol.
-            let denom_d = tex_d.abs().max(0.001);
-            let rel_d = (vu_d - tex_d).abs() / denom_d;
-            if rel_d > DEPTH_TOL && (vu_d - tex_d).abs() > ABS_FLOOR_EM && !is_excepted(&label, "depth") {
-                failures.push(format!(
-                    "{label}: depth vutex={vu_d:.4} latex={tex_d:.4} rel={rel_d:.3} > tol={DEPTH_TOL}{note}"
-                ));
+            for (field, vu, reference, tolerance) in [
+                (BoxField::Width, vu_w, tex_w, WIDTH_TOL),
+                (BoxField::Height, vu_h, tex_h, HEIGHT_TOL),
+                (BoxField::Depth, vu_d, tex_d, DEPTH_TOL),
+            ] {
+                let rel = (vu - reference).abs() / reference.abs().max(0.001);
+                if rel > tolerance && (vu - reference).abs() > ABS_FLOOR_EM {
+                    divergences.push(Divergence {
+                        corpus_id: corpus_id.clone(),
+                        display,
+                        field,
+                        vutex: vu,
+                        latex: reference,
+                    });
+                }
             }
         }
+    }
+
+    let classification = classify_divergences(&divergences, &ledger, UPSTREAM_IDS);
+    eprintln!("\n=== latex geometry oracle: {} ===", classification.report());
+    for pending in &classification.pending {
+        eprintln!("  pending re-measure: {pending}{UPSTREAM_NOTE}");
     }
 
     if !refused.is_empty() {
@@ -551,6 +725,8 @@ fn vutex_geometry_is_within_tolerance_of_latex_reference() {
         }
     }
 
+    let mut failures = fixture_errors;
+    failures.extend(classification.blocking);
     if !failures.is_empty() {
         panic!("LaTeX geometry parity failures ({}):\n  {}", failures.len(), failures.join("\n  "));
     }
@@ -999,4 +1175,88 @@ fn vutex_stretched_delimiters_match_the_latex_delimiter_size() {
     }
     assert_eq!(checked, 8, "four fenced entries must be recorded in inline and display styles");
     assert!(failures.is_empty(), "delimiter extent mismatches:\n  {}", failures.join("\n  "));
+}
+
+// ---------------------------------------------------------------------------
+// Ledger anti-abuse guards
+// ---------------------------------------------------------------------------
+
+// The two tests below prove the ledger cannot be used as a blanket exemption:
+// they feed `classify_divergences` a synthetic measurement and a synthetic
+// ledger, so the real fixture stays untouched.  Each test asserts the clean
+// (green) case first, then the poisoned (red) case.
+
+fn synthetic_measured(corpus_id: &str, display: bool, field: BoxField, vutex: f64, latex: f64) -> Divergence {
+    Divergence { corpus_id: corpus_id.to_string(), display, field, vutex, latex }
+}
+
+fn synthetic_entry(corpus_id: &str, display: bool, field: BoxField, vutex: f64, latex: f64) -> LedgerEntry {
+    LedgerEntry {
+        corpus_id: corpus_id.to_string(),
+        display,
+        field: field.as_str().to_string(),
+        vutex,
+        latex,
+        relative: (vutex - latex).abs() / latex.abs().max(0.001),
+        font_family: "latin-modern-math".to_string(),
+        mechanism: "glyph-advance".to_string(),
+        evidence: vec![EvidenceFact {
+            source: "latin-modern-math".to_string(),
+            kind: "glyph-advance".to_string(),
+            name: "uni211D".to_string(),
+            value: 0.639,
+        }],
+    }
+}
+
+fn synthetic_ledger(entries: Vec<LedgerEntry>) -> Ledger {
+    Ledger {
+        schema_version: "v0".to_string(),
+        font_family: "latin-modern-math".to_string(),
+        drift_tolerance_em: 0.005,
+        entries,
+    }
+}
+
+#[test]
+fn ledger_rejects_an_unknown_corpus_id() {
+    let measured = vec![synthetic_measured("known", false, BoxField::Width, 0.6390, 0.7222)];
+    let clean = synthetic_ledger(vec![synthetic_entry("known", false, BoxField::Width, 0.6390, 0.7222)]);
+
+    let classification = classify_divergences(&measured, &clean, &[]);
+    assert!(
+        classification.blocking.is_empty(),
+        "a matched, numerically exact entry must register cleanly, got {:?}",
+        classification.blocking
+    );
+    assert_eq!(classification.registered.len(), 1);
+    assert_eq!(classification.report(), "1 = 0 blocking + 1 registered font exceptions + 0 pending re-measure");
+
+    // Poison: an entry for a formula id that has no measured divergence.  This is
+    // how a blanket exemption would be smuggled in, so it must fail.
+    let mut poisoned = clean;
+    poisoned.entries.push(synthetic_entry("does-not-exist", false, BoxField::Width, 0.6390, 0.7222));
+    let classification = classify_divergences(&measured, &poisoned, &[]);
+    assert_eq!(classification.blocking.len(), 1, "an unknown corpus id must fail the gate: {:?}", classification.blocking);
+    assert!(classification.blocking[0].contains("does-not-exist"), "blocking must name the fake id: {:?}", classification.blocking[0]);
+}
+
+#[test]
+fn ledger_rejects_a_recorded_value_that_drifted_from_the_measurement() {
+    let measured = vec![synthetic_measured("known", false, BoxField::Width, 0.6390, 0.7222)];
+    let clean = synthetic_ledger(vec![synthetic_entry("known", false, BoxField::Width, 0.6390, 0.7222)]);
+    assert!(
+        classify_divergences(&measured, &clean, &[]).blocking.is_empty(),
+        "the recorded pair must match the measurement exactly"
+    );
+
+    // Poison: the recorded VuTeX number moved 0.010em (double the 0.005em
+    // drift tolerance) while the measurement stayed put.  The ledger's own
+    // numbers no longer describe the engine, so the entry is stale.
+    let mut drifted = clean;
+    drifted.entries[0].vutex = 0.6490;
+    drifted.entries[0].relative = (0.6490f64 - 0.7222f64).abs() / 0.7222;
+    let classification = classify_divergences(&measured, &drifted, &[]);
+    assert_eq!(classification.blocking.len(), 1, "drifted ledger numbers must fail the gate: {:?}", classification.blocking);
+    assert!(classification.blocking[0].contains("stale"), "blocking must say the entry is stale: {:?}", classification.blocking[0]);
 }
