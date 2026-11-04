@@ -878,8 +878,10 @@ fn vutex_script_anchors_match_the_latex_box_differences() {
     }
 
     // The paired script character is the first glyph of the script body: the
-    // box-difference anchor sits at the script body's left edge.
-    const PAIRING: &[(&str, char, char)] = &[("script-nested", 'x', 'a'), ("script-negative", 'e', '-')];
+    // box-difference anchor sits at the script body's left edge.  `-` is
+    // authored, but a math atom lays out as the minus sign (U+2212), exactly
+    // the glyph TeX's math code selects.
+    const PAIRING: &[(&str, char, char)] = &[("script-nested", 'x', 'a'), ("script-negative", 'e', '\u{2212}')];
 
     let mut checked = 0;
     for record in &doc.records {

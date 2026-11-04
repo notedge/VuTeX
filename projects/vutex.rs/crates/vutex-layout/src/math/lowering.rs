@@ -167,6 +167,11 @@ fn atom_node(text: &str, class: MathClass, face: Option<FontStyle>, diagnostics:
         return FormulaNode::Text { text: text.to_string(), font_style: FontStyle::Normal, span };
     }
     let style = face.unwrap_or_else(|| default_face(class));
+    // TeX's math code for `-` selects the minus sign, not the text hyphen:
+    // the two glyphs differ in both design and advance (hyphen 0.333 em, minus
+    // 0.778 em in Latin Modern Math). Only math atoms are redirected, so
+    // `\text{-}` keeps its hyphen.
+    let character = if character == '-' { '\u{2212}' } else { character };
     FormulaNode::Symbol { glyph_key: GlyphKey::from_char(character, None, style), role: role_for(class), span }
 }
 

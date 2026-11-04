@@ -926,11 +926,11 @@
         64
       ],
       "svgViewport": [
-        24.9639,
-        17.2265
+        30.3467,
+        17.6252
       ],
-      "bytes": 610,
-      "sha256": "54e42df14584e5e7a15e3cd2c5d755b8b66b799a84e6d8c1bf05e960f0a00cb7"
+      "bytes": 589,
+      "sha256": "0897356639db35957e0fb19346fab1b9af15586c0897d486ee07d228ff3e8219"
     },
     "script-negative-display": {
       "tex": "e^{-x^2}",
@@ -941,11 +941,11 @@
         64
       ],
       "svgViewport": [
-        24.9639,
-        17.2265
+        30.3467,
+        17.6252
       ],
-      "bytes": 610,
-      "sha256": "54e42df14584e5e7a15e3cd2c5d755b8b66b799a84e6d8c1bf05e960f0a00cb7"
+      "bytes": 589,
+      "sha256": "0897356639db35957e0fb19346fab1b9af15586c0897d486ee07d228ff3e8219"
     },
     "brace-fenced-fraction-inline": {
       "tex": "\\left\\{ \\frac{a}{b} \\right\\}",
