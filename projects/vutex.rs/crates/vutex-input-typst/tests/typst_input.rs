@@ -22,6 +22,10 @@ const MARKUP: &str = "= Title\n\nSome `code` and a~space here.\n";
 
 const TABLE: &str = "= Title\n\n#table(columns: 2, [a], [b])\n\nTail.\n";
 
+const PLACE: &str = "= Title\n\n#place(top + right, [note])\n\nBody.\n";
+
+const FLOAT: &str = "= Title\n\n#float(caption: [Chart], rect())\n\nBody.\n";
+
 #[test]
 fn minimal_subset_renders_svg_through_the_layout_chain() {
     let rendered = render_svg("minimal.typ", MINIMAL).expect("minimal Typst subset imports");
@@ -233,4 +237,61 @@ fn single_line_table_is_one_opaque_item() {
 
     assert!(rendered.svg.contains("Tail."));
     assert!(!rendered.svg.contains("columns"), "table payload must not reach the page");
+}
+
+#[test]
+fn single_line_layout_intent_stays_opaque() {
+    for (label, source, code, payload, visible, hidden) in [
+        ("place.typ", PLACE, "typst.expression.place", "#place(top + right, [note])", "Body.", "note"),
+        ("float.typ", FLOAT, "typst.expression.float", "#float(caption: [Chart], rect())", "Body.", "Chart"),
+    ] {
+        let rendered = render_svg(label, source).expect("single-line layout intent imports");
+
+        assert!(rendered.svg.contains(visible), "{label}: surrounding text stays on the page");
+        assert!(!rendered.svg.contains(hidden), "{label}: layout intent must not reach the page: {}", rendered.svg);
+
+        assert_eq!(rendered.report.parsed.considered, 4, "{label}");
+        assert_eq!(rendered.report.parsed.handled, 3, "{label}");
+        assert_eq!(rendered.report.lowered.considered, 3, "{label}");
+        assert_eq!(rendered.report.lowered.handled, 2, "{label}");
+
+        assert_eq!(rendered.report.opaque.len(), 1, "{label}: {:?}", rendered.report.opaque);
+        assert_eq!(rendered.report.opaque[0].code, code, "{label}");
+        assert_eq!(rendered.report.opaque[0].detail, payload, "{label}");
+
+        let unsupported: Vec<&str> = rendered.report.unsupported.iter().map(|item| item.code.as_str()).collect();
+        assert_eq!(unsupported, vec!["import.typst.dynamic_content"], "{label}");
+
+        assert_eq!(rendered.diagnostics.len(), 1, "{label}: {:?}", rendered.diagnostics);
+        let diagnostic = &rendered.diagnostics[0];
+        assert_eq!(diagnostic.code, "import.typst.dynamic_content", "{label}");
+        assert_eq!(diagnostic.severity, Severity::Error, "{label}");
+        let start = source.find(payload).expect("layout intent exists in source");
+        assert_eq!(diagnostic.span, Some(SourceSpan { start: start as u32, end: (start + payload.len()) as u32 }), "{label}");
+    }
+}
+
+#[test]
+fn every_opaque_item_carries_a_positioned_diagnostic() {
+    for (label, source) in [
+        ("minimal.typ", MINIMAL),
+        ("subset.typ", SUBSET),
+        ("dynamic.typ", DYNAMIC),
+        ("table.typ", TABLE),
+        ("place.typ", PLACE),
+        ("float.typ", FLOAT),
+        ("escapes.typ", ESCAPES),
+    ] {
+        let document = import_source(label, source).expect("document imports");
+
+        for item in &document.report.opaque {
+            let matched = document
+                .diagnostics
+                .iter()
+                .find(|diagnostic| diagnostic.code == item.code || diagnostic.message.contains(item.detail.trim()));
+            let diagnostic = matched
+                .unwrap_or_else(|| panic!("{label}: opaque `{}` has no diagnostic: {:?}", item.code, document.diagnostics));
+            assert!(diagnostic.span.is_some(), "{label}: diagnostic for `{}` is unpositioned", item.code);
+        }
+    }
 }
