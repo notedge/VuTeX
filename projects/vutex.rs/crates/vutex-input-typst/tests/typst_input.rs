@@ -14,6 +14,14 @@ const MULTILINE_FIGURE: &str = "= Figure\n\n#figure(\n  rect(width: 2cm),\n  cap
 
 const MATH: &str = "= Formula\n\nThe value $x + y$ matters.\n\n$ a = b $\n";
 
+const COMMENTS: &str = "= Title\n\n// line comment\n\nText // trailing\n\n/* block\n   comment */\n\nTail.\n";
+
+const ESCAPES: &str = "= Title\n\nA \\#hash and \\*star\\* and \\$dollar\\$ and \\_under\\_.\n";
+
+const MARKUP: &str = "= Title\n\nSome `code` and a~space here.\n";
+
+const TABLE: &str = "= Title\n\n#table(columns: 2, [a], [b])\n\nTail.\n";
+
 #[test]
 fn minimal_subset_renders_svg_through_the_layout_chain() {
     let rendered = render_svg("minimal.typ", MINIMAL).expect("minimal Typst subset imports");
@@ -137,4 +145,92 @@ fn single_line_dynamic_group_with_balanced_strings_still_imports() {
 
     assert_eq!(document.report.unsupported.len(), 1);
     assert_eq!(document.report.unsupported[0].code, "import.typst.dynamic_content");
+}
+
+#[test]
+fn comments_produce_no_text_nodes() {
+    let rendered = render_svg("comments.typ", COMMENTS).expect("comments import");
+
+    assert!(rendered.svg.contains("Title"));
+    assert!(rendered.svg.contains("Text"));
+    assert!(rendered.svg.contains("Tail."));
+    for leaked in ["line comment", "trailing", "block", "comment */"] {
+        assert!(!rendered.svg.contains(leaked), "comment text leaked into the page: {leaked}");
+    }
+
+    assert_eq!(rendered.report.parsed.considered, 2);
+    assert_eq!(rendered.report.parsed.handled, 2);
+    assert_eq!(rendered.report.lowered.handled, 2);
+    assert!(rendered.report.unsupported.is_empty());
+    assert!(rendered.report.opaque.is_empty());
+    assert!(rendered.diagnostics.is_empty(), "comments carry no diagnostics: {:?}", rendered.diagnostics);
+}
+
+#[test]
+fn inline_markup_keeps_structured_nodes() {
+    let document = import_source("markup.typ", MARKUP).expect("inline markup imports");
+
+    let paragraph = document
+        .graph
+        .blocks
+        .iter()
+        .find_map(|node| match &node.block {
+            notedown_ir::Block::Paragraph { content } => Some(content),
+            _ => None,
+        })
+        .expect("markup paragraph exists");
+
+    assert!(
+        paragraph.iter().any(|inline| matches!(inline, notedown_ir::Inline::InlineCode { text } if text == "code")),
+        "inline code stays a structured node: {paragraph:?}"
+    );
+    assert!(
+        paragraph.iter().any(|inline| matches!(inline, notedown_ir::Inline::Text { text } if text.contains("space"))),
+        "surrounding text stays a text node: {paragraph:?}"
+    );
+
+    let rendered = render_svg("markup.typ", MARKUP).expect("inline markup renders");
+    assert!(rendered.svg.contains("code"));
+    assert!(rendered.svg.contains("space"));
+    assert!(rendered.report.unsupported.is_empty());
+    assert!(rendered.report.opaque.is_empty());
+    assert!(rendered.diagnostics.is_empty(), "markup carries no diagnostics: {:?}", rendered.diagnostics);
+}
+
+#[test]
+fn escaped_markup_is_reported_and_never_rendered_as_text() {
+    let document = import_source("escapes.typ", ESCAPES).expect("escaped markup imports");
+
+    assert_eq!(document.report.unsupported.len(), 1);
+    assert_eq!(document.report.unsupported[0].code, "import.typst.dynamic_content");
+    assert_eq!(document.report.opaque.len(), 1);
+    assert_eq!(document.report.opaque[0].code, "typst.expression");
+    assert_eq!(document.diagnostics.len(), 1);
+    assert_eq!(document.diagnostics[0].severity, Severity::Error);
+    assert_eq!(document.diagnostics[0].span, Some(SourceSpan { start: 11, end: 53 }));
+
+    let rendered = render_svg("escapes.typ", ESCAPES).expect("escaped markup renders without the escapes");
+    for leaked in ["hash", "star", "dollar", "under"] {
+        assert!(!rendered.svg.contains(leaked), "escaped source leaked into the page: {leaked}");
+    }
+}
+
+#[test]
+fn single_line_table_is_one_opaque_item() {
+    let rendered = render_svg("table.typ", TABLE).expect("single-line table imports");
+
+    assert_eq!(rendered.report.parsed.considered, 4);
+    assert_eq!(rendered.report.parsed.handled, 3);
+    assert_eq!(rendered.report.lowered.considered, 3);
+    assert_eq!(rendered.report.lowered.handled, 2);
+    assert_eq!(rendered.report.opaque.len(), 1);
+    assert_eq!(rendered.report.opaque[0].code, "typst.expression.table");
+    assert_eq!(rendered.report.opaque[0].detail, "#table(columns: 2, [a], [b])");
+    assert_eq!(rendered.report.unsupported.len(), 1);
+    assert_eq!(rendered.report.unsupported[0].code, "import.typst.dynamic_content");
+    assert_eq!(rendered.diagnostics.len(), 1);
+    assert_eq!(rendered.diagnostics[0].span, Some(SourceSpan { start: 9, end: 37 }));
+
+    assert!(rendered.svg.contains("Tail."));
+    assert!(!rendered.svg.contains("columns"), "table payload must not reach the page");
 }
