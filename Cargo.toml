@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "projects/vutex.rs/crates/vutex-types",
+    "projects/vutex.rs/crates/vutex-input-markdown",
     "projects/vutex.rs/crates/vutex-style",
     "projects/vutex.rs/crates/vutex-text",
     "projects/vutex.rs/crates/vutex-layout",
