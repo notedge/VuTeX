@@ -21,7 +21,7 @@ Status words used below:
 | `vutexVersion()` | binding version string | available |
 | `inspectDocument(path)` | `{ inputFormat, path, reportJson }` | available for `.md`, `.nd`, `.html`, `.tex`, `.typst` |
 | `renderDocument(path, optionsJson)` | `{ exitCode, outputFormat, svg, html, pdf, reportJson }` | available, fidelity gaps below |
-| `measureFormula`, `renderFormulaSvg`, `renderFormulaMathml`, `renderFormula` | JSON `FormulaRender` | **unavailable** — the first call aborts the host process |
+| `measureFormula`, `renderFormulaSvg`, `renderFormulaMathml`, `renderFormula` | JSON `FormulaRender` | available — installs the embedded faces once per process |
 
 `renderDocument` resolves the import format from the path extension or the
 `input` option. `output` accepts `svg`, `html`, `snapshot` or `pdf`, and
@@ -86,10 +86,9 @@ regressions against their references and the previous host implementation.
 | `renderFormula(source, optionsJson)` | JSON `FormulaRender` with SVG and MathML | available, fidelity gap |
 
 Input is TeX maths only. The same payload type is used everywhere: `metrics`,
-`svg`, `html`, `mathml`, `semantics` and `diagnostics`. The export installs the
-embedded Latin Modern Math and XITS Math faces before layout, so it is the
-formula surface to use today. `vutex-napi` delegates to the same core but does
-not install those faces, which is why its formula entries abort.
+`svg`, `html`, `mathml`, `semantics` and `diagnostics`. Both exports install the
+embedded Latin Modern Math and XITS Math faces once per process before layout,
+so a caller never has to install fonts first.
 
 ### Options
 
@@ -105,6 +104,7 @@ not install those faces, which is why its formula entries abort.
 | Request | Diagnostic |
 | --- | --- |
 | `fontFamily: stix-two-math` | `WATEX_UNSUPPORTED_FONT_FAMILY`, no layout runs |
+| No embedded math face installed in the host | `WATEX_FONT_UNAVAILABLE`, layout does not run |
 | Empty source | `WATEX_EMPTY_SOURCE` |
 | TeX command outside the supported maths grammar | parse or layout diagnostic; SVG is empty when parsing fails |
 | Markdown, HTML or a full LaTeX document shell | parse diagnostics, no document semantics |

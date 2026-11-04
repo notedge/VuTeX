@@ -32,6 +32,7 @@ vutex-render-html = { workspace = true }
 vutex-render-pdf = { workspace = true }
 vutex-render-svg = { workspace = true }
 vutex-compose = { workspace = true }
+vutex-text = { workspace = true }
 watex-wasm = { workspace = true }
 
 [build-dependencies]

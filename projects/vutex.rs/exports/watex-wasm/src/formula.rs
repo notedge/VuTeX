@@ -33,7 +33,7 @@ pub fn measure(source: &str, options: &RenderOptions) -> FormulaRender {
                 diagnostics,
             }
         }
-        Err(err) => failed(vec![math_error_to_diagnostic(&err)]),
+        Err(err) => failed(vec![layout_failure_to_diagnostic(&err)]),
     }
 }
 
@@ -65,7 +65,7 @@ pub fn render_svg(source: &str, options: &RenderOptions) -> FormulaRender {
                 diagnostics,
             }
         }
-        Err(err) => failed(vec![math_error_to_diagnostic(&err)]),
+        Err(err) => failed(vec![layout_failure_to_diagnostic(&err)]),
     }
 }
 
@@ -95,7 +95,7 @@ pub fn render_mathml(source: &str, options: &RenderOptions) -> FormulaRender {
                 diagnostics,
             }
         }
-        Err(err) => failed(vec![math_error_to_diagnostic(&err)]),
+        Err(err) => failed(vec![layout_failure_to_diagnostic(&err)]),
     }
 }
 
@@ -131,7 +131,7 @@ pub fn render_html(source: &str, options: &RenderOptions) -> FormulaRender {
                 diagnostics,
             }
         }
-        Err(err) => failed(vec![math_error_to_diagnostic(&err)]),
+        Err(err) => failed(vec![layout_failure_to_diagnostic(&err)]),
     }
 }
 
@@ -164,7 +164,7 @@ pub fn render(source: &str, options: &RenderOptions) -> FormulaRender {
                 diagnostics,
             }
         }
-        Err(err) => failed(vec![math_error_to_diagnostic(&err)]),
+        Err(err) => failed(vec![layout_failure_to_diagnostic(&err)]),
     }
 }
 
@@ -176,19 +176,36 @@ pub fn render(source: &str, options: &RenderOptions) -> FormulaRender {
 fn layout_formula(
     source: &str,
     options: &RenderOptions,
-) -> Result<(FormulaLayoutResult, LayoutNode, Vec<Diagnostic>), MathError> {
+) -> Result<(FormulaLayoutResult, LayoutNode, Vec<Diagnostic>), LayoutFailure> {
     let display = options.display_mode == DisplayMode::Block;
     let base = options.font_size.unwrap_or_else(|| default_base_size(display));
-    let family = embedded_family(options.font_family).expect("entries reject unsupported families before layout");
+    let Some(family) = embedded_family(options.font_family)
+    else {
+        return Err(LayoutFailure::FontUnavailable);
+    };
     let conformance = options.font_conformance.map(|mode| mode.engine_mode()).unwrap_or(FontConformance::AllowFallbacks);
     layout_formula_source_with_conformance(source, display, base, family, conformance)
+        .map_err(LayoutFailure::Math)
+}
+
+/// Why a formula never reached layout.
+///
+/// A host that installs no embedded face has no default family, which is a
+/// diagnosable state rather than a panic, so the export boundary can report it
+/// without unwinding through a foreign call.
+enum LayoutFailure {
+    /// The formula parser or the layout engine rejected the source.
+    Math(MathError),
+    /// No embedded math face is installed in this process.
+    FontUnavailable,
 }
 
 /// Map the host's `fontFamily` choice onto an embedded layout family.
 ///
-/// An omitted choice resolves to the builtin default face. `None` means the
-/// requested family ships no embedded asset yet; the public entries report
-/// that with `WATEX_UNSUPPORTED_FONT_FAMILY` before layout runs.
+/// An omitted choice resolves to the builtin default face, which is `None`
+/// when the host installed no face. `Some(FontFamily::StixTwoMath)` also maps
+/// to `None` because its asset is not embedded; the public entries report that
+/// with `WATEX_UNSUPPORTED_FONT_FAMILY` before layout runs.
 fn embedded_family(family: Option<FontFamily>) -> Option<MathFontFamily> {
     match family {
         None => MathFontFamily::builtin_default(),
@@ -255,6 +272,19 @@ fn math_error_to_diagnostic(err: &MathError) -> FormulaDiagnostic {
         message: err.to_string(),
         start: None,
         end: None,
+    }
+}
+
+fn layout_failure_to_diagnostic(err: &LayoutFailure) -> FormulaDiagnostic {
+    match err {
+        LayoutFailure::Math(err) => math_error_to_diagnostic(err),
+        LayoutFailure::FontUnavailable => FormulaDiagnostic {
+            code: "WATEX_FONT_UNAVAILABLE".into(),
+            severity: severity_name(Severity::Error),
+            message: "no embedded math face is installed in this host".into(),
+            start: None,
+            end: None,
+        },
     }
 }
 

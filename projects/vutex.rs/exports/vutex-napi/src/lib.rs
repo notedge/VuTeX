@@ -10,6 +10,31 @@ use napi::bindgen_prelude::Buffer;
 use napi_derive::napi;
 use watex_wasm::{RenderOptions, measure, render, render_mathml, render_svg};
 
+/// Install the embedded math faces once per process.
+///
+/// The formula core resolves its default face through the installed set, so a
+/// host that never installs one has no default to lay out against. Installing
+/// here keeps every formula entry usable from Node without the caller having to
+/// know about fonts first.
+fn install_embedded_math_fonts() {
+    use std::sync::Once;
+
+    use vutex_text::math::{MathFontFamily, install_math_font};
+
+    static INSTALL: Once = Once::new();
+
+    INSTALL.call_once(|| {
+        install_math_font(
+            MathFontFamily::LmMath,
+            include_bytes!("../../../fonts/LatinModernMath-Regular.otf"),
+        );
+        install_math_font(
+            MathFontFamily::XitsMath,
+            include_bytes!("../../../fonts/XITSMath-Regular.otf"),
+        );
+    });
+}
+
 /// N-API document render response.
 #[napi(object)]
 pub struct RenderDocumentResponse {
@@ -54,6 +79,7 @@ pub fn vutex_version() -> String {
 /// Measure a formula and return JSON (`FormulaRender`).
 #[napi]
 pub fn measure_formula(source: String, options_json: Option<String>) -> String {
+    install_embedded_math_fonts();
     let options = parse_render_options(options_json);
     serde_json::to_string(&measure(&source, &options)).unwrap_or_else(|_| "{}".to_string())
 }
@@ -61,6 +87,7 @@ pub fn measure_formula(source: String, options_json: Option<String>) -> String {
 /// Render a formula to SVG and return JSON (`FormulaRender`).
 #[napi]
 pub fn render_formula_svg(source: String, options_json: Option<String>) -> String {
+    install_embedded_math_fonts();
     let options = parse_render_options(options_json);
     serde_json::to_string(&render_svg(&source, &options)).unwrap_or_else(|_| "{}".to_string())
 }
@@ -68,6 +95,7 @@ pub fn render_formula_svg(source: String, options_json: Option<String>) -> Strin
 /// Render a formula to MathML and return JSON (`FormulaRender`).
 #[napi]
 pub fn render_formula_mathml(source: String, options_json: Option<String>) -> String {
+    install_embedded_math_fonts();
     let options = parse_render_options(options_json);
     serde_json::to_string(&render_mathml(&source, &options)).unwrap_or_else(|_| "{}".to_string())
 }
@@ -75,6 +103,7 @@ pub fn render_formula_mathml(source: String, options_json: Option<String>) -> St
 /// Render a formula with SVG and MathML and return JSON (`FormulaRender`).
 #[napi]
 pub fn render_formula(source: String, options_json: Option<String>) -> String {
+    install_embedded_math_fonts();
     let options = parse_render_options(options_json);
     serde_json::to_string(&render(&source, &options)).unwrap_or_else(|_| "{}".to_string())
 }
