@@ -20,9 +20,4 @@ vutex-layout = { workspace = true }
 vutex-render-svg = { workspace = true }
 vutex-text = { workspace = true }
 vutex-compose = { workspace = true }
-# `document-layout` uses `document-formats::lower_tex_formula_source` but declares
-# that dependency with `default-features = false` only, so the `tex` feature is
-# claimed here to keep the math pipeline compiling. Drop this line once the upstream
-# crate declares the feature itself.
-document-formats = { workspace = true, features = ["tex"] }
 wasm-bindgen = { workspace = true }

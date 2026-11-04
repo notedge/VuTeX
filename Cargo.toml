@@ -42,22 +42,23 @@ napi-build = "2"
 # Upstream document family. The keys keep the historical `vutex-*` extern names
 # so the export sources stay untouched while the implementation moves to
 # `document.rs`.
-vutex-types = { package = "document-types", git = "https://github.com/notedge/document.rs.git", rev = "34e0c25de2807ba8beaf24a9415f55c21b311894" }
-vutex-compose = { package = "document-compose", git = "https://github.com/notedge/document.rs.git", rev = "34e0c25de2807ba8beaf24a9415f55c21b311894" }
-vutex-text = { package = "document-text", git = "https://github.com/notedge/document.rs.git", rev = "34e0c25de2807ba8beaf24a9415f55c21b311894" }
-vutex-layout = { package = "document-layout", git = "https://github.com/notedge/document.rs.git", rev = "34e0c25de2807ba8beaf24a9415f55c21b311894" }
-vutex-presentation = { package = "document-presentation", git = "https://github.com/notedge/document.rs.git", rev = "34e0c25de2807ba8beaf24a9415f55c21b311894" }
-vutex-render-svg = { package = "document-renderer-svg", git = "https://github.com/notedge/document.rs.git", rev = "34e0c25de2807ba8beaf24a9415f55c21b311894" }
-vutex-render-html = { package = "document-renderer-html", git = "https://github.com/notedge/document.rs.git", rev = "34e0c25de2807ba8beaf24a9415f55c21b311894" }
-vutex-render-pdf = { package = "document-renderer-pdf", git = "https://github.com/notedge/document.rs.git", rev = "34e0c25de2807ba8beaf24a9415f55c21b311894" }
-document-formats = { package = "document-formats", git = "https://github.com/notedge/document.rs.git", rev = "34e0c25de2807ba8beaf24a9415f55c21b311894", default-features = false, features = ["markdown", "notedown", "html", "tex", "typst"] }
-document-ir = { package = "document-ir", git = "https://github.com/notedge/document.rs.git", rev = "34e0c25de2807ba8beaf24a9415f55c21b311894" }
-plotter-scene = { package = "plotter-scene", git = "https://github.com/notedge/document.rs.git", rev = "34e0c25de2807ba8beaf24a9415f55c21b311894" }
-plotter-types = { package = "plotter-types", git = "https://github.com/notedge/document.rs.git", rev = "34e0c25de2807ba8beaf24a9415f55c21b311894" }
-plotter-diagram = { package = "plotter-diagram", git = "https://github.com/notedge/document.rs.git", rev = "34e0c25de2807ba8beaf24a9415f55c21b311894" }
-plotter-input-dot = { package = "plotter-input-dot", git = "https://github.com/notedge/document.rs.git", rev = "34e0c25de2807ba8beaf24a9415f55c21b311894" }
-plotter-input-mermaid = { package = "plotter-input-mermaid", git = "https://github.com/notedge/document.rs.git", rev = "34e0c25de2807ba8beaf24a9415f55c21b311894" }
-plotter-input-plantuml = { package = "plotter-input-plantuml", git = "https://github.com/notedge/document.rs.git", rev = "34e0c25de2807ba8beaf24a9415f55c21b311894" }
+vutex-types = { package = "document-types", git = "https://github.com/notedge/document.rs.git", rev = "4fefcc857d6bf862d0aa617a8fd4e46527191239" }
+vutex-compose = { package = "document-compose", git = "https://github.com/notedge/document.rs.git", rev = "4fefcc857d6bf862d0aa617a8fd4e46527191239" }
+vutex-text = { package = "document-text", git = "https://github.com/notedge/document.rs.git", rev = "4fefcc857d6bf862d0aa617a8fd4e46527191239" }
+vutex-layout = { package = "document-layout", git = "https://github.com/notedge/document.rs.git", rev = "4fefcc857d6bf862d0aa617a8fd4e46527191239" }
+vutex-presentation = { package = "document-presentation", git = "https://github.com/notedge/document.rs.git", rev = "4fefcc857d6bf862d0aa617a8fd4e46527191239" }
+vutex-render-svg = { package = "document-renderer-svg", git = "https://github.com/notedge/document.rs.git", rev = "4fefcc857d6bf862d0aa617a8fd4e46527191239" }
+vutex-render-html = { package = "document-renderer-html", git = "https://github.com/notedge/document.rs.git", rev = "4fefcc857d6bf862d0aa617a8fd4e46527191239" }
+vutex-render-pdf = { package = "document-renderer-pdf", git = "https://github.com/notedge/document.rs.git", rev = "4fefcc857d6bf862d0aa617a8fd4e46527191239" }
+document-formats = { package = "document-formats", git = "https://github.com/notedge/document.rs.git", rev = "4fefcc857d6bf862d0aa617a8fd4e46527191239", default-features = false, features = ["markdown", "notedown", "html", "tex", "typst"] }
+document-ir = { package = "document-ir", git = "https://github.com/notedge/document.rs.git", rev = "4fefcc857d6bf862d0aa617a8fd4e46527191239" }
+plotter-scene = { package = "plotter-scene", git = "https://github.com/notedge/document.rs.git", rev = "4fefcc857d6bf862d0aa617a8fd4e46527191239" }
+plotter-types = { package = "plotter-types", git = "https://github.com/notedge/document.rs.git", rev = "4fefcc857d6bf862d0aa617a8fd4e46527191239" }
+plotter-diagram = { package = "plotter-diagram", git = "https://github.com/notedge/document.rs.git", rev = "4fefcc857d6bf862d0aa617a8fd4e46527191239" }
+plotter-input-dot = { package = "plotter-input-dot", git = "https://github.com/notedge/document.rs.git", rev = "4fefcc857d6bf862d0aa617a8fd4e46527191239" }
+plotter-input-mermaid = { package = "plotter-input-mermaid", git = "https://github.com/notedge/document.rs.git", rev = "4fefcc857d6bf862d0aa617a8fd4e46527191239" }
+plotter-input-plantuml = { package = "plotter-input-plantuml", git = "https://github.com/notedge/document.rs.git", rev = "4fefcc857d6bf862d0aa617a8fd4e46527191239" }
+plotter-input-tikz = { package = "plotter-input-tikz", git = "https://github.com/notedge/document.rs.git", rev = "4fefcc857d6bf862d0aa617a8fd4e46527191239" }
 watex-wasm = { path = "projects/vutex.rs/exports/watex-wasm" }
 vutex-napi = { path = "projects/vutex.rs/exports/vutex-napi" }
 
