@@ -11,6 +11,30 @@ pub use types::{ConformanceMode, DisplayMode, FormulaDiagnostic, FormulaMetrics,
 
 use wasm_bindgen::prelude::*;
 
+/// Embedded math faces, installed once per process before any entry runs.
+///
+/// `document.text` resolves the default face through its installed set, so a
+/// host that never installs a face has no default to lay out against. Both
+/// entries below are emitted here, next to the code that needs them.
+fn install_embedded_math_fonts() {
+    use std::sync::Once;
+
+    use vutex_text::math::{MathFontFamily, install_math_font};
+
+    static INSTALL: Once = Once::new();
+
+    INSTALL.call_once(|| {
+        install_math_font(
+            MathFontFamily::LmMath,
+            include_bytes!("../../../fonts/LatinModernMath-Regular.otf"),
+        );
+        install_math_font(
+            MathFontFamily::XitsMath,
+            include_bytes!("../../../fonts/XITSMath-Regular.otf"),
+        );
+    });
+}
+
 fn parse_options(options_json: Option<String>) -> RenderOptions {
     match options_json {
         Some(raw) if !raw.trim().is_empty() => serde_json::from_str(&raw).unwrap_or_default(),
@@ -31,29 +55,34 @@ pub fn watex_version() -> String {
 /// Measure formula metrics for the given TeX math source.
 #[wasm_bindgen(js_name = measureFormula)]
 pub fn measure_formula(source: &str, options_json: Option<String>) -> String {
+    install_embedded_math_fonts();
     to_json(&measure(source, &parse_options(options_json)))
 }
 
 /// Render a formula to SVG.
 #[wasm_bindgen(js_name = renderSvg)]
 pub fn render_svg_wasm(source: &str, options_json: Option<String>) -> String {
+    install_embedded_math_fonts();
     to_json(&render_svg(source, &parse_options(options_json)))
 }
 
 /// Render a formula to an HTML fragment.
 #[wasm_bindgen(js_name = renderHtml)]
 pub fn render_html_wasm(source: &str, options_json: Option<String>) -> String {
+    install_embedded_math_fonts();
     to_json(&render_html(source, &parse_options(options_json)))
 }
 
 /// Render a formula to Presentation MathML.
 #[wasm_bindgen(js_name = renderMathml)]
 pub fn render_mathml_wasm(source: &str, options_json: Option<String>) -> String {
+    install_embedded_math_fonts();
     to_json(&render_mathml(source, &parse_options(options_json)))
 }
 
 /// Render a formula with SVG and MathML payloads.
 #[wasm_bindgen(js_name = renderFormula)]
 pub fn render_formula(source: &str, options_json: Option<String>) -> String {
+    install_embedded_math_fonts();
     to_json(&render(source, &parse_options(options_json)))
 }
