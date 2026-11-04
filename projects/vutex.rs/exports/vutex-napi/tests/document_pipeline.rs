@@ -1012,9 +1012,9 @@ fn unsupported_mermaid_statement_keeps_the_fence_and_reports_a_diagnostic() {
 /// rows are not dispatched to a diagram frontend.
 fn diagram_catalog_cases() -> Vec<davinci_types::RejectionCase> {
     let cases = davinci_types::cases();
-    assert_eq!(cases.len(), 11, "the shared catalog carries every entry's rejection case");
+    assert_eq!(cases.len(), 12, "the shared catalog carries every entry's rejection case");
     let owned: Vec<_> = cases.into_iter().filter(|case| case.language != "vega-lite").collect();
-    assert_eq!(owned.len(), 6, "`mermaid`, `dot` and `plantuml` own two cases each");
+    assert_eq!(owned.len(), 7, "`mermaid` and `plantuml` own two cases each, `dot` owns three");
     owned
 }
 
@@ -1065,7 +1065,7 @@ fn cross_entry_catalog_matches_the_shared_fixture_contract() {
             case.id, case.span_text
         );
     }
-    assert_eq!(comparisons, 24, "every diagram case compares code, severity, start and end");
+    assert_eq!(comparisons, 28, "every diagram case compares code, severity, start and end");
 }
 
 #[test]
