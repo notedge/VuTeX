@@ -1,0 +1,26 @@
+{
+  "name": "@vutex/crosscheck",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Render cross-check harness: our output vs independent engines in the same ecosystem.",
+  "type": "module",
+  "scripts": {
+    "math": "node math/compare.mjs",
+    "diagram": "node diagram/compare.mjs",
+    "pdf:ts": "node pdf/compare-ts.mjs",
+    "pdf:py": "node pdf/run-python.mjs",
+    "tikz": "node tikz/audit.mjs",
+    "all": "node run-all.mjs"
+  },
+  "dependencies": {
+    "@vutex/vutex-unknown-wasm32": "workspace:*",
+    "@vutex/watex": "workspace:*"
+  },
+  "devDependencies": {
+    "@mermaid-js/mermaid-cli": "^11.4.0",
+    "@viz-js/viz": "^3.13.0",
+    "katex": "0.16.22",
+    "mathjax": "^3.2.2",
+    "pdfjs-dist": "^4.10.38"
+  }
+}

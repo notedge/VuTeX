@@ -1,0 +1,37 @@
+{
+  "base_size_inline": 14,
+  "tolerances": {
+    "baseline_height": 0.04,
+    "baseline_depth": 0.03,
+    "script_shift": 0.05,
+    "script_size_ratio": 0.03
+  },
+  "judgments": {
+    "baseline_height": "tolerance",
+    "baseline_depth": "tolerance",
+    "script_shift": "tolerance",
+    "script_size_ratio": "tolerance"
+  },
+  "cases": [
+    {
+      "id": "sup",
+      "tex": "x^2",
+      "features": ["baseline_height", "baseline_depth", "script_shift", "script_size_ratio"]
+    },
+    {
+      "id": "sub",
+      "tex": "x_1",
+      "features": ["baseline_height", "baseline_depth", "script_shift", "script_size_ratio"]
+    },
+    {
+      "id": "frac",
+      "tex": "\\frac{1}{2}",
+      "features": ["baseline_height", "baseline_depth", "script_size_ratio"]
+    },
+    {
+      "id": "mixed",
+      "tex": "x^2+\\frac{1}{y}",
+      "features": ["baseline_height", "baseline_depth", "script_shift", "script_size_ratio"]
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "cases": [
+    {
+      "id": "plain",
+      "markdown": "plain.md",
+      "pages": 1,
+      "expected_text": "Cross-check plain sample Render crosscheck sample. The quick brown fox jumps over the lazy dog.",
+      "features": ["page_count", "text_normalised", "font_embedded"]
+    },
+    {
+      "id": "math",
+      "markdown": "math.md",
+      "pages": 1,
+      "expected_text": "Cross-check math sample Area formula follows. E=mc^2 End of line.",
+      "formula": "E=mc^2",
+      "features": ["page_count", "text_normalised", "font_embedded", "math_searchable", "math_typeset"]
+    },
+    {
+      "id": "paged",
+      "markdown": "paged.md",
+      "pages": 2,
+      "expected_text": "",
+      "features": ["page_count", "font_embedded"]
+    }
+  ]
+}

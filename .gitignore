@@ -31,6 +31,12 @@ dist/
 pnpm-lock.yaml
 package-lock.json
 
+# Render cross-check: generated evidence and local Python environment
+projects/vutex.ts/examples/crosscheck/results/
+projects/vutex.ts/examples/crosscheck/pdf/python/.venv/
+projects/vutex.ts/examples/crosscheck/pdf/python/__pycache__/
+!projects/vutex.ts/examples/crosscheck/pdf/python/requirements.txt
+
 # Renderer
 _tmp_render/
 out-watex/

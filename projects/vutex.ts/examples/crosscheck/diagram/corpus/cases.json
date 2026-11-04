@@ -1,0 +1,20 @@
+{
+  "cases": [
+    {
+      "id": "dot-diamond",
+      "kind": "dot",
+      "markdown": "dot.inline.md",
+      "source": "diamond.dot",
+      "expected_nodes": 4,
+      "expected_edges": 4
+    },
+    {
+      "id": "mermaid-diamond",
+      "kind": "mermaid",
+      "markdown": "mermaid.inline.md",
+      "source": "diamond.mmd",
+      "expected_nodes": 4,
+      "expected_edges": 4
+    }
+  ]
+}

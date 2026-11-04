@@ -1,0 +1,15 @@
+# DOT sample
+
+```dot
+digraph G {
+  rankdir=LR
+  a [label="Start"]
+  b [label="Check"]
+  c [label="End"]
+  d [label="Retry"]
+  a -> b
+  b -> c
+  b -> d
+  d -> c
+}
+```
