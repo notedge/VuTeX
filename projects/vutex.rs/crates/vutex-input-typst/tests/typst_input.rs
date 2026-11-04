@@ -1,6 +1,6 @@
 //! End-to-end checks for the Typst input adapter.
 
-use vutex_input_typst::{MATH_SOURCE_PRESERVED, UNTERMINATED_GROUP, import_source, render_svg};
+use vutex_input_typst::{IMPORT_FAILED, MATH_SOURCE_PRESERVED, UNTERMINATED_GROUP, import_path, import_source, render_svg};
 use vutex_types::{Severity, SourceSpan};
 
 const MINIMAL: &str =
@@ -269,6 +269,33 @@ fn single_line_layout_intent_stays_opaque() {
         let start = source.find(payload).expect("layout intent exists in source");
         assert_eq!(diagnostic.span, Some(SourceSpan { start: start as u32, end: (start + payload.len()) as u32 }), "{label}");
     }
+}
+
+#[test]
+fn import_path_reads_a_typst_file_and_keeps_the_report() {
+    let path = std::env::temp_dir().join(format!("vutex-typst-import-path-{}.typ", std::process::id()));
+    std::fs::write(&path, MINIMAL).expect("fixture writes");
+
+    let document = import_path(&path).expect("Typst file imports");
+    std::fs::remove_file(&path).expect("fixture removes");
+
+    assert!(!document.graph.blocks.is_empty());
+    assert_eq!(document.report.parsed.handled, document.report.lowered.considered);
+    assert!(document.report.unsupported.is_empty());
+    assert!(document.report.opaque.is_empty());
+    assert!(document.diagnostics.is_empty(), "clean file carries no diagnostics: {:?}", document.diagnostics);
+}
+
+#[test]
+fn import_path_reports_a_read_failure_without_a_span() {
+    let path = std::env::temp_dir().join(format!("vutex-typst-missing-{}.typ", std::process::id()));
+    let error = import_path(&path).expect_err("missing file is an import failure");
+
+    assert_eq!(error.code(), IMPORT_FAILED);
+    assert_eq!(error.diagnostic.severity, Severity::Error);
+    assert_eq!(error.diagnostic.span, None);
+    assert!(error.message().contains("failed to read"), "message names the failed step: {}", error.message());
+    assert_eq!(error.to_string(), format!("{IMPORT_FAILED}: {}", error.message()));
 }
 
 #[test]
