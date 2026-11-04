@@ -42,6 +42,9 @@ pub const INVALID_GRAPH: &str = "vutex.input.tex.invalid_graph";
 /// Code recorded for math whose language tag the TeX formula pipeline cannot
 /// lower.
 pub const MATH_LANGUAGE: &str = "vutex.input.tex.math_language";
+/// Code recorded for an inline command that leaked into text instead of being
+/// lowered.
+pub const LEAKED_COMMAND: &str = "vutex.input.tex.leaked_command";
 
 /// Loss codes that summarize the whole import instead of one source construct.
 const SUMMARY_LOSS_CODES: [&str; 1] = ["import.tex.partial_coverage"];
@@ -165,6 +168,13 @@ pub fn conversion_report(graph: &DocumentGraph) -> ConversionReport {
         unsupported.push(UnsupportedItem { code: MATH_LANGUAGE.to_string(), detail: mismatch.message() });
     }
 
+    for leaked in leaked_commands(graph) {
+        unsupported.push(UnsupportedItem {
+            code: LEAKED_COMMAND.to_string(),
+            detail: leaked.message(),
+        });
+    }
+
     let opaque = graph
         .blocks
         .iter()
@@ -237,6 +247,15 @@ pub fn conversion_diagnostics(graph: &DocumentGraph, source: &str) -> Vec<Diagno
         });
     }
 
+    for leaked in leaked_commands(graph) {
+        diagnostics.push(Diagnostic {
+            code: LEAKED_COMMAND.to_string(),
+            severity: Severity::Warning,
+            message: leaked.message(),
+            span: unique_payload_span(source, &format!("\\{}", leaked.token)),
+        });
+    }
+
     diagnostics
 }
 
@@ -253,6 +272,18 @@ impl MathMismatch {
     }
 }
 
+/// One inline command that stayed visible in text instead of being lowered.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LeakedCommand {
+    token: String,
+}
+
+impl LeakedCommand {
+    fn message(&self) -> String {
+        format!("inline command `\\{}` has no semantic mapping and stays visible as text", self.token)
+    }
+}
+
 /// Collect every formula whose language tag does not belong to the TeX profile.
 ///
 /// The profile only produces `latex` math, so this check guards the contract
@@ -263,53 +294,121 @@ fn math_mismatches(graph: &DocumentGraph) -> Vec<MathMismatch> {
     let mut mismatches = Vec::new();
     for node in &graph.blocks {
         let location = format!("block {}", node.id.0);
-        match &node.block {
-            Block::Math { formula } => check_math(formula, &location, &mut mismatches),
-            Block::Section { title, .. } => check_inlines(title, &location, &mut mismatches),
-            Block::Paragraph { content } => check_inlines(content, &location, &mut mismatches),
-            Block::Quote { content, .. } => check_inlines(content, &location, &mut mismatches),
-            Block::List { items, .. } => {
-                for item in items {
-                    check_inlines(&item.content, &location, &mut mismatches);
-                }
-            }
-            Block::Table { rows, .. } => {
-                for row in rows {
-                    for cell in &row.cells {
-                        check_inlines(&cell.content, &location, &mut mismatches);
-                    }
-                }
-            }
-            _ => {}
+        if let Block::Math { formula } = &node.block {
+            check_math(formula, &location, &mut mismatches);
+        }
+        let mut slices = Vec::new();
+        block_inline_slices(&node.block, &mut slices);
+        for slice in slices {
+            check_inlines(slice, &location, &mut mismatches);
         }
     }
     mismatches
 }
 
+/// Every inline command that stayed visible as text instead of being lowered.
+///
+/// The document model reports an inline command it recognizes but cannot map. A
+/// command the frontend never tokenized is different: it lands in ordinary text
+/// with its backslash intact, and only the source text still proves the
+/// construct existed. Scanning the lowered text recovers that evidence without
+/// running a second TeX parser. Distinct command names are reported once.
+fn leaked_commands(graph: &DocumentGraph) -> Vec<LeakedCommand> {
+    let mut leaked = Vec::new();
+    let mut seen: Vec<String> = Vec::new();
+    for node in &graph.blocks {
+        let mut slices = Vec::new();
+        block_inline_slices(&node.block, &mut slices);
+        for slice in slices {
+            let mut formulas = Vec::new();
+            let mut texts = Vec::new();
+            collect_inline_parts(slice, &mut formulas, &mut texts);
+            for text in texts {
+                for token in command_tokens(text) {
+                    if seen.contains(&token) {
+                        continue;
+                    }
+                    seen.push(token.clone());
+                    leaked.push(LeakedCommand { token });
+                }
+            }
+        }
+    }
+    leaked
+}
+
+/// Inline slices owned by one block.
+fn block_inline_slices<'a>(block: &'a Block, slices: &mut Vec<&'a [Inline]>) {
+    match block {
+        Block::Section { title, .. } => slices.push(title),
+        Block::Paragraph { content } => slices.push(content),
+        Block::Quote { content, .. } => slices.push(content),
+        Block::List { items, .. } => {
+            for item in items {
+                slices.push(&item.content);
+            }
+        }
+        Block::Table { rows, .. } => {
+            for row in rows {
+                for cell in &row.cells {
+                    slices.push(&cell.content);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
 /// Check every inline formula inside `content`.
 fn check_inlines(content: &[Inline], location: &str, mismatches: &mut Vec<MathMismatch>) {
     let mut formulas: Vec<&MathFormula> = Vec::new();
-    collect_inlines(content, &mut formulas);
+    let mut texts: Vec<&str> = Vec::new();
+    collect_inline_parts(content, &mut formulas, &mut texts);
     for formula in formulas {
         check_math(formula, location, mismatches);
     }
 }
 
-/// Collect inline formulas, descending through the inline containers that own
-/// nested content.
-fn collect_inlines<'a>(content: &'a [Inline], formulas: &mut Vec<&'a MathFormula>) {
+/// Collect inline formulas and text runs, descending through the inline
+/// containers that own nested content.
+fn collect_inline_parts<'a>(content: &'a [Inline], formulas: &mut Vec<&'a MathFormula>, texts: &mut Vec<&'a str>) {
     for inline in content {
         match inline {
+            Inline::Text { text } => texts.push(text),
             Inline::InlineMath { formula } => formulas.push(formula),
-            Inline::Styled { children, .. } | Inline::Attributed { children, .. } => collect_inlines(children, formulas),
-            Inline::Link { display, .. } => collect_inlines(display, formulas),
-            Inline::Image { alt, .. } => collect_inlines(alt, formulas),
+            Inline::Styled { children, .. } | Inline::Attributed { children, .. } => {
+                collect_inline_parts(children, formulas, texts)
+            }
+            Inline::Link { display, .. } => collect_inline_parts(display, formulas, texts),
+            Inline::Image { alt, .. } => collect_inline_parts(alt, formulas, texts),
             Inline::Note { display: Some(display), .. } | Inline::Citation { display: Some(display), .. } => {
-                collect_inlines(display, formulas)
+                collect_inline_parts(display, formulas, texts)
             }
             _ => {}
         }
     }
+}
+
+/// Backslash commands that survived inside one text run.
+fn command_tokens(text: &str) -> Vec<String> {
+    let characters: Vec<char> = text.chars().collect();
+    let mut tokens = Vec::new();
+    let mut index = 0;
+    while index < characters.len() {
+        if characters[index] == '\\' && characters.get(index + 1).is_some_and(char::is_ascii_alphabetic) {
+            let start = index + 1;
+            let mut end = start;
+            while end < characters.len() && characters[end].is_ascii_alphabetic() {
+                end += 1;
+            }
+            tokens.push(characters[start..end].iter().collect());
+            index = end;
+        }
+        else {
+            index += 1;
+        }
+    }
+    tokens
 }
 
 /// Record one formula if its language tag is not Tex.
