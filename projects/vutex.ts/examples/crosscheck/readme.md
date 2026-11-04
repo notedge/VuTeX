@@ -80,6 +80,17 @@ KaTeX emits no depth and no per-glyph vector geometry, so `baseline_depth` and
 fraction internals are `record-only` against KaTeX and judged against MathJax
 only.
 
+Math geometry does not depend on the embedded faces, so the install leaves it
+untouched. The two runs are listed side by side to make that visible:
+
+| measurement | before the install | after the install |
+| --- | --- | --- |
+| `sub` `baseline_depth` | 0.247em | 0.247em |
+| `sub` `script_shift` | -0.247em | -0.247em |
+| `frac` `script_size_ratio` | 1.0 | 1.0 |
+
+Both rows stay `real-defect`; the face install neither fixes nor masks them.
+
 ## Diagram geometry
 
 Counts are structural: Graphviz SVG carries `class="node"` and `class="edge"`
