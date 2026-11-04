@@ -23,7 +23,7 @@ fn text_runs(page: &LayoutPage) -> Vec<&TextRun> {
 #[test]
 fn lays_out_quote_code_table_break_and_image() {
     let mut graph = DocumentGraph::new(DocumentId(4));
-    graph.push_block(Block::Quote { content: vec![text("Quoted line")] });
+    graph.push_block(Block::Quote { content: vec![text("Quoted line")], children: Vec::new() });
     graph.push_block(Block::Code { language: Some("rust".to_string()), content: "fn main() {}".to_string() });
     graph.push_block(Block::Table {
         caption: Some("Table 1".to_string()),

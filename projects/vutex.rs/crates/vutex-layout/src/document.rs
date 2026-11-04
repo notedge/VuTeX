@@ -1032,7 +1032,12 @@ impl<'a> PageBuilder<'a> {
                     self.emit_list(*ordered, items, indent, graph);
                     self.pad(self.body_size() * 0.4);
                 }
-                Block::Quote { content } => self.emit_quote(content, indent),
+                Block::Quote { content, children } => {
+                    self.emit_quote(content, indent);
+                    // Nested blocks owned by the quotation stay inside it; dropping
+                    // them would make quoted lists and code vanish from the page.
+                    self.render_blocks(graph, children, indent + 16.0);
+                }
                 Block::Code { content, language } => {
                     // A TikZ fence whose scene the host registered is a
                     // diagram, not preformatted code. A failed or missing

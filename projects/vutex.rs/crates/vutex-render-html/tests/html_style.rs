@@ -145,6 +145,7 @@ fn reflow_quote_emits_code_inline() {
     let mut graph = DocumentGraph::new(DocumentId(57));
     graph.push_block(Block::Quote {
         content: vec![text("Run "), Inline::InlineCode { text: "vutex".to_string() }, text(" first")],
+        children: Vec::new(),
     });
     let html = render_html_reflow(&build_flow_presentation(&graph)).expect("reflow html");
 

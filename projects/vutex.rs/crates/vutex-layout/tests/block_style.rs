@@ -99,7 +99,13 @@ fn italic_runs_survive_inside_a_list_item() {
 
 #[test]
 fn inline_code_runs_survive_inside_a_quote() {
-    let graph = graph_with(43, Block::Quote { content: vec![text("run "), code("npm test"), text(" now")] });
+    let graph = graph_with(
+        43,
+        Block::Quote {
+            content: vec![text("run "), code("npm test"), text(" now")],
+            children: Vec::new(),
+        },
+    );
     let plan = layout(&graph);
     let runs = text_runs(&plan.pages[0]);
 
@@ -157,7 +163,7 @@ fn unstyled_block_content_stays_normal_serif() {
             is_checked: None,
         }],
     });
-    graph.push_block(Block::Quote { content: vec![text("plain quote")] });
+    graph.push_block(Block::Quote { content: vec![text("plain quote")], children: Vec::new() });
     graph.push_block(Block::Table {
         caption: None,
         rows: vec![TableRow { is_header: false, cells: vec![cell(vec![text("plain cell")])] }],
@@ -271,6 +277,7 @@ fn tall_inline_formula_grows_the_quote_rule() {
                 },
                 text(" after"),
             ],
+            children: Vec::new(),
         },
     );
     let plan = layout_with_hint(&graph, &hint);

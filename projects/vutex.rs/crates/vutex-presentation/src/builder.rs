@@ -257,7 +257,12 @@ fn collect_flow(graph: &DocumentGraph, ids: &[NodeId], blocks: &mut Vec<FlowBloc
             Block::Math { formula } => {
                 blocks.push(FlowBlock::CodeBlock { language: None, text: formula.source.clone() });
             }
-            Block::Quote { content } => blocks.push(FlowBlock::Quote { runs: runs_of(content) }),
+            Block::Quote { content, children } => {
+                blocks.push(FlowBlock::Quote { runs: runs_of(content) });
+                // Nested blocks owned by the quotation follow it in the flow so
+                // quoted lists and code stay visible.
+                collect_flow(graph, children, blocks);
+            }
             Block::Table { caption, rows } => {
                 blocks.push(FlowBlock::Table {
                     caption: caption.clone(),
