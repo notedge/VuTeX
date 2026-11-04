@@ -162,7 +162,7 @@ def run_library(library: str, extractor, cases: list[dict], pdf_dir: Path, write
                     "theirs": formula,
                     "tolerance": "exact",
                     "classification": "our-limitation",
-                    "note": f"formula not searchable through {library}",
+                    "note": f"formula is vector outlines, {library} extraction omits it",
                 })
             else:
                 writer.equal()
@@ -186,8 +186,8 @@ def run_library(library: str, extractor, cases: list[dict], pdf_dir: Path, write
                     "ours": {"drawings": drawings, "text": found["text"]},
                     "theirs": {"drawings": None},
                     "tolerance": "record-only",
-                    "classification": "real-defect",
-                    "note": "formula is emitted as literal source text, there are no vector glyphs",
+                    "classification": "our-limitation",
+                    "note": "formula is vector outlines, correct geometry and absent from text extraction",
                 })
 
 

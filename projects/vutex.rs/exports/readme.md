@@ -39,7 +39,7 @@ report when it cannot proceed.
 | PDF output | available, fidelity gaps | paginated PDF bytes | `document-renderer-pdf` |
 | DOT, Mermaid, PlantUML fences | available, fidelity gap | a resolved diagram scene placed by layout | `plotter-input-dot` / `-mermaid` / `-plantuml` |
 | TikZ fences | available, fidelity gap | a resolved diagram scene for the supported subset | `plotter-input-tikz` |
-| Inline and block maths in a document | **not typeset** | the authored source text, e.g. `E=mc^2` | no maths lowering happens in the PDF or SVG document path |
+| Inline and block maths in a document | available, fidelity gap | vector outlines in SVG and PDF, absent from text extraction | `document-layout` maths → `document-renderer-svg` / `-pdf` |
 | PDF text faces | **not embedded** | base-14 `Times-Roman` references | `document-renderer-pdf` |
 
 Measured gaps from the cross-check corpus:
@@ -48,14 +48,17 @@ Measured gaps from the cross-check corpus:
 | --- | --- | --- | --- |
 | Subscript baseline depth | 0.247em | 0.150em (KaTeX and MathJax agree) | subscript sits too low |
 | Fraction numerator/denominator size | 1.0× | 0.700× (KaTeX), 0.707× (MathJax) | fractions do not shrink their parts |
-| Maths in PDF | literal source text, zero vector path operators | typeset glyphs | formula is searchable but not rendered |
+| Maths in PDF and SVG | 5 vector path operators, formula absent from extraction | vector outlines with searchable text | renders correctly, but copy and search miss the formula |
 | PDF text font embedding | not embedded | embedded | portable readers may substitute the face |
 | DOT diamond bounding-box aspect | 6.636 | 5.448 (Graphviz) | our layout spreads horizontally |
 | TikZ `\node`, `white`, `purple` | rejected | rendered before the upstream switch | six constructs lost |
 
-The maths rows are real defects: both independent references agree with each
-other and with TeX semantics. The DOT aspect and the TikZ rows are real
-regressions against their references and the previous host implementation.
+The subscript and fraction rows are real defects: both independent references
+agree with each other and with TeX semantics. The maths-in-PDF row is a known
+limitation, not a defect: the outlines are geometrically correct and the
+formula simply does not survive text extraction. The DOT aspect and the TikZ
+rows are real regressions against their references and the previous host
+implementation.
 
 ### Explicit rejections
 

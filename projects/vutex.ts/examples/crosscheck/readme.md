@@ -104,13 +104,29 @@ Our PDF is the artifact under test. Both sides extract from the same file:
 - Python: `pymupdf` and `pdfminer.six`, page count, text, and font embedding
   flags (`pymupdf` only, since that is where the flag exists).
 
-The math-font case is recorded as evidence, and it does not reproduce the
-feared failure. `$E=mc^2$` never reaches a Math block in the PDF pipeline, so
-the artifact carries the literal source string `E=mc^2` and zero vector path
-operators in both `pdfjs-dist` and `pymupdf`. The formula is searchable but it
-is not typeset, which is the `real-defect` row. The `our-limitation` rows are a
-different issue: the text face is non-embedded base-14 `Times-Roman`, so
-portable readers may substitute it.
+The maths case has two observable states, and the face install decides which
+one appears:
+
+| state | vector paths | extracted text | verdict |
+| --- | --- | --- | --- |
+| no face installed | 0 (`pdfjs`), 0 drawings (`pymupdf`) | `E=mc^2` is searchable | not typeset |
+| faces installed | 5 (`pdfjs`), 5 drawings (`pymupdf`) | formula is absent, prose intact | typeset but not searchable |
+
+Before the install fix, a fresh `vutex-napi` process rendered documents in the
+first state, which made the earlier reading "the pipeline never creates a Math
+block" look true. It was not: the block exists and lays out, but the missing
+face degraded it to the authored source text. With a face installed the same
+source yields vector outlines, so the formula is geometrically correct and no
+longer extractable. Every export entry now installs the faces, so documents
+render in the second state.
+
+`math_searchable` and `math_typeset` are `our-limitation` in the second state,
+not defects. The fraction and subscript measurements do not move with the
+install: `frac` still reports a 1.0 size ratio and `sub` still sinks 0.247em,
+which belong to the engine and are tracked there.
+
+The text face itself is still non-embedded base-14 `Times-Roman`, so
+`font_embedded` stays an `our-limitation` for every PDF.
 
 | feature | tolerance |
 | --- | --- |

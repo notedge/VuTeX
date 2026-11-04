@@ -11,7 +11,7 @@
       "id": "math",
       "markdown": "math.md",
       "pages": 1,
-      "expected_text": "Cross-check math sample Area formula follows. E=mc^2 End of line.",
+      "expected_text": "Cross-check math sample Area formula follows. End of line.",
       "formula": "E=mc^2",
       "features": ["page_count", "text_normalised", "font_embedded", "math_searchable", "math_typeset"]
     },

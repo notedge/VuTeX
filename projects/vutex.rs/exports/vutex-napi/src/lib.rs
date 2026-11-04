@@ -123,6 +123,7 @@ pub fn inspect_document(input_path: String) -> InspectDocumentResponse {
 /// parent directory for relative image sources.
 #[napi]
 pub fn render_document(input_path: String, options_json: Option<String>) -> RenderDocumentResponse {
+    install_embedded_math_fonts();
     let outcome = document::render_document(&input_path, options_json.as_deref());
     RenderDocumentResponse {
         exit_code: outcome.exit_code,

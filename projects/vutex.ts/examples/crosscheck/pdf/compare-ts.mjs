@@ -87,18 +87,19 @@ for (const testCase of cases) {
             ours: searchable,
             theirs: true,
             classification: "our-limitation",
-            note: `formula "${testCase.formula}" is expected to be searchable after typesetting`,
+            note: `formula "${testCase.formula}" is painted as vector outlines, so extraction omits it`,
         });
     }
     if (testCase.features.includes("math_typeset")) {
+        const searchable = found.text.includes(testCase.formula.replace(/\s+/g, " "));
         report.record({
             case: testCase.id,
             feature: "math_typeset",
-            ours: { path_ops: found.pathOps, extracted: found.text },
+            ours: { path_ops: found.pathOps, searchable, extracted: found.text },
             theirs: null,
             tolerance: "record-only",
-            classification: "real-defect",
-            note: "the PDF contains no vector glyphs, the formula is emitted as literal source text",
+            classification: "our-limitation",
+            note: "the formula is vector outlines, correct geometry and absent from text extraction",
         });
     }
     console.log(
