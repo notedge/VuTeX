@@ -81,6 +81,19 @@ fn typst_source_reaches_svg() {
 }
 
 #[test]
+fn tikz_fence_reaches_a_diagram_scene() {
+    let dir = ScratchDir::new("tikz");
+    let path = dir.write("sample.md", "```tikz\n\\draw (0,0) rectangle (1,1);\n```\n");
+
+    let outcome = render_document(&path_string(&path), None);
+
+    assert_eq!(outcome.exit_code, 0, "{}", outcome.report_json);
+    assert_eq!(outcome.output_format, "svg");
+    let svg = outcome.svg.expect("svg payload");
+    assert!(svg.contains("data-diagram=\"TikZ picture\""), "{svg}");
+}
+
+#[test]
 fn absent_input_is_refused_without_a_payload() {
     let dir = ScratchDir::new("absent");
 

@@ -81,7 +81,7 @@ fn record_span(diagnostic: &Diagnostic) -> Option<DiagnosticSpan> {
 /// Diagram frontends report offsets inside the source they received. Layout
 /// diagnostics travel next to the report's document, so hosts add the authoring
 /// block start and publish one coordinate system instead of two.
-fn document_span(block: Option<SourceSpan>, local: Option<DiagnosticSpan>) -> Option<DiagnosticSpan> {
+pub(crate) fn document_span(block: Option<SourceSpan>, local: Option<DiagnosticSpan>) -> Option<DiagnosticSpan> {
     match (block, local) {
         (Some(block), Some(local)) => {
             let base = block.start as usize;
