@@ -11,6 +11,7 @@ members = [
     "projects/vutex.rs/crates/vutex-render-svg",
     "projects/vutex.rs/crates/vutex-render-html",
     "projects/vutex.rs/crates/vutex-render-raster",
+    "projects/vutex.rs/crates/vutex-input-tex",
     "projects/vutex.rs/exports/watex-wasm",
     "projects/vutex.rs/exports/vutex-napi",
 ]
