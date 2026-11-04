@@ -2,7 +2,7 @@
 //! presentation, and an SVG artifact.
 
 use notedown_ir::Block;
-use vutex_input_tex::{ConversionStatus, import_source};
+use vutex_input_tex::import_source;
 use vutex_layout::{
     Diagrams, LayoutHint,
     document::layout_with_diagnostics,
@@ -10,6 +10,7 @@ use vutex_layout::{
 };
 use vutex_presentation::{DisplayItem, build_display_presentation};
 use vutex_render_svg::render_svg;
+use vutex_types::Severity;
 
 const SAMPLE: &str = r"\documentclass{article}
 \begin{document}
@@ -33,7 +34,27 @@ fn minimal_tex_document_reaches_an_svg_artifact() {
     let document = import_source("minimal.tex", SAMPLE).expect("the minimal subset must import");
     let graph = &document.graph;
 
-    assert_eq!(document.report.count(ConversionStatus::Parsed), 1);
+    assert_eq!(document.report.parsed.considered, 6, "six blocks reach the report");
+    assert_eq!(document.report.parsed.handled, 6);
+    assert_eq!(document.report.lowered.considered, 6);
+    assert_eq!(document.report.lowered.handled, 5, "the opaque preamble is not lowered");
+    assert!(document.report.unsupported.is_empty(), "the minimal subset must not report unsupported constructs");
+    assert_eq!(document.report.opaque.len(), 1);
+    assert_eq!(document.report.opaque[0].code, "tex.documentclass");
+    assert!(
+        document.report.lossy.iter().any(|item| item.code == "import.tex.partial_coverage"),
+        "the document-model coverage statement is forwarded once: {:#?}",
+        document.report.lossy
+    );
+
+    let preamble = document
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "tex.documentclass")
+        .expect("the opaque preamble must be diagnosed");
+    assert_eq!(preamble.severity, Severity::Warning);
+    let span = preamble.span.expect("the preamble must be located in the source");
+    assert_eq!(&SAMPLE[span.start as usize..span.end as usize], "\\documentclass{article}");
 
     let sections = graph.blocks.iter().filter(|node| matches!(node.block, Block::Section { .. })).count();
     let paragraphs = graph.blocks.iter().filter(|node| matches!(node.block, Block::Paragraph { .. })).count();
@@ -61,11 +82,6 @@ fn minimal_tex_document_reaches_an_svg_artifact() {
     assert!(
         !diagnostics.iter().any(|d| d.code == "vutex.layout.math.unsupported_language"),
         "the profile must not hand a non-TeX formula to layout: {diagnostics:#?}"
-    );
-    assert!(
-        document.report.count(ConversionStatus::Unsupported) == 0,
-        "the minimal subset must not report unsupported constructs: {:#?}",
-        document.report.entries
     );
 
     let text_runs: Vec<&TextRun> = plan
@@ -109,26 +125,6 @@ fn minimal_tex_document_reaches_an_svg_artifact() {
     assert!(svg.contains("Introduction"), "the artifact must carry the heading text");
     assert!(svg.len() > 1024, "rendered artifact must carry real content, got {} bytes", svg.len());
 
-    // The preamble has no document semantics, so it must be reported as opaque
-    // instead of disappearing from the report.
-    let opaque: Vec<_> = document
-        .report
-        .entries
-        .iter()
-        .filter(|entry| entry.status == ConversionStatus::Opaque)
-        .collect();
-    assert_eq!(opaque.len(), 1, "only the preamble stays opaque: {:#?}", document.report.entries);
-    assert!(opaque[0].span.is_some(), "the preamble must be located in the source");
-    // The document model states its own coverage gap once per import.
-    let coverage: Vec<_> = document
-        .report
-        .entries
-        .iter()
-        .filter(|entry| entry.code == "import.tex.partial_coverage")
-        .collect();
-    assert_eq!(coverage.len(), 1, "the coverage statement is forwarded once");
-    assert_eq!(coverage[0].status, ConversionStatus::Lossy);
-
     println!(
         "tex minimal loop: pages={} text_runs={} rules={} painted={} svg_bytes={} blocks={} opaque={} lossy={}",
         plan.pages.len(),
@@ -137,7 +133,7 @@ fn minimal_tex_document_reaches_an_svg_artifact() {
         painted,
         svg.len(),
         graph.blocks.len(),
-        document.report.count(ConversionStatus::Opaque),
-        document.report.count(ConversionStatus::Lossy),
+        document.report.opaque.len(),
+        document.report.lossy.len(),
     );
 }

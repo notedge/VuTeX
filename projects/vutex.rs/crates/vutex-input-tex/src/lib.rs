@@ -2,14 +2,14 @@
 //!
 //! VuTeX does not own TeX syntax. The `oak-tex` frontend parses the source, the
 //! document model lowers it into `notedown-ir`, and this crate selects that
-//! profile and turns the recorded outcome into a conversion report. Math enters
-//! the shared formula pipeline as `notedown-ir` math, so the profile never
-//! carries a second set of mathematical semantics.
+//! profile and projects the recorded outcome into the shared conversion report.
+//! Math enters the shared formula pipeline as `notedown-ir` math, so the profile
+//! never carries a second set of mathematical semantics.
 //!
 //! Every construct the profile cannot map into document semantics is reported
-//! with an explicit [`ConversionStatus`], a diagnostic code, and a source span
-//! when the input or the lowered graph still knows one. Nothing is dropped
-//! silently and nothing is approximated to look supported.
+//! in the report or in the diagnostics, with a source span when the input or the
+//! lowered graph still knows one. Nothing is dropped silently and nothing is
+//! approximated to look supported.
 
 #![deny(missing_debug_implementations)]
 #![warn(missing_docs, rustdoc::missing_crate_level_docs)]
@@ -22,115 +22,75 @@ use std::{
 };
 
 use notedown_formats::{FormatError, import::tex::import_tex_bytes};
-use notedown_ir::{Block, DocumentGraph, Inline, MathFormula, NodeId, SourceSpan as IrSpan};
-use vutex_types::{Diagnostic, Severity, SourceSpan};
+use notedown_ir::{Block, DocumentGraph, Inline, MathExpression, MathFormula, SemanticStatus, SourceSpan as IrSpan};
+use vutex_types::{
+    ConversionReport, CoverageSummary, Diagnostic, LossyItem, OpaqueItem, PreservedItem, Severity, SourceSpan, UnsupportedItem,
+};
 
 /// Stable identifier of the TeX input profile.
 ///
-/// The same string is written into an inspect report and into
-/// [`MathFormula::language`] for TeX math, so a consumer can tell which profile
-/// produced the document.
+/// The same string is written into [`MathFormula::language`] for TeX math, so a
+/// consumer can tell which profile produced the document.
 pub const PROFILE_ID: &str = "latex";
 
-/// Code recorded for a source the TeX frontend accepted.
-pub const SOURCE_PARSED: &str = "vutex.input.tex.parsed";
 /// Code recorded when the TeX frontend rejects the source.
 pub const PARSE_FAILED: &str = "vutex.input.tex.parse_failed";
 /// Code recorded when a source file cannot be read.
 pub const IO_FAILED: &str = "vutex.input.tex.io_failed";
 /// Code recorded when the lowered graph violates a document-model invariant.
 pub const INVALID_GRAPH: &str = "vutex.input.tex.invalid_graph";
-/// Code recorded for a construct kept opaque instead of lowered.
-pub const OPAQUE_CONSTRUCT: &str = "vutex.input.tex.opaque_construct";
 /// Code recorded for math whose language tag the TeX formula pipeline cannot
 /// lower.
 pub const MATH_LANGUAGE: &str = "vutex.input.tex.math_language";
 
-/// Conversion status of one TeX construct.
-///
-/// The set mirrors the language-neutral vocabulary every input adapter reports,
-/// so a host never has to interpret a TeX-specific state name.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ConversionStatus {
-    /// Syntax was accepted by the frontend.
-    Parsed,
-    /// Semantics reached the document model.
-    Lowered,
-    /// Authored content was preserved without document semantics.
-    Preserved,
-    /// The construct is known but has no document mapping.
-    Unsupported,
-    /// The construct was kept as an opaque payload.
-    Opaque,
-    /// Mapping succeeded with a recorded loss.
-    Lossy,
-}
-
-/// One reported construct of the conversion.
-#[derive(Debug, Clone, PartialEq)]
-pub struct ConstructEntry {
-    /// Conversion status of the construct.
-    pub status: ConversionStatus,
-    /// Stable code identifying what was reported.
-    ///
-    /// Upstream document-model codes such as `import.tex.math_numbering` are
-    /// passed through verbatim, so a host can filter on the code that the
-    /// lowering actually recorded.
-    pub code: String,
-    /// Human-readable explanation.
-    pub message: String,
-    /// Source byte range the construct occupies, when it is known.
-    pub span: Option<SourceSpan>,
-}
-
-/// Outcome of converting one TeX source into document semantics.
-///
-/// The report never collapses into a single completeness flag. A caller reads
-/// the per-construct statuses, or the diagnostics the conversion emitted.
-#[derive(Debug, Clone, Default, PartialEq)]
-pub struct ConversionReport {
-    /// Reported constructs in discovery order.
-    pub entries: Vec<ConstructEntry>,
-    /// Diagnostics a host can surface in a build report.
-    pub diagnostics: Vec<Diagnostic>,
-}
-
-impl ConversionReport {
-    /// Number of entries carrying `status`.
-    pub fn count(&self, status: ConversionStatus) -> usize {
-        self.entries.iter().filter(|entry| entry.status == status).count()
-    }
-
-    /// Whether any diagnostic reached error severity.
-    pub fn has_errors(&self) -> bool {
-        self.diagnostics.iter().any(|diagnostic| diagnostic.severity == Severity::Error)
-    }
-}
+/// Loss codes that summarize the whole import instead of one source construct.
+const SUMMARY_LOSS_CODES: [&str; 1] = ["import.tex.partial_coverage"];
 
 /// A TeX source converted into the document model.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TexDocument {
     /// Language-neutral document the layout pipeline consumes.
     pub graph: DocumentGraph,
-    /// What the conversion did and did not map.
+    /// Shared conversion report projected from the graph.
     pub report: ConversionReport,
+    /// Structured diagnostics, including recovered source spans.
+    pub diagnostics: Vec<Diagnostic>,
 }
 
 /// Failure that stops the profile before any document reaches layout.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TexInputError {
-    /// Stable diagnostic code.
-    pub code: String,
-    /// Human-readable message, including the frontend position when it reported
-    /// one.
-    pub message: String,
+    /// The diagnostic that explains the failure.
+    pub diagnostic: Diagnostic,
+}
+
+impl TexInputError {
+    /// Stable diagnostic code of the failure.
+    pub fn code(&self) -> &str {
+        &self.diagnostic.code
+    }
+
+    /// Human-readable failure message.
+    pub fn message(&self) -> &str {
+        &self.diagnostic.message
+    }
+
     /// Source byte range, when the failure is known to sit in one.
-    pub span: Option<SourceSpan>,
+    pub fn span(&self) -> Option<SourceSpan> {
+        self.diagnostic.span
+    }
+
+    /// Build an error whose diagnostic carries `code` and `message`.
+    fn new(code: &str, message: impl Into<String>) -> Self {
+        Self {
+            diagnostic: Diagnostic { code: code.to_string(), severity: Severity::Error, message: message.into(), span: None },
+        }
+    }
 }
 
 impl Display for TexInputError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
-        write!(formatter, "{}: {}", self.code, self.message)
+        write!(formatter, "{}: {}", self.code(), self.message())
     }
 }
 
@@ -145,8 +105,18 @@ impl Error for TexInputError {}
 pub fn import_source(label: &str, source: &str) -> Result<TexDocument, TexInputError> {
     let graph = import_tex_bytes(label, source).map_err(parse_failure)?;
     validate_graph(&graph)?;
-    let report = conversion_report(&graph, source);
-    Ok(TexDocument { graph, report })
+    let report = conversion_report(&graph);
+    let diagnostics = conversion_diagnostics(&graph, source);
+    Ok(TexDocument { graph, report, diagnostics })
+}
+
+/// Convert one TeX file into the document model.
+pub fn import_file(path: impl AsRef<Path>) -> Result<TexDocument, TexInputError> {
+    let path = path.as_ref();
+    let source = std::fs::read_to_string(path).map_err(|error| {
+        TexInputError::new(IO_FAILED, format!("failed to read {}: {error}", path.display()))
+    })?;
+    import_source(&path.display().to_string(), &source)
 }
 
 /// Check that a lowered graph satisfies the document-model invariants layout
@@ -160,108 +130,168 @@ pub fn validate_graph(graph: &DocumentGraph) -> Result<(), TexInputError> {
     if validation.issues.is_empty() {
         return Ok(());
     }
-    Err(TexInputError {
-        code: INVALID_GRAPH.to_string(),
-        message: format!("lowered graph breaks document-model invariants: {:?}", validation.issues),
-        span: None,
-    })
+    Err(TexInputError::new(
+        INVALID_GRAPH,
+        format!("lowered graph breaks document-model invariants: {:?}", validation.issues),
+    ))
 }
 
-/// Convert one TeX file into the document model.
-pub fn import_file(path: impl AsRef<Path>) -> Result<TexDocument, TexInputError> {
-    let path = path.as_ref();
-    let source = std::fs::read_to_string(path).map_err(|error| TexInputError {
-        code: IO_FAILED.to_string(),
-        message: format!("failed to read {}: {error}", path.display()),
-        span: None,
-    })?;
-    import_source(&path.display().to_string(), &source)
-}
-
-/// Audit a document graph that already carries TeX-lowered content.
+/// Project a document graph that already carries TeX-lowered content into the
+/// shared conversion report.
 ///
 /// Hosts that obtain the graph through another entry point still get the same
-/// conversion report, including the checks this profile owns rather than the
-/// document model.
-pub fn conversion_report(graph: &DocumentGraph, source: &str) -> ConversionReport {
-    let mut report = ConversionReport::default();
-    report.entries.push(ConstructEntry {
-        status: ConversionStatus::Parsed,
-        code: SOURCE_PARSED.to_string(),
-        message: "the TeX frontend accepted the source".to_string(),
-        span: document_span(source),
-    });
+/// report, including the checks this profile owns rather than the document
+/// model.
+pub fn conversion_report(graph: &DocumentGraph) -> ConversionReport {
+    let blocks = graph.blocks.len();
+    let construct_losses = graph.coverage.loss.iter().filter(|marker| !is_summary(&marker.code)).count();
+    let lowered_blocks = graph.blocks.iter().filter(|node| is_lowered(&node.block)).count();
 
-    for (index, loss) in graph.coverage.loss.iter().enumerate() {
-        let status = loss_status(loss.status);
-        let entry = ConstructEntry {
-            status,
-            code: loss.code.clone(),
-            message: loss.message.clone(),
-            span: graph.loss_span(index).map(span_of),
-        };
-        let severity = loss_severity(status);
-        report.diagnostics.push(Diagnostic {
-            code: entry.code.clone(),
-            severity,
-            message: entry.message.clone(),
-            span: entry.span,
+    let mut unsupported = Vec::new();
+    let mut lossy = Vec::new();
+    for marker in &graph.coverage.loss {
+        match marker.status {
+            SemanticStatus::Unsupported | SemanticStatus::Unresolved => {
+                unsupported.push(UnsupportedItem { code: marker.code.clone(), detail: marker.message.clone() });
+            }
+            SemanticStatus::Partial | SemanticStatus::Lossy | SemanticStatus::Inferred => {
+                lossy.push(LossyItem { code: marker.code.clone(), detail: marker.message.clone() });
+            }
+            SemanticStatus::Resolved => {}
+        }
+    }
+
+    for mismatch in math_mismatches(graph) {
+        unsupported.push(UnsupportedItem { code: MATH_LANGUAGE.to_string(), detail: mismatch.message() });
+    }
+
+    let opaque = graph
+        .blocks
+        .iter()
+        .filter_map(|node| match &node.block {
+            Block::Opaque { kind, payload_hint, .. } => {
+                Some(OpaqueItem { code: kind.clone(), detail: payload_hint.clone() })
+            }
+            _ => None,
+        })
+        .collect();
+
+    ConversionReport {
+        parsed: CoverageSummary { considered: count(blocks + construct_losses), handled: count(blocks) },
+        lowered: CoverageSummary { considered: count(blocks), handled: count(lowered_blocks) },
+        preserved: Vec::<PreservedItem>::new(),
+        unsupported,
+        opaque,
+        lossy,
+    }
+}
+
+/// Build the diagnostics that explain what the conversion could not map.
+///
+/// Document-level coverage statements stay unpositioned. A construct-level loss
+/// uses its recorded span when the graph has one, otherwise the payload named by
+/// its message is matched against the source. An opaque block also gets its own
+/// diagnostic, because the block keeps the authored payload and therefore
+/// recovers the precise source range a loss message may not name.
+pub fn conversion_diagnostics(graph: &DocumentGraph, source: &str) -> Vec<Diagnostic> {
+    let mut diagnostics = Vec::new();
+
+    for (index, marker) in graph.coverage.loss.iter().enumerate() {
+        if is_summary(&marker.code) {
+            continue;
+        }
+        let payload = payload_after_colon(&marker.message);
+        let span = graph
+            .loss_span(index)
+            .map(span_of)
+            .or_else(|| payload.and_then(|text| unique_payload_span(source, text)));
+        diagnostics.push(Diagnostic {
+            code: marker.code.clone(),
+            severity: severity_of(marker.status),
+            message: marker.message.clone(),
+            span,
         });
-        report.entries.push(entry);
     }
 
     for node in &graph.blocks {
-        audit_block(node.id, &node.block, graph, source, &mut report);
+        if let Block::Opaque { kind, payload_hint, status } = &node.block {
+            let payload = payload_hint.trim();
+            if payload.is_empty() {
+                continue;
+            }
+            diagnostics.push(Diagnostic {
+                code: kind.clone(),
+                severity: severity_of(*status),
+                message: format!("TeX construct kept opaque without document semantics: {payload}"),
+                span: unique_payload_span(source, payload),
+            });
+        }
     }
-    report
+
+    for mismatch in math_mismatches(graph) {
+        diagnostics.push(Diagnostic {
+            code: MATH_LANGUAGE.to_string(),
+            severity: Severity::Error,
+            message: mismatch.message(),
+            span: None,
+        });
+    }
+
+    diagnostics
 }
 
-/// Report one block: opaque payloads it kept and math it handed to the formula
-/// pipeline.
-fn audit_block(id: NodeId, block: &Block, graph: &DocumentGraph, source: &str, report: &mut ConversionReport) {
-    if let Block::Opaque { kind, payload_hint, .. } = block {
-        let span = graph.block_span(id).map(span_of).or_else(|| unique_payload_span(source, payload_hint));
-        let message = format!(
-            "TeX construct `{kind}` at block {} has no document semantics and stays opaque: {payload_hint}",
-            id.0
-        );
-        report.entries.push(ConstructEntry {
-            status: ConversionStatus::Opaque,
-            code: OPAQUE_CONSTRUCT.to_string(),
-            message: message.clone(),
-            span,
-        });
-        report.diagnostics.push(Diagnostic { code: OPAQUE_CONSTRUCT.to_string(), severity: Severity::Warning, message, span });
-    }
+/// One formula whose language the TeX pipeline cannot lower.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct MathMismatch {
+    location: String,
+    language: String,
+}
 
-    let location = format!("block {}", id.0);
-    match block {
-        Block::Math { formula } => audit_math(formula, &location, report),
-        Block::Section { title, .. } => audit_inlines(title, &location, report),
-        Block::Paragraph { content } => audit_inlines(content, &location, report),
-        Block::Quote { content, .. } => audit_inlines(content, &location, report),
-        Block::List { items, .. } => {
-            for item in items {
-                audit_inlines(&item.content, &location, report);
-            }
-        }
-        Block::Table { rows, .. } => {
-            for row in rows {
-                for cell in &row.cells {
-                    audit_inlines(&cell.content, &location, report);
+impl MathMismatch {
+    fn message(&self) -> String {
+        format!("math at {} is tagged `{}`, which the TeX formula pipeline cannot lower", self.location, self.language)
+    }
+}
+
+/// Collect every formula whose language tag does not belong to the TeX profile.
+///
+/// The profile only produces `latex` math, so this check guards the contract
+/// rather than a normal path. A mismatch is an error: feeding another
+/// mathematical grammar to the TeX layout would produce wrong structure, not a
+/// degradation.
+fn math_mismatches(graph: &DocumentGraph) -> Vec<MathMismatch> {
+    let mut mismatches = Vec::new();
+    for node in &graph.blocks {
+        let location = format!("block {}", node.id.0);
+        match &node.block {
+            Block::Math { formula } => check_math(formula, &location, &mut mismatches),
+            Block::Section { title, .. } => check_inlines(title, &location, &mut mismatches),
+            Block::Paragraph { content } => check_inlines(content, &location, &mut mismatches),
+            Block::Quote { content, .. } => check_inlines(content, &location, &mut mismatches),
+            Block::List { items, .. } => {
+                for item in items {
+                    check_inlines(&item.content, &location, &mut mismatches);
                 }
             }
+            Block::Table { rows, .. } => {
+                for row in rows {
+                    for cell in &row.cells {
+                        check_inlines(&cell.content, &location, &mut mismatches);
+                    }
+                }
+            }
+            _ => {}
         }
-        _ => {}
     }
+    mismatches
 }
 
-/// Audit every inline formula inside `content`.
-fn audit_inlines(content: &[Inline], location: &str, report: &mut ConversionReport) {
+/// Check every inline formula inside `content`.
+fn check_inlines(content: &[Inline], location: &str, mismatches: &mut Vec<MathMismatch>) {
     let mut formulas: Vec<&MathFormula> = Vec::new();
     collect_inlines(content, &mut formulas);
     for formula in formulas {
-        audit_math(formula, location, report);
+        check_math(formula, location, mismatches);
     }
 }
 
@@ -282,28 +312,13 @@ fn collect_inlines<'a>(content: &'a [Inline], formulas: &mut Vec<&'a MathFormula
     }
 }
 
-/// Fail closed when math carries a language the TeX formula pipeline cannot
-/// lower.
-///
-/// The profile only produces `latex` math, so this check guards the contract
-/// rather than a normal path. A mismatch is an error: feeding another
-/// mathematical grammar to the TeX layout would produce wrong structure, not a
-/// degradation.
-fn audit_math(formula: &MathFormula, location: &str, report: &mut ConversionReport) {
-    if is_tex_language(formula.language.as_deref()) {
+/// Record one formula if its language tag is not Tex.
+fn check_math(formula: &MathFormula, location: &str, mismatches: &mut Vec<MathMismatch>) {
+    let language = formula.language.as_deref().unwrap_or_default().trim();
+    if is_tex_language(language) {
         return;
     }
-    let message = format!(
-        "math at {location} is tagged `{}`, which the TeX formula pipeline cannot lower",
-        formula.language.as_deref().unwrap_or_default()
-    );
-    report.entries.push(ConstructEntry {
-        status: ConversionStatus::Unsupported,
-        code: MATH_LANGUAGE.to_string(),
-        message: message.clone(),
-        span: None,
-    });
-    report.diagnostics.push(Diagnostic { code: MATH_LANGUAGE.to_string(), severity: Severity::Error, message, span: None });
+    mismatches.push(MathMismatch { location: location.to_string(), language: language.to_string() });
 }
 
 /// Whether a math language tag belongs to the TeX profile.
@@ -312,38 +327,30 @@ fn audit_math(formula: &MathFormula, location: &str, report: &mut ConversionRepo
 /// tag, `tex`, and `latex` all select TeX math. The profile cannot call the
 /// layout predicate without inverting the adapter dependency direction, so the
 /// rule lives here explicitly instead.
-fn is_tex_language(language: Option<&str>) -> bool {
-    match language {
-        None => true,
-        Some(value) => {
-            let value = value.trim();
-            value.is_empty() || value.eq_ignore_ascii_case("tex") || value.eq_ignore_ascii_case("latex")
-        }
+fn is_tex_language(language: &str) -> bool {
+    language.is_empty() || language.eq_ignore_ascii_case("tex") || language.eq_ignore_ascii_case("latex")
+}
+
+/// Whether one block reached document semantics.
+fn is_lowered(block: &Block) -> bool {
+    match block {
+        Block::Opaque { .. } => false,
+        Block::Math { formula } => !matches!(formula.expression, MathExpression::Unsupported { .. }),
+        _ => true,
     }
 }
 
-/// Conversion status of one document-model loss.
-fn loss_status(status: notedown_ir::SemanticStatus) -> ConversionStatus {
-    match status {
-        notedown_ir::SemanticStatus::Resolved => ConversionStatus::Lowered,
-        notedown_ir::SemanticStatus::Inferred => ConversionStatus::Lossy,
-        notedown_ir::SemanticStatus::Partial | notedown_ir::SemanticStatus::Lossy => ConversionStatus::Lossy,
-        notedown_ir::SemanticStatus::Unsupported | notedown_ir::SemanticStatus::Unresolved => ConversionStatus::Unsupported,
-    }
+/// Whether one loss code summarizes the whole import.
+fn is_summary(code: &str) -> bool {
+    SUMMARY_LOSS_CODES.contains(&code)
 }
 
 /// Severity a host sees for one recorded loss.
-///
-/// A recorded loss is a warning, never an error: the construct keeps an
-/// explicit status in the report, and the host decides whether the document is
-/// acceptable. Errors are reserved for input the profile refuses to lower, such
-/// as math carrying a foreign grammar.
-fn loss_severity(status: ConversionStatus) -> Severity {
+fn severity_of(status: SemanticStatus) -> Severity {
     match status {
-        ConversionStatus::Parsed | ConversionStatus::Lowered => Severity::Info,
-        ConversionStatus::Preserved | ConversionStatus::Lossy | ConversionStatus::Unsupported | ConversionStatus::Opaque => {
-            Severity::Warning
-        }
+        SemanticStatus::Unsupported | SemanticStatus::Unresolved => Severity::Error,
+        SemanticStatus::Partial | SemanticStatus::Lossy | SemanticStatus::Inferred => Severity::Warning,
+        SemanticStatus::Resolved => Severity::Info,
     }
 }
 
@@ -352,19 +359,18 @@ fn span_of(span: IrSpan) -> SourceSpan {
     SourceSpan { start: span.start, end: span.end }
 }
 
-/// Span covering the whole source, for the accepted-syntax entry.
-fn document_span(source: &str) -> Option<SourceSpan> {
-    (!source.is_empty()).then(|| SourceSpan { start: 0, end: source.len() as u32 })
+/// The payload a loss message names after its last colon.
+fn payload_after_colon(message: &str) -> Option<&str> {
+    let (_, payload) = message.rsplit_once(':')?;
+    let payload = payload.trim();
+    (!payload.is_empty()).then_some(payload)
 }
 
-/// Recover the span of an opaque payload from its authored text.
+/// Recover the span of a payload from its authored text.
 ///
-/// The document model records opaque blocks without a block span, so the
-/// authored payload text is matched against the source. Only an unambiguous
-/// single occurrence yields a span: a repeated payload could belong to any of
-/// the occurrences, and pointing at the wrong one would be worse than pointing
-/// nowhere. The block ordinal in the message stays as the locator when no span
-/// is recovered.
+/// Only an unambiguous single occurrence yields a span: a repeated payload could
+/// belong to any occurrence, and pointing at the wrong one would be worse than
+/// pointing nowhere.
 fn unique_payload_span(source: &str, payload_hint: &str) -> Option<SourceSpan> {
     let needle = payload_hint.trim();
     if needle.is_empty() {
@@ -380,5 +386,10 @@ fn unique_payload_span(source: &str, payload_hint: &str) -> Option<SourceSpan> {
 
 /// Turn a frontend rejection into the profile's structured error.
 fn parse_failure(error: FormatError) -> TexInputError {
-    TexInputError { code: PARSE_FAILED.to_string(), message: error.to_string(), span: None }
+    TexInputError::new(PARSE_FAILED, error.to_string())
+}
+
+/// Count a collection into the report's integer type.
+fn count(value: usize) -> u32 {
+    value as u32
 }

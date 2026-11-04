@@ -3,8 +3,7 @@
 
 use notedown_ir::{Block, DocumentGraph, DocumentId, Inline, ListItem, MathDisplay, MathFormula};
 use vutex_input_tex::{
-    ConversionStatus, INVALID_GRAPH, MATH_LANGUAGE, OPAQUE_CONSTRUCT, PARSE_FAILED, conversion_report, import_source,
-    validate_graph,
+    INVALID_GRAPH, MATH_LANGUAGE, PARSE_FAILED, conversion_report, import_file, import_source, validate_graph,
 };
 use vutex_types::Severity;
 
@@ -24,37 +23,35 @@ fn rejected_source_returns_a_structured_error() {
 ")
     .expect_err("an unclosed group must not yield a partial document");
 
-    assert_eq!(error.code, PARSE_FAILED);
-    assert!(!error.message.is_empty(), "the frontend message must be preserved");
+    assert_eq!(error.code(), PARSE_FAILED);
+    assert!(!error.message().is_empty(), "the frontend message must be preserved");
+    assert_eq!(error.diagnostic.severity, Severity::Error);
 }
 
 #[test]
 fn unknown_environment_is_reported_with_its_source_span() {
     let document = import_source("figure.tex", UNKNOWN_ENVIRONMENT).expect("the frontend accepts the syntax");
 
-    let opaque: Vec<_> = document
-        .report
-        .entries
-        .iter()
-        .filter(|entry| entry.status == ConversionStatus::Opaque)
-        .collect();
-    assert_eq!(opaque.len(), 1, "one environment must stay opaque: {:#?}", document.report.entries);
-    let span = opaque[0].span.expect("the authored environment must be located in the source");
-    let text = &UNKNOWN_ENVIRONMENT[span.start as usize..span.end as usize];
-    assert_eq!(text, opaque[0].message.split_once(": ").map_or("", |(_, payload)| payload).trim());
-
+    assert_eq!(document.report.opaque.len(), 1, "one environment must stay opaque: {:#?}", document.report);
+    assert_eq!(document.report.opaque[0].code, "tex.environment.figure");
     assert!(
-        document.report.diagnostics.iter().any(|diagnostic| diagnostic.code == OPAQUE_CONSTRUCT
-            && diagnostic.severity == Severity::Warning
-            && diagnostic.span.is_some()),
-        "opaque content must surface a warning carrying the span: {:#?}",
-        document.report.diagnostics
+        document.report.unsupported.iter().any(|item| item.code == "import.tex.unknown_environment"),
+        "the lowering loss must reach the report: {:#?}",
+        document.report.unsupported
     );
+
+    let opaque = document
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "tex.environment.figure")
+        .expect("the opaque environment must be diagnosed");
+    let span = opaque.span.expect("the authored environment must be located in the source");
+    assert_eq!(&UNKNOWN_ENVIRONMENT[span.start as usize..span.end as usize], document.report.opaque[0].detail);
+    assert_eq!(opaque.severity, Severity::Warning, "opaque content is a reported loss, not a failed import");
     assert!(
-        !document.report.diagnostics.iter().any(|diagnostic| diagnostic.code == MATH_LANGUAGE),
+        !document.diagnostics.iter().any(|diagnostic| diagnostic.code == MATH_LANGUAGE),
         "opaque content is not a math language failure"
     );
-    assert!(matches!(document.graph.blocks.iter().find(|node| matches!(node.block, Block::Opaque { .. })).map(|node| &node.block), Some(Block::Opaque { .. })));
 }
 
 #[test]
@@ -72,8 +69,8 @@ fn invalid_graph_is_rejected_before_layout() {
     });
 
     let error = validate_graph(&graph).expect_err("an ordered item without a number breaks the list invariant");
-    assert_eq!(error.code, INVALID_GRAPH);
-    assert!(error.message.contains("MissingListItemNumber"), "the invariant must be named: {}", error.message);
+    assert_eq!(error.code(), INVALID_GRAPH);
+    assert!(error.message().contains("MissingListItemNumber"), "the invariant must be named: {}", error.message());
 }
 
 #[test]
@@ -83,15 +80,20 @@ fn foreign_math_language_fails_closed() {
         formula: MathFormula::unsupported("x^2", Some("typst".to_string()), MathDisplay::Display, "typst"),
     });
 
-    let report = conversion_report(&graph, "");
-    let entry = report
-        .entries
+    let report = conversion_report(&graph);
+    assert!(
+        report.unsupported.iter().any(|item| item.code == MATH_LANGUAGE),
+        "foreign math must be reported: {:#?}",
+        report.unsupported
+    );
+    assert_eq!(report.lowered.handled, 0, "an unsupported formula is not a lowered block");
+
+    let diagnostics = vutex_input_tex::conversion_diagnostics(&graph, "");
+    let mismatch = diagnostics
         .iter()
-        .find(|entry| entry.code == MATH_LANGUAGE)
-        .expect("foreign math must be reported");
-    assert_eq!(entry.status, ConversionStatus::Unsupported);
-    assert!(report.has_errors(), "a foreign formula must not pass silently to TeX layout: {:#?}", report.diagnostics);
-    assert_eq!(report.count(ConversionStatus::Parsed), 1, "the audit reports the accepted syntax once");
+        .find(|diagnostic| diagnostic.code == MATH_LANGUAGE)
+        .expect("foreign math must be diagnosed");
+    assert_eq!(mismatch.severity, Severity::Error, "a foreign formula must not pass silently to TeX layout");
 }
 
 #[test]
@@ -101,7 +103,16 @@ fn tex_math_without_a_language_tag_stays_accepted() {
         formula: MathFormula::unsupported("x^2", None, MathDisplay::Inline, "tex"),
     });
 
-    let report = conversion_report(&graph, "");
-    assert_eq!(report.count(ConversionStatus::Unsupported), 0, "untagged math belongs to the TeX profile: {:#?}", report.entries);
-    assert!(!report.has_errors());
+    let report = conversion_report(&graph);
+    assert!(report.unsupported.is_empty(), "untagged math belongs to the TeX profile: {:#?}", report.unsupported);
+    assert!(vutex_input_tex::conversion_diagnostics(&graph, "").is_empty());
+}
+
+#[test]
+fn file_import_reads_the_same_source() {
+    let path = std::env::temp_dir().join("vutex-input-tex-file.tex");
+    std::fs::write(&path, "Text $x^2$ in a file.\n").expect("the fixture must be written");
+    let document = import_file(&path).expect("the file must import");
+    assert_eq!(document.report.parsed.handled, 1);
+    std::fs::remove_file(&path).expect("the fixture must be removed");
 }
