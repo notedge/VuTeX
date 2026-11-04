@@ -86,6 +86,10 @@ const workDir = mkdtempSync(join(tmpdir(), "vutex-visual-golden-"));
 
 const browser = await chromium.launch({ args: RASTERIZER.flags });
 const chromiumVersion = browser.version();
+console.log(
+  `META playwright=${playwrightVersion} chromium=${chromiumVersion} revision=${chromiumRevision} ` +
+    `dpr=${RASTERIZER.deviceScaleFactor} color-scheme=${RASTERIZER.colorScheme}`,
+);
 const context = await browser.newContext({
   viewport: { width: 64, height: 64 },
   deviceScaleFactor: RASTERIZER.deviceScaleFactor,

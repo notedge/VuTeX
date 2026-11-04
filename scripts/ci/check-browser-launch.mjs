@@ -97,6 +97,58 @@ if (scratch.length > 0) {
     for (const entry of scratch) console.warn(`  ${entry.file}:${entry.line}  ${entry.rule}`);
 }
 
+// Self-check: ordinary code that merely names a channel or resolves a bundled
+// path must not be mistaken for a host-browser launch. If any rule fires here,
+// the patterns are too broad and would train people to ignore the gate.
+const ALLOWED_SAMPLES = [
+    "const channel: Channel = \"release\";",
+    "channel: Channel.Bundled",
+    "const executablePath = await chromium.executablePath();",
+    "const chrome = await bundledChromium();",
+    "// the host Chrome install is never used",
+];
+const falsePositives = [];
+for (const sample of ALLOWED_SAMPLES) {
+    for (const rule of RULES) {
+        if (rule.pattern.test(sample)) falsePositives.push({ sample, rule: rule.name });
+    }
+}
+if (falsePositives.length > 0) {
+    console.error("browser harness gate is over-broad: ordinary code matches the host-browser rules.\n");
+    for (const entry of falsePositives) console.error(`  ${entry.sample}\n    matched: ${entry.rule}\n`);
+    console.error(`${falsePositives.length} false positive(s). Narrow the pattern instead of waiving them.`);
+    process.exit(1);
+}
+
+// The goldens claim byte equality, so the gate pins the rasterizer identity
+// itself: the five fields below must be recorded and must name the bundled
+// build rather than a host browser or a channel.
+const MANIFEST = "projects/vutex.rs/crates/vutex-layout/tests/fixtures/visual/manifest.json";
+let rasterizer;
+try {
+    rasterizer = JSON.parse(readFileSync(join(repo, MANIFEST), "utf8")).rasterizer;
+}
+catch (error) {
+    console.error(`browser harness gate failed: cannot read ${MANIFEST}: ${error.message}`);
+    process.exit(1);
+}
+const REQUIRED = ["playwrightVersion", "chromiumVersion", "chromiumRevision", "deviceScaleFactor", "colorScheme"];
+const missing = REQUIRED.filter((key) => rasterizer?.[key] === undefined || rasterizer[key] === null || String(rasterizer[key]).trim() === "");
+if (rasterizer?.engine !== "playwright-bundled-chromium") {
+    missing.push("engine");
+}
+if (missing.length > 0) {
+    console.error(
+        `browser harness gate failed: ${MANIFEST} must record the bundled rasterizer identity ` +
+            `(engine = \`playwright-bundled-chromium\`, ${REQUIRED.join(", ")}). Missing: ${missing.join(", ")}`
+    );
+    process.exit(1);
+}
+console.log(
+    `META playwright=${rasterizer.playwrightVersion} chromium=${rasterizer.chromiumVersion} ` +
+        `revision=${rasterizer.chromiumRevision} dpr=${rasterizer.deviceScaleFactor} color-scheme=${rasterizer.colorScheme}`
+);
+
 if (hits.length > 0) {
     console.error("browser harness gate failed: these harnesses must launch Playwright's bundled Chromium, not a host browser.\n");
     for (const hit of hits) {
