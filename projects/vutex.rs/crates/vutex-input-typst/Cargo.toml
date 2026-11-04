@@ -1,0 +1,19 @@
+[package]
+name = "vutex-input-typst"
+version.workspace = true
+authors.workspace = true
+description = "Typst input adapter: profile selection, conversion report, and closed-loop rendering"
+license.workspace = true
+edition.workspace = true
+readme = "readme.md"
+
+[dependencies]
+notedown-ir = { workspace = true }
+notedown-formats = { workspace = true }
+vutex-types = { workspace = true }
+vutex-layout = { workspace = true }
+vutex-presentation = { workspace = true }
+vutex-render-svg = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

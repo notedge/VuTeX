@@ -13,6 +13,7 @@ members = [
     "projects/vutex.rs/crates/vutex-render-html",
     "projects/vutex.rs/crates/vutex-render-raster",
     "projects/vutex.rs/crates/vutex-input-tex",
+    "projects/vutex.rs/crates/vutex-input-typst",
     "projects/vutex.rs/exports/watex-wasm",
     "projects/vutex.rs/exports/vutex-napi",
 ]
