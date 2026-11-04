@@ -48,10 +48,10 @@ for (let i = 0; i < args.length; i++) {
 
 const CORPUS_PATH = corpusArg
   ? resolve(corpusArg)
-  : resolve(repoRoot, "projects/vutex.rs/crates/vutex-layout/tests/fixtures/oracle/corpus.json");
+  : resolve(repoRoot, "projects/vutex.ts/examples/oracle/records/corpus.json");
 const OUT_PATH = outArg
   ? resolve(outArg)
-  : resolve(repoRoot, "projects/vutex.rs/crates/vutex-layout/tests/fixtures/oracle/latex-status.json");
+  : resolve(repoRoot, "projects/vutex.ts/examples/oracle/records/latex-status.json");
 const COMMAND = "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs";
 
 // TeX normal size is 10pt; 1em = 10pt in the reference measurements.
@@ -1071,7 +1071,7 @@ function main() {
         status: "blocked",
         status_reason: reason,
       },
-      corpus_path: "projects/vutex.rs/crates/vutex-layout/tests/fixtures/oracle/corpus.json",
+      corpus_path: "projects/vutex.ts/examples/oracle/records/corpus.json",
       procedure: PROCEDURE,
       probes: allProbes,
       amsmath,
@@ -1134,7 +1134,7 @@ function main() {
           status: "blocked",
           status_reason: reason,
         },
-        corpus_path: "projects/vutex.rs/crates/vutex-layout/tests/fixtures/oracle/corpus.json",
+        corpus_path: "projects/vutex.ts/examples/oracle/records/corpus.json",
         procedure: PROCEDURE,
         probes: allProbes,
         amsmath,
@@ -1259,7 +1259,7 @@ function main() {
           status: "blocked",
           status_reason: reason,
         },
-        corpus_path: "projects/vutex.rs/crates/vutex-layout/tests/fixtures/oracle/corpus.json",
+        corpus_path: "projects/vutex.ts/examples/oracle/records/corpus.json",
         procedure: PROCEDURE,
         probes: allProbes,
         amsmath,
@@ -1281,7 +1281,7 @@ function main() {
         status: "available",
         status_reason: null,
       },
-      corpus_path: "projects/vutex.rs/crates/vutex-layout/tests/fixtures/oracle/corpus.json",
+      corpus_path: "projects/vutex.ts/examples/oracle/records/corpus.json",
       procedure: PROCEDURE,
       probes: allProbes,
       amsmath,

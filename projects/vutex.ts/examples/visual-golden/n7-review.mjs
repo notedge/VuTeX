@@ -22,7 +22,7 @@ import { loadWaTeX } from "@vutex/watex";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, "..", "..", "..", "..");
-const corpusPath = resolve(repo, "projects/vutex.rs/crates/vutex-layout/tests/fixtures/oracle/corpus.json");
+const corpusPath = resolve(repo, "projects/vutex.ts/examples/oracle/records/corpus.json");
 const PADDING = 8;
 const TARGETS = new Map([
   ["integral-limits", true],

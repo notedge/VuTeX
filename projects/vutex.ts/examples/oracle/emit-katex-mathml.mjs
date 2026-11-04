@@ -29,8 +29,8 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..", "..", "..", "..");
 
-const CORPUS_PATH = resolve(repoRoot, "projects/vutex.rs/crates/vutex-layout/tests/fixtures/oracle/corpus.json");
-const OUT_PATH = resolve(repoRoot, "projects/vutex.rs/crates/vutex-layout/tests/fixtures/oracle/katex-mathml.json");
+const CORPUS_PATH = resolve(repoRoot, "projects/vutex.ts/examples/oracle/records/corpus.json");
+const OUT_PATH = resolve(repoRoot, "projects/vutex.ts/examples/oracle/records/katex-mathml.json");
 
 const require = createRequire(import.meta.url);
 const katex = require("katex");
@@ -100,7 +100,7 @@ function main() {
       status: records.some((r) => r.source.status === "available") ? "available" : "blocked",
       status_reason: null,
     },
-    corpus_path: "projects/vutex.rs/crates/vutex-layout/tests/fixtures/oracle/corpus.json",
+    corpus_path: "projects/vutex.ts/examples/oracle/records/corpus.json",
     records,
   };
 

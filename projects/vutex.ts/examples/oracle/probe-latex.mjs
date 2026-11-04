@@ -26,8 +26,8 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..", "..", "..", "..");
 
-const CORPUS_PATH = resolve(repoRoot, "projects/vutex.rs/crates/vutex-layout/tests/fixtures/oracle/corpus.json");
-const OUT_PATH = resolve(repoRoot, "projects/vutex.rs/crates/vutex-layout/tests/fixtures/oracle/latex-status.json");
+const CORPUS_PATH = resolve(repoRoot, "projects/vutex.ts/examples/oracle/records/corpus.json");
+const OUT_PATH = resolve(repoRoot, "projects/vutex.ts/examples/oracle/records/latex-status.json");
 const COMMAND = "node projects/vutex.ts/examples/oracle/probe-latex.mjs";
 
 /** Binaries the geometry oracle depends on, in the order they are probed. */
@@ -206,7 +206,7 @@ function main() {
       status: "blocked",
       status_reason: reason,
     },
-    corpus_path: "projects/vutex.rs/crates/vutex-layout/tests/fixtures/oracle/corpus.json",
+    corpus_path: "projects/vutex.ts/examples/oracle/records/corpus.json",
     procedure: PROCEDURE,
     probes,
     amsmath,

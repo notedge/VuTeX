@@ -41,7 +41,7 @@ for (let i = 0; i < args.length; i++) {
 }
 
 const corpus = JSON.parse(
-  readFileSync(resolve(repo, "projects/vutex.rs/crates/vutex-layout/tests/fixtures/oracle/corpus.json"), "utf8")
+  readFileSync(resolve(repo, "projects/vutex.ts/examples/oracle/records/corpus.json"), "utf8")
 );
 
 mkdirSync(outdir, { recursive: true });

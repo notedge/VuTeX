@@ -38,4 +38,4 @@ out-watex/
 *.zip
 
 # Visual goldens are the gate N7-6 evidence and must be committed.
-!projects/vutex.rs/crates/vutex-layout/tests/fixtures/visual/*.png
+!projects/vutex.ts/examples/visual-golden/frames/*.png

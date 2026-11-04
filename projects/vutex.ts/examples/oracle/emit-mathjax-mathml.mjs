@@ -30,8 +30,8 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..", "..", "..", "..");
 
-const CORPUS_PATH = resolve(repoRoot, "projects/vutex.rs/crates/vutex-layout/tests/fixtures/oracle/corpus.json");
-const OUT_PATH = resolve(repoRoot, "projects/vutex.rs/crates/vutex-layout/tests/fixtures/oracle/mathjax-mathml.json");
+const CORPUS_PATH = resolve(repoRoot, "projects/vutex.ts/examples/oracle/records/corpus.json");
+const OUT_PATH = resolve(repoRoot, "projects/vutex.ts/examples/oracle/records/mathjax-mathml.json");
 
 // MathJax v3 exposes a CommonJS entry (`es5/node-main.js`); we load it via
 // createRequire because this project uses `"type": "module"` and mathjax
@@ -118,7 +118,7 @@ async function main() {
       status: records.some((r) => r.source.status === "available") ? "available" : "blocked",
       status_reason: null,
     },
-    corpus_path: "projects/vutex.rs/crates/vutex-layout/tests/fixtures/oracle/corpus.json",
+    corpus_path: "projects/vutex.ts/examples/oracle/records/corpus.json",
     records,
   };
 
