@@ -1,3 +1,3 @@
 # vutex-napi
 
-Node-API host for VuTeX. Delegates formula work to `watex-wasm` core logic and exposes document render/inspect stubs until the full pipeline lands.
+Node-API host for VuTeX. Exposes document render and inspect, and formula entries that delegate to the `watex-wasm` core logic. See [../readme.md](../readme.md) for the current capability status.
