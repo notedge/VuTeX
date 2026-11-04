@@ -93,6 +93,7 @@ const NULLABLE_RECORD_FIELDS: &[&str] = &[
     "axis",
     "ink_bounds",
     "rule_thickness",
+    "column_alignment",
     "delimiter_size",
     "script_positions",
     "degree",
@@ -217,7 +218,7 @@ fn schema_keeps_every_measurement_nullable() {
     }
 
     let definitions = schema["definitions"].as_object().expect("record schema must define its sub-objects");
-    for definition in ["source", "font", "atom", "bbox", "scriptPosition", "degreeBox", "radicalDegree"] {
+    for definition in ["source", "font", "atom", "bbox", "scriptPosition", "degreeBox", "radicalDegree", "columnGridRow", "columnAlignment"] {
         assert!(definitions.contains_key(definition), "record schema must define `{definition}`");
     }
 

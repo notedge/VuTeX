@@ -111,6 +111,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -143,6 +144,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -175,6 +177,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -207,6 +210,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -239,6 +243,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -271,6 +276,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -303,6 +309,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": [
         {
@@ -341,6 +348,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": [
         {
@@ -379,6 +387,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -411,6 +420,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -443,6 +453,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": {
@@ -505,6 +516,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": {
@@ -567,6 +579,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -599,6 +612,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -631,6 +645,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -663,6 +678,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -695,6 +711,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": 1.200011,
       "script_positions": null,
       "degree": null,
@@ -727,6 +744,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": 1.8359590000000001,
       "script_positions": null,
       "degree": null,
@@ -759,6 +777,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": 1,
       "script_positions": null,
       "degree": null,
@@ -791,6 +810,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": 1,
       "script_positions": null,
       "degree": null,
@@ -823,6 +843,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -855,6 +876,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -887,6 +909,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -919,6 +942,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -951,6 +975,39 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": {
+        "columns": 2,
+        "rows": [
+          {
+            "starts": [
+              0,
+              1.528589
+            ],
+            "widths": [
+              1.528589,
+              1.520486
+            ],
+            "offsets": [
+              0.5,
+              0.54566
+            ]
+          },
+          {
+            "starts": [
+              0,
+              1.528589
+            ],
+            "widths": [
+              1.528589,
+              1.520486
+            ],
+            "offsets": [
+              0.547917,
+              0.5
+            ]
+          }
+        ]
+      },
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -983,6 +1040,39 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": {
+        "columns": 2,
+        "rows": [
+          {
+            "starts": [
+              0,
+              1.528589
+            ],
+            "widths": [
+              1.528589,
+              1.520486
+            ],
+            "offsets": [
+              0.5,
+              0.54566
+            ]
+          },
+          {
+            "starts": [
+              0,
+              1.528589
+            ],
+            "widths": [
+              1.528589,
+              1.520486
+            ],
+            "offsets": [
+              0.547917,
+              0.5
+            ]
+          }
+        ]
+      },
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1015,6 +1105,39 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": {
+        "columns": 2,
+        "rows": [
+          {
+            "starts": [
+              0,
+              1.5715270000000001
+            ],
+            "widths": [
+              1.5715270000000001,
+              4.119
+            ],
+            "offsets": [
+              0,
+              0
+            ]
+          },
+          {
+            "starts": [
+              0,
+              1.5715270000000001
+            ],
+            "widths": [
+              1.5715270000000001,
+              4.119
+            ],
+            "offsets": [
+              0,
+              0
+            ]
+          }
+        ]
+      },
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1047,6 +1170,39 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": {
+        "columns": 2,
+        "rows": [
+          {
+            "starts": [
+              0,
+              1.5715270000000001
+            ],
+            "widths": [
+              1.5715270000000001,
+              4.119
+            ],
+            "offsets": [
+              0,
+              0
+            ]
+          },
+          {
+            "starts": [
+              0,
+              1.5715270000000001
+            ],
+            "widths": [
+              1.5715270000000001,
+              4.119
+            ],
+            "offsets": [
+              0,
+              0
+            ]
+          }
+        ]
+      },
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1079,6 +1235,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1111,6 +1268,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1143,6 +1301,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1175,6 +1334,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1261,6 +1421,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1293,6 +1454,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1325,6 +1487,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1357,6 +1520,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1389,6 +1553,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1421,6 +1586,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1453,6 +1619,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1485,6 +1652,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1517,6 +1685,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1549,6 +1718,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1581,6 +1751,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": {
@@ -1643,6 +1814,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": {
@@ -1705,6 +1877,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1737,6 +1910,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1769,6 +1943,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1801,6 +1976,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1833,6 +2009,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1865,6 +2042,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1897,6 +2075,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1929,6 +2108,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1961,6 +2141,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1993,6 +2174,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2025,6 +2207,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2057,6 +2240,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2089,6 +2273,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2121,6 +2306,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2153,6 +2339,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": [
         {
@@ -2191,6 +2378,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": [
         {
@@ -2229,6 +2417,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": 1.200011,
       "script_positions": null,
       "degree": null,
@@ -2261,6 +2450,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": 1.8359590000000001,
       "script_positions": null,
       "degree": null,
@@ -2293,6 +2483,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": 1,
       "script_positions": null,
       "degree": null,
@@ -2325,6 +2516,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": 1,
       "script_positions": null,
       "degree": null,
@@ -2357,6 +2549,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2389,6 +2582,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2421,6 +2615,39 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": {
+        "columns": 2,
+        "rows": [
+          {
+            "starts": [
+              0,
+              1.528589
+            ],
+            "widths": [
+              1.528589,
+              1.520486
+            ],
+            "offsets": [
+              0.5,
+              0.54566
+            ]
+          },
+          {
+            "starts": [
+              0,
+              1.528589
+            ],
+            "widths": [
+              1.528589,
+              1.520486
+            ],
+            "offsets": [
+              0.547917,
+              0.5
+            ]
+          }
+        ]
+      },
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2453,6 +2680,39 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": {
+        "columns": 2,
+        "rows": [
+          {
+            "starts": [
+              0,
+              1.528589
+            ],
+            "widths": [
+              1.528589,
+              1.520486
+            ],
+            "offsets": [
+              0.5,
+              0.54566
+            ]
+          },
+          {
+            "starts": [
+              0,
+              1.528589
+            ],
+            "widths": [
+              1.528589,
+              1.520486
+            ],
+            "offsets": [
+              0.547917,
+              0.5
+            ]
+          }
+        ]
+      },
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2485,6 +2745,39 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": {
+        "columns": 2,
+        "rows": [
+          {
+            "starts": [
+              0,
+              0.433765
+            ],
+            "widths": [
+              0.433765,
+              0.693982
+            ],
+            "offsets": [
+              0,
+              0.310005
+            ]
+          },
+          {
+            "starts": [
+              0,
+              0.433765
+            ],
+            "widths": [
+              0.433765,
+              0.693982
+            ],
+            "offsets": [
+              0.038196,
+              0.27769499999999997
+            ]
+          }
+        ]
+      },
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2517,6 +2810,39 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": {
+        "columns": 2,
+        "rows": [
+          {
+            "starts": [
+              0,
+              0.433765
+            ],
+            "widths": [
+              0.433765,
+              0.693982
+            ],
+            "offsets": [
+              0,
+              0.310005
+            ]
+          },
+          {
+            "starts": [
+              0,
+              0.433765
+            ],
+            "widths": [
+              0.433765,
+              0.693982
+            ],
+            "offsets": [
+              0.038196,
+              0.27769499999999997
+            ]
+          }
+        ]
+      },
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2549,6 +2875,33 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": {
+        "columns": 1,
+        "rows": [
+          {
+            "starts": [
+              0
+            ],
+            "widths": [
+              2.1799679999999997
+            ],
+            "offsets": [
+              0
+            ]
+          },
+          {
+            "starts": [
+              0
+            ],
+            "widths": [
+              2.1799679999999997
+            ],
+            "offsets": [
+              0.002257
+            ]
+          }
+        ]
+      },
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2581,6 +2934,33 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": {
+        "columns": 1,
+        "rows": [
+          {
+            "starts": [
+              0
+            ],
+            "widths": [
+              2.1799679999999997
+            ],
+            "offsets": [
+              0
+            ]
+          },
+          {
+            "starts": [
+              0
+            ],
+            "widths": [
+              2.1799679999999997
+            ],
+            "offsets": [
+              0.002257
+            ]
+          }
+        ]
+      },
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2613,6 +2993,39 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": {
+        "columns": 2,
+        "rows": [
+          {
+            "starts": [
+              0,
+              1.528589
+            ],
+            "widths": [
+              1.528589,
+              1.520486
+            ],
+            "offsets": [
+              0.5,
+              0.54566
+            ]
+          },
+          {
+            "starts": [
+              0,
+              1.528589
+            ],
+            "widths": [
+              1.528589,
+              1.520486
+            ],
+            "offsets": [
+              0.547917,
+              0.5
+            ]
+          }
+        ]
+      },
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2645,6 +3058,39 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": {
+        "columns": 2,
+        "rows": [
+          {
+            "starts": [
+              0,
+              1.528589
+            ],
+            "widths": [
+              1.528589,
+              1.520486
+            ],
+            "offsets": [
+              0.5,
+              0.54566
+            ]
+          },
+          {
+            "starts": [
+              0,
+              1.528589
+            ],
+            "widths": [
+              1.528589,
+              1.520486
+            ],
+            "offsets": [
+              0.547917,
+              0.5
+            ]
+          }
+        ]
+      },
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2677,6 +3123,39 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": {
+        "columns": 2,
+        "rows": [
+          {
+            "starts": [
+              0,
+              1.528589
+            ],
+            "widths": [
+              1.528589,
+              1.520486
+            ],
+            "offsets": [
+              0.5,
+              0.54566
+            ]
+          },
+          {
+            "starts": [
+              0,
+              1.528589
+            ],
+            "widths": [
+              1.528589,
+              1.520486
+            ],
+            "offsets": [
+              0.547917,
+              0.5
+            ]
+          }
+        ]
+      },
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2709,6 +3188,39 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": {
+        "columns": 2,
+        "rows": [
+          {
+            "starts": [
+              0,
+              1.528589
+            ],
+            "widths": [
+              1.528589,
+              1.520486
+            ],
+            "offsets": [
+              0.5,
+              0.54566
+            ]
+          },
+          {
+            "starts": [
+              0,
+              1.528589
+            ],
+            "widths": [
+              1.528589,
+              1.520486
+            ],
+            "offsets": [
+              0.547917,
+              0.5
+            ]
+          }
+        ]
+      },
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2741,6 +3253,39 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": {
+        "columns": 2,
+        "rows": [
+          {
+            "starts": [
+              0,
+              1.528589
+            ],
+            "widths": [
+              1.528589,
+              1.520486
+            ],
+            "offsets": [
+              0.5,
+              0.54566
+            ]
+          },
+          {
+            "starts": [
+              0,
+              1.528589
+            ],
+            "widths": [
+              1.528589,
+              1.520486
+            ],
+            "offsets": [
+              0.547917,
+              0.5
+            ]
+          }
+        ]
+      },
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2773,6 +3318,39 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": {
+        "columns": 2,
+        "rows": [
+          {
+            "starts": [
+              0,
+              1.528589
+            ],
+            "widths": [
+              1.528589,
+              1.520486
+            ],
+            "offsets": [
+              0.5,
+              0.54566
+            ]
+          },
+          {
+            "starts": [
+              0,
+              1.528589
+            ],
+            "widths": [
+              1.528589,
+              1.520486
+            ],
+            "offsets": [
+              0.547917,
+              0.5
+            ]
+          }
+        ]
+      },
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2805,6 +3383,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2837,6 +3416,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2869,6 +3449,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2901,6 +3482,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2933,6 +3515,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2965,6 +3548,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2997,6 +3581,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -3029,6 +3614,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -3061,6 +3647,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -3093,6 +3680,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -3125,6 +3713,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -3157,6 +3746,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -3189,6 +3779,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -3221,6 +3812,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -3253,6 +3845,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -3285,6 +3878,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -3317,6 +3911,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -3349,6 +3944,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -3381,6 +3977,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -3413,6 +4010,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -3445,6 +4043,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -3477,6 +4076,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -3509,6 +4109,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -3541,6 +4142,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -3573,6 +4175,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -3605,6 +4208,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -3637,6 +4241,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": [
         {
@@ -3675,6 +4280,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": [
         {
@@ -3713,6 +4319,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -3745,6 +4352,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -3777,6 +4385,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -3809,6 +4418,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -3841,6 +4451,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -3873,6 +4484,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -3905,6 +4517,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -3937,6 +4550,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -3969,6 +4583,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -4001,6 +4616,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -4033,6 +4649,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -4065,6 +4682,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -4097,6 +4715,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -4129,6 +4748,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -4161,6 +4781,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -4193,6 +4814,7 @@
       "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,

@@ -98,6 +98,35 @@
         "depth": { "type": "number" }
       }
     },
+    "columnGridRow": {
+      "type": "object",
+      "description": [
+        "One row of an engine array, in em units, read from the engine's own `\\showbox` structure.",
+        "`starts` is the x of each padded cell box inside the row. `widths` is the padded slot width,",
+        "so the slot includes both `\\arraycolsep` paddings. `offsets` is the content's x inside the slot",
+        "with the cell's own alignment slack applied, measured from the left padding edge."
+      ],
+      "required": ["starts", "widths", "offsets"],
+      "properties": {
+        "starts": { "type": "array", "items": { "type": "number" } },
+        "widths": { "type": "array", "items": { "type": "number" } },
+        "offsets": { "type": "array", "items": { "type": "number" } }
+      }
+    },
+    "columnAlignment": {
+      "type": "object",
+      "description": [
+        "Per-column geometry of an engine array (matrix, cases, gathered and friends).",
+        "Recorded only for corpus entries the engine lays out as a plain `\\array`, where one padded",
+        "cell box maps onto one semantic column. amsmath rows such as `aligned` and `alignedat`",
+        "expand their `rl` grid with `\\tabskip` and negative-width boxes, so they carry no grid here."
+      ],
+      "required": ["columns", "rows"],
+      "properties": {
+        "columns": { "type": "integer", "minimum": 1 },
+        "rows": { "type": "array", "items": { "$ref": "#/definitions/columnGridRow" } }
+      }
+    },
     "radicalDegree": {
       "type": "object",
       "description": [
@@ -221,6 +250,10 @@
     "rule_thickness": {
       "type": ["number", "null"],
       "description": "Fraction / radical / bar rule thickness in em units when the formula contains a rule. null when the engine reports none."
+    },
+    "column_alignment": {
+      "oneOf": [{ "$ref": "#/definitions/columnAlignment" }, { "type": "null" }],
+      "description": "Column grid of an array formula. null when the formula is not an array or the engine exposed no grid."
     },
     "delimiter_size": {
       "type": ["number", "null"],

@@ -807,8 +807,118 @@ function ptToEm(pt) {
 }
 
 // ---------------------------------------------------------------------------
-// Rule thickness and math axis
+// Column grid (start offsets, slot widths and content offsets)
 // ---------------------------------------------------------------------------
+
+/**
+ * Corpus entries whose engine structure is a plain `\array`: one padded cell
+ * hbox per semantic column, no `\hskip-\arraycolsep` interleaving.  `aligned`,
+ * `alignedat` and `split` are excluded on purpose — amsmath expands their
+ * `rl` grid with `\tabskip` plus negative-width hboxes, so the dump's hboxes
+ * do not map one-to-one onto the semantic columns.
+ */
+const COLUMN_GRID_IDS = new Set(["matrix", "smallmatrix", "cases", "gathered", "bmatrix", "vmatrix", "Vmatrix", "fenced-matrix"]);
+
+/** `\hbox(6.9+1.0)x12.3, glue set 0.25fil` and friends. */
+const DUMP_LINE_RE = /^(\.*)\\([A-Za-z@]+)(.*)$/u;
+const DUMP_WIDTH_RE = /x(-?[\d.]+)/u;
+const DUMP_GLUE_SET_RE = /glue set (-?[\d.]+)fil/u;
+/** `\glue 5.0`, `\glue(\tabskip) 0.0` and `\glue -5.0` carry their natural width. */
+const DUMP_GLUE_WIDTH_RE = /^\s*(?:\(\\?tabskip\)\s*)?(-?[\d.]+)/u;
+/** `\kern 2.77695` carries its natural width the same way. */
+const DUMP_KERN_WIDTH_RE = /^\s*(-?[\d.]+)/u;
+
+/** Split a `\showbox` dump into indent-annotated nodes. */
+function parseDumpNodes(log) {
+  const nodes = [];
+  for (const raw of log.split(/\r?\n/u)) {
+    const m = DUMP_LINE_RE.exec(raw);
+    if (!m) continue;
+    const rest = m[3] ?? "";
+    const boxWidth = DUMP_WIDTH_RE.exec(rest);
+    const fixedWidth = m[2] === "glue" ? DUMP_GLUE_WIDTH_RE.exec(rest) : m[2] === "kern" ? DUMP_KERN_WIDTH_RE.exec(rest) : null;
+    const glueSet = DUMP_GLUE_SET_RE.exec(rest);
+    nodes.push({
+      depth: m[1].length,
+      type: m[2],
+      width: boxWidth ? parseFloat(boxWidth[1]) : fixedWidth ? parseFloat(fixedWidth[1]) : null,
+      glueSet: glueSet ? parseFloat(glueSet[1]) : null,
+      tabskip: m[2] === "glue" && rest.includes("tabskip"),
+      fil: m[2] === "glue" && rest.includes("fil"),
+    });
+  }
+  return nodes;
+}
+
+/** Direct children of the node at `index` (same dump, deeper by one dot). */
+function dumpChildren(nodes, index) {
+  const children = [];
+  const depth = nodes[index].depth + 1;
+  for (let i = index + 1; i < nodes.length; i++) {
+    if (nodes[i].depth < depth) break;
+    if (nodes[i].depth === depth) children.push(i);
+  }
+  return children;
+}
+
+/**
+ * Parse the engine's column grid out of one `\showbox` dump.
+ *
+ * Returns `{ columns, rows: [{ starts, widths, offsets }] }` in em, or null
+ * when the dump carries no array-like vbox.  `starts` is the x of each padded
+ * cell hbox inside its row, `widths` the padded slot widths and `offsets` the
+ * content's x inside the slot (left `\arraycolsep` padding plus the alignment
+ * slack the engine gave that cell).  The array is recognised by its
+ * `\glue(\tabskip)` separators, which no other construct emits.
+ */
+function parseColumnGrid(log) {
+  const nodes = parseDumpNodes(log);
+  for (let i = 0; i < nodes.length; i++) {
+    if (nodes[i].type !== "vbox") continue;
+    const rowIndices = dumpChildren(nodes, i).filter((child) => nodes[child].type === "hbox");
+    if (rowIndices.length === 0) continue;
+    const isArray = rowIndices.every((rowIndex) => dumpChildren(nodes, rowIndex).some((child) => nodes[child].tabskip));
+    if (!isArray) continue;
+
+    const rows = [];
+    for (const rowIndex of rowIndices) {
+      const children = dumpChildren(nodes, rowIndex);
+      const starts = [];
+      const widths = [];
+      const offsets = [];
+      let cursor = 0.0;
+      for (const child of children) {
+        const node = nodes[child];
+        if (node.type === "hbox") {
+          const innerChildren = dumpChildren(nodes, child);
+          const ratio = node.glueSet ?? 0.0;
+          let offset = 0.0;
+          for (const inner of innerChildren) {
+            const innerNode = nodes[inner];
+            if (innerNode.type === "glue") {
+              if (innerNode.tabskip) continue;
+              offset += innerNode.width ?? 0.0;
+              if (innerNode.fil) offset += ratio;
+            } else if (innerNode.type === "kern" || innerNode.type === "rule" || innerNode.type === "penalty") {
+              offset += innerNode.width ?? 0.0;
+            } else {
+              break;
+            }
+          }
+          starts.push(ptToEm(cursor));
+          widths.push(ptToEm(node.width ?? 0.0));
+          offsets.push(ptToEm(offset));
+        }
+        cursor += node.width ?? 0.0;
+      }
+      if (starts.length === 0) return null;
+      rows.push({ starts, widths, offsets });
+    }
+    const columns = rows.reduce((most, row) => Math.max(most, row.starts.length), 0);
+    return { columns, rows };
+  }
+  return null;
+}
 
 /** `\typeout{AXIS: <value>pt}` — the engine's own `\fontdimen22\textfont2`. */
 const AXIS_RE = /AXIS:\s+(-?[\d.]+)pt/u;
@@ -877,6 +987,7 @@ function recordAvailable(
   delimiterSize = null,
   axis = null,
   ruleThickness = null,
+  columnAlignment = null,
 ) {
   const key = `${formula.id}|${displayMode ? "display" : "inline"}`;
   const m = metrics.get(key);
@@ -904,6 +1015,7 @@ function recordAvailable(
     axis,
     ink_bounds: null,
     rule_thickness: ruleThickness,
+    column_alignment: columnAlignment,
     delimiter_size: delimiterSize,
     script_positions: scriptPositions,
     degree,
@@ -1046,9 +1158,10 @@ function main() {
     // directory and a non-zero exit is expected.
     const assemblies = new Map(); // key = "<corpus_id>|<inline|display>"
     const ruleThicknesses = new Map(); // key = "<corpus_id>|<inline|display>"
+    const columnGrids = new Map(); // key = "<corpus_id>|<inline|display>"
     for (const formula of corpus.formulas) {
       const parts = degreeParts(formula.tex);
-      if (!parts && !ruleBearing(formula.tex)) continue;
+      if (!parts && !ruleBearing(formula.tex) && !COLUMN_GRID_IDS.has(formula.id)) continue;
       for (const displayMode of [false, true]) {
         const mode = displayMode ? "display" : "inline";
         const key = `${formula.id}|${mode}`;
@@ -1061,9 +1174,12 @@ function main() {
         const assembly = parseDegreeAssembly(dump);
         if (assembly) assemblies.set(key, assembly);
         else if (parts) console.log(`warning: showbox pass produced no degree assembly for ${formula.id} (${mode})`);
-        const rules = parseRuleThickness(dump);
+        const rules = ruleBearing(formula.tex) ? parseRuleThickness(dump) : null;
         if (rules) ruleThicknesses.set(key, rules);
         else if (ruleBearing(formula.tex)) console.log(`warning: showbox pass produced no rule for ${formula.id} (${mode})`);
+        const grid = COLUMN_GRID_IDS.has(formula.id) ? parseColumnGrid(dump) : null;
+        if (grid) columnGrids.set(key, grid);
+        else if (COLUMN_GRID_IDS.has(formula.id)) console.log(`warning: showbox pass produced no column grid for ${formula.id} (${mode})`);
       }
     }
 
@@ -1106,6 +1222,7 @@ function main() {
           delimiterSize,
           axisEm,
           ruleThickness,
+          columnGrids.get(key) ?? null,
         );
         if (rec) {
           records.push(rec);
