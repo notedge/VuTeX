@@ -104,11 +104,13 @@ Our PDF is the artifact under test. Both sides extract from the same file:
 - Python: `pymupdf` and `pdfminer.six`, page count, text, and font embedding
   flags (`pymupdf` only, since that is where the flag exists).
 
-The math-font case is recorded as evidence: after the math faces are installed,
-formula glyphs are painted as outlines, so extractors see the text around the
-formula but not the formula itself. That is an `our-limitation`, not an
-extractor bug, and the reproducible JSONL line carries the extracted string
-next to the authored one.
+The math-font case is recorded as evidence, and it does not reproduce the
+feared failure. `$E=mc^2$` never reaches a Math block in the PDF pipeline, so
+the artifact carries the literal source string `E=mc^2` and zero vector path
+operators in both `pdfjs-dist` and `pymupdf`. The formula is searchable but it
+is not typeset, which is the `real-defect` row. The `our-limitation` rows are a
+different issue: the text face is non-embedded base-14 `Times-Roman`, so
+portable readers may substitute it.
 
 | feature | tolerance |
 | --- | --- |
