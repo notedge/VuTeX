@@ -16,6 +16,9 @@ pub const IMPORT_FAILED: &str = "vutex.input.typst.import_failed";
 /// Report code for math kept as source because no semantic lowering exists.
 pub const MATH_SOURCE_PRESERVED: &str = "import.typst.math.source_preserved";
 
+/// Diagnostic code for a dynamic construct that continues past its first line.
+pub const UNTERMINATED_GROUP: &str = "vutex.input.typst.unterminated_dynamic_group";
+
 /// Loss codes that summarize the whole import instead of one source construct.
 const SUMMARY_LOSS_CODES: [&str; 2] = ["import.typst.partial_coverage", "import.typst.empty_document"];
 
@@ -110,6 +113,66 @@ pub(crate) fn build_diagnostics(graph: &DocumentGraph, source: &str) -> Vec<Diag
 
 fn is_summary(code: &str) -> bool {
     SUMMARY_LOSS_CODES.contains(&code)
+}
+
+/// Find a dynamic construct whose group continues past the line the lowering
+/// kept opaque.
+///
+/// The current Notedown lowering retains only the first line of a dynamic
+/// expression, so the rest of a multi-line group would be lowered as page text.
+/// That is an approximation this adapter refuses instead of rendering.
+pub(crate) fn unterminated_group(graph: &DocumentGraph, source: &str) -> Option<Diagnostic> {
+    let mut locator = Locator::new(source);
+    for node in &graph.blocks {
+        let Block::Opaque { payload_hint, .. } = &node.block
+        else {
+            continue;
+        };
+        let payload = payload_hint.trim();
+        if group_depth(payload) <= 0 {
+            continue;
+        }
+        let span = locator.locate(payload);
+        return Some(Diagnostic {
+            code: UNTERMINATED_GROUP.to_string(),
+            severity: Severity::Error,
+            message: format!(
+                "Typst dynamic construct opens a group the current lowering does not follow, its body would be lowered as page text: {payload}"
+            ),
+            span,
+        });
+    }
+    None
+}
+
+/// Delimiter depth left open at the end of one opaque payload.
+///
+/// Quoted strings and line comments do not contribute, so `#text("(")` stays
+/// balanced instead of looking like an open group.
+fn group_depth(text: &str) -> i32 {
+    let mut depth = 0i32;
+    let mut in_string = false;
+    let mut chars = text.chars().peekable();
+    while let Some(character) = chars.next() {
+        if in_string {
+            match character {
+                '\\' => {
+                    chars.next();
+                }
+                '"' => in_string = false,
+                _ => {}
+            }
+            continue;
+        }
+        match character {
+            '"' => in_string = true,
+            '/' if chars.peek() == Some(&'/') => break,
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' => depth -= 1,
+            _ => {}
+        }
+    }
+    depth
 }
 
 fn is_lowered(block: &Block) -> bool {

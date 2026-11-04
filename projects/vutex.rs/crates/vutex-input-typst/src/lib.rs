@@ -6,4 +6,4 @@ mod adapter;
 mod report;
 
 pub use adapter::{TypstDocument, TypstError, TypstRender, import_path, import_source, render_svg};
-pub use report::{IMPORT_FAILED, MATH_SOURCE_PRESERVED};
+pub use report::{IMPORT_FAILED, MATH_SOURCE_PRESERVED, UNTERMINATED_GROUP};

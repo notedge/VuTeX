@@ -10,7 +10,7 @@ use vutex_layout::{Diagrams, LayoutHint, document::layout_with_diagnostics};
 use vutex_presentation::build_display_presentation;
 use vutex_types::{ConversionReport, Diagnostic, Severity};
 
-use crate::report::{IMPORT_FAILED, build_diagnostics, build_report};
+use crate::report::{IMPORT_FAILED, build_diagnostics, build_report, unterminated_group};
 
 /// Outcome of a Typst import: the document graph, its conversion report, and
 /// the diagnostics the lowering produced.
@@ -85,11 +85,16 @@ impl std::error::Error for TypstError {}
 
 /// Import Typst source into a Notedown document graph with a conversion report.
 ///
-/// The report and diagnostics never abort the document. A construct VuTeX cannot
-/// consume is retained as opaque content and recorded, not silently dropped.
+/// The report and diagnostics never abort the document for a construct that
+/// stays opaque. A dynamic construct whose group continues past its first line
+/// is refused, because the current lowering would otherwise turn the rest of the
+/// group into page text.
 pub fn import_source(label: &str, source: &str) -> Result<TypstDocument, TypstError> {
     let graph = notedown_formats::import::typst::import_typst_bytes(label, source)
         .map_err(|error| TypstError::import_failed(error.to_string()))?;
+    if let Some(diagnostic) = unterminated_group(&graph, source) {
+        return Err(TypstError::from(diagnostic));
+    }
     let report = build_report(&graph);
     let diagnostics = build_diagnostics(&graph, source);
     Ok(TypstDocument { graph, report, diagnostics })
