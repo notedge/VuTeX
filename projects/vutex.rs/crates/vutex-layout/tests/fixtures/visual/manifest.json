@@ -806,11 +806,11 @@
         64
       ],
       "svgViewport": [
-        11.1163,
-        18.2491
+        14.6282,
+        31.3801
       ],
-      "bytes": 468,
-      "sha256": "b12dbe2ea3f055710aa5633f55a8e61bf5c5d781a9c970bd42e7e9c03bfe3ca1"
+      "bytes": 636,
+      "sha256": "b64b7fa3e2b533f2a39022325885c895b1a86c0daeed463eea3ab436b85b9730"
     },
     "fraction-display-display": {
       "tex": "\\dfrac{a}{b}",
@@ -851,11 +851,11 @@
         64
       ],
       "svgViewport": [
-        14.6282,
-        31.3801
+        11.1163,
+        18.2491
       ],
-      "bytes": 636,
-      "sha256": "b64b7fa3e2b533f2a39022325885c895b1a86c0daeed463eea3ab436b85b9730"
+      "bytes": 468,
+      "sha256": "b12dbe2ea3f055710aa5633f55a8e61bf5c5d781a9c970bd42e7e9c03bfe3ca1"
     },
     "prod-limits-inline": {
       "tex": "\\prod_{i=1}^{n} i",
