@@ -113,16 +113,26 @@ Design truth lives in the VuTeX Living docs. Implementation follows Notedown's i
 
 ## Bundled math fonts and licenses
 
-The code is licensed under MPL-2.0 (see [`License.md`](./License.md)). The two
-math fonts embedded from `projects/vutex.rs/crates/vutex-text/assets` keep
-their own licenses, and each license text ships next to its font. Font
-substitution is recorded as `vutex.math.conformance.*`; strict mode fails on a
-fallback instead of silently accepting it.
+The code is licensed under MPL-2.0 (see [`License.md`](./License.md)). The math
+faces do not live in this repository: the `document-fonts` crate in
+[`document.rs`](https://github.com/notedge/document.rs) ships the binaries and
+their licence texts, and both export crates install them through
+`document_fonts::install_default_math_font()`. Each licence text ships next to
+its font as a `.md` file, because the shared `.gitignore` drops `*.txt`. The
+same crate also ships the body text faces that `document.renderer.pdf` embeds,
+so a formula and a paragraph come from one font source. Font substitution is
+recorded as `vutex.math.conformance.*`; strict mode fails on a fallback instead
+of silently accepting it.
 
 | Font | License | License file | Source | SHA-256 |
 |---|---|---|---|---|
-| `XITSMath-Regular.otf` | SIL Open Font License 1.1 | `XITSMath-Regular.OFL.txt` | <https://github.com/alif-type/xits/releases/tag/v1.302> | `3025792ADB0B7072ACE08BF5726D341DE32F2254612DDEC6DD98271A8DD29689` |
-| `LatinModernMath-Regular.otf` | GUST Font License 1.0 (legally equivalent to LPPL 1.3c or later) | `LatinModernMath-Regular.GUST-FONT-LICENSE.txt` | <https://www.gust.org.pl/projects/e-foundry/lm-math> | `6075562B771F8B82F0C179E363389684F2DD09DE30038269E2628E504BD7BE0F` |
+| `XITSMath-Regular.otf` | SIL Open Font License 1.1 | `fonts/XITSMath-Regular.OFL.md` | <https://github.com/alif-type/xits/releases/tag/v1.302> | `3025792ADB0B7072ACE08BF5726D341DE32F2254612DDEC6DD98271A8DD29689` |
+| `LatinModernMath-Regular.otf` | GUST Font License 1.0 (legally equivalent to LPPL 1.3c or later) | `fonts/LatinModernMath-Regular.GUST-FONT-LICENSE.md` | <https://www.gust.org.pl/projects/e-foundry/lm-math> | `6075562B771F8B82F0C179E363389684F2DD09DE30038269E2628E504BD7BE0F` |
+
+The paths above are relative to the `document-fonts` crate. This repository
+keeps a static copy of both faces under `projects/vutex.ts/homepage/public/fonts`
+for the site stylesheet, which is a delivery asset rather than a second source
+of truth.
 
 ## Known limitations
 

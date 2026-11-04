@@ -15,24 +15,10 @@ use watex_wasm::{RenderOptions, measure, render, render_mathml, render_svg};
 /// The formula core resolves its default face through the installed set, so a
 /// host that never installs one has no default to lay out against. Installing
 /// here keeps every formula entry usable from Node without the caller having to
-/// know about fonts first.
+/// know about fonts first. The bytes come from `document_fonts`, the one place
+/// this repository family ships font binaries.
 fn install_embedded_math_fonts() {
-    use std::sync::Once;
-
-    use vutex_text::math::{MathFontFamily, install_math_font};
-
-    static INSTALL: Once = Once::new();
-
-    INSTALL.call_once(|| {
-        install_math_font(
-            MathFontFamily::LmMath,
-            include_bytes!("../../../fonts/LatinModernMath-Regular.otf"),
-        );
-        install_math_font(
-            MathFontFamily::XitsMath,
-            include_bytes!("../../../fonts/XITSMath-Regular.otf"),
-        );
-    });
+    document_fonts::install_default_math_font();
 }
 
 /// N-API document render response.

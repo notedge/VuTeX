@@ -431,12 +431,16 @@ fn pdf_resources(input_path: &str, options: &RenderOptions) -> PdfResources {
     resources
 }
 
-/// Resolve the PDF font policy from the caller-supplied option, defaulting to
-/// discovery.
+/// Resolve the PDF font policy from the caller-supplied option.
+///
+/// `bundled` is the default: a delivered PDF must not depend on the faces the
+/// reader happens to have installed. `discover` keeps the system-font probe and
+/// `base14only` keeps a file that references no font program.
 fn pdf_font_policy(options: &RenderOptions) -> PdfFontPolicy {
-    match options.font_policy.as_deref().map(str::trim).map(str::to_ascii_lowercase) {
-        Some(value) if value == "base14only" => PdfFontPolicy::Base14Only,
-        _ => PdfFontPolicy::Discover,
+    match options.font_policy.as_deref().map(str::trim).map(str::to_ascii_lowercase).as_deref() {
+        Some("discover") => PdfFontPolicy::Discover,
+        Some("base14only") => PdfFontPolicy::Base14Only,
+        _ => PdfFontPolicy::Bundled,
     }
 }
 

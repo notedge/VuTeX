@@ -14,25 +14,11 @@ use wasm_bindgen::prelude::*;
 /// Embedded math faces, installed once per process before any entry runs.
 ///
 /// `document.text` resolves the default face through its installed set, so a
-/// host that never installs a face has no default to lay out against. Both
-/// entries below are emitted here, next to the code that needs them.
+/// host that never installs a face has no default to lay out against. The bytes
+/// come from `document_fonts`, the one place this repository family ships font
+/// binaries, so a WASM build cannot drift from the Node build.
 fn install_embedded_math_fonts() {
-    use std::sync::Once;
-
-    use vutex_text::math::{MathFontFamily, install_math_font};
-
-    static INSTALL: Once = Once::new();
-
-    INSTALL.call_once(|| {
-        install_math_font(
-            MathFontFamily::LmMath,
-            include_bytes!("../../../fonts/LatinModernMath-Regular.otf"),
-        );
-        install_math_font(
-            MathFontFamily::XitsMath,
-            include_bytes!("../../../fonts/XITSMath-Regular.otf"),
-        );
-    });
+    document_fonts::install_default_math_font();
 }
 
 fn parse_options(options_json: Option<String>) -> RenderOptions {

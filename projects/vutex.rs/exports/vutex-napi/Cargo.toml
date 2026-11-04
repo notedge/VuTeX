@@ -13,6 +13,7 @@ repository = "https://github.com/notedge/VuTeX"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+document-fonts = { workspace = true }
 document-formats = { workspace = true }
 document-ir = { workspace = true }
 plotter-diagram = { workspace = true }

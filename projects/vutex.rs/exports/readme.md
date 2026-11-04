@@ -40,7 +40,7 @@ report when it cannot proceed.
 | DOT, Mermaid, PlantUML fences | available, fidelity gap | a resolved diagram scene placed by layout | `plotter-input-dot` / `-mermaid` / `-plantuml` |
 | TikZ fences | available, fidelity gap | a resolved diagram scene for the supported subset | `plotter-input-tikz` |
 | Inline and block maths in a document | available, fidelity gap | vector outlines in SVG and PDF, absent from text extraction | `document-layout` maths → `document-renderer-svg` / `-pdf` |
-| PDF text faces | **not embedded** | base-14 `Times-Roman` references | `document-renderer-pdf` |
+| PDF text faces | available | Type0 `CIDFontType2` subsets with a `FontFile2` program and a `ToUnicode` CMap, no base-14 reference | `document-renderer-pdf` |
 
 Measured gaps from the cross-check corpus:
 
@@ -49,7 +49,6 @@ Measured gaps from the cross-check corpus:
 | Subscript baseline depth | 0.247em | 0.150em (KaTeX and MathJax agree) | subscript sits too low |
 | Fraction numerator/denominator size | 1.0× | 0.700× (KaTeX), 0.707× (MathJax) | fractions do not shrink their parts |
 | Maths in PDF and SVG | 5 vector path operators, formula absent from extraction | vector outlines with searchable text | renders correctly, but copy and search miss the formula |
-| PDF text font embedding | not embedded | embedded | portable readers may substitute the face |
 | DOT diamond bounding-box aspect | 6.636 | 5.448 (Graphviz) | our layout spreads horizontally |
 | TikZ `\node`, `white`, `purple` | rejected | rendered before the upstream switch | six constructs lost |
 
@@ -73,7 +72,7 @@ implementation.
 | Diagram lowering rejects the source | diagnostic code from the plotter frontend, with a source span; the block renders as source text |
 | TikZ construct outside the supported subset | `davinci.diagram.unsupported` |
 | PDF image payload that is not PNG or JPEG | placeholder image |
-| Unknown `fontPolicy` value | falls back to `discover` |
+| Unknown `fontPolicy` value | falls back to `bundled` |
 
 ## `watex-wasm` (WASM)
 
