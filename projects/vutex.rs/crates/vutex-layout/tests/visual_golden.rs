@@ -1,9 +1,11 @@
 //! Visual golden manifest contract (gate N7-6).
 //!
 //! The goldens live in `tests/fixtures/visual/`: one PNG per corpus formula
-//! per display mode, rasterized from the layout SVG by pinned headless Chrome
-//! (version, flags, DPI and background recorded in `manifest.json`). The
-//! pixel-level hash comparison runs in the Node harness
+//! per display mode, rasterized from the layout SVG by the Chromium build
+//! Playwright bundles (`@playwright/test`, provisioned with
+//! `npx playwright install chromium`). The Playwright version, Chromium
+//! version and revision, flags, DPI, colour scheme and background are recorded
+//! in `manifest.json`. The pixel-level hash comparison runs in the Node harness
 //! (`projects/vutex.ts/examples/visual-golden/capture.mjs --verify`), which
 //! re-renders every formula and fails on any byte drift under the pinned
 //! rasterizer. This test pins the structural half of the contract on the Rust
@@ -11,8 +13,9 @@
 //! its recorded byte length, and the rasterizer identity stays pinned.
 //!
 //! `vutex-render-raster` remains an unimplemented stub; the golden rasterizer
-//! is deliberately an external, version-pinned Chrome rather than a pretended
-//! in-crate implementation.
+//! is deliberately an external, version-pinned bundled Chromium rather than a
+//! pretended in-crate implementation. A browser already installed on the host
+//! is never used, because its version would silently change the pixels.
 
 use std::{fs, path::Path};
 
@@ -30,10 +33,17 @@ struct Manifest {
 #[derive(Debug, Deserialize)]
 struct Rasterizer {
     engine: String,
-    version: String,
+    #[serde(rename = "playwrightVersion")]
+    playwright_version: String,
+    #[serde(rename = "chromiumVersion")]
+    chromium_version: String,
+    #[serde(rename = "chromiumRevision")]
+    chromium_revision: String,
     flags: Vec<String>,
     #[serde(rename = "deviceScaleFactor")]
     device_scale_factor: u32,
+    #[serde(rename = "colorScheme")]
+    color_scheme: String,
     background: String,
     #[serde(rename = "paddingPx")]
     padding_px: u32,
@@ -113,16 +123,30 @@ fn manifest_covers_exactly_the_corpus_in_both_display_modes() {
 #[test]
 fn the_rasterizer_identity_is_pinned() {
     let manifest = load_manifest();
-    assert_eq!(manifest.rasterizer.engine, "headless-chrome");
+    assert_eq!(
+        manifest.rasterizer.engine, "playwright-bundled-chromium",
+        "the goldens come from the browser Playwright bundles, never a host browser"
+    );
     assert!(
-        manifest.rasterizer.version.chars().next().is_some_and(|c| c.is_ascii_digit()),
-        "the rasterizer version is an explicit pin, not a channel name"
+        manifest.rasterizer.playwright_version.starts_with(|c: char| c.is_ascii_digit()),
+        "the Playwright version is an explicit pin, not a caret range"
+    );
+    assert!(
+        manifest.rasterizer.chromium_version.starts_with(|c: char| c.is_ascii_digit()),
+        "the Chromium version is an explicit pin, not a channel name"
+    );
+    assert_eq!(
+        manifest.rasterizer.chromium_revision, "1248",
+        "the Chromium revision names the exact bundled build"
     );
     assert_eq!(manifest.rasterizer.device_scale_factor, 1, "DPI is pinned to device scale factor 1");
+    assert_eq!(manifest.rasterizer.color_scheme, "light", "the golden colour scheme is pinned");
     assert_eq!(manifest.rasterizer.background, "#ffffff", "the canvas background is pinned");
-    assert!(manifest.rasterizer.flags.contains(&"--headless".to_string()));
-    assert!(manifest.rasterizer.flags.contains(&"--force-device-scale-factor=1".to_string()));
-    assert!(manifest.rasterizer.flags.contains(&"--hide-scrollbars".to_string()));
+    assert_eq!(
+        manifest.rasterizer.flags,
+        vec!["--hide-scrollbars".to_string(), "--force-device-scale-factor=1".to_string()],
+        "the rasterizer flags are pinned and carry no `--headless` hand-off to a host binary"
+    );
     assert_eq!(manifest.rasterizer.padding_px, 8, "the frame padding is pinned");
     assert!(
         manifest.renderer.contains("@vutex/watex renderSvg"),

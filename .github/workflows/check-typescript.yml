@@ -23,6 +23,11 @@ jobs:
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
       - name: Install workspace dependencies
         run: pnpm install --no-frozen-lockfile
+      # Visual artefacts must come from Playwright's bundled Chromium, never the
+      # browser a runner happens to have. This scan fails on `channel`,
+      # `executablePath`, host Chrome paths and shell launches.
+      - name: Check browser harness identity
+        run: node scripts/ci/check-browser-launch.mjs
       # `@vutex/vutex-unknown-wasm32` types live under gitignored `lib/`; build
       # wasm before typecheck/test so the module resolves on a clean checkout.
       - name: Build wasm bindings

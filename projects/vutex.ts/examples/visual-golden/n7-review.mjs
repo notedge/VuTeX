@@ -3,22 +3,26 @@
 //
 // The current artifact comes from `@vutex/vutex-unknown-wasm32`. The optional
 // `--before-wasm` artifact is used only for the four N7-7 regression frames so
-// every before/after pair is produced by the same pinned Chrome build and
-// the same wrapper geometry as the gate goldens.
+// every before/after pair is produced by the same rasterizer build and the
+// same wrapper geometry as the gate goldens.
+//
+// Rasterizer: the Chromium build Playwright installs, launched with
+// `chromium.launch()` and no `channel` / `executablePath`, so no host browser
+// and no host font enters the pixels.
 
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { chromium } from "@playwright/test";
 import { loadWaTeX } from "@vutex/watex";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, "..", "..", "..", "..");
 const corpusPath = resolve(repo, "projects/vutex.rs/crates/vutex-layout/tests/fixtures/oracle/corpus.json");
-const CHROME = process.env.VUTEX_CHROME ?? "C:/Program Files/Google/Chrome/Application/chrome.exe";
-const CHROME_VERSION = "156.0.8078.80";
 const PADDING = 8;
 const TARGETS = new Map([
   ["integral-limits", true],
@@ -26,12 +30,14 @@ const TARGETS = new Map([
   ["radical-fraction", true],
   ["radical-nested", false],
 ]);
-// Chrome's blink setting is the inverse of the media query name:
-// preferredColorScheme=0 selects dark, preferredColorScheme=1 selects light.
-const SCHEMES = [
-  { name: "light", flag: "preferredColorScheme=1" },
-  { name: "dark", flag: "preferredColorScheme=0" },
-];
+// Playwright selects the media query through the context, so the recorded
+// scheme name is the CSS one rather than a Blink numeric flag.
+const SCHEMES = ["light", "dark"];
+
+const require = createRequire(import.meta.url);
+const playwrightVersion = JSON.parse(readFileSync(require.resolve("@playwright/test/package.json"), "utf8")).version;
+const chromiumRevision = /chromium-(\d+)/.exec(chromium.executablePath())?.[1] ?? null;
+
 
 function arg(name) {
   const i = process.argv.indexOf(name);
@@ -55,19 +61,6 @@ if (beforePath && !existsSync(beforePath)) {
 }
 
 const corpus = JSON.parse(readFileSync(corpusPath, "utf8"));
-
-function probeChrome() {
-  const v = execFileSync("powershell", [
-    "-NoProfile",
-    "-Command",
-    `(Get-Item '${CHROME}').VersionInfo.ProductVersion`,
-  ], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
-  if (!v.startsWith(CHROME_VERSION)) {
-    console.error(`rasterizer mismatch: pinned ${CHROME_VERSION}, host runs ${v}`);
-    process.exit(2);
-  }
-  return v;
-}
 
 // Case-insensitive file systems (Windows) would collide ids like `vmatrix`
 // and `Vmatrix`, so file names escape every uppercase letter as `!x` — the
@@ -94,22 +87,18 @@ function wrapper(svg) {
   ].join("");
 }
 
-function screenshot(svg, pngPath, scheme, width, height) {
-  const htmlPath = pngPath.replace(/\.png$/, ".html");
-  writeFileSync(htmlPath, wrapper(svg));
+const browser = await chromium.launch({ args: ["--hide-scrollbars", "--force-device-scale-factor=1"] });
+const chromiumVersion = browser.version();
+const context = await browser.newContext({ viewport: { width: 64, height: 64 }, deviceScaleFactor: 1, colorScheme: "light" });
+const page = await context.newPage();
+
+async function screenshot(svg, pngPath, scheme, width, height) {
   const w = Math.max(64, Math.ceil(width) + 2 * PADDING);
   const h = Math.max(64, Math.ceil(height) + 2 * PADDING);
-  execFileSync(CHROME, [
-    "--headless",
-    "--disable-gpu",
-    "--no-sandbox",
-    "--hide-scrollbars",
-    "--force-device-scale-factor=1",
-    `--blink-settings=${scheme === "light" ? "preferredColorScheme=1" : "preferredColorScheme=0"}`,
-    `--window-size=${w},${h}`,
-    `--screenshot=${pngPath}`,
-    `file:///${htmlPath.replace(/\\/g, "/")}`,
-  ], { stdio: ["ignore", "ignore", "pipe"] });
+  await page.setViewportSize({ width: w, height: h });
+  await page.emulateMedia({ colorScheme: scheme });
+  await page.setContent(wrapper(svg));
+  await page.screenshot({ path: pngPath });
   return { window: [w, h], sha256: createHash("sha256").update(readFileSync(pngPath)).digest("hex") };
 }
 
@@ -125,13 +114,11 @@ async function renderOne(watex, formula, display, tag) {
   const metrics = measured.metrics ?? measured;
   const pngs = {};
   for (const scheme of SCHEMES) {
-    const png = join(frameDir, `${tag}-${slug}-${scheme.name}.png`);
-    pngs[scheme.name] = screenshot(res.svg, png, scheme.name, vp.width, vp.height);
+    const png = join(frameDir, `${tag}-${slug}-${scheme}.png`);
+    pngs[scheme] = await screenshot(res.svg, png, scheme, vp.width, vp.height);
   }
   return { id, slug, tex: formula.tex, display, viewport: vp, metrics, pngs };
 }
-
-const hostChrome = probeChrome();
 
 // wasm-bindgen caches the first module it initialises, so the pre-fix artifact
 // must be rendered in its own process. The parent only loads the current
@@ -147,6 +134,7 @@ if (beforeOnly) {
   }
   writeFileSync(join(outDir, "before.json"), JSON.stringify(beforeEntries, null, 2) + "\n");
   console.log(`wrote ${Object.keys(beforeEntries).length} pre-fix renders -> ${frameDir}`);
+  await browser.close();
   process.exit(0);
 }
 
@@ -181,18 +169,13 @@ const manifest = {
   schema_version: "v0",
   generated_at: new Date().toISOString(),
   rasterizer: {
-    engine: "headless-chrome",
-    pinned: CHROME_VERSION,
-    probed: hostChrome,
-    executable: CHROME,
-    flags: [
-      "--headless",
-      "--disable-gpu",
-      "--no-sandbox",
-      "--hide-scrollbars",
-      "--force-device-scale-factor=1",
-    ],
-    schemes: { light: "preferredColorScheme=1", dark: "preferredColorScheme=0" },
+    engine: "playwright-bundled-chromium",
+    playwrightVersion,
+    chromiumVersion,
+    chromiumRevision,
+    flags: ["--hide-scrollbars", "--force-device-scale-factor=1"],
+    schemes: SCHEMES,
+    deviceScaleFactor: 1,
     paddingPx: PADDING,
   },
   before_wasm: beforePath ? resolve(beforePath) : null,
@@ -239,7 +222,7 @@ h1,h2{font-weight:600}
 .cell img{width:calc(50% - 2px)}
 </style></head><body>
 <h1>VuTeX N7-7 visual review</h1>
-<p>Rasterizer: headless Chrome ${CHROME_VERSION} (probed ${hostChrome}). light=<code>preferredColorScheme=1</code>, dark=<code>preferredColorScheme=0</code>. Wrapper padding ${PADDING}px, device scale factor 1.</p>
+<p>Rasterizer: Playwright ${playwrightVersion} bundled Chromium ${chromiumVersion} (revision ${chromiumRevision}). Preferred colour scheme is set per context, wrapper padding ${PADDING}px, device scale factor 1.</p>
 <h2>Four regression frames: before / after</h2>
 ${comparisonRows}
 <h2>Full corpus: inline / display, light / dark</h2>

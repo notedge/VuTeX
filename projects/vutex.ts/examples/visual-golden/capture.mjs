@@ -2,20 +2,25 @@
 //   pnpm --filter @vutex/visual-golden capture            # record goldens
 //   pnpm --filter @vutex/visual-golden verify             # re-render and compare hashes
 //
-// Rasterizer: headless Chrome at the pinned version recorded in the manifest.
-// The SVG payload is pure outline paths (no host fonts), so the only moving
-// part is Chrome's rasterizer; its version, flags, DPI (device scale factor 1)
-// and white background are pinned here and recorded per golden. A hash
-// mismatch under the pinned rasterizer is a rendering change and fails the
-// gate; a rasterizer version change requires a deliberate re-capture.
+// Rasterizer: the Chromium build Playwright installs, never a browser already
+// present on the host. `chromium.launch()` is called without `channel` and
+// without `executablePath`, so the binary is whatever `@playwright/test`
+// resolves, and `npx playwright install chromium` provisions it on a clean
+// machine. The SVG payload is pure outline paths (no host fonts), so the only
+// moving part is Chromium's rasterizer; its Playwright version, Chromium
+// revision, device scale factor, colour scheme and white background are pinned
+// here and recorded in the manifest. A hash mismatch under the pinned
+// rasterizer is a rendering change and fails the gate; a rasterizer version
+// change requires a deliberate re-capture.
 
 import { createHash } from "node:crypto";
-import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
+import { chromium } from "@playwright/test";
 import { loadWaTeX } from "@vutex/watex";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -24,19 +29,22 @@ const corpusPath = resolve(repo, "projects/vutex.rs/crates/vutex-layout/tests/fi
 const goldenDir = resolve(repo, "projects/vutex.rs/crates/vutex-layout/tests/fixtures/visual");
 const manifestPath = join(goldenDir, "manifest.json");
 
-// Pinned rasterizer identity. Bumping Chrome is a deliberate act: re-capture
-// every golden and record the new version here.
+// Pinned rasterizer identity. Bumping Playwright is a deliberate act: install
+// the new Chromium, re-capture every golden and record the new revision.
 const RASTERIZER = {
-  engine: "headless-chrome",
-  version: "156.0.8078.80",
-  executable: process.env.VUTEX_CHROME ?? "C:/Program Files/Google/Chrome/Application/chrome.exe",
-  // No host fonts are involved (the SVG is outline paths only); these flags
+  engine: "playwright-bundled-chromium",
+  // No host fonts are involved (the SVG is outline paths only); these settings
   // fix the viewport scale, background and scrollbar behaviour.
-  flags: ["--headless", "--disable-gpu", "--no-sandbox", "--hide-scrollbars", "--force-device-scale-factor=1"],
+  flags: ["--hide-scrollbars", "--force-device-scale-factor=1"],
   deviceScaleFactor: 1,
+  colorScheme: "light",
   background: "#ffffff",
   paddingPx: 8,
 };
+
+const require = createRequire(import.meta.url);
+const playwrightVersion = JSON.parse(readFileSync(require.resolve("@playwright/test/package.json"), "utf8")).version;
+const chromiumRevision = /chromium-(\d+)/.exec(chromium.executablePath())?.[1] ?? null;
 
 const verify = process.argv.includes("--verify");
 
@@ -44,24 +52,6 @@ const corpus = JSON.parse(readFileSync(corpusPath, "utf8"));
 const wasmEntry = fileURLToPath(import.meta.resolve("@vutex/vutex-unknown-wasm32"));
 const wasmBytes = new Uint8Array(readFileSync(resolve(dirname(wasmEntry), "watex_wasm_bg.wasm")));
 const watex = await loadWaTeX({ bytes: wasmBytes });
-
-function chromeVersion(executable) {
-  // `chrome --version` may refuse to print when a session is running; the
-  // pinned identity above is authoritative, but a live probe catches a host
-  // that silently runs a different binary.
-  try {
-    const out = execFileSync(executable, ["--version"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
-    const match = out.match(/(\d+\.\d+\.\d+\.\d+)/);
-    return match ? match[1] : null;
-  } catch {
-    return null;
-  }
-}
-
-function screenshotPng(htmlPath, pngPath, width, height) {
-  const args = [...RASTERIZER.flags, `--window-size=${width},${height}`, `--screenshot=${pngPath}`, `file:///${htmlPath.replace(/\\/g, "/")}`];
-  execFileSync(RASTERIZER.executable, args, { stdio: ["ignore", "ignore", "pipe"] });
-}
 
 // Case-insensitive file systems (Windows) would collide ids like `vmatrix`
 // and `Vmatrix`, so file names escape every uppercase letter as `!x`.
@@ -94,27 +84,57 @@ function wrapperHtml(svg) {
 mkdirSync(goldenDir, { recursive: true });
 const workDir = mkdtempSync(join(tmpdir(), "vutex-visual-golden-"));
 
-const probed = chromeVersion(RASTERIZER.executable);
-if (probed && probed !== RASTERIZER.version) {
-  console.error(
-    `rasterizer mismatch: pinned ${RASTERIZER.version}, host runs ${probed}. ` +
-      `Re-capture deliberately with the new version instead of mixing pixels.`
-  );
-  process.exit(2);
+const browser = await chromium.launch({ args: RASTERIZER.flags });
+const chromiumVersion = browser.version();
+const context = await browser.newContext({
+  viewport: { width: 64, height: 64 },
+  deviceScaleFactor: RASTERIZER.deviceScaleFactor,
+  colorScheme: RASTERIZER.colorScheme,
+});
+const page = await context.newPage();
+
+function identity() {
+  return {
+    engine: RASTERIZER.engine,
+    playwrightVersion,
+    chromiumVersion,
+    chromiumRevision,
+    flags: RASTERIZER.flags,
+    deviceScaleFactor: RASTERIZER.deviceScaleFactor,
+    colorScheme: RASTERIZER.colorScheme,
+    background: RASTERIZER.background,
+    paddingPx: RASTERIZER.paddingPx,
+  };
 }
-if (!existsSync(RASTERIZER.executable)) {
-  console.error(`rasterizer not found at ${RASTERIZER.executable} (set VUTEX_CHROME to the pinned build)`);
-  process.exit(2);
+
+async function screenshotPng(html, pngPath, width, height) {
+  await page.setViewportSize({ width, height });
+  await page.setContent(html);
+  await page.screenshot({ path: pngPath });
 }
 
 const previous = verify && existsSync(manifestPath) ? JSON.parse(readFileSync(manifestPath, "utf8")) : null;
 if (verify && !previous) {
   console.error("no manifest.json to verify against; run capture first");
+  await browser.close();
   process.exit(2);
 }
-if (verify && previous.rasterizer.version !== RASTERIZER.version) {
-  console.error(`manifest pins ${previous.rasterizer.version}, this harness pins ${RASTERIZER.version}; refusing to mix`);
+if (verify && previous.rasterizer.engine !== RASTERIZER.engine) {
+  console.error(`manifest pins ${previous.rasterizer.engine}, this harness pins ${RASTERIZER.engine}; refusing to mix pixels`);
+  await browser.close();
   process.exit(2);
+}
+if (verify) {
+  const recorded = previous.rasterizer;
+  if (recorded.playwrightVersion !== playwrightVersion || recorded.chromiumVersion !== chromiumVersion || recorded.chromiumRevision !== chromiumRevision) {
+    console.error(
+      `rasterizer mismatch: manifest pins Playwright ${recorded.playwrightVersion} / Chromium ${recorded.chromiumVersion} (revision ${recorded.chromiumRevision}), ` +
+        `this harness runs Playwright ${playwrightVersion} / Chromium ${chromiumVersion} (revision ${chromiumRevision}). ` +
+        `Re-capture deliberately with the new bundled build instead of mixing pixels.`
+    );
+    await browser.close();
+    process.exit(2);
+  }
 }
 
 const entries = {};
@@ -129,10 +149,8 @@ for (const formula of corpus.formulas) {
     const { width, height } = svgViewport(res.svg);
     const windowWidth = Math.max(64, Math.ceil(width) + 2 * RASTERIZER.paddingPx);
     const windowHeight = Math.max(64, Math.ceil(height) + 2 * RASTERIZER.paddingPx);
-    const htmlPath = join(workDir, `${slug}.html`);
     const pngPath = join(workDir, `${slug}.png`);
-    writeFileSync(htmlPath, wrapperHtml(res.svg));
-    screenshotPng(htmlPath, pngPath, windowWidth, windowHeight);
+    await screenshotPng(wrapperHtml(res.svg), pngPath, windowWidth, windowHeight);
     const png = readFileSync(pngPath);
     const sha256 = createHash("sha256").update(png).digest("hex");
     entries[id] = {
@@ -159,9 +177,11 @@ for (const formula of corpus.formulas) {
   }
 }
 
+await browser.close();
+
 const manifest = {
   schema_version: "v0",
-  rasterizer: { engine: RASTERIZER.engine, version: RASTERIZER.version, flags: RASTERIZER.flags, deviceScaleFactor: RASTERIZER.deviceScaleFactor, background: RASTERIZER.background, paddingPx: RASTERIZER.paddingPx },
+  rasterizer: identity(),
   renderer: "@vutex/watex renderSvg (real wasm artifact), fontSize 16px, default embedded family",
   formulas: corpus.formulas.length,
   entries,
@@ -175,11 +195,20 @@ if (verify) {
     }
   }
   if (mismatches > 0) {
-    console.error(`visual golden verification failed: ${mismatches} mismatch(es) under ${RASTERIZER.engine} ${RASTERIZER.version}`);
+    console.error(
+      `visual golden verification failed: ${mismatches} mismatch(es) under ${RASTERIZER.engine} ` +
+        `(Playwright ${playwrightVersion}, Chromium ${chromiumVersion}, revision ${chromiumRevision})`
+    );
     process.exit(1);
   }
-  console.log(`visual golden verification passed: ${Object.keys(entries).length} renders byte-identical under ${RASTERIZER.engine} ${RASTERIZER.version}`);
+  console.log(
+    `visual golden verification passed: ${Object.keys(entries).length} renders byte-identical under ${RASTERIZER.engine} ` +
+      `(Playwright ${playwrightVersion}, Chromium ${chromiumVersion}, revision ${chromiumRevision})`
+  );
 } else {
   writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
-  console.log(`captured ${Object.keys(entries).length} goldens under ${RASTERIZER.engine} ${RASTERIZER.version} -> ${goldenDir}`);
+  console.log(
+    `captured ${Object.keys(entries).length} goldens under ${RASTERIZER.engine} ` +
+      `(Playwright ${playwrightVersion}, Chromium ${chromiumVersion}, revision ${chromiumRevision}) -> ${goldenDir}`
+  );
 }

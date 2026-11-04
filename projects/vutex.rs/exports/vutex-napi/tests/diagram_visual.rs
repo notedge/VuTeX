@@ -1,21 +1,21 @@
 //! Programmatic visual acceptance for lowered DOT and PlantUML diagrams.
 //!
 //! The Rust-side tests assert the SVG the pipeline emits; this file asserts the
-//! pixels that renderer produces. A pinned headless Chrome rasterizes the scene
-//! SVG the snapshot backend actually embeds, counts non-white pixels through a
-//! `<canvas>`, and writes a PNG screenshot. No human opens a browser.
+//! pixels that renderer produces. The Chromium build Playwright bundles
+//! rasterizes the scene SVG the snapshot backend actually embeds, counts
+//! non-white pixels through a `<canvas>`, and writes a PNG screenshot. No human
+//! opens a browser, and no browser already present on the host is ever used.
 //!
-//! The rasterizer identity matches the formula goldens
-//! (`projects/vutex.ts/examples/visual-golden/capture.mjs`): Chrome
-//! 156.0.8078.80, device scale factor 1, white background, no scrollbars. The
-//! test is `#[ignore]`d because CI runners do not carry that pinned build;
-//! run it on a workstation with:
+//! The executable is resolved from `@playwright/test` in the TypeScript
+//! workspace and its version is checked against the one recorded in the formula
+//! golden manifest, so both harnesses share a single rasterizer identity.
+//! `npx playwright install chromium` provisions the browser. The test is
+//! `#[ignore]`d because CI runners do not install browsers; run it on a
+//! workstation that has the workspace dependencies with:
 //!
 //! ```text
 //! cargo test -p vutex-napi --test diagram_visual -- --ignored
 //! ```
-//!
-//! `VUTEX_CHROME` overrides the executable path.
 
 use std::{
     path::{Path, PathBuf},
@@ -25,8 +25,8 @@ use std::{
 
 use vutex_napi::document::render_document;
 
-/// Pinned rasterizer version shared with the formula golden harness.
-const CHROME_VERSION: &str = "156.0.8078.80";
+/// Directory that owns the Playwright install.
+const GOLDEN_HARNESS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../vutex.ts/examples/visual-golden");
 
 /// Fixed rasterizer flags; the viewport scale, background and scrollbars are
 /// pinned so two runs of the same build produce identical rasters.
@@ -91,20 +91,49 @@ impl Drop for Scratch {
     }
 }
 
-/// The pinned Chrome executable, or a panic naming both paths tried.
-fn chrome_executable() -> PathBuf {
-    if let Some(path) = std::env::var_os("VUTEX_CHROME") {
-        return PathBuf::from(path);
-    }
-    let windows = Path::new("C:/Program Files/Google/Chrome/Application/chrome.exe");
-    let unix = Path::new("/usr/bin/google-chrome");
-    let path = if windows.exists() { windows } else { unix };
-    assert!(path.exists(), "pinned headless Chrome not found; set `VUTEX_CHROME` to the {} build", CHROME_VERSION);
-    path.to_path_buf()
+/// The Playwright-bundled Chromium executable.
+///
+/// Resolving it through the installed `@playwright/test` keeps the browser
+/// version pinned by the workspace instead of whatever the host happens to have
+/// installed.
+fn bundled_chromium() -> PathBuf {
+    let output = Command::new("node")
+        .current_dir(GOLDEN_HARNESS)
+        .args(["-e", "process.stdout.write(require('@playwright/test').chromium.executablePath())"])
+        .output()
+        .expect("node must be on PATH: the rasterizer comes from `@playwright/test`");
+    assert!(
+        output.status.success(),
+        "resolving the Playwright Chromium failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let path = PathBuf::from(String::from_utf8_lossy(&output.stdout).trim());
+    assert!(
+        path.exists(),
+        "Playwright's bundled Chromium is missing at {}; run `npx playwright install chromium` in {GOLDEN_HARNESS}",
+        path.display()
+    );
+    assert!(
+        path.to_string_lossy().contains("ms-playwright"),
+        "`{}` is not a Playwright-bundled browser, and this harness must never drive a host browser",
+        path.display()
+    );
+    path
 }
 
-/// Probe the host binary and refuse to mix rasters from a different build.
-fn assert_pinned_chrome(chrome: &Path) {
+/// The Chromium version the formula goldens were captured with.
+fn pinned_chromium_version() -> String {
+    let manifest = concat!(env!("CARGO_MANIFEST_DIR"), "/../../crates/vutex-layout/tests/fixtures/visual/manifest.json");
+    let text = std::fs::read_to_string(manifest).expect("the formula golden manifest records the pinned rasterizer");
+    let value: serde_json::Value = serde_json::from_str(&text).expect("the formula golden manifest is JSON");
+    value["rasterizer"]["chromiumVersion"]
+        .as_str()
+        .expect("the formula golden manifest records `rasterizer.chromiumVersion`")
+        .to_string()
+}
+
+/// Probe the bundled binary and refuse to mix rasters from a different build.
+fn assert_pinned_chromium(chrome: &PathBuf, pinned: &str) {
     let probed = Command::new(chrome)
         .arg("--version")
         .output()
@@ -118,8 +147,8 @@ fn assert_pinned_chrome(chrome: &Path) {
         });
     if let Some(probed) = probed {
         assert_eq!(
-            probed, CHROME_VERSION,
-            "the host runs Chrome {probed} while the harness pins {CHROME_VERSION}; re-capture deliberately instead of mixing pixels"
+            probed, pinned,
+            "the bundled Chromium runs {probed} while the goldens pin {pinned}; re-capture deliberately instead of mixing pixels"
         );
     }
 }
@@ -141,7 +170,7 @@ fn svg_attribute<'a>(svg: &'a str, name: &str) -> &'a str {
 
 /// Read the PNG width and height from the `IHDR` chunk.
 fn png_extent(bytes: &[u8]) -> (u32, u32) {
-    assert!(bytes.starts_with(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]), "chrome must emit a PNG");
+    assert!(bytes.starts_with(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]), "the bundled Chromium must emit a PNG");
     assert_eq!(&bytes[12..16], b"IHDR", "the first chunk is IHDR");
     let width = u32::from_be_bytes([bytes[16], bytes[17], bytes[18], bytes[19]]);
     let height = u32::from_be_bytes([bytes[20], bytes[21], bytes[22], bytes[23]]);
@@ -188,8 +217,8 @@ fn file_url(path: &Path) -> String {
 
 /// Rasterize one fixture scene and assert the pixels and the screenshot.
 fn assert_scene_rasterizes(name: &str, label: &str, source: &str) {
-    let chrome = chrome_executable();
-    assert_pinned_chrome(&chrome);
+    let chrome = bundled_chromium();
+    assert_pinned_chromium(&chrome, &pinned_chromium_version());
     let scratch = Scratch::new(name);
 
     let input = scratch.write("pipeline.md", source);

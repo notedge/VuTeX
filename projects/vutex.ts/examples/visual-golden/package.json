@@ -11,5 +11,8 @@
   "dependencies": {
     "@vutex/vutex-unknown-wasm32": "workspace:*",
     "@vutex/watex": "workspace:*"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1"
   }
 }
