@@ -1,7 +1,7 @@
 use vutex_layout::math::{FontConformance, LayoutNode, default_base_size, layout_formula_source_with_conformance};
 use vutex_render_svg::math::{render_formula_result, render_mathml_result};
 use vutex_text::math::MathFontFamily;
-use vutex_types::{
+use vutex_compose::{
     Diagnostic, Severity,
     math::{FormulaLayoutResult, MathError},
 };
@@ -214,7 +214,7 @@ fn font_family_diagnostic(options: &RenderOptions) -> Option<FormulaDiagnostic> 
 }
 
 /// Formula metrics taken from the single immutable layout result.
-fn result_metrics(metrics: &vutex_types::math::FormulaMetrics) -> FormulaMetrics {
+fn result_metrics(metrics: &vutex_compose::math::FormulaMetrics) -> FormulaMetrics {
     let height = metrics.height.to_f64();
     FormulaMetrics { width: metrics.width.to_f64(), height, depth: metrics.depth.to_f64(), baseline: height }
 }

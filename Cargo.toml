@@ -1,29 +1,13 @@
 [workspace]
 resolver = "2"
+# Only the export surfaces still belong to this repository. The `vutex-*`
+# crates moved upstream to `document.rs`, so they are consumed as git
+# dependencies instead of workspace members.
 members = [
-    "projects/vutex.rs/crates/vutex-types",
-    "projects/vutex.rs/crates/vutex-input-markdown",
-    "projects/vutex.rs/crates/vutex-style",
-    "projects/vutex.rs/crates/vutex-text",
-    "projects/vutex.rs/crates/vutex-layout",
-    "projects/vutex.rs/crates/vutex-presentation",
-    "projects/vutex.rs/crates/vutex-render",
-    "projects/vutex.rs/crates/vutex-render-pdf",
-    "projects/vutex.rs/crates/vutex-render-svg",
-    "projects/vutex.rs/crates/vutex-render-html",
-    "projects/vutex.rs/crates/vutex-render-raster",
-    "projects/vutex.rs/crates/vutex-input-tex",
-    "projects/vutex.rs/crates/vutex-input-typst",
     "projects/vutex.rs/exports/watex-wasm",
     "projects/vutex.rs/exports/vutex-napi",
 ]
 default-members = [
-    "projects/vutex.rs/crates/vutex-types",
-    "projects/vutex.rs/crates/vutex-style",
-    "projects/vutex.rs/crates/vutex-text",
-    "projects/vutex.rs/crates/vutex-layout",
-    "projects/vutex.rs/crates/vutex-presentation",
-    "projects/vutex.rs/crates/vutex-render",
     "projects/vutex.rs/exports/watex-wasm",
     "projects/vutex.rs/exports/vutex-napi",
 ]
@@ -60,16 +44,18 @@ napi = { version = "3.14.2", default-features = false, features = ["napi4", "dyn
 napi-derive = "3.6.12"
 napi-build = "2"
 
-vutex-types = { path = "projects/vutex.rs/crates/vutex-types" }
-vutex-style = { path = "projects/vutex.rs/crates/vutex-style" }
-vutex-text = { path = "projects/vutex.rs/crates/vutex-text" }
-vutex-layout = { path = "projects/vutex.rs/crates/vutex-layout" }
-vutex-presentation = { path = "projects/vutex.rs/crates/vutex-presentation" }
-vutex-render = { path = "projects/vutex.rs/crates/vutex-render" }
-vutex-render-pdf = { path = "projects/vutex.rs/crates/vutex-render-pdf" }
-vutex-render-svg = { path = "projects/vutex.rs/crates/vutex-render-svg" }
-vutex-render-html = { path = "projects/vutex.rs/crates/vutex-render-html" }
-vutex-render-raster = { path = "projects/vutex.rs/crates/vutex-render-raster" }
+# Upstream document family. The keys keep the historical `vutex-*` extern names
+# so the export sources stay untouched while the implementation moves to
+# `document.rs`.
+vutex-types = { package = "document-types", git = "https://github.com/notedge/document.rs.git", rev = "34e0c25de2807ba8beaf24a9415f55c21b311894" }
+vutex-compose = { package = "document-compose", git = "https://github.com/notedge/document.rs.git", rev = "34e0c25de2807ba8beaf24a9415f55c21b311894" }
+vutex-text = { package = "document-text", git = "https://github.com/notedge/document.rs.git", rev = "34e0c25de2807ba8beaf24a9415f55c21b311894" }
+vutex-layout = { package = "document-layout", git = "https://github.com/notedge/document.rs.git", rev = "34e0c25de2807ba8beaf24a9415f55c21b311894" }
+vutex-presentation = { package = "document-presentation", git = "https://github.com/notedge/document.rs.git", rev = "34e0c25de2807ba8beaf24a9415f55c21b311894" }
+vutex-render-svg = { package = "document-renderer-svg", git = "https://github.com/notedge/document.rs.git", rev = "34e0c25de2807ba8beaf24a9415f55c21b311894" }
+vutex-render-html = { package = "document-renderer-html", git = "https://github.com/notedge/document.rs.git", rev = "34e0c25de2807ba8beaf24a9415f55c21b311894" }
+vutex-render-pdf = { package = "document-renderer-pdf", git = "https://github.com/notedge/document.rs.git", rev = "34e0c25de2807ba8beaf24a9415f55c21b311894" }
+document-formats = { git = "https://github.com/notedge/document.rs.git", rev = "34e0c25de2807ba8beaf24a9415f55c21b311894", default-features = false, features = ["tex"] }
 watex-wasm = { path = "projects/vutex.rs/exports/watex-wasm" }
 vutex-napi = { path = "projects/vutex.rs/exports/vutex-napi" }
 

@@ -16,6 +16,11 @@ crate-type = ["cdylib", "rlib"]
 davinci-diagram = { workspace = true }
 davinci-scene = { workspace = true }
 davinci-types = { workspace = true }
+# `document-layout` uses `document-formats::lower_tex_formula_source` but declares
+# that dependency with `default-features = false` only, so the `tex` feature is
+# claimed here to keep the math pipeline compiling. Drop this line once the upstream
+# crate declares the feature itself.
+document-formats = { workspace = true, features = ["tex"] }
 napi = { workspace = true }
 napi-derive = { workspace = true }
 notedown-formats = { workspace = true }
@@ -27,7 +32,7 @@ vutex-presentation = { workspace = true }
 vutex-render-html = { workspace = true }
 vutex-render-pdf = { workspace = true }
 vutex-render-svg = { workspace = true }
-vutex-types = { workspace = true }
+vutex-compose = { workspace = true }
 watex-wasm = { workspace = true }
 
 [build-dependencies]

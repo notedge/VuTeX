@@ -28,7 +28,7 @@
 //! container span is the canvas origin: the root group's transform carries the
 //! baseline offset from the box top-left, as the layout emits it.
 
-use vutex_types::{
+use vutex_compose::{
     Diagnostic, Severity, SourceSpan,
     math::{Fixed, FormulaLayoutResult, PaintNode},
 };
