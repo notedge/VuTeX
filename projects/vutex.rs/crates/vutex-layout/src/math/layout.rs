@@ -332,6 +332,13 @@ const DELIMITER_FACTOR: f64 = 0.901;
 /// size, so the em fraction is the value the oracle records.
 const DELIMITER_SHORTFALL_EM: f64 = 0.5;
 
+/// TeX's `\nulldelimiterspace`: the advance a null delimiter contributes.
+///
+/// `\left.` and `\right.` paint nothing but are still charged one
+/// `\nulldelimiterspace` (1.2pt at the 10pt design size), which is why the
+/// reference measures a bare `\left.…\right|` pair wider than its body.
+const NULL_DELIMITER_SPACE_EM: f64 = 0.12;
+
 /// The `(\strut height, \strut depth)` of an `\arraystretch` value, in em.
 pub(crate) fn array_strut(arraystretch: f64) -> (f64, f64) {
     (
@@ -1581,7 +1588,7 @@ impl LayoutEngine {
 
         // TeX pads a fraction by two `nulldelimspace`s (`2 × 0.12 em`), the
         // side bearings a `\left.`/`\right.` pair would contribute.
-        let width = num_width.max(den_width) + Fixed::from_f64(0.24) * size;
+        let width = num_width.max(den_width) + Fixed::from_f64(2.0 * NULL_DELIMITER_SPACE_EM) * size;
 
         let mut v_children = Vec::new();
 
@@ -2682,11 +2689,21 @@ impl LayoutEngine {
         if let Some(left_key) = left {
             children.push(self.construct_delimiter(left_key, minimum, size, axis_height, left_span)?);
         }
+        else {
+            // TeX charges `\nulldelimiterspace` for a null delimiter, so
+            // `\left.` still advances even though it paints nothing. The
+            // constant is the same one `layout_fraction` already applies on
+            // both sides of a fraction.
+            children.push(LayoutNode::Kern(Fixed::from_f64(NULL_DELIMITER_SPACE_EM) * size));
+        }
 
         children.push(content_layout);
 
         if let Some(right_key) = right {
             children.push(self.construct_delimiter(right_key, minimum, size, axis_height, right_span)?);
+        }
+        else {
+            children.push(LayoutNode::Kern(Fixed::from_f64(NULL_DELIMITER_SPACE_EM) * size));
         }
 
         Ok(self.pack_hbox(children, None))
