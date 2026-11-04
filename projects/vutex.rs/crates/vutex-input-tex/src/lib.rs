@@ -38,6 +38,8 @@ pub const SOURCE_PARSED: &str = "vutex.input.tex.parsed";
 pub const PARSE_FAILED: &str = "vutex.input.tex.parse_failed";
 /// Code recorded when a source file cannot be read.
 pub const IO_FAILED: &str = "vutex.input.tex.io_failed";
+/// Code recorded when the lowered graph violates a document-model invariant.
+pub const INVALID_GRAPH: &str = "vutex.input.tex.invalid_graph";
 /// Code recorded for a construct kept opaque instead of lowered.
 pub const OPAQUE_CONSTRUCT: &str = "vutex.input.tex.opaque_construct";
 /// Code recorded for math whose language tag the TeX formula pipeline cannot
@@ -137,11 +139,32 @@ impl Error for TexInputError {}
 /// Convert TeX source text into the document model.
 ///
 /// A rejected source returns an error instead of a partial document, so a host
-/// never lays out a graph that the frontend did not finish reading.
+/// never lays out a graph that the frontend did not finish reading. A graph that
+/// breaks a document-model invariant is rejected for the same reason: layout
+/// trusts those invariants and cannot detect the violation on its own.
 pub fn import_source(label: &str, source: &str) -> Result<TexDocument, TexInputError> {
     let graph = import_tex_bytes(label, source).map_err(parse_failure)?;
+    validate_graph(&graph)?;
     let report = conversion_report(&graph, source);
     Ok(TexDocument { graph, report })
+}
+
+/// Check that a lowered graph satisfies the document-model invariants layout
+/// relies on.
+///
+/// The profile rejects an invalid graph instead of handing it to layout, which
+/// has no independent way to detect a broken identity, list numbering, or
+/// containment relation.
+pub fn validate_graph(graph: &DocumentGraph) -> Result<(), TexInputError> {
+    let validation = graph.validate();
+    if validation.issues.is_empty() {
+        return Ok(());
+    }
+    Err(TexInputError {
+        code: INVALID_GRAPH.to_string(),
+        message: format!("lowered graph breaks document-model invariants: {:?}", validation.issues),
+        span: None,
+    })
 }
 
 /// Convert one TeX file into the document model.

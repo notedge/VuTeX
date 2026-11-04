@@ -1,9 +1,10 @@
 //! Fail-closed contract: rejected input, opaque constructs, and foreign math
 //! language tags produce structured diagnostics instead of silent degradation.
 
-use notedown_ir::{Block, DocumentGraph, DocumentId, MathDisplay, MathFormula};
+use notedown_ir::{Block, DocumentGraph, DocumentId, Inline, ListItem, MathDisplay, MathFormula};
 use vutex_input_tex::{
-    ConversionStatus, MATH_LANGUAGE, OPAQUE_CONSTRUCT, PARSE_FAILED, conversion_report, import_source,
+    ConversionStatus, INVALID_GRAPH, MATH_LANGUAGE, OPAQUE_CONSTRUCT, PARSE_FAILED, conversion_report, import_source,
+    validate_graph,
 };
 use vutex_types::Severity;
 
@@ -54,6 +55,25 @@ fn unknown_environment_is_reported_with_its_source_span() {
         "opaque content is not a math language failure"
     );
     assert!(matches!(document.graph.blocks.iter().find(|node| matches!(node.block, Block::Opaque { .. })).map(|node| &node.block), Some(Block::Opaque { .. })));
+}
+
+#[test]
+fn invalid_graph_is_rejected_before_layout() {
+    let mut graph = DocumentGraph::new(DocumentId(9));
+    graph.push_block(Block::List {
+        ordered: true,
+        items: vec![ListItem {
+            content: vec![Inline::Text { text: "no number".to_string() }],
+            children: Vec::new(),
+            number: None,
+            is_task: false,
+            is_checked: None,
+        }],
+    });
+
+    let error = validate_graph(&graph).expect_err("an ordered item without a number breaks the list invariant");
+    assert_eq!(error.code, INVALID_GRAPH);
+    assert!(error.message.contains("MissingListItemNumber"), "the invariant must be named: {}", error.message);
 }
 
 #[test]
