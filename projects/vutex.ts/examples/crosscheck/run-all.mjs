@@ -15,6 +15,7 @@ const STEPS = [
     { id: "pdf:ts", script: "pdf/compare-ts.mjs" },
     { id: "pdf:py", script: "pdf/run-python.mjs" },
     { id: "tikz", script: "tikz/audit.mjs" },
+    { id: "tex", script: "tex/compare.mjs" },
 ];
 
 const failures = [];

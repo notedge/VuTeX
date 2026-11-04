@@ -10,6 +10,7 @@
     "pdf:ts": "node pdf/compare-ts.mjs",
     "pdf:py": "node pdf/run-python.mjs",
     "tikz": "node tikz/audit.mjs",
+    "tex": "node tex/compare.mjs",
     "all": "node run-all.mjs"
   },
   "dependencies": {
