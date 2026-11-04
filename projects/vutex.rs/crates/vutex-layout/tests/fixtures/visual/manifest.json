@@ -1522,60 +1522,60 @@
       "display": false,
       "file": "text-phrase-inline.png",
       "window": [
-        94,
+        100,
         64
       ],
       "svgViewport": [
-        77.8286,
-        17.0451
+        83.5653,
+        17.47
       ],
-      "bytes": 1388,
-      "sha256": "6c22dd1ee1659832ead85efec307b5e4c070c6a892a8d02b6bd2179a637d2f4b"
+      "bytes": 1427,
+      "sha256": "fbbd39c2b1ed3801aead3b7067c64fb0dd6411dcf92b3c58b58f70bc1b505d17"
     },
     "text-phrase-display": {
       "tex": "\\text{hello world}",
       "display": true,
       "file": "text-phrase-display.png",
       "window": [
-        94,
+        100,
         64
       ],
       "svgViewport": [
-        77.8286,
-        17.0451
+        83.5653,
+        17.47
       ],
-      "bytes": 1388,
-      "sha256": "6c22dd1ee1659832ead85efec307b5e4c070c6a892a8d02b6bd2179a637d2f4b"
+      "bytes": 1427,
+      "sha256": "fbbd39c2b1ed3801aead3b7067c64fb0dd6411dcf92b3c58b58f70bc1b505d17"
     },
     "text-inline-inline": {
       "tex": "x + \\text{ text } + y",
       "display": false,
       "file": "text-inline-inline.png",
       "window": [
-        108,
+        119,
         64
       ],
       "svgViewport": [
-        91.3214,
-        19.8846
+        102.7949,
+        20.7344
       ],
-      "bytes": 1274,
-      "sha256": "de3396e1ce9e6105c8a2d136bfc53eba8ecfc89994e22438501f2fbf82480947"
+      "bytes": 1290,
+      "sha256": "856c112ed7a8fbcf12ce759f42d6c6f41bcaefe0fca6989e32d1da93112f4ba3"
     },
     "text-inline-display": {
       "tex": "x + \\text{ text } + y",
       "display": true,
       "file": "text-inline-display.png",
       "window": [
-        108,
+        119,
         64
       ],
       "svgViewport": [
-        91.3214,
-        19.8846
+        102.7949,
+        20.7344
       ],
-      "bytes": 1274,
-      "sha256": "de3396e1ce9e6105c8a2d136bfc53eba8ecfc89994e22438501f2fbf82480947"
+      "bytes": 1290,
+      "sha256": "856c112ed7a8fbcf12ce759f42d6c6f41bcaefe0fca6989e32d1da93112f4ba3"
     },
     "fraction-sum-radical-inline": {
       "tex": "\\frac{\\sum_{i=1}^{n} i}{\\sqrt{n}}",

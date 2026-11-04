@@ -350,7 +350,10 @@ fn extract_glyph_metrics_and_outlines(
 ) {
     let family = Some(family.to_string());
 
-    for ch in ('!'..='~').chain(TARGET_SYMBOLS.iter().copied()).chain(ACCENT_SYMBOLS.iter().copied()).chain(alphalect_targets())
+    // U+0020 is included: text-mode spaces are horizontal advances taken from
+    // the font, and skipping it made every `\text{a b}` space fall back to the
+    // synthetic 0.5em default instead of the font's 0.332em advance.
+    for ch in (' '..='~').chain(TARGET_SYMBOLS.iter().copied()).chain(ACCENT_SYMBOLS.iter().copied()).chain(alphalect_targets())
     {
         let Some(glyph) = facts.glyph_for_char(ch)
         else {

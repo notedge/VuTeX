@@ -487,7 +487,7 @@ impl Classification {
         self.blocking.len() + self.registered.len() + self.pending.len()
     }
 
-    /// `45 = 0 blocking + 41 registered font exceptions + 4 pending re-measure`
+    /// `41 = 0 blocking + 41 registered font exceptions + 0 pending re-measure`
     fn report(&self) -> String {
         format!(
             "{} = {} blocking + {} registered font exceptions + {} pending re-measure",
@@ -524,7 +524,11 @@ fn classify_divergences(divergences: &[Divergence], ledger: &Ledger, pending_ids
         let field = divergence.field.as_str();
 
         if pending_ids.contains(&divergence.corpus_id.as_str()) {
-            out.pending.push(format!("{label}: {field}"));
+            let rel = (divergence.vutex - divergence.latex).abs() / divergence.latex.abs().max(0.001);
+            out.pending.push(format!(
+                "{label}: {field} — vutex={:.4} latex={:.4} relative={rel:.4}",
+                divergence.vutex, divergence.latex
+            ));
             continue;
         }
 
@@ -591,14 +595,14 @@ fn classify_divergences(divergences: &[Divergence], ledger: &Ledger, pending_ids
 /// Corpus entries whose gap is an upstream dependency rather than a layout
 /// defect in this crate.
 ///
-/// `notedown`'s formula-source parser drops the interword spaces inside
-/// `\text{…}`, so the lowered tree reads `Text { "helloworld" }` before layout
-/// runs and this crate has nothing left to measure.  They are reported as
-/// `pending re-measure`, never registered in the ledger and never exempted;
-/// re-measure once that parser keeps the spaces.
-const UPSTREAM_IDS: &[&str] = &["text-phrase", "text-inline"];
+/// Empty today: `notedown` `e1e2b4c` keeps `\text{…}` spaces verbatim in the
+/// formula source, and this crate now takes the space advance from the font,
+/// so no corpus id depends on an upstream fix.  A future gap is added here and
+/// reported as `pending re-measure`, never registered in the ledger and never
+/// exempted.
+const UPSTREAM_IDS: &[&str] = &[];
 
-const UPSTREAM_NOTE: &str = " [upstream dependency: notedown formula-source parser drops the interword spaces, re-measure after it is fixed]";
+const UPSTREAM_NOTE: &str = " [upstream dependency: re-measure after the upstream parser keeps the source verbatim]";
 
 /// Base size in pixels used for the TeX reference — matches normalsize=10pt.
 /// VuTeX's `base_size` parameter is a pixel value; we lay out at 10.0px so that
