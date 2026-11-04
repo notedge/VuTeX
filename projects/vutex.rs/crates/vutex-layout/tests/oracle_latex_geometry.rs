@@ -1264,3 +1264,214 @@ fn ledger_rejects_a_recorded_value_that_drifted_from_the_measurement() {
     assert_eq!(classification.blocking.len(), 1, "drifted ledger numbers must fail the gate: {:?}", classification.blocking);
     assert!(classification.blocking[0].contains("stale"), "blocking must say the entry is stale: {:?}", classification.blocking[0]);
 }
+
+// ---------------------------------------------------------------------------
+// Rule thickness and math axis
+// ---------------------------------------------------------------------------
+
+/// Markup constructs TeX draws with a `\rule` node: fraction bars, radical
+/// vinculums and over/under bars.  Stated once here so that a record either
+/// carries a drawn rule or it does not — the fixture and the gate then agree on
+/// what "this formula has a rule" means.
+const RULE_MACROS: &[&str] = &[
+    "\\frac", "\\dfrac", "\\tfrac", "\\sqrt", "\\overline", "\\underline", "\\overbrace", "\\underbrace",
+];
+
+/// Whether the source draws at least one rule.
+fn draws_rule(tex: &str) -> bool {
+    RULE_MACROS.iter().any(|macro_| tex.contains(macro_))
+}
+
+/// Accents the engine paints with a glyph but VuTeX paints with a rule.
+///
+/// `\bar` is `\mathaccent "017E` in TeX: the bar is a glyph from the symbol
+/// font, so the engine's dump carries no `\rule` node.  VuTeX draws the same
+/// bar as a filled rectangle, which is a representation choice, not a geometry
+/// one — the accent's box extents are gated by the parity tolerance like every
+/// other formula.  Such a record may therefore carry VuTeX rules the engine has
+/// no rule node for, while every other rule still has to be engine-attested.
+const RULE_AS_GLYPH_ACCENTS: &[&str] = &["\\bar"];
+
+/// Whether VuTeX may legitimately draw a rule for an accent the engine paints
+/// with a glyph.
+fn rule_may_be_glyph_accent(tex: &str) -> bool {
+    RULE_AS_GLYPH_ACCENTS.iter().any(|macro_| tex.contains(macro_))
+}
+
+/// Corpus entries whose only painted rule is a single fraction bar drawn at the
+/// formula's own baseline, so its absolute y is directly the axis height.
+const BAR_ON_AXIS_IDS: &[&str] =
+    &["fraction-compound", "fraction-display", "fraction-text", "fenced-fraction", "brace-fenced-fraction"];
+
+/// Walk the layout tree and report every rule as (centre y, height, depth) in
+/// pixels, with y measured downward from the tree's baseline (the same
+/// convention [`glyphs`] uses, so a fraction bar centred on the axis reports a
+/// negative y equal to the axis height).
+fn rules(node: &LayoutNode) -> Vec<(f64, f64, f64)> {
+    fn walk(node: &LayoutNode, x: f64, y: f64, out: &mut Vec<(f64, f64, f64)>) {
+        match node {
+            LayoutNode::HBox(hbox) => {
+                let mut cursor = 0.0;
+                for child in &hbox.children {
+                    walk(child, x + cursor, y + hbox.shift.to_f64(), out);
+                    cursor += child.width().to_f64();
+                }
+            }
+            LayoutNode::VBox(vbox) => {
+                let mut cursor = -vbox.height.to_f64();
+                for child in &vbox.children {
+                    walk(child, x + vbox.shift.to_f64(), y + cursor + child.height().to_f64(), out);
+                    cursor += child.height().to_f64() + child.depth().to_f64();
+                }
+            }
+            LayoutNode::Rule { width, height, depth } => {
+                // AmSmath gives every matrix row a zero-width `\@arstrut` rule
+                // whose height and depth are the row's minimum extents.  It is a
+                // strut, not a painted bar, so only positive-width rules are
+                // compared with the engine's `\rule` nodes.
+                if width.to_f64() <= 0.0 {
+                    return;
+                }
+                // The walker hands a child the y of its baseline; a rule's
+                // baseline sits `height` below its top edge, so the bar's centre
+                // is `(height - depth) / 2` above that baseline.
+                let h = height.to_f64();
+                let d = depth.to_f64();
+                out.push((y - (h - d) / 2.0, h, d));
+            }
+            LayoutNode::Glyph(_)
+            | LayoutNode::Glue(_)
+            | LayoutNode::Kern(_)
+            | LayoutNode::Path(_)
+            | LayoutNode::Penalty { .. }
+            | LayoutNode::Anchor { .. } => {}
+        }
+    }
+
+    let mut out = Vec::new();
+    walk(node, 0.0, 0.0, &mut out);
+    out
+}
+
+/// The engine's own numbers for two fields that used to stay null:
+///
+/// * `axis` — `\fontdimen22\textfont2` measured by the harness.  TeX centres
+///   fractions, brackets and large operators on it, so a layout that never
+///   reads it cannot place a fraction bar at the right height.
+/// * `rule_thickness` — the thickness of the `\rule` nodes the engine drew for
+///   fraction bars, radical vinculums and over/under bars.  TeX draws them with
+///   `\defaultrulethickness` = 0.4pt = 0.039998em at 10pt, and it draws them at
+///   that thickness in every style (rules are a dimension, not a font-relative
+///   size), whereas VuTeX consumes the MATH-table constant (Latin Modern Math
+///   publishes 40/1000em = 0.04em) scaled by the current style size.
+///
+/// The base-style bars therefore agree with the engine to 0.005%, and the
+/// script-style bars of a nested fraction legitimately run thinner than TeX
+/// (0.7 × 0.04 = 0.028em).  That residual is a font/engine rule difference, not
+/// a box-model gap, so this gate pins the base-style equality and bounds every
+/// drawn rule inside the MATH-table range instead of demanding TeX's absolute
+/// 0.4pt.
+#[test]
+fn rule_thickness_and_axis_are_measured_by_the_engine_and_honoured_by_layout() {
+    let doc = load_document();
+    if is_blocked(&doc) {
+        eprintln!("skipping rule/axis gate: LaTeX oracle fixture is blocked");
+        return;
+    }
+    if !is_available(&doc) {
+        eprintln!("skipping rule/axis gate: LaTeX oracle fixture is not available");
+        return;
+    }
+
+    let em = REFERENCE_BASE_SIZE_PX;
+    let mut axis_records = 0usize;
+    let mut rule_records = 0usize;
+    let mut ruleless_records = 0usize;
+    let mut thickest_bar = 0.0f64;
+    let mut thinnest_bar = f64::MAX;
+
+    for record in doc.records.iter().filter(|r| r.source.status == "available") {
+        let label = format!("{} ({})", record.corpus_id, if record.display_mode { "display" } else { "inline" });
+
+        let axis = record.axis.unwrap_or_else(|| panic!("{label}: the engine's `axis` is missing — regenerate the fixture"));
+        assert!((axis - 0.25).abs() <= 1e-3, "{label}: the engine axis {axis:.6}em must be 2.5pt at 10pt (0.25em)");
+        axis_records += 1;
+
+        let (_, root, _) = layout_formula_source(&record.tex, record.display_mode, REFERENCE_BASE_SIZE_PX)
+            .unwrap_or_else(|e| panic!("{label}: VuTeX failed to lay out `{}`: {e}", record.tex));
+        let drawn: Vec<(f64, f64, f64)> = rules(&root).into_iter().map(|(y, h, d)| (y / em, h / em, d / em)).collect();
+
+        match record.rule_thickness {
+            Some(engine) => {
+                rule_records += 1;
+                assert!(
+                    draws_rule(&record.tex),
+                    "{label}: the engine recorded a rule for a source with no rule construct: `{}`",
+                    record.tex
+                );
+                assert!(
+                    (engine - 0.039998).abs() <= 2e-3,
+                    "{label}: engine rule thickness {engine:.6}em must be `\\defaultrulethickness` = 0.4pt"
+                );
+                assert!(!drawn.is_empty(), "{label}: VuTeX drew no rule where the engine drew `{engine:.6}em`");
+
+                let thickest = drawn.iter().map(|(_, h, d)| h + d).fold(f64::MIN, f64::max);
+                thickest_bar = thickest_bar.max(thickest);
+                thinnest_bar = thinnest_bar.min(drawn.iter().map(|(_, h, d)| h + d).fold(f64::MAX, f64::min));
+                assert!(
+                    (thickest - engine).abs() <= 1e-3,
+                    "{label}: VuTeX's thickest rule {thickest:.6}em must match the engine's {engine:.6}em (the MATH-table constant is 0.04em)"
+                );
+                for (y, h, d) in &drawn {
+                    assert!(
+                        (*h + *d) >= 0.02 && (*h + *d) <= 0.041,
+                        "{label}: a drawn rule is {:.6}em thick, outside the MATH-table range 0.02..=0.041em",
+                        h + d
+                    );
+                    // A fraction bar sits on the axis: the engine centres it
+                    // there and VuTeX consumes the same `AxisHeight` constant.
+                    // Only single-bar fractions whose rule is at the formula's
+                    // own baseline are checked — a nested fraction's inner bar
+                    // sits on the script-style axis, and a radical's radicand
+                    // vbox is shifted, so their absolute y is relative to a
+                    // different baseline.
+                    if BAR_ON_AXIS_IDS.contains(&record.corpus_id.as_str()) {
+                        assert!(
+                            (y.abs() - axis).abs() <= 0.02,
+                            "{label}: fraction bar centre y={y:.6}em must sit on the engine axis {axis:.6}em"
+                        );
+                    }
+                }
+            }
+            None => {
+                ruleless_records += 1;
+                assert!(
+                    !draws_rule(&record.tex) || rule_may_be_glyph_accent(&record.tex),
+                    "{label}: the engine recorded no rule for a rule-bearing source: `{}`",
+                    record.tex
+                );
+                if rule_may_be_glyph_accent(&record.tex) {
+                    // The engine paints this accent as a glyph, so a rule here
+                    // is a VuTeX representation choice — only its thickness is
+                    // in scope, not the node's existence.
+                    for (_, h, d) in &drawn {
+                        assert!(
+                            (*h + *d) >= 0.02 && (*h + *d) <= 0.041,
+                            "{label}: the glyph-accent rule is {:.6}em thick, outside the MATH-table range 0.02..=0.041em",
+                            h + d
+                        );
+                    }
+                }
+                else {
+                    assert!(drawn.is_empty(), "{label}: VuTeX drew {} rule(s) the engine did not: {:?}", drawn.len(), drawn);
+                }
+            }
+        }
+    }
+
+    assert!(axis_records > 0, "the fixture must carry available records");
+    assert!(rule_records > 0, "the fixture must carry rule-bearing records");
+    eprintln!(
+        "rule/axis gate: axis {axis_records}/{axis_records} records at 0.25em, {rule_records} records with a drawn rule (bars {thinnest_bar:.6}..{thickest_bar:.6}em vs engine 0.039998em), {ruleless_records} without"
+    );
+}

@@ -28,7 +28,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { mkdtempSync } from "node:fs";
 import { platform } from "node:os";
-import { dirname, resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -212,6 +212,8 @@ const PROCEDURE = [
   "Then run one dedicated `\\showbox` pass per degree entry (with `\\showboxdepth` and `\\showboxbreadth` raised): the engine's box-structure dump reveals the degree assembly `kern, shifted degree box, kern`, so the degree anchor, box and kerns are engine output, not reconstruction. `\\showbox` halts the engine (Tectonic treats it as an error), hence the dedicated pass and `--keep-logs`.",
   "For script entries whose script box is the trailing item of the formula box, measure the script content alone in its own style (`\\typeout{SCRIPTBOX: ...}`) and derive the script anchor from engine box differences: x = wd(full) - wd(script box), y = ht(full) - ht(script box) for a superscript.",
   "For fenced entries, measure the left delimiter stretched over a zero-width phantom of the body (`\\typeout{DELIMSIZE: ...}`): the phantom keeps the body's height and depth, so the delimiter grows exactly as in the full formula, and its height plus depth is the recorded `delimiter_size`.",
+  "Probe the math axis once in math mode with `\\typeout{AXIS: \\the\\fontdimen22\\textfont2}`: TeX centres fractions, brackets and large operators on that height, and it is the engine's own number, not a design assumption.",
+  "For every formula whose source draws a rule (fraction bar, radical vinculum, over/underbar), reuse the dedicated `\\showbox` pass: each bar appears as a `\\rule(<height>+<depth>)x<width>` node, so the recorded `rule_thickness` is the engine's drawn thickness (height plus depth), not a constant copied from a table.",
 ];
 
 function blockedReason(probes, primary) {
@@ -519,6 +521,11 @@ function buildTexDocument(corpus) {
     "",
   ];
 
+  // Math axis height: `\\fontdimen22` of the symbol font is the height TeX
+  // centres fractions, brackets and large operators on.  Measured once, in
+  // math mode, because the `\\textfont` registers only exist there.
+  lines.push("\\setbox0=\\hbox{$\\typeout{AXIS: \\the\\fontdimen22\\textfont2}$}");
+
   for (const formula of corpus.formulas) {
     // Only entries the engine structurally refuses are skipped; a box gives
     // every amsmath alignment environment the context it needs.
@@ -667,7 +674,7 @@ function compileShowbox(engineName, texPath, workDir) {
     timeout: 300_000,
     windowsHide: true,
   });
-  const logPath = resolve(workDir, "degree_showbox.log");
+  const logPath = resolve(workDir, basename(texPath).replace(/\.tex$/u, ".log"));
   let logContent = "";
   if (existsSync(logPath)) {
     try {
@@ -800,10 +807,77 @@ function ptToEm(pt) {
 }
 
 // ---------------------------------------------------------------------------
+// Rule thickness and math axis
+// ---------------------------------------------------------------------------
+
+/** `\typeout{AXIS: <value>pt}` — the engine's own `\fontdimen22\textfont2`. */
+const AXIS_RE = /AXIS:\s+(-?[\d.]+)pt/u;
+
+/** Corpus sources whose markup makes the engine draw a rule. */
+const RULE_SOURCE_RE = /\\(?:frac|dfrac|tfrac|sqrt|overline|underline|overbrace|underbrace)\b/u;
+
+/**
+ * Whether the formula's source contains a construct TeX draws with a rule
+ * (fraction bar, radical vinculum, over/underbar).  Decided from the corpus
+ * source, so the harness never guesses from a rendered picture.
+ */
+function ruleBearing(tex) {
+  return RULE_SOURCE_RE.test(tex);
+}
+
+/**
+ * Parse the engine's math axis height in em.  Returns null when the probe line
+ * is missing, so a lost measurement stays null instead of becoming zero.
+ */
+function parseAxis(log) {
+  const m = log.match(AXIS_RE);
+  return m ? ptToEm(parseFloat(m[1])) : null;
+}
+
+// `\showbox` prints every rule node as `\rule(<height>+<depth>)x<width>`; the
+// width is `*` when the rule was stretched to its enclosing box.
+const RULE_RE = /\\rule\(([\d.]+)\+([\d.]+)\)x/gu;
+
+/**
+ * Parse the rule nodes of one `\showbox` dump and return the thickest rule in
+ * em, or null when the dump carries none.
+ *
+ * TeX draws fraction bars, radical vinculums and over/underbars with the same
+ * `\rule` primitive, so the dump is the engine's own statement about every
+ * bar it drew.  A nested fraction legitimately carries two rules; the
+ * thickest one is the outermost (base-style) bar, which is what the fixture's
+ * single `rule_thickness` field records.  All observed thicknesses are
+ * returned alongside so the parity gate can report the script-style value
+ * instead of guessing it.
+ */
+function parseRuleThickness(log) {
+  const thicknesses = [];
+  RULE_RE.lastIndex = 0;
+  let m;
+  while ((m = RULE_RE.exec(log)) !== null) {
+    thicknesses.push(ptToEm(parseFloat(m[1]) + parseFloat(m[2])));
+  }
+  if (thicknesses.length === 0) return null;
+  return { max: Math.max(...thicknesses), all: thicknesses };
+}
+
+// ---------------------------------------------------------------------------
 // Available record (engine produced numbers)
 // ---------------------------------------------------------------------------
 
-function recordAvailable(formula, displayMode, metrics, fontInfo, engineVersion, command, degree = null, scriptPositions = null, delimiterSize = null) {
+function recordAvailable(
+  formula,
+  displayMode,
+  metrics,
+  fontInfo,
+  engineVersion,
+  command,
+  degree = null,
+  scriptPositions = null,
+  delimiterSize = null,
+  axis = null,
+  ruleThickness = null,
+) {
   const key = `${formula.id}|${displayMode ? "display" : "inline"}`;
   const m = metrics.get(key);
   if (!m) return null;
@@ -827,9 +901,9 @@ function recordAvailable(formula, displayMode, metrics, fontInfo, engineVersion,
     width: ptToEm(m.width_pt),
     height: ptToEm(m.height_pt),
     depth: ptToEm(m.depth_pt),
-    axis: null,
+    axis,
     ink_bounds: null,
-    rule_thickness: null,
+    rule_thickness: ruleThickness,
     delimiter_size: delimiterSize,
     script_positions: scriptPositions,
     degree,
@@ -922,6 +996,7 @@ function main() {
     const candidateBoxes = parseDegreeCandidateBoxes(combined);
     const scriptBoxes = parseScriptBoxes(combined);
     const delimiterSizes = parseDelimiterSizes(combined);
+    const axisEm = parseAxis(combined);
     const anyMetrics = metrics.size > 0;
 
     if (!anyMetrics) {
@@ -963,24 +1038,32 @@ function main() {
     const fontInfo = defaultFontInfo(primary.family);
     const engineVersion = primary.version_line;
 
-    // Pass B: dedicated `\showbox` runs for every degree-carrying formula.
-    // The dump reveals the assembly the engine itself built (kerns, shifted
-    // degree box, surd, radicand), so the degree anchor/box/kerns are engine
+    // Pass B: dedicated `\showbox` runs for every formula the engine draws a
+    // radical degree or a rule for.  The dump reveals the assembly the engine
+    // itself built (kerns, shifted degree box, surd, radicand) and every `\rule`
+    // node it drew, so the degree anchor and the bar thickness are engine
     // output.  `\showbox` halts the engine, so each run lives in its own
     // directory and a non-zero exit is expected.
     const assemblies = new Map(); // key = "<corpus_id>|<inline|display>"
+    const ruleThicknesses = new Map(); // key = "<corpus_id>|<inline|display>"
     for (const formula of corpus.formulas) {
-      if (!degreeParts(formula.tex)) continue;
+      const parts = degreeParts(formula.tex);
+      if (!parts && !ruleBearing(formula.tex)) continue;
       for (const displayMode of [false, true]) {
         const mode = displayMode ? "display" : "inline";
+        const key = `${formula.id}|${mode}`;
         const subDir = resolve(workDir, `show_${formula.id}_${mode}`);
         mkdirSync(subDir, { recursive: true });
-        const sbTexPath = resolve(subDir, "degree_showbox.tex");
+        const sbTexPath = resolve(subDir, "box_showbox.tex");
         writeFileSync(sbTexPath, buildShowboxDocument(formula.tex, displayMode), "utf8");
         const sb = compileShowbox(primary.name, sbTexPath, subDir);
-        const assembly = parseDegreeAssembly(sb.log + "\n" + sb.stderr);
-        if (assembly) assemblies.set(`${formula.id}|${mode}`, assembly);
-        else console.log(`warning: showbox pass produced no degree assembly for ${formula.id} (${mode})`);
+        const dump = sb.log + "\n" + sb.stderr;
+        const assembly = parseDegreeAssembly(dump);
+        if (assembly) assemblies.set(key, assembly);
+        else if (parts) console.log(`warning: showbox pass produced no degree assembly for ${formula.id} (${mode})`);
+        const rules = parseRuleThickness(dump);
+        if (rules) ruleThicknesses.set(key, rules);
+        else if (ruleBearing(formula.tex)) console.log(`warning: showbox pass produced no rule for ${formula.id} (${mode})`);
       }
     }
 
@@ -1010,6 +1093,7 @@ function main() {
             })
           : null;
         const delimiterSize = delimiterSizes.get(key) ?? null;
+        const ruleThickness = ruleThicknesses.get(key)?.max ?? null;
         const rec = recordAvailable(
           formula,
           displayMode,
@@ -1020,6 +1104,8 @@ function main() {
           degree,
           scriptPositions,
           delimiterSize,
+          axisEm,
+          ruleThickness,
         );
         if (rec) {
           records.push(rec);
