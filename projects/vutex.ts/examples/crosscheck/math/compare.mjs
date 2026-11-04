@@ -55,8 +55,13 @@ function parseOurs(svg, base) {
     }
     const shifts = glyphs.map((glyph) => -glyph.offset / base);
     const shift = shifts.length ? shifts.reduce((a, b) => (Math.abs(a) >= Math.abs(b) ? a : b)) : null;
+    // Script size is an absolute ratio against the base em, the same quantity
+    // KaTeX reports as its `sizeN` class (0.7 for `size3`) and MathJax reports
+    // as its group `scale(0.707)`.  Dividing by the largest glyph in the
+    // formula instead would report 1.0 whenever every glyph is script-sized,
+    // which is exactly what `\frac{1}{2}` inline is.
     const scales = glyphs.map((glyph) => glyph.scale).filter((value) => value > 0);
-    const ratio = scales.length ? Math.min(...scales) / Math.max(...scales) : null;
+    const ratio = scales.length ? Math.min(...scales) / base : null;
     return { shift, ratio };
 }
 
