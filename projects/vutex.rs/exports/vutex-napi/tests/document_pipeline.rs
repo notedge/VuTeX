@@ -1003,46 +1003,69 @@ fn unsupported_mermaid_statement_keeps_the_fence_and_reports_a_diagnostic() {
     );
 }
 
-/// The catalog rows shared with the panduck HTML entry.
+/// The catalog cases the diagram entry owns.
 ///
-/// Both hosts consume the same `notedown` lowering, so the same document must
-/// report the same stable code and cover the same authored bytes.
-const CROSS_ENTRY_CATALOG: [(&str, &str); 3] = [
-    (
-        "mermaid",
-        "# Catalog\n\n```mermaid\nsequenceDiagram\n  participant Alice\n  participant Bob\n  Note over Alice,Bob: shared\n  Alice->>Bob: Hello\n```\n",
-    ),
-    ("dot", "# Catalog\n\n```dot\ndigraph {\n  a [label=<b>bold</b>]\n}\n```\n"),
-    ("plantuml", "# Catalog\n\n```plantuml\n@startuml\nskinparam monochrome true\n@enduml\n```\n"),
-];
-
-const CROSS_ENTRY_SPANS: [(&str, &str, &str); 3] = [
-    ("mermaid", "davinci.diagram.unsupported", "Note over Alice,Bob: shared"),
-    ("dot", "davinci.diagram.unsupported", "<b>bold</b>"),
-    ("plantuml", "davinci.diagram.unsupported", "skinparam monochrome true"),
-];
+/// The shared catalog is the only source of expected values: `code`, `severity`
+/// and `span_text` all come from `davinci-types`, so this crate keeps no private
+/// copy of them. Chart fences are outside this entry because `Block::Chart` is
+/// kept as authored source here and has no scene surface yet, so `vega-lite`
+/// rows are not dispatched to a diagram frontend.
+fn diagram_catalog_cases() -> Vec<davinci_types::RejectionCase> {
+    let cases = davinci_types::cases();
+    assert_eq!(cases.len(), 11, "the shared catalog carries every entry's rejection case");
+    let owned: Vec<_> = cases.into_iter().filter(|case| case.language != "vega-lite").collect();
+    assert_eq!(owned.len(), 6, "`mermaid`, `dot` and `plantuml` own two cases each");
+    owned
+}
 
 #[test]
 fn cross_entry_catalog_matches_the_shared_fixture_contract() {
-    for ((language, document), (_, code, covered)) in CROSS_ENTRY_CATALOG.iter().zip(CROSS_ENTRY_SPANS.iter()) {
-        let dir = ScratchDir::new(&format!("catalog-{language}"));
-        let path = dir.write("catalog.md", document);
+    let mut comparisons = 0usize;
+    for case in diagram_catalog_cases() {
+        // Author the fence exactly as a host would, and keep the byte offset of
+        // the body so the reported span is checked in authored bytes rather than
+        // in a normalized copy of the source.
+        let body = if case.source.ends_with('\n') { case.source.clone() } else { format!("{}\n", case.source) };
+        let document = format!("# Catalog\n\n```{}\n{}```\n", case.language, body);
+        let body_start = document.find(&body).unwrap_or_else(|| panic!("`{}` must sit in the fence body", case.id));
+
+        let dir = ScratchDir::new(&format!("catalog-{}", case.id));
+        let path = dir.write("catalog.md", &document);
 
         let outcome = render_document(&path_string(&path), None);
         let payload = report(&outcome);
-        assert_eq!(outcome.exit_code, 0, "{language}: {}", outcome.report_json);
+        assert_eq!(outcome.exit_code, 0, "{}: {}", case.id, outcome.report_json);
 
         let diagnostics = payload["diagnostics"].as_array().expect("diagnostics array");
-        assert_eq!(diagnostics.len(), 1, "{language}: {payload}");
-        assert_eq!(diagnostics[0]["code"], *code, "{language}: {payload}");
-        assert_eq!(diagnostics[0]["severity"], "error", "{language}: {payload}");
+        assert_eq!(diagnostics.len(), 1, "{}: {payload}", case.id);
+
+        assert_eq!(diagnostics[0]["code"], case.code, "`{}` reported another code: {payload}", case.id);
+        comparisons += 1;
+        assert_eq!(
+            diagnostics[0]["severity"], case.severity,
+            "`{}` reported another severity: {payload}",
+            case.id
+        );
+        comparisons += 1;
+
+        // A `parse-failed` case reports the whole fence body in the catalog, so
+        // the comparison stays at authored-byte precision instead of inventing a
+        // narrower offset for a parser that carries no location.
         let start = diagnostics[0]["span"]["start"].as_u64().expect("span start") as usize;
         let end = diagnostics[0]["span"]["end"].as_u64().expect("span end") as usize;
+        comparisons += 2;
+        assert!(
+            start >= body_start,
+            "`{}` must locate its span inside the authored fence body at {body_start}: {payload}",
+            case.id
+        );
         assert_eq!(
-            &document[start..end], *covered,
-            "{language}: the span must match the panduck catalog in document coordinates: {payload}"
+            &document[start..end], case.span_text,
+            "`{}` must cover `{}` in authored bytes at [{start}..{end}]: {payload}",
+            case.id, case.span_text
         );
     }
+    assert_eq!(comparisons, 24, "every diagram case compares code, severity, start and end");
 }
 
 #[test]
