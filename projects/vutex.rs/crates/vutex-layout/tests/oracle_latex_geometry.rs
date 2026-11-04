@@ -411,6 +411,20 @@ fn is_excepted(label: &str, field: &str) -> bool {
     FONT_METRIC_EXCEPTIONS.contains(&(label, field))
 }
 
+/// Corpus entries whose gap is an upstream dependency rather than a layout
+/// defect in this crate.
+///
+/// `notedown`'s formula-source parser drops the interword spaces inside
+/// `\text{…}`, so the lowered tree reads `Text { "helloworld" }` before layout
+/// runs and this crate has nothing left to measure. The entries stay blocking
+/// and are reported with [UPSTREAM_NOTE]; re-measure once that parser keeps
+/// the spaces.
+fn upstream_dependency(corpus_id: &str) -> bool {
+    matches!(corpus_id, "text-phrase" | "text-inline")
+}
+
+const UPSTREAM_NOTE: &str = " [upstream dependency: notedown formula-source parser drops the interword spaces, re-measure after it is fixed]";
+
 /// Base size in pixels used for the TeX reference — matches normalsize=10pt.
 /// VuTeX's `base_size` parameter is a pixel value; we lay out at 10.0px so that
 /// dividing the resulting pixel dimensions by 10.0 gives us em — exactly the
@@ -499,26 +513,33 @@ fn vutex_geometry_is_within_tolerance_of_latex_reference() {
             };
 
             let label = format!("{corpus_id} ({})", if display { "display" } else { "inline" });
+            let note = if upstream_dependency(corpus_id) { UPSTREAM_NOTE } else { "" };
 
             // Width: 5% tol (or an absolute 0.02em difference).
             let denom_w = tex_w.abs().max(0.001);
             let rel_w = (vu_w - tex_w).abs() / denom_w;
             if rel_w > WIDTH_TOL && (vu_w - tex_w).abs() > ABS_FLOOR_EM && !is_excepted(&label, "width") {
-                failures.push(format!("{label}: width vutex={vu_w:.4} latex={tex_w:.4} rel={rel_w:.3} > tol={WIDTH_TOL}"));
+                failures.push(format!(
+                    "{label}: width vutex={vu_w:.4} latex={tex_w:.4} rel={rel_w:.3} > tol={WIDTH_TOL}{note}"
+                ));
             }
 
             // Height: 10% tol.
             let denom_h = tex_h.abs().max(0.001);
             let rel_h = (vu_h - tex_h).abs() / denom_h;
             if rel_h > HEIGHT_TOL && (vu_h - tex_h).abs() > ABS_FLOOR_EM && !is_excepted(&label, "height") {
-                failures.push(format!("{label}: height vutex={vu_h:.4} latex={tex_h:.4} rel={rel_h:.3} > tol={HEIGHT_TOL}"));
+                failures.push(format!(
+                    "{label}: height vutex={vu_h:.4} latex={tex_h:.4} rel={rel_h:.3} > tol={HEIGHT_TOL}{note}"
+                ));
             }
 
             // Depth: 15% tol.
             let denom_d = tex_d.abs().max(0.001);
             let rel_d = (vu_d - tex_d).abs() / denom_d;
             if rel_d > DEPTH_TOL && (vu_d - tex_d).abs() > ABS_FLOOR_EM && !is_excepted(&label, "depth") {
-                failures.push(format!("{label}: depth vutex={vu_d:.4} latex={tex_d:.4} rel={rel_d:.3} > tol={DEPTH_TOL}"));
+                failures.push(format!(
+                    "{label}: depth vutex={vu_d:.4} latex={tex_d:.4} rel={rel_d:.3} > tol={DEPTH_TOL}{note}"
+                ));
             }
         }
     }

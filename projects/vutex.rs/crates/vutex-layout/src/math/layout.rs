@@ -2107,12 +2107,6 @@ impl LayoutEngine {
             let sub_top_max = self.math_constant(MathConstant::SubscriptTopMax, size).unwrap_or(Fixed::ZERO);
 
             calculated_sub_shift = sub_shift.max(sub_layout.height() - sub_top_max);
-            if extended_base {
-                // `SubscriptBaselineDropMin` keeps a subscript below the ink
-                // bottom of a box nucleus instead of letting it lift into it.
-                let drop_min = self.math_constant(MathConstant::SubscriptBaselineDropMin, size).unwrap_or(Fixed::ZERO);
-                calculated_sub_shift = calculated_sub_shift.max(base_layout.depth() + drop_min);
-            }
             sub_correction_depth = calculated_sub_shift + sub_layout.depth();
 
             // If we already have a superscript, we need to adjust the kern between them
