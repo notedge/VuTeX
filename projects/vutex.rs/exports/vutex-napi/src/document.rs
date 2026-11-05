@@ -438,8 +438,8 @@ pub fn theme_facts(theme: Theme) -> ThemeFacts {
         side_margin: hint.margin.left,
         content_width: hint.content_width(),
         latin_family: match theme {
-            Theme::Baseline => "Noto Serif SC",
             Theme::Traditional => "Tinos",
+            Theme::Baseline | Theme::Editorial | Theme::Classic => "Noto Serif SC",
         },
         cjk_family: "Noto Serif SC",
         mono_family: "Noto Sans Mono",

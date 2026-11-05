@@ -62,7 +62,10 @@ struct FontPlan {
 /// inserted after the document title. A face whose character set is empty is
 /// left out, so a document without code does not carry the mono face.
 pub fn embed_body_fonts(svg: &str, theme: Theme) -> String {
-    let emphasized = emphasize_headings(svg, theme);
+    // Themes whose layout pass marks heading runs bold carry the weight in the
+    // run style. Only the legacy traditional preset still needs the size-based
+    // promotion, and it must keep its old output.
+    let emphasized = if theme == Theme::Traditional { emphasize_headings(svg, theme) } else { svg.to_string() };
     let runs = text_runs(&emphasized);
     let plan = build_plan(theme, runs);
     let with_style = insert_style(&emphasized, &plan.families, "after-title");
@@ -161,7 +164,7 @@ fn build_plan(theme: Theme, runs: Vec<TextRun>) -> FontPlan {
                 continue;
             }
             let name = match theme {
-                Theme::Baseline => FALLBACK_FAMILY,
+                Theme::Baseline | Theme::Editorial | Theme::Classic => FALLBACK_FAMILY,
                 Theme::Traditional if face.script == BodyScript::Latin => FALLBACK_FAMILY,
                 Theme::Traditional => FALLBACK_CJK_FAMILY,
             };
@@ -171,7 +174,7 @@ fn build_plan(theme: Theme, runs: Vec<TextRun>) -> FontPlan {
     }
 
     let (serif_chain, mono_chain) = match theme {
-        Theme::Baseline => {
+        Theme::Baseline | Theme::Editorial | Theme::Classic => {
             let mut serif_chain = Vec::new();
             if serif {
                 serif_chain.push(SERIF_FAMILY);
@@ -345,7 +348,7 @@ fn candidates(theme: Theme, family: &str, bold: bool, italic: bool) -> Vec<usize
     let mono = family == "monospace";
     let mut order = Vec::new();
     match theme {
-        Theme::Baseline => {
+        Theme::Baseline | Theme::Editorial | Theme::Classic => {
             if mono {
                 if let Some(index) = face_index(BodyFamily::Mono, BodyScript::Latin, BodyFaceStyle::Regular) {
                     order.push(index);
@@ -397,7 +400,7 @@ fn candidates(theme: Theme, family: &str, bold: bool, italic: bool) -> Vec<usize
 /// CSS family a bundled face is published under in a theme.
 fn face_family(theme: Theme, face: &BodyFace) -> &'static str {
     match theme {
-        Theme::Baseline => match face.family {
+        Theme::Baseline | Theme::Editorial | Theme::Classic => match face.family {
             BodyFamily::Serif => SERIF_FAMILY,
             BodyFamily::Mono => MONO_FAMILY,
         },
