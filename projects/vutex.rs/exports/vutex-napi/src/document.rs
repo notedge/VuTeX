@@ -17,14 +17,14 @@ use document_formats::{
 };
 use document_ir::{Block, DocumentGraph};
 use serde::{Deserialize, Serialize};
+use vutex_compose::{Diagnostic as RenderDiagnostic, Severity};
 use vutex_layout::{LayoutHint, document::layout_with_diagnostics};
 use vutex_presentation::builder::{build_display_presentation, build_flow_presentation};
 use vutex_render_html::{render_html_reflow, render_html_snapshot};
 use vutex_render_pdf::{PdfFontPolicy, PdfResources, render_pdf_with_resources_and_diagnostics};
 use vutex_render_svg::render_svg;
-use vutex_compose::{Diagnostic as RenderDiagnostic, Severity};
 
-use crate::{diagram::lower_diagrams, tikz::lower_tikz_diagrams};
+use crate::{diagram::lower_diagrams, footnote::lower_footnotes, tikz::lower_tikz_diagrams};
 
 /// Report schema version stamped on every report payload.
 pub const REPORT_SCHEMA_VERSION: &str = "vutex.report/v0";
@@ -272,7 +272,9 @@ pub fn render_document(input_path: &str, options_json: Option<&str>) -> RenderOu
 
     let mut diagrams = lower_diagrams(&graph, input_path);
     lower_tikz_diagrams(&graph, input_path, &mut diagrams);
-    let (plan, layout_diagnostics) = layout_with_diagnostics(&graph, &LayoutHint::a4(), &diagrams.diagrams);
+    let footnotes = lower_footnotes(&graph, input_path);
+    diagrams.diagnostics.extend(footnotes.diagnostics);
+    let (plan, layout_diagnostics) = layout_with_diagnostics(&footnotes.graph, &LayoutHint::a4(), &diagrams.diagrams);
     for diagnostic in &layout_diagnostics {
         diagrams.diagnostics.push(layout_diagnostic_to_record(diagnostic, input_path));
     }
@@ -289,7 +291,7 @@ pub fn render_document(input_path: &str, options_json: Option<&str>) -> RenderOu
             }
         },
         OutputFormat::Html => {
-            let flow = build_flow_presentation(&graph);
+            let flow = build_flow_presentation(&footnotes.graph);
             match render_html_reflow(&flow) {
                 Ok(html) => (None, Some(html), None),
                 Err(failure) => {
@@ -330,6 +332,11 @@ pub fn render_document(input_path: &str, options_json: Option<&str>) -> RenderOu
         "inputs": [{ "path": input_path, "format": format_label }],
         "diagnostics": diagrams.diagnostics,
         "output": { "format": output_format.id(), "pages": pages, "items": items },
+        "footnotes": {
+            "references": footnotes.references,
+            "definitions": footnotes.definitions,
+            "notes": footnotes.notes,
+        },
     })
     .to_string();
 
