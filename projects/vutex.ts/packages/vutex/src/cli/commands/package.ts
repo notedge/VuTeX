@@ -91,7 +91,8 @@ export function registerPackageCommands(cli: Cli): void {
             } else {
                 emitHuman("VuTeX resource packages have issues");
                 for (const check of report.checks) {
-                    emitHuman(`  ${check.ok ? "ok" : "fail"}  ${check.id}: ${check.message}`);
+                    const code = check.code ? ` ${check.code}` : "";
+                    emitHuman(`  ${check.ok ? "ok" : "fail"}  ${check.id}${code}: ${check.message}`);
                 }
             }
             return report.ok ? ExitCode.Ok : ExitCode.ActionFailed;

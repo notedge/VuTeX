@@ -16,6 +16,16 @@ export type VuTeXLockfile = {
     packages: LockedPackage[];
 };
 
+function canonicalPackage(item: LockedPackage): LockedPackage {
+    return {
+        name: item.name,
+        version: item.version,
+        source: item.source,
+        contentHash: item.contentHash,
+        dependencies: [...item.dependencies].sort(),
+    };
+}
+
 export async function readLockfile(projectRoot: string): Promise<VuTeXLockfile | null> {
     const path = join(projectRoot, "vutex.lock");
     try {
@@ -29,7 +39,17 @@ export async function readLockfile(projectRoot: string): Promise<VuTeXLockfile |
     }
 }
 
+/**
+ * Write the lockfile in canonical order.
+ *
+ * Package entries are sorted by name and every field keeps a fixed position so
+ * that installing the same manifest twice produces byte-identical output.
+ */
 export async function writeLockfile(projectRoot: string, lockfile: VuTeXLockfile): Promise<void> {
     const path = join(projectRoot, "vutex.lock");
-    await writeFile(path, `${TOML.stringify(lockfile)}\n`, "utf8");
+    const packages = lockfile.packages
+        .map(canonicalPackage)
+        .sort((left, right) => left.name.localeCompare(right.name, "en"));
+    const canonical: VuTeXLockfile = { version: lockfile.version, packages };
+    await writeFile(path, `${TOML.stringify(canonical)}\n`, "utf8");
 }

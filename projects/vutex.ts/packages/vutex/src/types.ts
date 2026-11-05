@@ -88,9 +88,16 @@ export type PackageRecord = {
     source: string;
 };
 
+export type PackageCheck = {
+    id: string;
+    ok: boolean;
+    message: string;
+    code?: string;
+};
+
 export type PackageDoctorReport = {
     ok: boolean;
-    checks: Array<{ id: string; ok: boolean; message: string }>;
+    checks: PackageCheck[];
 };
 
 /**

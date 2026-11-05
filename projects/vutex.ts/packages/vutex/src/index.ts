@@ -10,6 +10,7 @@ export type {
     FormulaRender,
     FormulaRenderOptions,
     InspectDocumentResult,
+    PackageCheck,
     PackageDoctorReport,
     PackageInstallOptions,
     PackageRecord,

@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { PackageManager } from "../src/packages/manager.js";
-import { readLockfile } from "../src/packages/lockfile.js";
+import { contentDigest, PackageManager } from "../src/packages/manager.js";
+import { readLockfile, writeLockfile } from "../src/packages/lockfile.js";
 import { readManifest } from "../src/packages/manifest.js";
 
 test("package manager writes lockfile on install", async () => {
@@ -95,7 +95,7 @@ test("remove is a no-op without packages and deletes only the target entry", asy
     }
 });
 
-test("install writes scaffold lock entries with source, hash, and empty dependencies", async () => {
+test("install writes lock entries with a real content digest and empty dependencies", async () => {
     const dir = await mkdtemp(join(tmpdir(), "vutex-pkg-"));
     try {
         const manager = new PackageManager(dir);
@@ -109,10 +109,101 @@ test("install writes scaffold lock entries with source, hash, and empty dependen
                 name: "alpha",
                 version: "1.2.3",
                 source: "@vutex/alpha",
-                contentHash: "sha256:scaffold:alpha@1.2.3",
+                contentHash: contentDigest({
+                    name: "alpha",
+                    version: "1.2.3",
+                    source: "@vutex/alpha",
+                    dependencies: [],
+                }),
                 dependencies: [],
             },
         ]);
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
+});
+
+test("install is byte-identical across repeated runs", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "vutex-pkg-"));
+    try {
+        const manager = new PackageManager(dir);
+        await manager.add("zeta", { version: "1.0.0" });
+        await manager.add("alpha", { version: "1.0.0" });
+
+        await manager.install();
+        const first = await readFile(join(dir, "vutex.lock"), "utf8");
+        await manager.install();
+        const second = await readFile(join(dir, "vutex.lock"), "utf8");
+
+        assert.equal(first, second);
+        assert.match(first, /alpha[\s\S]*zeta/);
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
+});
+
+test("doctor reports a tampered content hash", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "vutex-pkg-"));
+    try {
+        const manager = new PackageManager(dir);
+        await manager.add("alpha", { version: "1.0.0" });
+        await manager.install();
+
+        const lock = await readLockfile(dir);
+        assert.ok(lock);
+        lock.packages[0]!.contentHash = `sha256:${"0".repeat(64)}`;
+        await writeLockfile(dir, lock);
+
+        const report = await manager.doctor();
+        assert.equal(report.ok, false);
+        const integrity = report.checks.find((check) => check.id === "integrity");
+        assert.equal(integrity?.ok, false);
+        assert.equal(integrity?.code, "VUTEX_PACKAGE_HASH_MISMATCH");
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
+});
+
+test("doctor reports unactivated and stale packages", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "vutex-pkg-"));
+    try {
+        const manager = new PackageManager(dir);
+        await manager.add("alpha", { version: "1.0.0" });
+        await manager.add("beta", { version: "2.0.0" });
+        await manager.install();
+
+        await writeFile(join(dir, "vutex.toml"), '[packages]\nalpha = "1.0.0"\n', "utf8");
+        const stale = await manager.doctor();
+        const staleActivation = stale.checks.find((check) => check.id === "activation");
+        assert.equal(staleActivation?.ok, false);
+        assert.equal(staleActivation?.code, "VUTEX_PACKAGE_UNACTIVATED");
+        assert.match(staleActivation?.message ?? "", /stale: beta/);
+
+        await writeFile(join(dir, "vutex.toml"), '[packages]\ngamma = "3.0.0"\n', "utf8");
+        const missing = await manager.doctor();
+        const missingActivation = missing.checks.find((check) => check.id === "activation");
+        assert.equal(missingActivation?.ok, false);
+        assert.match(missingActivation?.message ?? "", /unactivated: gamma/);
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
+});
+
+test("doctor reports a profile conflict", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "vutex-pkg-"));
+    try {
+        await writeFile(
+            join(dir, "vutex.toml"),
+            '[profile]\nname = "book"\n\n[packages]\nprofile = "latex"\n',
+            "utf8",
+        );
+        const manager = new PackageManager(dir);
+        await manager.install();
+
+        const report = await manager.doctor();
+        assert.equal(report.ok, false);
+        const profile = report.checks.find((check) => check.id === "profile");
+        assert.equal(profile?.code, "VUTEX_PACKAGE_PROFILE_CONFLICT");
     } finally {
         await rm(dir, { recursive: true, force: true });
     }
