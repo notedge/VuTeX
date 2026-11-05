@@ -195,10 +195,11 @@ pub fn lower_footnotes(graph: &DocumentGraph, path: &str) -> FootnoteLowering {
     for node in &mut rewritten.blocks {
         for_each_block_inline(&mut node.block, &mut |inline| {
             if let Inline::Note { label, display: None } = inline {
-                if let Some(&number) = numbering.get(label) {
-                    let text = format!("[{number}]");
-                    *inline = Inline::Text { text };
-                }
+                let text = match numbering.get(label) {
+                    Some(&number) => format!("[{number}]"),
+                    None => format!("[^{label}]"),
+                };
+                *inline = Inline::Text { text };
             }
         });
     }
