@@ -4,6 +4,7 @@
 
 pub mod diagram;
 pub mod document;
+pub mod font_subset;
 pub mod footnote;
 pub mod svg_fonts;
 pub mod tikz;

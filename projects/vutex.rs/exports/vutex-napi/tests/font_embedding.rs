@@ -56,21 +56,25 @@ fn latin_document_carries_the_latin_and_mono_faces_only() {
     let svg = render_svg("latin", "# Title\n\nBody prose with `code_span` inside.\n");
 
     assert!(svg.contains("<style type=\"text/css\">"), "no face block");
-    assert_eq!(svg.matches("@font-face").count(), 4, "Tinos regular, bold, italic, and Noto Sans Mono");
+    assert_eq!(svg.matches("@font-face").count(), 2, "Tinos regular and Noto Sans Mono, nothing else is painted");
     assert!(svg.contains("font-family=\"VuTeX Serif\""), "prose run not named");
     assert!(svg.contains("font-family=\"VuTeX Mono\""), "code run not named");
     assert!(!svg.contains("font-family=\"serif\""), "generic prose family left in place");
     assert!(!svg.contains("font-family=\"monospace\""), "generic code family left in place");
     assert!(!svg.contains("VuTeX Serif CJK"), "Latin payload carries the CJK faces");
+    assert!(!svg.contains("font-style:italic"), "an unused italic face was embedded");
+    assert!(svg.len() < 300_000, "Latin payload grew to {} bytes", svg.len());
 }
 
 #[test]
 fn han_document_carries_the_cjk_chain() {
     let svg = render_svg("han", "# 标题\n\n这是一段中文正文，包含标点。\n");
 
-    assert_eq!(svg.matches("@font-face").count(), 6, "three Latin, two CJK, and one mono face");
+    assert_eq!(svg.matches("@font-face").count(), 1, "only the CJK regular face paints this document");
     assert!(svg.contains("VuTeX Serif CJK"), "CJK family missing");
-    assert!(svg.contains("font-family=\"VuTeX Serif, VuTeX Serif CJK\""), "prose run has no CJK fallback");
+    assert!(svg.contains("font-family=\"VuTeX Serif CJK\""), "prose run has no CJK fallback");
+    assert!(!svg.contains("font-family:'VuTeX Serif';"), "Tinos maps no Han character yet was embedded");
+    assert!(svg.len() < 1_000_000, "Han payload grew to {} bytes", svg.len());
 }
 
 #[test]
