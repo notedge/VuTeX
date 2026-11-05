@@ -47,8 +47,8 @@ struct Definition {
     id: NodeId,
     /// GFM label without the `[^` prefix and `]` suffix.
     label: String,
-    /// Plain body text the definition carries.
-    body: String,
+    /// Body paragraphs the definition carries in authored order.
+    body: Vec<String>,
 }
 
 /// Graph plus diagnostics produced by the footnote projection.
@@ -225,24 +225,185 @@ pub fn lower_footnotes(graph: &DocumentGraph, path: &str) -> FootnoteLowering {
             payload_hint: String::new(),
             status: SemanticStatus::Resolved,
         });
-        for (number, body) in &notes {
-            rewritten.push_block(Block::Paragraph { content: vec![Inline::Text { text: format!("[{number}] {body}") }] });
+        for (number, paragraphs) in &notes {
+            for (index, paragraph) in paragraphs.iter().enumerate() {
+                let text = if index == 0 { format!("[{number}] {paragraph}") } else { paragraph.clone() };
+                rewritten.push_block(Block::Paragraph { content: vec![Inline::Text { text }] });
+            }
         }
     }
 
     FootnoteLowering { graph: rewritten, diagnostics, references, definitions: definitions_count, notes: notes.len() }
 }
 
-/// Read one authored GFM definition payload into its label and plain body.
-fn parse_definition(payload: &str) -> Option<(String, String)> {
+/// Read one authored GFM definition payload into its label and body paragraphs.
+fn parse_definition(payload: &str) -> Option<(String, Vec<String>)> {
     let rest = payload.trim().strip_prefix("[^")?;
     let (label, body) = rest.split_once("]:")?;
     let label = label.trim();
-    let body = body.lines().map(str::trim).filter(|line| !line.is_empty()).collect::<Vec<_>>().join(" ");
-    if label.is_empty() || body.is_empty() {
+    let paragraphs = split_paragraphs(body);
+    if label.is_empty() || paragraphs.is_empty() {
         return None;
     }
-    Some((label.to_string(), body))
+    Some((label.to_string(), paragraphs))
+}
+
+/// Split a definition body on blank lines and flatten each paragraph to one line.
+fn split_paragraphs(body: &str) -> Vec<String> {
+    let mut paragraphs = Vec::new();
+    let mut current: Vec<&str> = Vec::new();
+    for line in body.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            if !current.is_empty() {
+                paragraphs.push(current.join(" "));
+                current.clear();
+            }
+        }
+        else {
+            current.push(line);
+        }
+    }
+    if !current.is_empty() {
+        paragraphs.push(current.join(" "));
+    }
+    paragraphs
+}
+
+/// Absorb the GFM continuation paragraphs that the Markdown importer split off
+/// as indented code blocks.
+///
+/// GFM keeps a definition open across blank lines while the following paragraphs
+/// stay indented by four spaces or one tab. `oak-markdown` ends the definition
+/// at its first line and lowers the indented paragraph as `Block::Code`, so the
+/// body would move into the document text. This scans the authored source from
+/// the definition end, appends each continuation paragraph to the payload, and
+/// deletes the blocks the importer placed for them.
+pub fn absorb_definition_continuations(graph: &mut DocumentGraph, source: &str) -> usize {
+    let mut paragraphs_absorbed = 0;
+    let mut index = 0;
+    while index < graph.blocks.len() {
+        let node_id = graph.blocks[index].id;
+        let is_definition = matches!(&graph.blocks[index].block, Block::Opaque { kind, .. } if kind == DEFINITION_KIND);
+        let Some(span) = graph.block_span(node_id) else {
+            index += 1;
+            continue;
+        };
+        if !is_definition {
+            index += 1;
+            continue;
+        }
+        let (paragraphs, _) = scan_continuations(source, span.end as usize);
+        if paragraphs.is_empty() {
+            index += 1;
+            continue;
+        }
+        if let Block::Opaque { payload_hint, .. } = &mut graph.blocks[index].block {
+            for paragraph in &paragraphs {
+                payload_hint.push_str("\n\n");
+                payload_hint.push_str(paragraph);
+            }
+        }
+        // The importer turns each indented continuation paragraph into a
+        // `Block::Code` without a span, so match them by content in order.
+        let mut absorbed = Vec::new();
+        let mut probe = index + 1;
+        for paragraph in &paragraphs {
+            let Some(node) = graph.blocks.get(probe) else {
+                break;
+            };
+            let matches_paragraph = matches!(
+                &node.block,
+                Block::Code { language: None, content } if normalize(content) == normalize(paragraph)
+            );
+            if !matches_paragraph {
+                break;
+            }
+            absorbed.push(node.id);
+            probe += 1;
+        }
+        for id in absorbed {
+            let _ = graph.delete_block(id);
+        }
+        paragraphs_absorbed += paragraphs.len();
+        index += 1;
+    }
+    paragraphs_absorbed
+}
+
+/// Collapse whitespace so a code payload and its authored paragraph compare equal.
+fn normalize(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Read blank-line-separated, four-space-indented paragraphs after a definition.
+///
+/// Returns the paragraphs without their indentation plus the byte offset where
+/// the consumed continuation run ends.
+fn scan_continuations(source: &str, from: usize) -> (Vec<String>, usize) {
+    let mut paragraphs = Vec::new();
+    let mut cursor = from;
+    loop {
+        let Some(blank_start) = consume_line_break(source, cursor) else {
+            break;
+        };
+        let blank_end = line_end(source, blank_start);
+        if !source[blank_start..blank_end].trim().is_empty() {
+            break;
+        }
+        let Some(content_start) = consume_line_break(source, blank_end) else {
+            break;
+        };
+        let rest = &source[content_start..];
+        if !(rest.starts_with("    ") || rest.starts_with('\t')) {
+            break;
+        }
+        let mut lines = Vec::new();
+        let mut line_start = content_start;
+        let mut paragraph_end = content_start;
+        loop {
+            let line_end = line_end(source, line_start);
+            let line = &source[line_start..line_end];
+            if line.trim().is_empty() || !(line.starts_with("    ") || line.starts_with('\t')) {
+                break;
+            }
+            lines.push(strip_indent(line));
+            paragraph_end = line_end;
+            match consume_line_break(source, line_end) {
+                Some(next) => line_start = next,
+                None => break,
+            }
+        }
+        if lines.is_empty() {
+            break;
+        }
+        paragraphs.push(lines.join(" "));
+        cursor = paragraph_end;
+        if paragraphs.len() >= 64 {
+            break;
+        }
+    }
+    (paragraphs, cursor)
+}
+
+/// Consume one line break at `at` and return the next line start.
+fn consume_line_break(source: &str, at: usize) -> Option<usize> {
+    let bytes = source.as_bytes();
+    match bytes.get(at) {
+        Some(b'\r') if bytes.get(at + 1) == Some(&b'\n') => Some(at + 2),
+        Some(b'\r') | Some(b'\n') => Some(at + 1),
+        _ => None,
+    }
+}
+
+/// Byte offset of the first line break at or after `from`.
+fn line_end(source: &str, from: usize) -> usize {
+    source[from..].find(['\r', '\n']).map(|index| from + index).unwrap_or(source.len())
+}
+
+/// Remove the four-space or one-tab continuation indent from one line.
+fn strip_indent(line: &str) -> &str {
+    line.strip_prefix('\t').or_else(|| line.strip_prefix("    ")).unwrap_or(line)
 }
 
 /// Visit every inline run of one block payload in document order.
@@ -339,5 +500,53 @@ fn record(
         span: node
             .and_then(|id| graph.block_span(id))
             .map(|span| DiagnosticSpan { start: span.start as usize, end: span.end as usize }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_definition, scan_continuations};
+
+    #[test]
+    fn a_single_line_definition_keeps_one_body_paragraph() {
+        let (label, body) = parse_definition("[^1]: Only paragraph.").expect("definition parses");
+        assert_eq!(label, "1");
+        assert_eq!(body, vec!["Only paragraph."]);
+    }
+
+    #[test]
+    fn two_continuation_paragraphs_stay_two_paragraphs() {
+        let (_, body) = parse_definition("[^2]: First paragraph.\n\n    Second paragraph.").expect("definition parses");
+        assert_eq!(body, vec!["First paragraph.", "Second paragraph."]);
+    }
+
+    #[test]
+    fn three_continuation_paragraphs_stay_three_paragraphs() {
+        let (_, body) = parse_definition("[^3]: One.\n\n    Two.\n\n    Three.").expect("definition parses");
+        assert_eq!(body, vec!["One.", "Two.", "Three."]);
+    }
+
+    #[test]
+    fn continuation_markup_survives_inside_its_paragraph() {
+        let (_, body) = parse_definition(
+            "[^4]: Inline **bold**, `code`, and [link](https://example.test).\n\n    Second keeps *stress*.",
+        )
+        .expect("definition parses");
+        assert_eq!(body.len(), 2);
+        assert!(body[0].contains("**bold**"), "{body:?}");
+        assert!(body[0].contains("`code`"), "{body:?}");
+        assert!(body[1].contains("*stress*"), "{body:?}");
+    }
+
+    #[test]
+    fn the_continuation_scan_needs_one_blank_line_and_four_spaces() {
+        let source = "[^1]: First.\n\n    Second.\n\n    Third.\nTail.\n";
+        let (paragraphs, consumed_end) = scan_continuations(source, "[^1]: First.".len());
+        assert_eq!(paragraphs, vec!["Second.", "Third."]);
+        assert!(consumed_end < source.len());
+
+        let inline = "[^1]: First.\n    Not a continuation.\n";
+        let (paragraphs, _) = scan_continuations(inline, "[^1]: First.".len());
+        assert!(paragraphs.is_empty(), "{paragraphs:?}");
     }
 }

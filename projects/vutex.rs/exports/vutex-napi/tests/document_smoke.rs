@@ -70,6 +70,18 @@ fn unknown_format_is_refused_as_a_diagnostic_not_a_path_lookup() {
 }
 
 #[test]
+fn gfm_footnote_definition_keeps_its_continuation_paragraphs() {
+    let source = b"# Notes\n\nBody text.[^1]\n\n[^1]: First paragraph.\n\n    Second paragraph.\n\n    Third paragraph.\n";
+    let (svg, payload) = svg_of("notes.md", ImportFormat::Markdown, source);
+    let first = svg.find("[1] First paragraph.").unwrap_or_else(|| panic!("{svg}"));
+    let second = svg.find("Second paragraph.").unwrap_or_else(|| panic!("{svg}"));
+    let third = svg.find("Third paragraph.").unwrap_or_else(|| panic!("{svg}"));
+    assert!(first < second && second < third, "order first={first} second={second} third={third}");
+    assert_eq!(payload["footnotes"]["definitions"], 1, "{payload}");
+    assert_eq!(payload["footnotes"]["notes"], 1, "{payload}");
+}
+
+#[test]
 fn gfm_footnote_reference_reaches_a_marker_and_an_endnote_body() {
     let (svg, payload) = svg_of(
         "sample.md",

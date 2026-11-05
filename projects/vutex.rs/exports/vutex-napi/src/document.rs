@@ -38,7 +38,7 @@ use vutex_render_svg::render_svg;
 
 use crate::{
     diagram::lower_diagrams,
-    footnote::{FootnoteLowering, lower_footnotes},
+    footnote::{FootnoteLowering, absorb_definition_continuations, lower_footnotes},
     svg_fonts::{embed_body_fonts, embed_html_fonts},
     theme::Theme,
     tikz::lower_tikz_diagrams,
@@ -239,7 +239,7 @@ pub fn parse_document(label: &str, format: ImportFormat, bytes: &[u8]) -> Result
     if format == ImportFormat::Unknown {
         return Err(error(INPUT_FORMAT_UNSUPPORTED, format!("unsupported input format for {label}"), "import", label));
     }
-    let graph = match format {
+    let mut graph = match format {
         ImportFormat::Markdown => text_of(bytes, format, label).and_then(|text| import_markdown_bytes(label, text)),
         ImportFormat::Notedown => text_of(bytes, format, label).and_then(|text| import_notedown_bytes(label, text)),
         ImportFormat::Html => import_html_bytes(label, bytes),
@@ -250,6 +250,14 @@ pub fn parse_document(label: &str, format: ImportFormat, bytes: &[u8]) -> Result
         ImportFormat::Unknown => unreachable!("unknown formats return before the adapter match"),
     }
     .map_err(|failure| error(IMPORT_FAILED, failure.to_string(), "import", label))?;
+    // GFM keeps a definition open over blank lines while its paragraphs stay
+    // indented. The Markdown adapter lowers those paragraphs as code blocks, so
+    // fold them back into the authored definition before anyone lays it out.
+    if format == ImportFormat::Markdown {
+        if let Ok(text) = std::str::from_utf8(bytes) {
+            absorb_definition_continuations(&mut graph, text);
+        }
+    }
     Ok(ParsedDocument { graph, format, diagnostics: Vec::new() })
 }
 
