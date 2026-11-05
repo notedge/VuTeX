@@ -15,10 +15,13 @@ use wasm_bindgen::prelude::*;
 ///
 /// `document.text` resolves the default face through its installed set, so a
 /// host that never installs a face has no default to lay out against. The bytes
-/// come from `document_fonts`, the one place this repository family ships font
-/// binaries, so a WASM build cannot drift from the Node build.
+/// come from this repository's own asset pack, so a WASM build cannot drift
+/// from the Node build.
 fn install_embedded_math_fonts() {
-    document_fonts::install_default_math_font();
+    document_fonts::install_math_fonts(&document_fonts::MathFontPack::new(
+        include_bytes!("../../../fonts/LatinModernMath-Regular.otf"),
+        include_bytes!("../../../fonts/XITSMath-Regular.otf"),
+    ));
 }
 
 fn parse_options(options_json: Option<String>) -> RenderOptions {

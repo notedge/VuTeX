@@ -114,13 +114,12 @@ Design truth lives in the VuTeX Living docs. Implementation follows Notedown's i
 ## Bundled math fonts and licenses
 
 The code is licensed under MPL-2.0 (see [`License.md`](./License.md)). The math
-faces do not live in this repository: the `document-fonts` crate in
-[`document.rs`](https://github.com/notedge/document.rs) ships the binaries and
-their licence texts, and both export crates install them through
-`document_fonts::install_default_math_font()`. Each licence text ships next to
-its font as a `.md` file, because the shared `.gitignore` drops `*.txt`. The
-same crate also ships the body text faces that `document.renderer.pdf` embeds,
-so a formula and a paragraph come from one font source. Font substitution is
+faces live in this repository as the `projects/vutex.rs/fonts/` asset pack, and
+both export crates install them through `document_fonts::install_math_fonts()`
+with the bytes they embed. Each licence text ships next to its font as a `.md`
+file, because the shared `.gitignore` drops `*.txt`. The same pack also carries
+the body text faces that the PDF renderer embeds, so a formula and a paragraph
+come from one font source. Font substitution is
 recorded as `vutex.math.conformance.*`; strict mode fails on a fallback instead
 of silently accepting it.
 

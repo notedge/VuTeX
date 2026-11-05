@@ -524,11 +524,12 @@ mod tests {
     use document_fonts::{BodyFaceStyle, BodyFamily, BodyScript};
 
     fn face(family: BodyFamily, script: BodyScript, style: BodyFaceStyle) -> &'static [u8] {
-        document_fonts::BODY_FACES
+        crate::assets::body_faces()
             .iter()
             .find(|face| face.family == family && face.script == script && face.style == style)
-            .expect("bundled face")
+            .expect("packed face")
             .bytes
+            .as_ref()
     }
 
     fn glyph_body<'a>(font: &'a [u8], directory: &TableDirectory, glyph: u16) -> &'a [u8] {
@@ -597,11 +598,11 @@ mod tests {
     }
 
     #[test]
-    fn every_bundled_face_subset_safely() {
-        for face in document_fonts::BODY_FACES {
-            let directory = parse_directory(face.bytes).expect("bundled directory");
-            assert!(!declares_substitutions(face.bytes, &directory), "{:?} declares GSUB features", face.family);
-            assert!(table(face.bytes, &directory, b"glyf").is_some(), "{:?} is not a glyf face", face.family);
+    fn every_packed_face_subset_safely() {
+        for face in crate::assets::body_faces() {
+            let directory = parse_directory(&face.bytes).expect("packed directory");
+            assert!(!declares_substitutions(&face.bytes, &directory), "{:?} declares GSUB features", face.family);
+            assert!(table(&face.bytes, &directory, b"glyf").is_some(), "{:?} is not a glyf face", face.family);
         }
     }
 

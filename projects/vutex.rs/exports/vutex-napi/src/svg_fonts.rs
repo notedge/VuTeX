@@ -11,8 +11,8 @@
 //! This module closes the gap inside the payload: it names the bundled faces
 //! explicitly and carries their bytes as `@font-face` data URIs, so the payload
 //! is self-contained and paints with the same faces the layout measured. The
-//! faces come from `document_fonts::BODY_FACES`, the single place this family
-//! ships font binaries. Only the characters a document paints are kept, through
+//! faces come from the crate's own [`crate::assets`] pack, the single place this
+//! repository ships font binaries. Only the characters a document paints are kept, through
 //! [`crate::font_subset`], so a Latin page does not carry the CJK faces and a
 //! page pays for the glyphs it uses rather than for the whole face.
 //!
@@ -22,8 +22,9 @@
 
 use std::collections::BTreeSet;
 
-use document_fonts::{BodyFace, BodyFaceStyle, BodyFamily, BodyScript, BODY_FACES};
+use document_fonts::{BodyFace, BodyFaceStyle, BodyFamily, BodyScript};
 
+use crate::assets::body_faces;
 use crate::font_subset::{mapped, subset_font, FacePayload};
 use crate::theme::Theme;
 
@@ -97,7 +98,7 @@ pub fn embed_html_fonts(html: &str, theme: Theme) -> String {
 
 /// Collect every painted character set into one face plan.
 fn build_plan(theme: Theme, runs: Vec<TextRun>) -> FontPlan {
-    let mut sets: Vec<BTreeSet<char>> = vec![BTreeSet::new(); BODY_FACES.len()];
+    let mut sets: Vec<BTreeSet<char>> = vec![BTreeSet::new(); body_faces().len()];
     let mut fallback_needed = false;
     for run in runs {
         let bold = run.weight >= 600;
@@ -109,7 +110,7 @@ fn build_plan(theme: Theme, runs: Vec<TextRun>) -> FontPlan {
             BodyFaceStyle::Regular
         };
         let family = if run.family == "monospace" { BodyFamily::Mono } else { BodyFamily::Serif };
-        let style_face = BODY_FACES
+        let style_face = body_faces()
             .iter()
             .any(|face| face.family == family && face.style == style && face.script != BodyScript::Cjk);
         let mut remaining = run.chars;
@@ -117,8 +118,8 @@ fn build_plan(theme: Theme, runs: Vec<TextRun>) -> FontPlan {
             if remaining.is_empty() {
                 break;
             }
-            let covered = mapped(BODY_FACES[index].bytes, &remaining);
-            if style_face && !covered.is_empty() && BODY_FACES[index].style != style {
+            let covered = mapped(&body_faces()[index].bytes, &remaining);
+            if style_face && !covered.is_empty() && body_faces()[index].style != style {
                 fallback_needed = true;
             }
             remaining.retain(|ch| !covered.contains(ch));
@@ -134,8 +135,8 @@ fn build_plan(theme: Theme, runs: Vec<TextRun>) -> FontPlan {
         if chars.is_empty() {
             continue;
         }
-        let face = &BODY_FACES[index];
-        let bytes = match subset_font(face.bytes, chars) {
+        let face = &body_faces()[index];
+        let bytes = match subset_font(&face.bytes, chars) {
             Some(FacePayload::Subset(subset)) => subset.bytes,
             Some(FacePayload::Full) => face.bytes.to_vec(),
             None => continue,
@@ -144,8 +145,8 @@ fn build_plan(theme: Theme, runs: Vec<TextRun>) -> FontPlan {
         emitted.push((index, bytes));
     }
 
-    let serif = emitted.iter().any(|(index, _)| BODY_FACES[*index].family == BodyFamily::Serif);
-    let mono = emitted.iter().any(|(index, _)| BODY_FACES[*index].family == BodyFamily::Mono);
+    let serif = emitted.iter().any(|(index, _)| body_faces()[*index].family == BodyFamily::Serif);
+    let mono = emitted.iter().any(|(index, _)| body_faces()[*index].family == BodyFamily::Mono);
 
     // A bold or italic run that had to hand characters to the regular face still
     // paints those characters with the same family, because CSS may match the
@@ -155,7 +156,7 @@ fn build_plan(theme: Theme, runs: Vec<TextRun>) -> FontPlan {
     let mut fallback = Vec::new();
     if fallback_needed {
         for (index, bytes) in &emitted {
-            let face = &BODY_FACES[*index];
+            let face = &body_faces()[*index];
             if face.family != BodyFamily::Serif || face.style != BodyFaceStyle::Regular {
                 continue;
             }
@@ -214,7 +215,7 @@ fn build_plan(theme: Theme, runs: Vec<TextRun>) -> FontPlan {
 }
 
 fn cjk_faces(sets: &[BTreeSet<char>]) -> bool {
-    BODY_FACES
+    body_faces()
         .iter()
         .zip(sets.iter())
         .any(|(face, chars)| face.script == BodyScript::Cjk && !chars.is_empty())
@@ -328,7 +329,7 @@ fn decode_entities(text: &str) -> String {
 }
 
 fn face_index(family: BodyFamily, script: BodyScript, style: BodyFaceStyle) -> Option<usize> {
-    BODY_FACES
+    body_faces()
         .iter()
         .position(|face| face.family == family && face.script == script && face.style == style)
 }

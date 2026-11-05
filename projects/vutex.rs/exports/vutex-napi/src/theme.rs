@@ -16,9 +16,11 @@
 //! Both themes embed only bundled faces. No theme falls back to a host CJK
 //! face, so SimSun, SimHei, and Microsoft YaHei never paint a VuTeX page.
 
-use document_fonts::{BodyFaceKey, BodyFaceStyle, BodyFamily, BodyMetrics, BODY_FACES};
+use document_fonts::{BodyFaceKey, BodyFaceStyle, BodyFamily, BodyMetrics};
 use vutex_layout::hint::Margin;
 use vutex_layout::LayoutHint;
+
+use crate::assets::{body_faces, body_metrics};
 
 /// Theme id selected by default.
 pub const BASELINE_ID: &str = "baseline";
@@ -94,7 +96,7 @@ impl Theme {
                 ]
                 .into_iter()
                 .filter_map(|(key, label)| {
-                    face_for(key).map(|face| (key, label.to_string(), face.bytes))
+                    face_for(key).map(|face| (key, label.to_string(), face.bytes.as_ref()))
                 }),
             )),
         }
@@ -108,7 +110,7 @@ impl Theme {
 /// face for its request falls back to the regular file, matching the way CSS
 /// synthesizes an upright bold when only one weight is installed.
 fn face_for(key: BodyFaceKey) -> Option<&'static document_fonts::BodyFace> {
-    BODY_FACES
+    body_faces()
         .iter()
         .find(|face| match (key.family, key.style) {
             (BodyFamily::Serif, BodyFaceStyle::Regular) => {
@@ -144,7 +146,7 @@ impl BodyMeasurements {
     /// Borrow the metrics for a layout pass.
     pub fn get(&self) -> &BodyMetrics {
         match self {
-            Self::Bundled => BodyMetrics::bundled(),
+            Self::Bundled => body_metrics(),
             Self::Owned(metrics) => metrics,
         }
     }

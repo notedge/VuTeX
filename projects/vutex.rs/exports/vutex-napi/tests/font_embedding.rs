@@ -3,8 +3,8 @@
 //! `document-renderer-svg` names generic CSS families, so the host decides which
 //! face paints each run. That face can be wider than the one `document-layout`
 //! measured with, which overlaps runs. These tests pin the payload to the
-//! bundled `document_fonts::BODY_FACES` instead: explicit family names plus the
-//! face bytes, so the painting face is the measured face.
+//! crate asset pack instead: explicit family names plus the face bytes, so the
+//! painting face is the measured face.
 //!
 //! The last test is the regression guard: it fails if any document SVG entry
 //! emits a generic `serif` or `monospace` family or omits `@font-face`.

@@ -16,6 +16,8 @@
 //! returns a process exit code. Command-line behavior lives in the TypeScript
 //! package, which composes these calls.
 
+mod assets;
+
 pub mod diagram;
 pub mod document;
 pub mod font_subset;
@@ -27,7 +29,7 @@ pub mod tikz;
 use std::collections::BTreeSet;
 use std::sync::Mutex;
 
-use document_fonts::{BodyFace, BodyFaceStyle, BodyFamily, BodyScript, BODY_FACES};
+use document_fonts::{BodyFace, BodyFaceStyle, BodyFamily, BodyScript};
 use document_ir::DocumentGraph;
 use napi::bindgen_prelude::Buffer;
 use napi_derive::napi;
@@ -35,9 +37,9 @@ use watex_wasm::{RenderOptions, measure, render, render_mathml, render_svg};
 
 use crate::theme::Theme;
 
-/// Install the embedded math faces once per process.
+/// Install the crate's math faces once per process.
 fn install_embedded_math_fonts() {
-    document_fonts::install_default_math_font();
+    document_fonts::install_math_fonts(&assets::math_pack());
 }
 
 /// PDF bytes plus render diagnostics.
@@ -293,7 +295,7 @@ fn find_face(family: &str, script: &str, style: &str) -> Option<&'static BodyFac
         "italic" => BodyFaceStyle::Italic,
         _ => BodyFaceStyle::Regular,
     };
-    BODY_FACES
+    assets::body_faces()
         .iter()
         .find(|face| face.family == family && face.script == script && face.style == style)
 }

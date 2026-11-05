@@ -331,7 +331,8 @@ pub fn render_display_pdf(
 ) -> Result<PdfPrimitiveOutcome, DiagnosticRecord> {
     let settings = PdfSettings::parse(resources_json);
     let resources = settings.resources();
-    let outcome = render_pdf_with_resources_and_diagnostics(&scene.display, &PdfFontPolicy::Bundled, &resources)
+    let outcome =
+        render_pdf_with_resources_and_diagnostics(&scene.display, &PdfFontPolicy::Provided(crate::assets::body_set()), &resources)
         .map_err(|failure| error(RENDER_FAILED, failure.message, "render", ""))?;
     let diagnostics = outcome
         .diagnostics
