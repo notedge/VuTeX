@@ -140,13 +140,13 @@ nativeCliTest("cli render --json emits the machine payload", async () => {
             const { value, stdout } = await capture(() => runCli(["render", "doc.md", "--json"]));
             assert.equal(value, ExitCode.Ok);
             const payload = JSON.parse(stdout.join("\n")) as {
-                exitCode: number;
                 outputFormat: string;
                 svg: string;
+                diagnostics: Array<{ severity: string }>;
             };
-            assert.equal(payload.exitCode, 0);
             assert.equal(payload.outputFormat, "svg");
             assert.match(payload.svg, /^<svg /);
+            assert.deepEqual(payload.diagnostics, []);
         } finally {
             process.chdir(cwd);
         }

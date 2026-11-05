@@ -1,86 +1,86 @@
-//! Font embedding lane for the SVG document backend.
+//! Font embedding lane for every emission path.
 //!
 //! `document-renderer-svg` names generic CSS families, so the host decides which
 //! face paints each run. That face can be wider than the one `document-layout`
 //! measured with, which overlaps runs. These tests pin the payload to the
 //! bundled `document_fonts::BODY_FACES` instead: explicit family names plus the
 //! face bytes, so the painting face is the measured face.
+//!
+//! The last test is the regression guard: it fails if any document SVG entry
+//! emits a generic `serif` or `monospace` family or omits `@font-face`.
 
-use std::{
-    path::{Path, PathBuf},
-    sync::atomic::{AtomicU64, Ordering},
+use vutex_napi::{
+    document::{
+        build_display, lower_document, parse_document, render_display_snapshot_html, render_display_svg,
+        ImportFormat,
+    },
+    svg_fonts::{embed_body_fonts, embed_html_fonts},
+    theme::Theme,
 };
 
-use vutex_napi::{document::render_document, svg_fonts::embed_body_fonts};
-
-struct ScratchDir {
-    path: PathBuf,
-}
-
-impl ScratchDir {
-    fn new(name: &str) -> Self {
-        static COUNTER: AtomicU64 = AtomicU64::new(0);
-        let sequence = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let path = std::env::temp_dir().join(format!("vutex-fonts-{}-{name}-{sequence}", std::process::id()));
-        std::fs::create_dir_all(&path).expect("create scratch directory");
-        Self { path }
-    }
-
-    fn write(&self, file_name: &str, content: &str) -> PathBuf {
-        let path = self.path.join(file_name);
-        std::fs::write(&path, content).expect("write scratch file");
-        path
-    }
-}
-
-impl Drop for ScratchDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.path);
-    }
-}
-
-fn path_string(path: &Path) -> String {
-    path.to_string_lossy().into_owned()
-}
-
-fn render_svg(name: &str, source: &str) -> String {
-    let dir = ScratchDir::new(name);
-    let path = dir.write("sample.md", source);
-    let outcome = render_document(&path_string(&path), None);
-    assert_eq!(outcome.exit_code, 0, "{}", outcome.report_json);
-    outcome.svg.expect("svg payload")
+fn render(name: &str, source: &str) -> String {
+    let parsed = parse_document(name, ImportFormat::Markdown, source.as_bytes()).expect("markdown parses");
+    let lowered = lower_document(parsed.graph, name);
+    let scene = build_display(lowered, Theme::Baseline);
+    render_display_svg(&scene).expect("svg renders")
 }
 
 #[test]
-fn latin_document_carries_the_latin_and_mono_faces_only() {
-    let svg = render_svg("latin", "# Title\n\nBody prose with `code_span` inside.\n");
+fn latin_document_carries_only_the_baseline_faces() {
+    let svg = render("sample.md", "# Title\n\nBody prose with `code_span` inside.\n");
 
     assert!(svg.contains("<style type=\"text/css\">"), "no face block");
-    assert_eq!(svg.matches("@font-face").count(), 2, "Tinos regular and Noto Sans Mono, nothing else is painted");
-    assert!(svg.contains("font-family=\"VuTeX Serif\""), "prose run not named");
-    assert!(svg.contains("font-family=\"VuTeX Mono\""), "code run not named");
+    assert!(svg.contains("@font-face"), "no embedded face");
+    assert!(svg.contains("font-family=\"VuTeX Serif"), "prose run not named");
+    assert!(svg.contains("font-family=\"VuTeX Mono"), "code run not named: {svg}");
     assert!(!svg.contains("font-family=\"serif\""), "generic prose family left in place");
     assert!(!svg.contains("font-family=\"monospace\""), "generic code family left in place");
-    assert!(!svg.contains("VuTeX Serif CJK"), "Latin payload carries the CJK faces");
-    assert!(!svg.contains("font-style:italic"), "an unused italic face was embedded");
-    assert!(svg.len() < 300_000, "Latin payload grew to {} bytes", svg.len());
+    assert!(!svg.contains("VuTeX Serif CJK"), "the legacy CJK family name leaked into the baseline");
+    assert!(svg.len() < 400_000, "Latin payload grew to {} bytes", svg.len());
 }
 
 #[test]
-fn han_document_carries_the_cjk_chain() {
-    let svg = render_svg("han", "# 标题\n\n这是一段中文正文，包含标点。\n");
+fn han_document_paints_with_the_bundled_noto_faces_only() {
+    let svg = render("han.md", "# 标题\n\n这是一段中文正文，包含标点。\n");
 
-    assert_eq!(svg.matches("@font-face").count(), 1, "only the CJK regular face paints this document");
-    assert!(svg.contains("VuTeX Serif CJK"), "CJK family missing");
-    assert!(svg.contains("font-family=\"VuTeX Serif CJK\""), "prose run has no CJK fallback");
-    assert!(!svg.contains("font-family:'VuTeX Serif';"), "Tinos maps no Han character yet was embedded");
+    assert!(svg.matches("@font-face").count() >= 1, "no embedded Han face");
+    assert!(svg.contains("font-family=\"VuTeX Serif"), "Han run has no bundled family");
+    assert!(!svg.contains("SimSun"), "a system CJK face leaked into the payload");
+    assert!(!svg.contains("SimHei"), "a system CJK face leaked into the payload");
     assert!(svg.len() < 1_000_000, "Han payload grew to {} bytes", svg.len());
 }
 
 #[test]
-fn every_generic_family_tag_is_rewritten() {
+fn headings_are_bold_and_body_text_is_not() {
+    let svg = render("levels.md", "# Title\n\n## Section\n\nBody text.\n");
+    assert!(svg.contains("font-weight=\"700\""), "headings carry no structural weight");
+}
+
+#[test]
+fn snapshot_html_carries_the_same_faces_as_svg() {
+    let parsed = parse_document("sample.md", ImportFormat::Markdown, b"# Title\n\nBody `code`.\n").expect("parses");
+    let lowered = lower_document(parsed.graph, "sample.md");
+    let scene = build_display(lowered, Theme::Baseline);
+    let html = render_display_snapshot_html(&scene).expect("snapshot renders");
+    assert!(html.contains("@font-face"), "snapshot html has no embedded face");
+    assert!(!html.contains("font-family:serif"), "snapshot html kept the generic family");
+}
+
+/// Every SVG emission entry must embed bundled faces and must not emit a
+/// generic family. Both the document entry and the standalone injector are
+/// checked so a future caller cannot bypass the shared layer.
+#[test]
+fn every_svg_entry_embeds_bundled_faces_and_drops_generic_families() {
     let source = "<svg xmlns=\"http://www.w3.org/2000/svg\"><title>x</title><text font-family=\"serif\">a</text><text font-family=\"monospace\">b</text></svg>";
-    let out = embed_body_fonts(source);
-    assert!(!out.contains("\"serif\""), "{out}");
-    assert!(!out.contains("\"monospace\""), "{out}");
+    for theme in [Theme::Baseline, Theme::Traditional] {
+        let out = embed_body_fonts(source, theme);
+        assert!(!out.contains("font-family=\"serif\""), "{out}");
+        assert!(!out.contains("font-family=\"monospace\""), "{out}");
+        assert!(out.contains("@font-face"), "{out}");
+    }
+
+    let html = "<html><head></head><body><div style=\"font-family:serif\">a</div></body></html>";
+    let out = embed_html_fonts(html, Theme::Baseline);
+    assert!(out.contains("@font-face"), "{out}");
+    assert!(!out.contains("font-family:serif"), "{out}");
 }

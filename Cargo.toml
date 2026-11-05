@@ -51,7 +51,7 @@ vutex-presentation = { package = "document-presentation", git = "https://github.
 vutex-render-svg = { package = "document-renderer-svg", git = "https://github.com/notedge/document.rs.git", rev = "a5b7ef7f97827ab8e2d61c9abe991ee7e8b17a4d" }
 vutex-render-html = { package = "document-renderer-html", git = "https://github.com/notedge/document.rs.git", rev = "a5b7ef7f97827ab8e2d61c9abe991ee7e8b17a4d" }
 vutex-render-pdf = { package = "document-renderer-pdf", git = "https://github.com/notedge/document.rs.git", rev = "a5b7ef7f97827ab8e2d61c9abe991ee7e8b17a4d" }
-document-formats = { package = "document-formats", git = "https://github.com/notedge/document.rs.git", rev = "a5b7ef7f97827ab8e2d61c9abe991ee7e8b17a4d", default-features = false, features = ["markdown", "notedown", "html", "tex", "typst"] }
+document-formats = { package = "document-formats", git = "https://github.com/notedge/document.rs.git", rev = "a5b7ef7f97827ab8e2d61c9abe991ee7e8b17a4d", default-features = false, features = ["markdown", "notedown", "html", "tex", "typst", "docx", "epub"] }
 document-ir = { package = "document-ir", git = "https://github.com/notedge/document.rs.git", rev = "a5b7ef7f97827ab8e2d61c9abe991ee7e8b17a4d" }
 plotter-scene = { package = "plotter-scene", git = "https://github.com/notedge/document.rs.git", rev = "a5b7ef7f97827ab8e2d61c9abe991ee7e8b17a4d" }
 plotter-types = { package = "plotter-types", git = "https://github.com/notedge/document.rs.git", rev = "a5b7ef7f97827ab8e2d61c9abe991ee7e8b17a4d" }

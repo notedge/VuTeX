@@ -8,28 +8,15 @@ import { createVuTeXRuntime } from "../src/runtime.js";
 import type { VuTeXBindings } from "../src/types.js";
 
 type FormulaCall = { source: string; optionsJson: string | undefined };
-type RenderCall = { inputPath: string; optionsJson: string | undefined };
+type ParseCall = { label: string; format: string; bytes: Uint8Array };
 
-type FakeOverrides = {
-    renderResponse?: {
-        exitCode: number;
-        outputFormat: string;
-        svg?: string;
-        html?: string;
-        pdf?: Uint8Array;
-        reportJson: string;
-    };
-    inspectResponse?: { inputFormat: string; path: string; reportJson: string };
-    measureResponse?: string;
-    renderFormulaResponse?: string;
-};
-
-function fakeBindings(overrides: FakeOverrides = {}) {
+function fakeBindings(overrides: { measureResponse?: string; renderFormulaResponse?: string } = {}) {
     const calls = {
         measure: [] as FormulaCall[],
         renderFormula: [] as FormulaCall[],
-        render: [] as RenderCall[],
-        inspect: [] as string[],
+        parse: [] as ParseCall[],
+        summarize: [] as string[],
+        reports: [] as string[],
     };
     const bindings: VuTeXBindings = {
         vutexVersion: () => "0.0.0-test",
@@ -43,14 +30,36 @@ function fakeBindings(overrides: FakeOverrides = {}) {
             calls.renderFormula.push({ source, optionsJson });
             return overrides.renderFormulaResponse ?? "{}";
         },
-        inspectDocument: (inputPath) => {
-            calls.inspect.push(inputPath);
-            return overrides.inspectResponse ?? { inputFormat: "markdown", path: inputPath, reportJson: "{}" };
+        parseDocument: (label, format, bytes) => {
+            calls.parse.push({ label, format, bytes });
+            return JSON.stringify({ ok: true, format, graph: { blocks: [] }, diagnostics: [] });
         },
-        renderDocument: (inputPath, optionsJson) => {
-            calls.render.push({ inputPath, optionsJson });
-            return overrides.renderResponse ?? { exitCode: 0, outputFormat: "svg", reportJson: "{}" };
+        lowerDocument: (graphJson) => ({
+            graphJson: () => graphJson,
+            diagnosticsJson: () => "[]",
+            footnotesJson: () => JSON.stringify({ references: 0, definitions: 0, notes: 0 }),
+        }),
+        buildDisplay: () => ({
+            pageCount: () => 1,
+            itemCount: () => 0,
+            themeId: () => "baseline",
+            diagnosticsJson: () => "[]",
+            svg: () => "<svg/>",
+            snapshotHtml: () => "<html/>",
+            pdf: () => ({ pdf: new Uint8Array(), diagnosticsJson: "[]" }),
+        }),
+        buildFlow: () => ({ html: () => "<html/>" }),
+        embedSvgFonts: (svg) => svg,
+        subsetFace: () => null,
+        summarizeDocument: (graphJson) => {
+            calls.summarize.push(graphJson);
+            return JSON.stringify({ blocks: 1 });
         },
+        assembleReport: (operation) => {
+            calls.reports.push(operation);
+            return JSON.stringify({ operation });
+        },
+        themeFacts: () => JSON.stringify({ id: "baseline" }),
     };
     return { bindings, calls };
 }
@@ -70,52 +79,42 @@ test("version passes through the binding version string", () => {
     assert.equal(runtime.version(), "0.0.0-test");
 });
 
-test("render payload: explicit output wins over the manifest document output", () => {
+test("render: explicit output wins over the manifest document output", () => {
     return withTempDir(async (dir) => {
         await writeFile(join(dir, "vutex.toml"), '[document]\noutput = "pdf"\n', "utf8");
-        const { bindings, calls } = fakeBindings();
+        await writeFile(join(dir, "main.md"), "# Title\n", "utf8");
+        const { bindings } = fakeBindings();
         const runtime = createVuTeXRuntime(bindings, { projectRoot: dir });
-        await runtime.render("main.tex", { output: "svg" });
-        const payload = JSON.parse(calls.render[0]?.optionsJson ?? "{}") as Record<string, unknown>;
-        assert.equal(payload.output, "svg");
+        const result = await runtime.render(join(dir, "main.md"), { output: "svg" });
+        assert.equal(result.outputFormat, "svg");
     });
 });
 
-test("render payload: manifest document output and profile and input are forwarded", () => {
+test("render: manifest document input and output are forwarded to the primitives", () => {
     return withTempDir(async (dir) => {
         await writeFile(
             join(dir, "vutex.toml"),
-            '[document]\ninput = "src/main.md"\noutput = "html"\n\n[profile]\nname = "book"\n',
+            '[document]\ninput = "markdown"\noutput = "html"\n\n[profile]\nname = "book"\n',
             "utf8",
         );
+        await writeFile(join(dir, "ignored.tex"), "Hello.\n", "utf8");
         const { bindings, calls } = fakeBindings();
         const runtime = createVuTeXRuntime(bindings, { projectRoot: dir });
-        await runtime.render("ignored.tex");
-        const payload = JSON.parse(calls.render[0]?.optionsJson ?? "{}") as Record<string, unknown>;
-        assert.equal(payload.output, "html");
-        assert.equal(payload.profile, "book");
-        assert.equal(payload.input, "src/main.md");
-        assert.equal(calls.render[0]?.inputPath, "ignored.tex");
+        const result = await runtime.render(join(dir, "ignored.tex"));
+
+        assert.equal(result.outputFormat, "html");
+        assert.equal(calls.parse[0]?.format, "markdown");
+        assert.equal(calls.parse[0]?.label, join(dir, "ignored.tex"));
     });
 });
 
-test("render payload: explicit profile overrides the manifest profile", () => {
+test("render: without a manifest only output defaults to svg", () => {
     return withTempDir(async (dir) => {
-        await writeFile(join(dir, "vutex.toml"), '[profile]\nname = "book"\n', "utf8");
-        const { bindings, calls } = fakeBindings();
+        await writeFile(join(dir, "main.md"), "# Title\n", "utf8");
+        const { bindings } = fakeBindings();
         const runtime = createVuTeXRuntime(bindings, { projectRoot: dir });
-        await runtime.render("main.tex", { profile: "slide" });
-        const payload = JSON.parse(calls.render[0]?.optionsJson ?? "{}") as Record<string, unknown>;
-        assert.equal(payload.profile, "slide");
-    });
-});
-
-test("render payload: without a manifest only output defaults to svg", () => {
-    return withTempDir(async (dir) => {
-        const { bindings, calls } = fakeBindings();
-        const runtime = createVuTeXRuntime(bindings, { projectRoot: dir });
-        await runtime.render("main.tex");
-        assert.equal(calls.render[0]?.optionsJson, '{"output":"svg"}');
+        const result = await runtime.render(join(dir, "main.md"));
+        assert.equal(result.outputFormat, "svg");
     });
 });
 
@@ -155,33 +154,32 @@ test("renderFormula decodes the binding json string into a typed result", () => 
     assert.deepEqual(result, JSON.parse(raw));
 });
 
-test("inspect forwards the binding response and ignores its options", async () => {
-    const reportJson = JSON.stringify({
-        diagnostics: [{ code: "VUTEX_TEST", severity: "info", message: "hello", stage: "inspect" }],
-    });
-    const { bindings, calls } = fakeBindings({
-        inspectResponse: { inputFormat: "markdown", path: "doc.md", reportJson },
-    });
-    const runtime = createVuTeXRuntime(bindings);
+test("inspect parses bytes and summarizes the graph", async () => {
+    await withTempDir(async (dir) => {
+        const inputPath = join(dir, "doc.md");
+        await writeFile(inputPath, "# Title\n", "utf8");
+        const { bindings, calls } = fakeBindings();
+        const runtime = createVuTeXRuntime(bindings);
 
-    const result = await runtime.inspect("doc.md", { input: "other.md" });
+        const result = await runtime.inspect(inputPath);
 
-    assert.equal(calls.inspect[0], "doc.md");
-    assert.equal(result.inputFormat, "markdown");
-    assert.equal(result.path, "doc.md");
-    assert.equal(result.reportJson, reportJson);
-    assert.equal(result.diagnostics.length, 1);
-    assert.equal(result.diagnostics[0]?.code, "VUTEX_TEST");
+        assert.equal(result.inputFormat, "markdown");
+        assert.equal(result.path, inputPath);
+        assert.equal(calls.parse.length, 1);
+        assert.equal(calls.summarize.length, 1);
+        assert.equal(result.diagnostics.length, 0);
+    });
 });
 
-test("malformed report json yields an empty diagnostics array", () => {
-    return withTempDir(async (dir) => {
-        const { bindings } = fakeBindings({
-            renderResponse: { exitCode: 1, outputFormat: "svg", reportJson: "not-json" },
-        });
-        const runtime = createVuTeXRuntime(bindings, { projectRoot: dir });
-        const result = await runtime.render("main.tex");
-        assert.deepEqual(result.diagnostics, []);
+test("inspect reports a missing input without parsing", async () => {
+    await withTempDir(async (dir) => {
+        const { bindings, calls } = fakeBindings();
+        const runtime = createVuTeXRuntime(bindings);
+
+        const result = await runtime.inspect(join(dir, "absent.md"));
+
+        assert.equal(calls.parse.length, 0);
+        assert.equal(result.diagnostics[0]?.code, "VUTEX_INPUT_NOT_FOUND");
     });
 });
 

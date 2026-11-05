@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -14,8 +14,15 @@ const BINDING_FUNCTIONS = [
     "renderFormulaSvg",
     "renderFormulaMathml",
     "renderFormula",
-    "inspectDocument",
-    "renderDocument",
+    "parseDocument",
+    "lowerDocument",
+    "buildDisplay",
+    "buildFlow",
+    "embedSvgFonts",
+    "subsetFace",
+    "summarizeDocument",
+    "assembleReport",
+    "themeFacts",
 ] as const;
 
 const native = loadBindings();
@@ -27,9 +34,11 @@ type FormulaPayload = {
     diagnostics: unknown[];
 };
 
-type ReportPayload = {
-    status?: string;
-    diagnostics?: VuTeXDiagnostic[];
+type ParsedPayload = {
+    ok: boolean;
+    format: string;
+    graph?: unknown;
+    diagnostics: VuTeXDiagnostic[];
 };
 
 async function withTempDir<T>(run: (dir: string) => Promise<T>): Promise<T> {
@@ -48,11 +57,13 @@ function nativeTest(name: string, run: (bindings: VuTeXBindings) => void | Promi
     });
 }
 
-test("loadVuTeXNode exposes the seven documented binding functions", { skip: native ? false : "native bindings unavailable" }, () => {
+test("loadVuTeXNode exposes the documented primitive functions", { skip: native ? false : "native bindings unavailable" }, () => {
     const bindings = loadVuTeXNode();
     for (const name of BINDING_FUNCTIONS) {
         assert.equal(typeof bindings[name], "function");
     }
+    assert.equal("renderDocument" in bindings, false, "the aggregate render export must not return");
+    assert.equal("inspectDocument" in bindings, false, "the path-based inspect export must not return");
 });
 
 test("loadVuTeXNode rejects an unsupported platform key", () => {
@@ -87,53 +98,53 @@ nativeTest("native renderFormula returns a real svg document", (bindings) => {
     assert.equal(typeof payload.metrics.width, "number");
 });
 
-nativeTest("native inspectDocument reports the markdown structure", (bindings) => {
+nativeTest("native parseDocument turns bytes into a graph", (bindings) => {
     return withTempDir(async (dir) => {
         const doc = join(dir, "doc.md");
         await writeFile(doc, "# Title\n\nInline $x^2$ math.\n", "utf8");
-        const response = bindings.inspectDocument(doc);
-        assert.equal(response.inputFormat, "markdown");
-        assert.equal(response.path, doc);
-        const report = JSON.parse(response.reportJson) as ReportPayload;
-        assert.ok(Array.isArray(report.diagnostics));
+        const bytes = await readFile(doc);
+        const payload = JSON.parse(bindings.parseDocument(doc, "markdown", new Uint8Array(bytes))) as ParsedPayload;
+        assert.equal(payload.ok, true);
+        assert.equal(payload.format, "markdown");
+        assert.ok(payload.graph);
+        assert.deepEqual(payload.diagnostics, []);
     });
 });
 
-nativeTest("native renderDocument emits svg for a markdown document", (bindings) => {
+nativeTest("native parseDocument reports an unknown format as data", (bindings) => {
+    const payload = JSON.parse(bindings.parseDocument("doc.bin", "unknown", new Uint8Array([1, 2, 3]))) as ParsedPayload;
+    assert.equal(payload.ok, false);
+    assert.equal(payload.diagnostics[0]?.code, "VUTEX_INPUT_FORMAT_UNSUPPORTED");
+});
+
+nativeTest("native scene emits svg with embedded fonts and no generic family", (bindings) => {
     return withTempDir(async (dir) => {
         const doc = join(dir, "doc.md");
-        await writeFile(doc, "# Title\n\nInline $x^2$ math.\n", "utf8");
-        const response = bindings.renderDocument(doc, JSON.stringify({ output: "svg" }));
-        assert.equal(response.exitCode, 0);
-        assert.equal(response.outputFormat, "svg");
-        assert.ok(response.svg && response.svg.startsWith("<svg "));
-        const report = JSON.parse(response.reportJson) as ReportPayload;
-        assert.equal(report.status, "success");
+        await writeFile(doc, "# Title\n\nHello world with `code`.\n", "utf8");
+        const bytes = await readFile(doc);
+        const parsed = JSON.parse(bindings.parseDocument(doc, "markdown", new Uint8Array(bytes))) as ParsedPayload;
+        assert.ok(parsed.graph);
+        const lowered = bindings.lowerDocument(JSON.stringify(parsed.graph), doc);
+        const scene = bindings.buildDisplay(lowered, "baseline");
+        const svg = scene.svg();
+        assert.match(svg, /^<svg /);
+        assert.ok(svg.includes("@font-face"), "scene svg has no embedded face");
+        assert.equal(svg.includes('font-family="serif"'), false, "scene svg kept a generic family");
+        assert.equal(svg.includes('font-family="monospace"'), false, "scene svg kept a generic family");
+        assert.ok(scene.pageCount() >= 1);
     });
 });
 
-nativeTest("native renderDocument fails with VUTEX_INPUT_NOT_FOUND for a missing path", (bindings) => {
-    return withTempDir(async (dir) => {
-        const missing = join(dir, "nope.md");
-        const response = bindings.renderDocument(missing, JSON.stringify({ output: "svg" }));
-        assert.equal(response.exitCode, 1);
-        const report = JSON.parse(response.reportJson) as ReportPayload;
-        const diagnostic = report.diagnostics?.find((item) => item.code === "VUTEX_INPUT_NOT_FOUND");
-        assert.equal(diagnostic?.severity, "error");
-        assert.equal(diagnostic?.stage, "render");
-        assert.match(diagnostic?.message ?? "", /input path does not exist/);
-    });
-});
-
-nativeTest("native renderDocument fails with VUTEX_OUTPUT_FORMAT_UNSUPPORTED for a bogus format", (bindings) => {
+nativeTest("native flow emits html with embedded fonts", (bindings) => {
     return withTempDir(async (dir) => {
         const doc = join(dir, "doc.md");
-        await writeFile(doc, "# Title\n", "utf8");
-        const response = bindings.renderDocument(doc, JSON.stringify({ output: "bogus" }));
-        assert.equal(response.exitCode, 1);
-        const report = JSON.parse(response.reportJson) as ReportPayload;
-        const diagnostic = report.diagnostics?.find((item) => item.code === "VUTEX_OUTPUT_FORMAT_UNSUPPORTED");
-        assert.equal(diagnostic?.severity, "error");
-        assert.match(diagnostic?.message ?? "", /unsupported output format: bogus/);
+        await writeFile(doc, "# Title\n\nHello world.\n", "utf8");
+        const bytes = await readFile(doc);
+        const parsed = JSON.parse(bindings.parseDocument(doc, "markdown", new Uint8Array(bytes))) as ParsedPayload;
+        assert.ok(parsed.graph);
+        const flow = bindings.buildFlow(JSON.stringify(parsed.graph), "baseline");
+        const html = flow.html();
+        assert.ok(html.includes("@font-face"));
+        assert.equal(html.includes("font-family:serif"), false);
     });
 });

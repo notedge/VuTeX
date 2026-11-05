@@ -1,26 +1,11 @@
 import { createRequire } from "node:module";
 
-import type { VuTeXBindings } from "../types.js";
+import type { LoweredDocumentHandle, DisplaySceneHandle, FlowSceneHandle, VuTeXBindings } from "../types.js";
 
-type NativeBinding = {
-    vutexVersion: () => string;
-    measureFormula: (source: string, optionsJson?: string) => string;
-    renderFormulaSvg: (source: string, optionsJson?: string) => string;
-    renderFormulaMathml: (source: string, optionsJson?: string) => string;
-    renderFormula: (source: string, optionsJson?: string) => string;
-    inspectDocument: (inputPath: string) => {
-        inputFormat: string;
-        path: string;
-        reportJson: string;
-    };
-    renderDocument: (inputPath: string, optionsJson?: string) => {
-        exitCode: number;
-        outputFormat: string;
-        svg?: string;
-        html?: string;
-        pdf?: Uint8Array;
-        reportJson: string;
-    };
+type NativeBinding = VuTeXBindings & {
+    lowerDocument: (graphJson: string, label: string) => LoweredDocumentHandle;
+    buildDisplay: (lowered: LoweredDocumentHandle, theme?: string) => DisplaySceneHandle;
+    buildFlow: (graphJson: string, theme?: string) => FlowSceneHandle;
 };
 
 const PLATFORM_PACKAGES: Record<string, string> = {
@@ -46,7 +31,15 @@ export function loadVuTeXNode(): VuTeXBindings {
         renderFormulaSvg: (source, optionsJson) => binding.renderFormulaSvg(source, optionsJson),
         renderFormulaMathml: (source, optionsJson) => binding.renderFormulaMathml(source, optionsJson),
         renderFormula: (source, optionsJson) => binding.renderFormula(source, optionsJson),
-        inspectDocument: (inputPath) => binding.inspectDocument(inputPath),
-        renderDocument: (inputPath, optionsJson) => binding.renderDocument(inputPath, optionsJson),
+        parseDocument: (label, format, bytes) => binding.parseDocument(label, format, bytes),
+        lowerDocument: (graphJson, label) => binding.lowerDocument(graphJson, label),
+        buildDisplay: (lowered, theme) => binding.buildDisplay(lowered, theme),
+        buildFlow: (graphJson, theme) => binding.buildFlow(graphJson, theme),
+        embedSvgFonts: (svg, theme) => binding.embedSvgFonts(svg, theme),
+        subsetFace: (family, script, style, chars) => binding.subsetFace(family, script, style, chars),
+        summarizeDocument: (graphJson) => binding.summarizeDocument(graphJson),
+        assembleReport: (operation, inputsJson, diagnosticsJson, outputJson, extraJson) =>
+            binding.assembleReport(operation, inputsJson, diagnosticsJson, outputJson, extraJson),
+        themeFacts: (theme) => binding.themeFacts(theme),
     };
 }

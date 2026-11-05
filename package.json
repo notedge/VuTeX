@@ -6,7 +6,8 @@
     "license": "MPL-2.0",
     "scripts": {
         "check": "cargo check --workspace",
-        "test": "cargo test --workspace && pnpm -r --if-present run test",
+        "check:boundary": "node scripts/ci/check-vutex-boundary.mjs",
+        "test": "cargo test --workspace && node scripts/ci/check-vutex-boundary.mjs && pnpm -r --if-present run test",
         "fmt": "cargo fmt --all",
         "build:wasm": "node scripts/build-wasm.mjs",
         "build:napi": "node scripts/build-napi.mjs",

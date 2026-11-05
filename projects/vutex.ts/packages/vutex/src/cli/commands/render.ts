@@ -31,6 +31,7 @@ export function registerRenderCommand(cli: Cli): void {
         .option("-o, --output <format>", "cli.opt.output")
         .option("--profile <name>", "cli.opt.profile")
         .option("--input <format>", "cli.opt.input-format")
+        .option("--theme <name>", "cli.opt.theme")
         .option("--json", "cli.opt.json")
         .action(async (options: ParsedOptions) => {
             const inputPath = options._[0];
@@ -43,6 +44,7 @@ export function registerRenderCommand(cli: Cli): void {
                 output: typeof options.output === "string" ? options.output : undefined,
                 profile: typeof options.profile === "string" ? options.profile : undefined,
                 input: typeof options.input === "string" ? options.input : undefined,
+                theme: typeof options.theme === "string" ? options.theme : undefined,
             });
 
             const pdf = result.outputFormat === "pdf" ? result.pdf : undefined;
@@ -63,6 +65,8 @@ export function registerRenderCommand(cli: Cli): void {
                 presentDiagnostics(result.diagnostics, options.json === true);
             }
 
-            return result.exitCode === 0 ? ExitCode.Ok : ExitCode.ActionFailed;
+            return result.diagnostics.some((item) => item.severity === "error")
+                ? ExitCode.ActionFailed
+                : ExitCode.Ok;
         });
 }

@@ -1,63 +1,83 @@
-//! Document pipeline: import, layout, presentation lowering, and rendering.
+//! Fine-grained document primitives shared by every host surface.
 //!
-//! The Node binding is a thin wrapper around this module so the whole
-//! `import -> layout -> presentation -> output` chain stays testable as plain
-//! Rust.
+//! The Node binding and the TypeScript CLI only orchestrate these calls. Each
+//! function takes data in and returns data out:
+//!
+//! * [`parse_document`] turns source bytes plus an explicit format into a
+//!   document graph.
+//! * [`lower_document`] resolves diagram and footnote nodes into a layout input.
+//! * [`build_display`] breaks the lowered graph into pages and keeps the scene
+//!   in memory for the emission primitives.
+//! * [`render_display_svg`], [`render_display_snapshot_html`],
+//!   [`render_flow_html`], and [`render_display_pdf`] each emit one format and
+//!   embed the bundled fonts themselves.
+//! * [`summarize_document`] and [`assemble_report`] build report payloads.
+//!
+//! No primitive reads an input path, writes an output file, prints a message,
+//! or returns an exit code. Paths are only labels used in diagnostics.
 
-use std::{
-    collections::BTreeMap,
-    path::{Path, PathBuf},
-};
+use std::collections::BTreeMap;
+use std::path::PathBuf;
 
-use document_formats::{
-    FormatError,
-    import::{
-        html::import_html_bytes, markdown::import_markdown, notedown::import_notedown, tex::import_tex, typst::import_typst,
-    },
+use document_formats::FormatError;
+use document_formats::import::{
+    docx::import_docx_bytes, epub::import_epub_bytes, html::import_html_bytes,
+    markdown::import_markdown_bytes, notedown::import_notedown_bytes, tex::import_tex_bytes,
+    typst::import_typst_bytes,
 };
 use document_ir::{Block, DocumentGraph};
 use serde::{Deserialize, Serialize};
 use vutex_compose::{Diagnostic as RenderDiagnostic, Severity};
-use vutex_layout::{LayoutHint, document::layout_with_diagnostics};
-use vutex_presentation::builder::{build_display_presentation, build_flow_presentation};
+use vutex_layout::{Diagrams, layout_with_metrics};
+use vutex_presentation::{
+    DisplayPresentation, FlowPresentation, build_display_presentation, build_flow_presentation,
+};
 use vutex_render_html::{render_html_reflow, render_html_snapshot};
 use vutex_render_pdf::{PdfFontPolicy, PdfResources, render_pdf_with_resources_and_diagnostics};
 use vutex_render_svg::render_svg;
 
-use crate::{diagram::lower_diagrams, footnote::lower_footnotes, tikz::lower_tikz_diagrams};
+use crate::{
+    diagram::lower_diagrams,
+    footnote::{FootnoteLowering, lower_footnotes},
+    svg_fonts::{embed_body_fonts, embed_html_fonts},
+    theme::Theme,
+    tikz::lower_tikz_diagrams,
+};
 
 /// Report schema version stamped on every report payload.
 pub const REPORT_SCHEMA_VERSION: &str = "vutex.report/v0";
-/// Diagnostic code for a missing input path.
-pub const INPUT_NOT_FOUND: &str = "VUTEX_INPUT_NOT_FOUND";
 /// Diagnostic code for an import format that has no adapter.
 pub const INPUT_FORMAT_UNSUPPORTED: &str = "VUTEX_INPUT_FORMAT_UNSUPPORTED";
-/// Diagnostic code for an output format the pipeline cannot emit.
-pub const OUTPUT_FORMAT_UNSUPPORTED: &str = "VUTEX_OUTPUT_FORMAT_UNSUPPORTED";
 /// Diagnostic code for a failed import.
 pub const IMPORT_FAILED: &str = "VUTEX_IMPORT_FAILED";
 /// Diagnostic code for a failed render.
 pub const RENDER_FAILED: &str = "VUTEX_RENDER_FAILED";
+/// Diagnostic code for an input whose bytes are not valid UTF-8 text.
+pub const INPUT_TEXT_INVALID: &str = "VUTEX_INPUT_TEXT_INVALID";
 
-/// Import format resolved from the caller override or the path extension.
+/// Import format resolved from the caller or the path extension.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ImportFormat {
     /// Markdown source text.
     Markdown,
     /// Notedown source text.
     Notedown,
-    /// HTML source text.
+    /// HTML source text or file.
     Html,
     /// TeX/LaTeX source text.
     Tex,
     /// Typst source text.
     Typst,
+    /// Office Open XML WordprocessingML package.
+    Docx,
+    /// EPUB OCF package.
+    Epub,
     /// No supported format could be resolved.
     Unknown,
 }
 
 impl ImportFormat {
-    /// Format id written into `inputs[].format`.
+    /// Format id written into `inputs[].format` and selected by callers.
     pub fn id(self) -> &'static str {
         match self {
             Self::Markdown => "markdown",
@@ -65,6 +85,8 @@ impl ImportFormat {
             Self::Html => "html",
             Self::Tex => "tex",
             Self::Typst => "typst",
+            Self::Docx => "docx",
+            Self::Epub => "epub",
             Self::Unknown => "unknown",
         }
     }
@@ -77,127 +99,30 @@ impl ImportFormat {
             "html" | "htm" => Self::Html,
             "tex" | "latex" | "ltx" => Self::Tex,
             "typst" | "typ" => Self::Typst,
+            "docx" => Self::Docx,
+            "epub" => Self::Epub,
             _ => Self::Unknown,
         }
     }
 
     /// Infer the format from the input path extension.
     pub fn from_path(path: &str) -> Self {
-        let extension = Path::new(path).extension().and_then(|value| value.to_str()).unwrap_or("").to_ascii_lowercase();
+        let extension = std::path::Path::new(path)
+            .extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
         match extension.as_str() {
             "md" | "markdown" => Self::Markdown,
             "nd" | "notedown" => Self::Notedown,
             "html" | "htm" => Self::Html,
             "tex" | "latex" | "ltx" => Self::Tex,
             "typst" | "typ" => Self::Typst,
+            "docx" => Self::Docx,
+            "epub" => Self::Epub,
             _ => Self::Unknown,
         }
     }
-}
-
-/// Fixed output format selected for a render request.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum OutputFormat {
-    /// One stacked SVG document.
-    Svg,
-    /// Semantic reflow HTML.
-    Html,
-    /// Fixed-geometry snapshot HTML.
-    Snapshot,
-    /// Paginated PDF.
-    Pdf,
-}
-
-impl OutputFormat {
-    /// Resolve an output format id, returning `None` when unsupported.
-    pub fn from_option(value: &str) -> Option<Self> {
-        match value.trim().to_ascii_lowercase().as_str() {
-            "svg" => Some(Self::Svg),
-            "html" => Some(Self::Html),
-            "snapshot" => Some(Self::Snapshot),
-            "pdf" => Some(Self::Pdf),
-            _ => None,
-        }
-    }
-
-    /// Canonical format id written into the response and report.
-    pub fn id(self) -> &'static str {
-        match self {
-            Self::Svg => "svg",
-            Self::Html => "html",
-            Self::Snapshot => "snapshot",
-            Self::Pdf => "pdf",
-        }
-    }
-}
-
-/// Render options decoded from the `options_json` payload.
-#[derive(Debug, Default, Deserialize)]
-pub struct RenderOptions {
-    /// Requested output format id.
-    pub output: Option<String>,
-    /// Requested layout profile name, accepted for forward compatibility.
-    pub profile: Option<String>,
-    /// Import format override.
-    pub input: Option<String>,
-    /// Image payloads the host already fetched, keyed by source string.
-    ///
-    /// Each value is base64, either bare or wrapped in a `data:` URI. The key is
-    /// matched verbatim against the source a document carries, so an `https://…`
-    /// reference embeds without the renderer touching the network. A value that
-    /// is not a PNG or JPEG falls back to the placeholder, and a source present
-    /// here never reaches the filesystem.
-    pub resources: Option<BTreeMap<String, String>>,
-    /// Base directory for relative image sources.
-    ///
-    /// Defaults to the input document's parent directory, so a Markdown file
-    /// that references `figure.png` finds its sibling image even when the
-    /// process runs from another directory.
-    pub base_dir: Option<String>,
-    /// Optional PDF font policy override: `base14only`, `discover` (default).
-    ///
-    /// Exposed mainly for testing and advanced hosts that want to cap PDF size
-    /// or force degraded output for charset diagnostics. Unrecognised values
-    /// fall back to `discover`.
-    pub font_policy: Option<String>,
-}
-
-impl RenderOptions {
-    /// Decode options JSON; malformed or empty payloads fall back to defaults.
-    pub fn parse(raw: Option<&str>) -> Self {
-        match raw {
-            Some(json) if !json.trim().is_empty() => serde_json::from_str(json).unwrap_or_default(),
-            _ => Self::default(),
-        }
-    }
-}
-
-/// Render outcome mapped into the Node-API response by the binding.
-#[derive(Debug)]
-pub struct RenderOutcome {
-    /// Process exit code; zero means success.
-    pub exit_code: u32,
-    /// Resolved output format id.
-    pub output_format: String,
-    /// SVG payload for `svg` output.
-    pub svg: Option<String>,
-    /// HTML payload for `html` and `snapshot` output.
-    pub html: Option<String>,
-    /// PDF bytes for `pdf` output.
-    pub pdf: Option<Vec<u8>>,
-    /// Serialized render report JSON.
-    pub report_json: String,
-}
-
-/// Inspect outcome mapped into the Node-API response by the binding.
-#[derive(Debug)]
-pub struct InspectOutcome {
-    /// Resolved input format id.
-    pub input_format: String,
-    /// Input path that was inspected.
-    pub path: String,
-    /// Serialized inspect report JSON.
-    pub report_json: String,
 }
 
 /// Byte range inside the input source that a diagnostic refers to.
@@ -213,7 +138,7 @@ pub struct DiagnosticSpan {
 }
 
 /// Diagnostic record serialized into a report payload.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct DiagnosticRecord {
     /// Stable diagnostic code.
     pub code: String,
@@ -230,224 +155,348 @@ pub struct DiagnosticRecord {
     pub span: Option<DiagnosticSpan>,
 }
 
-/// Import a document and render it into SVG, reflow HTML, snapshot HTML, or PDF.
-pub fn render_document(input_path: &str, options_json: Option<&str>) -> RenderOutcome {
-    let options = RenderOptions::parse(options_json);
-    let requested =
-        options.output.as_deref().map(str::trim).filter(|value| !value.is_empty()).unwrap_or("svg").to_ascii_lowercase();
-    let import_format = match options.input.as_deref() {
-        Some(value) => ImportFormat::from_option(value),
-        None => ImportFormat::from_path(input_path),
-    };
-    let format_label = import_format.id();
+/// Result of parsing source bytes into the document IR.
+#[derive(Debug)]
+pub struct ParsedDocument {
+    /// Imported document graph.
+    pub graph: DocumentGraph,
+    /// Resolved format.
+    pub format: ImportFormat,
+    /// Diagnostics raised while importing.
+    pub diagnostics: Vec<DiagnosticRecord>,
+}
 
-    let Some(output_format) = OutputFormat::from_option(&requested)
-    else {
-        let record = error(OUTPUT_FORMAT_UNSUPPORTED, format!("unsupported output format: {requested}"), "render", input_path);
-        return render_failure(input_path, requested, format_label, record);
-    };
+/// Result of lowering diagrams and footnotes into layout input.
+pub struct LoweredDocument {
+    /// Graph whose footnote references and definitions are projected.
+    pub graph: DocumentGraph,
+    /// Resolved diagram scenes.
+    pub diagrams: Diagrams,
+    /// Footnote counts written into the report.
+    pub footnotes: FootnoteCounts,
+    /// Diagnostics raised while lowering.
+    pub diagnostics: Vec<DiagnosticRecord>,
+}
 
-    if !Path::new(input_path).exists() {
-        let record = error(INPUT_NOT_FOUND, format!("input path does not exist: {input_path}"), "render", input_path);
-        return render_failure(input_path, output_format.id().to_string(), format_label, record);
+/// Footnote counts carried by the report.
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct FootnoteCounts {
+    /// Number of references the contract carried.
+    pub references: usize,
+    /// Number of authored definitions the contract carried.
+    pub definitions: usize,
+    /// Number of notes that reached the endnote area.
+    pub notes: usize,
+}
+
+impl From<&FootnoteLowering> for FootnoteCounts {
+    fn from(lowering: &FootnoteLowering) -> Self {
+        Self { references: lowering.references, definitions: lowering.definitions, notes: lowering.notes }
     }
+}
 
-    if import_format == ImportFormat::Unknown {
-        let record = error(
-            INPUT_FORMAT_UNSUPPORTED,
-            unsupported_input_message(input_path, options.input.as_deref()),
-            "import",
-            input_path,
-        );
-        return render_failure(input_path, output_format.id().to_string(), format_label, record);
+/// Paginated display scene with diagnostics.
+pub struct DisplayScene {
+    /// Pages the layout pass produced.
+    pub display: DisplayPresentation,
+    /// Typography theme the scene was laid out and paints with.
+    pub theme: Theme,
+    /// Diagnostics raised while lowering and laying out.
+    pub diagnostics: Vec<DiagnosticRecord>,
+}
+
+/// Semantic reflow scene with the theme it paints with.
+pub struct FlowScene {
+    /// Reflow blocks in document order.
+    pub flow: FlowPresentation,
+    /// Typography theme the payload paints with.
+    pub theme: Theme,
+}
+
+/// Typography and font facts a host can show without rendering.
+#[derive(Debug, Serialize)]
+pub struct ThemeFacts {
+    /// Theme id.
+    pub id: &'static str,
+    /// Body text size in points.
+    pub base_font_size: f64,
+    /// Line box as a multiple of the body size.
+    pub line_height: f64,
+    /// Left and right margin in points.
+    pub side_margin: f64,
+    /// Usable width in points.
+    pub content_width: f64,
+    /// Latin reading face.
+    pub latin_family: &'static str,
+    /// Han reading face.
+    pub cjk_family: &'static str,
+    /// Fixed-advance face.
+    pub mono_family: &'static str,
+}
+
+/// Parse source bytes with the resolved format adapter.
+pub fn parse_document(label: &str, format: ImportFormat, bytes: &[u8]) -> Result<ParsedDocument, DiagnosticRecord> {
+    if format == ImportFormat::Unknown {
+        return Err(error(INPUT_FORMAT_UNSUPPORTED, format!("unsupported input format for {label}"), "import", label));
     }
-
-    let graph = match import_document(input_path, import_format) {
-        Ok(graph) => graph,
-        Err(failure) => {
-            let record = error(IMPORT_FAILED, failure.to_string(), "import", input_path);
-            return render_failure(input_path, output_format.id().to_string(), format_label, record);
-        }
-    };
-
-    let mut diagrams = lower_diagrams(&graph, input_path);
-    lower_tikz_diagrams(&graph, input_path, &mut diagrams);
-    let footnotes = lower_footnotes(&graph, input_path);
-    diagrams.diagnostics.extend(footnotes.diagnostics);
-    let (plan, layout_diagnostics) = layout_with_diagnostics(&footnotes.graph, &LayoutHint::a4(), &diagrams.diagrams);
-    for diagnostic in &layout_diagnostics {
-        diagrams.diagnostics.push(layout_diagnostic_to_record(diagnostic, input_path));
+    let graph = match format {
+        ImportFormat::Markdown => text_of(bytes, format, label).and_then(|text| import_markdown_bytes(label, text)),
+        ImportFormat::Notedown => text_of(bytes, format, label).and_then(|text| import_notedown_bytes(label, text)),
+        ImportFormat::Html => import_html_bytes(label, bytes),
+        ImportFormat::Tex => text_of(bytes, format, label).and_then(|text| import_tex_bytes(label, text)),
+        ImportFormat::Typst => text_of(bytes, format, label).and_then(|text| import_typst_bytes(label, text)),
+        ImportFormat::Docx => import_docx_bytes(label, bytes),
+        ImportFormat::Epub => import_epub_bytes(label, bytes),
+        ImportFormat::Unknown => unreachable!("unknown formats return before the adapter match"),
     }
+    .map_err(|failure| error(IMPORT_FAILED, failure.to_string(), "import", label))?;
+    Ok(ParsedDocument { graph, format, diagnostics: Vec::new() })
+}
+
+fn text_of<'a>(bytes: &'a [u8], format: ImportFormat, label: &str) -> Result<&'a str, FormatError> {
+    std::str::from_utf8(bytes).map_err(|failure| {
+        FormatError::invalid_input(format!("{label} is not valid UTF-8 {} text: {failure}", format.id()))
+    })
+}
+
+/// Lower every diagram and footnote in the graph.
+pub fn lower_document(graph: DocumentGraph, label: &str) -> LoweredDocument {
+    let mut diagrams = lower_diagrams(&graph, label);
+    lower_tikz_diagrams(&graph, label, &mut diagrams);
+    let footnotes = lower_footnotes(&graph, label);
+    let counts = FootnoteCounts::from(&footnotes);
+    let FootnoteLowering { graph, diagnostics: footnote_diagnostics, .. } = footnotes;
+    let mut diagnostics = diagrams.diagnostics;
+    diagnostics.extend(footnote_diagnostics);
+    LoweredDocument { graph, diagrams: diagrams.diagrams, footnotes: counts, diagnostics }
+}
+
+/// Break the lowered graph into pages under the selected theme.
+pub fn build_display(lowered: LoweredDocument, theme: Theme) -> DisplayScene {
+    let hint = theme.layout_hint();
+    let measurements = theme.body_metrics();
+    let (plan, layout_diagnostics) =
+        layout_with_metrics(&lowered.graph, &hint, &lowered.diagrams, measurements.get());
     let display = build_display_presentation(&plan);
-    let pages = display.pages.len();
-    let items = display.pages.iter().map(|page| page.items.len()).sum::<usize>();
-
-    let (svg, html, pdf) = match output_format {
-        OutputFormat::Svg => match render_svg(&display) {
-            Ok(svg) => (Some(crate::svg_fonts::embed_body_fonts(&svg)), None, None),
-            Err(failure) => {
-                let record = error(RENDER_FAILED, failure.message, "render", input_path);
-                return render_failure(input_path, output_format.id().to_string(), format_label, record);
-            }
-        },
-        OutputFormat::Html => {
-            let flow = build_flow_presentation(&footnotes.graph);
-            match render_html_reflow(&flow) {
-                Ok(html) => (None, Some(html), None),
-                Err(failure) => {
-                    let record = error(RENDER_FAILED, failure.message, "render", input_path);
-                    return render_failure(input_path, output_format.id().to_string(), format_label, record);
-                }
-            }
-        }
-        OutputFormat::Snapshot => match render_html_snapshot(&display) {
-            Ok(html) => (None, Some(html), None),
-            Err(failure) => {
-                let record = error(RENDER_FAILED, failure.message, "render", input_path);
-                return render_failure(input_path, output_format.id().to_string(), format_label, record);
-            }
-        },
-        OutputFormat::Pdf => {
-            let resources = pdf_resources(input_path, &options);
-            let policy = pdf_font_policy(&options);
-            match render_pdf_with_resources_and_diagnostics(&display, &policy, &resources) {
-                Ok(outcome) => {
-                    for d in outcome.diagnostics {
-                        diagrams.diagnostics.push(render_diagnostic_to_record(&d, input_path));
-                    }
-                    (None, None, Some(outcome.pdf))
-                }
-                Err(failure) => {
-                    let record = error(RENDER_FAILED, failure.message, "render", input_path);
-                    return render_failure(input_path, output_format.id().to_string(), format_label, record);
-                }
-            }
-        }
-    };
-
-    let report_json = serde_json::json!({
-        "schema_version": REPORT_SCHEMA_VERSION,
-        "operation": "render",
-        "status": "success",
-        "inputs": [{ "path": input_path, "format": format_label }],
-        "diagnostics": diagrams.diagnostics,
-        "output": { "format": output_format.id(), "pages": pages, "items": items },
-        "footnotes": {
-            "references": footnotes.references,
-            "definitions": footnotes.definitions,
-            "notes": footnotes.notes,
-        },
-    })
-    .to_string();
-
-    RenderOutcome { exit_code: 0, output_format: output_format.id().to_string(), svg, html, pdf, report_json }
+    let mut diagnostics = lowered.diagnostics;
+    diagnostics.extend(layout_diagnostics.iter().map(|diagnostic| stage_record(diagnostic, "layout", None)));
+    DisplayScene { display, theme, diagnostics }
 }
 
-/// Import a document and report its structural summary.
-pub fn inspect_document(input_path: &str) -> InspectOutcome {
-    let import_format = ImportFormat::from_path(input_path);
-    let format_label = import_format.id();
-
-    if !Path::new(input_path).exists() {
-        let record = error(INPUT_NOT_FOUND, format!("input path does not exist: {input_path}"), "inspect", input_path);
-        return InspectOutcome {
-            input_format: format_label.to_string(),
-            path: input_path.to_string(),
-            report_json: failure_report("inspect", input_path, format_label, record),
-        };
-    }
-
-    if import_format == ImportFormat::Unknown {
-        let record = error(INPUT_FORMAT_UNSUPPORTED, unsupported_input_message(input_path, None), "import", input_path);
-        return InspectOutcome {
-            input_format: format_label.to_string(),
-            path: input_path.to_string(),
-            report_json: failure_report("inspect", input_path, format_label, record),
-        };
-    }
-
-    let graph = match import_document(input_path, import_format) {
-        Ok(graph) => graph,
-        Err(failure) => {
-            let record = error(IMPORT_FAILED, failure.to_string(), "import", input_path);
-            return InspectOutcome {
-                input_format: format_label.to_string(),
-                path: input_path.to_string(),
-                report_json: failure_report("inspect", input_path, format_label, record),
-            };
-        }
-    };
-
-    let report_json = serde_json::json!({
-        "schema_version": REPORT_SCHEMA_VERSION,
-        "operation": "inspect",
-        "status": "success",
-        "inputs": [{ "path": input_path, "format": format_label }],
-        "diagnostics": Vec::<DiagnosticRecord>::new(),
-        "document": summarize_document(&graph),
-    })
-    .to_string();
-
-    InspectOutcome { input_format: format_label.to_string(), path: input_path.to_string(), report_json }
+/// Build the semantic reflow scene for HTML output.
+pub fn build_flow(graph: &DocumentGraph, theme: Theme) -> FlowScene {
+    FlowScene { flow: build_flow_presentation(graph), theme }
 }
 
-/// Import one document file with the resolved format adapter.
-fn import_document(input_path: &str, format: ImportFormat) -> Result<DocumentGraph, FormatError> {
-    let path = Path::new(input_path);
-    match format {
-        ImportFormat::Markdown => import_markdown(path),
-        ImportFormat::Notedown => import_notedown(path),
-        ImportFormat::Html => {
-            let bytes = std::fs::read(path)
-                .map_err(|error| FormatError::invalid_input(format!("failed to read {}: {error}", path.display())))?;
-            import_html_bytes(&path.display().to_string(), &bytes)
-        }
-        ImportFormat::Tex => import_tex(path),
-        ImportFormat::Typst => import_typst(path),
-        ImportFormat::Unknown => Err(FormatError::invalid_input(format!("unsupported input format for {}", path.display()))),
-    }
-}
-
-/// Message for an unsupported import format, naming the override when present.
-fn unsupported_input_message(input_path: &str, override_value: Option<&str>) -> String {
-    match override_value {
-        Some(value) => format!("unsupported input format `{value}` for path: {input_path}"),
-        None => format!("inferred input format from path extension is not supported: {input_path}"),
-    }
-}
-
-/// Build the PDF image resource context for one render request.
+/// Emit a display scene as SVG bytes with the bundled fonts embedded.
 ///
-/// An explicit `base_dir` wins, otherwise relative sources resolve against the
-/// input document's parent directory. A payload that is not valid base64 is
-/// still registered for its source, so the slot falls back to the placeholder
-/// instead of the renderer reading the filesystem for a source the host claimed.
-fn pdf_resources(input_path: &str, options: &RenderOptions) -> PdfResources {
-    let configured = options.base_dir.as_deref().map(str::trim).filter(|value| !value.is_empty()).map(PathBuf::from);
-    let base_dir = configured
-        .or_else(|| Path::new(input_path).parent().filter(|parent| !parent.as_os_str().is_empty()).map(Path::to_path_buf));
-    let mut resources = PdfResources::new();
-    if let Some(base_dir) = base_dir {
-        resources = resources.with_base_dir(base_dir);
-    }
-    if let Some(supplied) = &options.resources {
-        for (source, payload) in supplied {
-            resources = resources.with_supplied(source.clone(), decode_payload(payload).unwrap_or_default());
-        }
-    }
-    resources
+/// This is the only document-to-SVG path in the repository. Font embedding
+/// happens here, so no caller can emit SVG without it.
+pub fn render_display_svg(scene: &DisplayScene) -> Result<String, DiagnosticRecord> {
+    let svg = render_svg(&scene.display).map_err(|failure| {
+        error(RENDER_FAILED, failure.message, "render", "")
+    })?;
+    Ok(embed_body_fonts(&svg, scene.theme))
 }
 
-/// Resolve the PDF font policy from the caller-supplied option.
+/// Emit a display scene as fixed-geometry snapshot HTML with bundled fonts.
+pub fn render_display_snapshot_html(scene: &DisplayScene) -> Result<String, DiagnosticRecord> {
+    let html = render_html_snapshot(&scene.display)
+        .map_err(|failure| error(RENDER_FAILED, failure.message, "render", ""))?;
+    Ok(embed_html_fonts(&html, scene.theme))
+}
+
+/// Emit a flow scene as reflow HTML with bundled fonts.
+pub fn render_flow_html(scene: &FlowScene) -> Result<String, DiagnosticRecord> {
+    let html = render_html_reflow(&scene.flow)
+        .map_err(|failure| error(RENDER_FAILED, failure.message, "render", ""))?;
+    Ok(embed_html_fonts(&html, scene.theme))
+}
+
+/// Emit a display scene as PDF bytes.
 ///
-/// `bundled` is the default: a delivered PDF must not depend on the faces the
-/// reader happens to have installed. `discover` keeps the system-font probe and
-/// `base14only` keeps a file that references no font program.
-fn pdf_font_policy(options: &RenderOptions) -> PdfFontPolicy {
-    match options.font_policy.as_deref().map(str::trim).map(str::to_ascii_lowercase).as_deref() {
-        Some("discover") => PdfFontPolicy::Discover,
-        Some("base14only") => PdfFontPolicy::Base14Only,
-        _ => PdfFontPolicy::Bundled,
+/// The bundled policy is fixed: a delivered PDF never depends on faces the
+/// reader happens to have installed, so no system CJK face can paint a page.
+pub fn render_display_pdf(
+    scene: &DisplayScene,
+    resources_json: Option<&str>,
+) -> Result<PdfPrimitiveOutcome, DiagnosticRecord> {
+    let settings = PdfSettings::parse(resources_json);
+    let resources = settings.resources();
+    let outcome = render_pdf_with_resources_and_diagnostics(&scene.display, &PdfFontPolicy::Bundled, &resources)
+        .map_err(|failure| error(RENDER_FAILED, failure.message, "render", ""))?;
+    let diagnostics = outcome
+        .diagnostics
+        .iter()
+        .map(|diagnostic| stage_record(diagnostic, "render", None))
+        .collect();
+    Ok(PdfPrimitiveOutcome { pdf: outcome.pdf, diagnostics })
+}
+
+/// PDF bytes plus the diagnostics the renderer collected.
+pub struct PdfPrimitiveOutcome {
+    /// Rendered PDF program.
+    pub pdf: Vec<u8>,
+    /// Render-layer diagnostics.
+    pub diagnostics: Vec<DiagnosticRecord>,
+}
+
+/// Embed bundled fonts into an SVG payload a host already holds.
+///
+/// Kept as a separate primitive so a host that stores scene SVG can upgrade it
+/// without re-running layout. The document emission path does not need it.
+pub fn embed_svg_fonts(svg: &str, theme: Theme) -> String {
+    embed_body_fonts(svg, theme)
+}
+
+/// Structural block counts for the inspect report.
+pub fn summarize_document(graph: &DocumentGraph) -> serde_json::Value {
+    let (mut sections, mut paragraphs, mut lists, mut code, mut quotes, mut tables, mut math, mut diagrams, mut charts) =
+        (0, 0, 0, 0, 0, 0, 0, 0, 0);
+    for node in &graph.blocks {
+        match &node.block {
+            Block::Section { .. } => sections += 1,
+            Block::Paragraph { .. } => paragraphs += 1,
+            Block::List { .. } => lists += 1,
+            Block::Code { .. } => code += 1,
+            Block::Quote { .. } => quotes += 1,
+            Block::Table { .. } => tables += 1,
+            Block::Math { .. } => math += 1,
+            Block::Diagram { .. } => diagrams += 1,
+            Block::Chart { .. } => charts += 1,
+            Block::Opaque { .. } | Block::RawHtml { .. } => {}
+        }
+    }
+    serde_json::json!({
+        "title": graph.metadata.title.clone(),
+        "language": graph.metadata.language.clone(),
+        "blocks": graph.blocks.len(),
+        "sections": sections,
+        "paragraphs": paragraphs,
+        "lists": lists,
+        "code": code,
+        "quotes": quotes,
+        "tables": tables,
+        "math": math,
+        "diagrams": diagrams,
+        "charts": charts,
+        "assets": graph.assets.len(),
+        "relations": graph.relations.len(),
+        "coverage_complete": graph.coverage.complete,
+        "loss": graph.coverage.loss.len(),
+    })
+}
+
+/// Assemble a report from caller-supplied sections.
+///
+/// Every section is data the caller already computed, so this primitive has no
+/// opinion about success, failure, or process status.
+pub fn assemble_report(
+    operation: &str,
+    inputs_json: &str,
+    diagnostics_json: &str,
+    output_json: Option<&str>,
+    extra_json: Option<&str>,
+) -> String {
+    let mut report = serde_json::json!({
+        "schema_version": REPORT_SCHEMA_VERSION,
+        "operation": operation,
+        "inputs": serde_json::from_str::<serde_json::Value>(inputs_json).unwrap_or_else(|_| serde_json::json!([])),
+        "diagnostics": serde_json::from_str::<serde_json::Value>(diagnostics_json).unwrap_or_else(|_| serde_json::json!([])),
+    });
+    if let Some(output) = output_json.filter(|value| !value.trim().is_empty()) {
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(output) {
+            report["output"] = value;
+        }
+    }
+    if let Some(extra) = extra_json.filter(|value| !value.trim().is_empty()) {
+        if let Ok(serde_json::Value::Object(map)) = serde_json::from_str::<serde_json::Value>(extra) {
+            for (key, value) in map {
+                report[&key] = value;
+            }
+        }
+    }
+    report.to_string()
+}
+
+/// Typography facts for one theme.
+pub fn theme_facts(theme: Theme) -> ThemeFacts {
+    let hint = theme.layout_hint();
+    ThemeFacts {
+        id: theme.id(),
+        base_font_size: theme.base_font_size(),
+        line_height: theme.line_height(),
+        side_margin: hint.margin.left,
+        content_width: hint.content_width(),
+        latin_family: match theme {
+            Theme::Baseline => "Noto Serif SC",
+            Theme::Traditional => "Tinos",
+        },
+        cjk_family: "Noto Serif SC",
+        mono_family: "Noto Sans Mono",
+    }
+}
+
+/// PDF resource settings decoded from the caller payload.
+#[derive(Debug, Default, Deserialize)]
+struct PdfSettings {
+    /// Base directory for relative image sources.
+    base_dir: Option<String>,
+    /// Base64 payloads keyed by source.
+    resources: Option<BTreeMap<String, String>>,
+}
+
+impl PdfSettings {
+    fn parse(raw: Option<&str>) -> Self {
+        match raw {
+            Some(json) if !json.trim().is_empty() => serde_json::from_str(json).unwrap_or_default(),
+            _ => Self::default(),
+        }
+    }
+
+    fn resources(&self) -> PdfResources {
+        let mut resources = PdfResources::new();
+        if let Some(base_dir) = self.base_dir.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+            resources = resources.with_base_dir(PathBuf::from(base_dir));
+        }
+        if let Some(supplied) = &self.resources {
+            for (source, payload) in supplied {
+                resources = resources.with_supplied(source.clone(), decode_payload(payload).unwrap_or_default());
+            }
+        }
+        resources
+    }
+}
+
+/// Build one error diagnostic record.
+pub fn error(code: &str, message: String, stage: &str, path: &str) -> DiagnosticRecord {
+    DiagnosticRecord {
+        code: code.to_string(),
+        severity: "error".to_string(),
+        message,
+        stage: stage.to_string(),
+        path: (!path.is_empty()).then(|| path.to_string()),
+        span: None,
+    }
+}
+
+/// Convert a pipeline diagnostic into a report record.
+pub fn stage_record(diagnostic: &RenderDiagnostic, stage: &str, path: Option<&str>) -> DiagnosticRecord {
+    DiagnosticRecord {
+        code: diagnostic.code.clone(),
+        severity: severity_label(diagnostic.severity),
+        message: diagnostic.message.clone(),
+        stage: stage.to_string(),
+        path: path.map(str::to_string),
+        span: None,
+    }
+}
+
+fn severity_label(severity: Severity) -> String {
+    match severity {
+        Severity::Info => "info".to_string(),
+        Severity::Warning => "warning".to_string(),
+        Severity::Error => "error".to_string(),
     }
 }
 
@@ -456,14 +505,12 @@ fn decode_payload(payload: &str) -> Option<Vec<u8>> {
     let payload = payload.trim();
     let body = if payload.get(..5).is_some_and(|prefix| prefix.eq_ignore_ascii_case("data:")) {
         payload.split_once(',').map(|(_, body)| body)?
-    }
-    else {
+    } else {
         payload
     };
     base64_decode(body)
 }
 
-/// Decode standard base64, ignoring whitespace and stopping at the padding.
 fn base64_decode(text: &str) -> Option<Vec<u8>> {
     let mut out = Vec::with_capacity(text.len() / 4 * 3);
     let mut buffer = 0u32;
@@ -490,110 +537,21 @@ fn base64_decode(text: &str) -> Option<Vec<u8>> {
     Some(out)
 }
 
-/// Build one error diagnostic record.
-fn error(code: &str, message: String, stage: &str, path: &str) -> DiagnosticRecord {
-    DiagnosticRecord {
-        code: code.to_string(),
-        severity: "error".to_string(),
-        message,
-        stage: stage.to_string(),
-        path: Some(path.to_string()),
-        span: None,
-    }
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-/// Convert a render-layer diagnostic into the pipeline report record.
-fn render_diagnostic_to_record(d: &RenderDiagnostic, path: &str) -> DiagnosticRecord {
-    DiagnosticRecord {
-        code: d.code.clone(),
-        severity: severity_label(d.severity),
-        message: d.message.clone(),
-        stage: "render".to_string(),
-        path: Some(path.to_string()),
-        span: None,
+    #[test]
+    fn unknown_formats_report_an_error_without_touching_the_filesystem() {
+        let failure = parse_document("x.bin", ImportFormat::Unknown, b"data").unwrap_err();
+        assert_eq!(failure.code, INPUT_FORMAT_UNSUPPORTED);
+        assert_eq!(failure.severity, "error");
     }
-}
 
-/// Convert a layout-layer diagnostic into the pipeline report record.
-fn layout_diagnostic_to_record(d: &RenderDiagnostic, path: &str) -> DiagnosticRecord {
-    DiagnosticRecord {
-        code: d.code.clone(),
-        severity: severity_label(d.severity),
-        message: d.message.clone(),
-        stage: "layout".to_string(),
-        path: Some(path.to_string()),
-        span: None,
+    #[test]
+    fn markdown_bytes_parse_into_a_graph() {
+        let parsed = parse_document("doc.md", ImportFormat::Markdown, b"# Title\n\nBody.\n").unwrap();
+        assert_eq!(parsed.format, ImportFormat::Markdown);
+        assert!(!parsed.graph.blocks.is_empty());
     }
-}
-
-/// Serialize a render severity into the report's three-value string.
-fn severity_label(severity: Severity) -> String {
-    match severity {
-        Severity::Info => "info".to_string(),
-        Severity::Warning => "warning".to_string(),
-        Severity::Error => "error".to_string(),
-    }
-}
-
-/// Failed render outcome carrying the requested format and one diagnostic.
-fn render_failure(input_path: &str, output_format: String, format_label: &str, record: DiagnosticRecord) -> RenderOutcome {
-    RenderOutcome {
-        exit_code: 1,
-        output_format,
-        svg: None,
-        html: None,
-        pdf: None,
-        report_json: failure_report("render", input_path, format_label, record),
-    }
-}
-
-/// Report payload for a failed operation.
-fn failure_report(operation: &str, input_path: &str, format_label: &str, record: DiagnosticRecord) -> String {
-    serde_json::json!({
-        "schema_version": REPORT_SCHEMA_VERSION,
-        "operation": operation,
-        "status": "failed",
-        "inputs": [{ "path": input_path, "format": format_label }],
-        "diagnostics": [record],
-    })
-    .to_string()
-}
-
-/// Structural block counts for the inspect report.
-fn summarize_document(graph: &DocumentGraph) -> serde_json::Value {
-    let (mut sections, mut paragraphs, mut lists, mut code, mut quotes, mut tables, mut math, mut diagrams, mut charts) =
-        (0, 0, 0, 0, 0, 0, 0, 0, 0);
-    for node in &graph.blocks {
-        match &node.block {
-            Block::Section { .. } => sections += 1,
-            Block::Paragraph { .. } => paragraphs += 1,
-            Block::List { .. } => lists += 1,
-            Block::Code { .. } => code += 1,
-            Block::Quote { .. } => quotes += 1,
-            Block::Table { .. } => tables += 1,
-            Block::Math { .. } => math += 1,
-            Block::Diagram { .. } => diagrams += 1,
-            Block::Chart { .. } => charts += 1,
-            Block::Opaque { .. } => {}
-            Block::RawHtml { .. } => {}
-        }
-    }
-    serde_json::json!({
-        "title": graph.metadata.title.clone(),
-        "language": graph.metadata.language.clone(),
-        "blocks": graph.blocks.len(),
-        "sections": sections,
-        "paragraphs": paragraphs,
-        "lists": lists,
-        "code": code,
-        "quotes": quotes,
-        "tables": tables,
-        "math": math,
-        "diagrams": diagrams,
-        "charts": charts,
-        "assets": graph.assets.len(),
-        "relations": graph.relations.len(),
-        "coverage_complete": graph.coverage.complete,
-        "loss": graph.coverage.loss.len(),
-    })
 }
