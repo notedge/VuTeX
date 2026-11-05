@@ -49,15 +49,21 @@ const run = execFileSync(python, [
 ], { encoding: "utf8" });
 console.log(run);
 const payload = JSON.parse(run.slice(run.indexOf("{")));
+
+function worstDelta(deltas) {
+    const worst = Object.entries(deltas).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))[0];
+    const magnitude = Math.abs(worst[1]);
+    const judgment = magnitude <= 0.25 ? "equivalent" : magnitude <= 0.5 ? "minor-diff" : "significant-diff";
+    return `${judgment} (worst ${worst[0]} delta ${worst[1]})`;
+}
+
 for (const record of payload.records) {
     if (record.error) {
         console.log(`${record.case}: ERROR ${record.error}`);
         continue;
     }
-    const worst = Object.entries(record.deltas).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))[0];
-    const magnitude = Math.abs(worst[1]);
-    const judgment = magnitude <= 0.25 ? "equivalent" : magnitude <= 0.5 ? "minor-diff" : "significant-diff";
-    console.log(`${record.case}: ${judgment} (worst ${worst[0]} delta ${worst[1]})`);
+    console.log(`${record.case}: ${worstDelta(record.deltas)}`);
+    console.log(`  legacy: ${worstDelta(record.legacy.deltas)}`);
 }
 console.log(`tectonic reference: ${referencePdf}`);
 console.log(`results: ${out}`);
