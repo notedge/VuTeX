@@ -401,6 +401,21 @@ mod tests {
     }
 
     #[test]
+    fn traditional_keeps_its_reference_pagination() {
+        let hint = Theme::Traditional.layout_hint();
+        assert_eq!(hint.base_font_size, 11.0);
+        assert_eq!(hint.line_height, 1.45);
+        assert_eq!(hint.margin.top, 72.0);
+        assert_eq!(hint.margin.right, 72.0);
+        assert_eq!(hint.margin.bottom, 72.0);
+        assert_eq!(hint.margin.left, 72.0);
+        assert!((hint.content_width() - 451.276).abs() < 1e-9);
+        assert_eq!(hint.style.paragraph_gap, 0.0);
+        assert!(!hint.style.heading_bold);
+        assert!(!hint.style.chrome);
+    }
+
+    #[test]
     fn baseline_metrics_cover_latin_and_han_with_bundled_faces() {
         let metrics = Theme::Baseline.body_metrics();
         let regular = BodyFaceKey { family: BodyFamily::Serif, style: BodyFaceStyle::Regular };
