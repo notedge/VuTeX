@@ -17,7 +17,7 @@
     "@vutex/watex": "workspace:*"
   },
   "devDependencies": {
-    "katex": "0.16.22",
-    "mathjax": "^3.2.2"
+    "katex": "catalog:",
+    "mathjax": "catalog:"
   }
 }

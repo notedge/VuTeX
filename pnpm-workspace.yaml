@@ -3,3 +3,11 @@ packages:
     - projects/vutex.ts/platforms/*
     - projects/vutex.ts/examples/*
     - projects/vutex.ts/homepage
+
+# Single declaration for every independent math oracle the cross-checks compare
+# against. No harness may pin its own copy: the reference engine version is part
+# of the criterion, so `projects/vutex.ts/examples/{oracle,crosscheck}` both
+# consume these entries through `catalog:`.
+catalog:
+    katex: 0.16.22
+    mathjax: 3.2.2
