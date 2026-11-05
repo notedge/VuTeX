@@ -22,11 +22,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 
 import pymupdf
 
 MARKERS_PER_CASE = 2
+MARKER_TEXT = re.compile(r"(?:case|atom) \d+ (?:head|tail)")
 
 CASES = (
     {"id": "fraction-alpha-beta", "first": "case 1 head", "second": "case 1 tail"},
@@ -37,7 +39,57 @@ CASES = (
     {"id": "sum-limits", "first": "case 6 head", "second": "case 6 tail"},
     {"id": "scaled-delimiters", "first": "case 7 head", "second": "case 7 tail"},
     {"id": "aligned-rows", "first": "case 8 head", "second": "case 8 tail"},
+    {"id": "overbrace", "first": "case 9 head", "second": "case 9 tail"},
+    {"id": "underbrace", "first": "case 10 head", "second": "case 10 tail"},
+    {"id": "cases-environment", "first": "case 11 head", "second": "case 11 tail"},
+    {"id": "pmatrix", "first": "case 12 head", "second": "case 12 tail"},
+    {"id": "scripts-implicit", "first": "case 13 head", "second": "case 13 tail"},
+    {"id": "nested-middle", "first": "case 14 head", "second": "case 14 tail"},
+    {"id": "sqrt-plain", "first": "case 15 head", "second": "case 15 tail"},
+    {"id": "textstyle-fraction", "first": "case 16 head", "second": "case 16 tail"},
+    {"id": "inline-sum", "first": "case 17 head", "second": "case 17 tail"},
 )
+
+# Single-atom formulas.  Their facts isolate the font difference: no fraction
+# rule, script shift or limit placement takes part, so whatever remains is the
+# reference symbol against ours.
+ATOMS = (
+    {"id": "alpha", "first": "atom 1 head", "second": "atom 1 tail"},
+    {"id": "beta", "first": "atom 2 head", "second": "atom 2 tail"},
+    {"id": "sum", "first": "atom 3 head", "second": "atom 3 tail"},
+    {"id": "integral", "first": "atom 4 head", "second": "atom 4 tail"},
+    {"id": "paren", "first": "atom 5 head", "second": "atom 5 tail"},
+    {"id": "radical", "first": "atom 6 head", "second": "atom 6 tail"},
+    {"id": "x", "first": "atom 7 head", "second": "atom 7 tail"},
+    {"id": "one", "first": "atom 8 head", "second": "atom 8 tail"},
+    {"id": "langle", "first": "atom 9 head", "second": "atom 9 tail"},
+    {"id": "null-delimiter", "first": "atom 10 head", "second": "atom 10 tail"},
+)
+
+# Each set is one PDF pair.  Sets stay small on purpose: a case must sit on one
+# page on both sides, and a page that has to absorb too many display formulas
+# shrinks the display skips, which moves `gap_above` / `gap_below` without any
+# layout change.  `(marker prefix, rows, first number, last number)`.
+CASE_SETS = {
+    "display": ("case", CASES, 1, 8),
+    "display-extra-a": ("case", CASES, 9, 12),
+    "display-extra-b": ("case", CASES, 13, 17),
+    "atoms-a": ("atom", ATOMS, 1, 5),
+    "atoms-b": ("atom", ATOMS, 6, 10),
+}
+
+
+def expand(spec):
+    prefix, rows, low, high = spec
+    expanded = []
+    for number, row in enumerate(rows, start=1):
+        if low <= number <= high:
+            expanded.append({
+                "id": row["id"],
+                "first": f"{prefix} {number} head",
+                "second": f"{prefix} {number} tail",
+            })
+    return expanded
 
 DPI = 600
 INK_THRESHOLD = 160
@@ -221,36 +273,68 @@ def deltas(ours, reference):
     return {key: round(ours[key] - reference[key], 3) for key in FACT_KEYS}
 
 
+def pages_of(doc):
+    return [text_lines(page) for page in doc]
+
+
+def marker_index(pages):
+    index = {}
+    for number, lines in enumerate(pages):
+        for line in lines:
+            index.setdefault(line["text"], number)
+    return index
+
+
+def marker_page(index, pages, text):
+    number = index.get(normalise(text))
+    if number is None:
+        raise SystemExit(f"marker `{text}` missing from PDF text")
+    return number, marker_line(pages[number], text)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--ours", required=True)
     parser.add_argument("--reference", required=True)
     parser.add_argument("--out", required=True)
+    parser.add_argument("--set", choices=sorted(CASE_SETS), default="display")
     args = parser.parse_args()
+    cases = expand(CASE_SETS[args.set])
 
-    ours = pymupdf.open(args.ours)
-    reference = pymupdf.open(args.reference)
-    ours_lines = text_lines(ours[0])
-    reference_lines = text_lines(reference[0])
-    marker_texts = [case[key] for case in CASES for key in ("first", "second")]
-    ours_raster = Raster(ours[0], [marker_line(ours_lines, text) for text in marker_texts])
-    reference_raster = Raster(reference[0], [marker_line(reference_lines, text) for text in marker_texts])
+    ours_doc = pymupdf.open(args.ours)
+    reference_doc = pymupdf.open(args.reference)
+    ours_pages = pages_of(ours_doc)
+    reference_pages = pages_of(reference_doc)
+    ours_index = marker_index(ours_pages)
+    reference_index = marker_index(reference_pages)
+    rasters = {"ours": {}, "reference": {}}
+
+    def rasters_for(kind, doc, pages, index, first, second):
+        # A case must live on one page: a band that straddles a page break has
+        # no meaning, and our pagination is not TeX's.
+        page_number, start = marker_page(index, pages, first)
+        other, _ = marker_page(index, pages, second)
+        if other != page_number:
+            raise SystemExit(f"`{first}` and `{second}` straddle a page break")
+        if page_number not in rasters[kind]:
+            cache = rasters[kind]
+            cache[page_number] = Raster(
+                doc[page_number],
+                [line for line in pages[page_number] if MARKER_TEXT.fullmatch(line["text"])],
+            )
+        return doc[page_number], start, marker_line(pages[page_number], second), rasters[kind][page_number]
 
     records = []
-    for case in CASES:
+    for case in cases:
         try:
-            ours_facts = facts(ink_measure(
-                ours_raster,
-                marker_line(ours_lines, case["first"]),
-                marker_line(ours_lines, case["second"]),
-            ))
-            reference_facts = facts(ink_measure(
-                reference_raster,
-                marker_line(reference_lines, case["first"]),
-                marker_line(reference_lines, case["second"]),
-            ))
-            legacy_ours = legacy_measure("ours", ours[0], case["first"], case["second"])
-            legacy_reference = legacy_measure("reference", reference[0], case["first"], case["second"])
+            ours_page, ours_head, ours_tail, ours_raster = rasters_for(
+                "ours", ours_doc, ours_pages, ours_index, case["first"], case["second"])
+            reference_page, reference_head, reference_tail, reference_raster = rasters_for(
+                "reference", reference_doc, reference_pages, reference_index, case["first"], case["second"])
+            ours_facts = facts(ink_measure(ours_raster, ours_head, ours_tail))
+            reference_facts = facts(ink_measure(reference_raster, reference_head, reference_tail))
+            legacy_ours = legacy_measure("ours", ours_page, case["first"], case["second"])
+            legacy_reference = legacy_measure("reference", reference_page, case["first"], case["second"])
         except SystemExit as error:
             records.append({"case": case["id"], "error": str(error)})
             continue
@@ -267,6 +351,7 @@ def main() -> int:
         })
     payload = {
         "engine": "tectonic",
+        "corpus": args.set,
         "criterion": {
             "version": 2,
             "fact": "ink-bbox",

@@ -35,6 +35,7 @@ package-lock.json
 projects/vutex.ts/examples/crosscheck/results/
 projects/vutex.ts/examples/crosscheck/pdf/python/.venv/
 projects/vutex.ts/examples/crosscheck/pdf/python/__pycache__/
+projects/vutex.ts/examples/crosscheck/tex/__pycache__/
 !projects/vutex.ts/examples/crosscheck/pdf/python/requirements.txt
 
 # Renderer
