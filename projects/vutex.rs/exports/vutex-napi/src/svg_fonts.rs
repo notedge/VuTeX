@@ -537,17 +537,25 @@ mod tests {
     }
 
     #[test]
-    fn headings_gain_weight_and_body_text_does_not() {
-        let svg = r#"<svg><text font-family="serif" font-size="22">Title</text><text font-family="serif" font-size="11">Body</text></svg>"#;
+    fn baseline_publishes_a_bold_face_for_the_weight_the_layout_emitted() {
+        let svg = r#"<svg><text font-family="serif" font-weight="700" font-size="17.6">Title</text><text font-family="serif" font-size="11">Body</text></svg>"#;
         let out = embed_body_fonts(svg, Theme::Baseline);
-        assert!(out.contains("font-size=\"22\" font-weight=\"700\""));
+        assert!(out.contains("font-weight=\"700\""), "heading run lost its weight");
         assert!(!out.contains("font-size=\"11\" font-weight=\"700\""));
+        assert!(out.contains("font-weight:700"), "heading run got no bold face");
     }
 
     #[test]
-    fn emphasized_headings_publish_a_bold_face() {
-        let svg = r#"<svg><text font-family="serif" font-size="22">Chapter One</text><text font-family="serif" font-size="11">Body text</text></svg>"#;
+    fn baseline_does_not_guess_heading_weight_from_size() {
+        let svg = r#"<svg><text font-family="serif" font-size="17.6">Title</text><text font-family="serif" font-size="11">Body</text></svg>"#;
         let out = embed_body_fonts(svg, Theme::Baseline);
+        assert!(!out.contains("font-weight=\"700\""), "the emitter re-guessed the heading weight");
+    }
+
+    #[test]
+    fn traditional_promotes_heading_runs_by_size() {
+        let svg = r#"<svg><text font-family="serif" font-size="22">Chapter One</text><text font-family="serif" font-size="11">Body text</text></svg>"#;
+        let out = embed_body_fonts(svg, Theme::Traditional);
         assert!(out.contains("font-size=\"22\" font-weight=\"700\""), "heading run got no weight");
         assert!(out.contains("font-weight:700"), "heading run got no bold face");
     }
