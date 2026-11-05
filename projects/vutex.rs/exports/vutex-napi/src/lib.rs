@@ -275,7 +275,7 @@ pub fn embed_svg_fonts(svg: String, theme: Option<String>) -> String {
 pub fn subset_face(family: String, script: String, style: String, chars: String) -> Option<Buffer> {
     let face = find_face(&family, &script, &style)?;
     let set: BTreeSet<char> = chars.chars().collect();
-    match font_subset::subset_font(face.bytes, &set)? {
+    match font_subset::subset_font(&face.bytes, &set)? {
         font_subset::FacePayload::Subset(subset) => Some(Buffer::from(subset.bytes)),
         font_subset::FacePayload::Full => Some(Buffer::from(face.bytes.to_vec())),
     }
