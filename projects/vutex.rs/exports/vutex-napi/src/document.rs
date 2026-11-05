@@ -284,7 +284,7 @@ pub fn render_document(input_path: &str, options_json: Option<&str>) -> RenderOu
 
     let (svg, html, pdf) = match output_format {
         OutputFormat::Svg => match render_svg(&display) {
-            Ok(svg) => (Some(svg), None, None),
+            Ok(svg) => (Some(crate::svg_fonts::embed_body_fonts(&svg)), None, None),
             Err(failure) => {
                 let record = error(RENDER_FAILED, failure.message, "render", input_path);
                 return render_failure(input_path, output_format.id().to_string(), format_label, record);
