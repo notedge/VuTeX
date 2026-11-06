@@ -149,8 +149,8 @@
         24.2781,
         18.4382
       ],
-      "bytes": 715,
-      "sha256": "9a2c9e1fa2660c17d19503179861dcd2931083793b3cfec5aae9a8b3f6f19a76"
+      "bytes": 704,
+      "sha256": "5f49b6751c300a2f491c288504ea1d787bb6f12f7ab07888368bc8382956556b"
     },
     "radical-display": {
       "tex": "\\sqrt{x}",
@@ -164,8 +164,8 @@
         24.2781,
         18.4382
       ],
-      "bytes": 703,
-      "sha256": "3b236b76126157a21a4a168eb95b64f000088186623b5652cf9b9ca71ee8775a"
+      "bytes": 689,
+      "sha256": "b9af8b366c3a3d06b003c5aee53c81e30097be4cd4ff160b8959ce373bbecc13"
     },
     "radical-degree-inline": {
       "tex": "\\sqrt[3]{x}",
@@ -176,11 +176,11 @@
         64
       ],
       "svgViewport": [
-        23.7943,
-        18.4023
+        25.3581,
+        18.5182
       ],
-      "bytes": 768,
-      "sha256": "3c1597620ab665f64c5af870353a7667dbb207f48ef1006fadac452d9e489a26"
+      "bytes": 763,
+      "sha256": "3e8ae0f8d96a5664286c0537533c89abc6bab50992c308300b4033ed221030cc"
     },
     "radical-degree-display": {
       "tex": "\\sqrt[3]{x}",
@@ -191,11 +191,11 @@
         64
       ],
       "svgViewport": [
-        23.7943,
-        18.4023
+        25.3581,
+        18.5182
       ],
-      "bytes": 760,
-      "sha256": "debaacd74c491fea2ab901e46c1c0de0120f87c402bdf4f4982794784088bb39"
+      "bytes": 771,
+      "sha256": "c6820677796cfad604ba100837b2cd53a2004495a6513169b0bc8d21edba6926"
     },
     "sum-limits-inline": {
       "tex": "\\sum_{i=1}^{n} i",
@@ -682,30 +682,30 @@
       "display": false,
       "file": "radical-degree-sum-inline.png",
       "window": [
-        70,
+        72,
         64
       ],
       "svgViewport": [
-        53.8687,
-        20.6301
+        55.4325,
+        20.7459
       ],
-      "bytes": 1009,
-      "sha256": "964285bea96f8fd3fbb9ab6942a6bb9fac1da80d82b92a8792b228d5455786d9"
+      "bytes": 1000,
+      "sha256": "502fc1a6555bc5d1b4ed83e48de845f7a496414a7ad09c0dbe20d00ff41b8423"
     },
     "radical-degree-sum-display": {
       "tex": "\\sqrt[3]{x+y}",
       "display": true,
       "file": "radical-degree-sum-display.png",
       "window": [
-        70,
+        72,
         64
       ],
       "svgViewport": [
-        53.8687,
-        20.6301
+        55.4325,
+        20.7459
       ],
-      "bytes": 1041,
-      "sha256": "10c10eb6385c89c3e88ac415799e4847a1b929e16cdb9e13fde5bd9303838470"
+      "bytes": 1046,
+      "sha256": "6cc6ab3caa0db03dfda230fa5ec3719b477a2f357c94bdb8f79582f33796b955"
     },
     "radical-fraction-inline": {
       "tex": "\\sqrt{\\frac{a}{b}}",
@@ -716,11 +716,11 @@
         64
       ],
       "svgViewport": [
-        27.8257,
-        21.9009
+        28.9265,
+        21.9824
       ],
-      "bytes": 810,
-      "sha256": "08982c91e2e6c51008355b29aa9528af83fedb7931a7db6dc9f058b5d36a5d74"
+      "bytes": 840,
+      "sha256": "9e6d0c8491b831210f1f0e0621ee6354c22a3410affb8fb15d906fb38c2b789c"
     },
     "radical-fraction-display": {
       "tex": "\\sqrt{\\frac{a}{b}}",
@@ -734,8 +734,8 @@
         31.4269,
         42.163
       ],
-      "bytes": 1075,
-      "sha256": "79b22e641ea260f355896795d93f2f7bd8adfbcbb20d0bf503c983e81e5a42f0"
+      "bytes": 1064,
+      "sha256": "779140112900ced352236d101a456271153c48d44feed39aa79b9a074142c6c8"
     },
     "radical-nested-inline": {
       "tex": "\\sqrt{\\sqrt{x}}",
@@ -749,8 +749,8 @@
         41.5581,
         22.9181
       ],
-      "bytes": 963,
-      "sha256": "f0fd31525a3405893700ee916d4ca7da7316b060b26e0c712fff2f3a4a128f09"
+      "bytes": 953,
+      "sha256": "6bf50fc408ceb4d6a1235abd8d6bb7fad184509ef767276c1d8d9f1ffaecde95"
     },
     "radical-nested-display": {
       "tex": "\\sqrt{\\sqrt{x}}",
@@ -764,8 +764,8 @@
         41.5581,
         32.5182
       ],
-      "bytes": 1049,
-      "sha256": "d819aef9c232d9eb697910f6caf02e5ab38c9849cc28d578792ff49ec6eb05be"
+      "bytes": 1038,
+      "sha256": "4e8722f80ffdfb7412b1056c361e79acdc539b3158581c50bd35d694ef1be2e2"
     },
     "fraction-nested-inline": {
       "tex": "\\frac{\\frac{a}{b}}{c}",
@@ -1586,11 +1586,11 @@
         64
       ],
       "svgViewport": [
-        38.4864,
-        28.4085
+        41.5823,
+        31.1915
       ],
-      "bytes": 1006,
-      "sha256": "26d2e77a58572252ca519e5cd1973593f2fe2d094a93d3745bd968c988cec464"
+      "bytes": 1036,
+      "sha256": "5aa605b326f8257f5739fed76d401f62ec07a387c045154c13f6bcef175651e8"
     },
     "fraction-sum-radical-display": {
       "tex": "\\frac{\\sum_{i=1}^{n} i}{\\sqrt{n}}",
@@ -1601,11 +1601,11 @@
         64
       ],
       "svgViewport": [
-        52.8028,
-        42.5731
+        52.9556,
+        45.5332
       ],
-      "bytes": 1409,
-      "sha256": "891f2ff0e669a20b6e946318721d997d52c83a33f087f7d6d2cc2ff8f95bcd2c"
+      "bytes": 1430,
+      "sha256": "f6c735a6a3c632414003f03ebad0593030a16250177e19ba9d52206b5da6b104"
     },
     "script-tower-inline": {
       "tex": "10^{10^{10}}",
