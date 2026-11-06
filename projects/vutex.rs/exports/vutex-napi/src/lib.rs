@@ -185,23 +185,49 @@ fn resolve_math_font(math_font: Option<String>) -> napi::Result<Option<MathFontF
     Ok(Some(family))
 }
 
+/// Page geometry a template package contributes to the layout pass.
+#[napi(object)]
+pub struct TemplateGeometryInput {
+    /// Page width in PostScript points.
+    pub page_width: f64,
+    /// Page height in PostScript points.
+    pub page_height: f64,
+    /// Top margin in PostScript points.
+    pub margin_top: Option<f64>,
+    /// Right margin in PostScript points.
+    pub margin_right: Option<f64>,
+    /// Bottom margin in PostScript points.
+    pub margin_bottom: Option<f64>,
+    /// Left margin in PostScript points.
+    pub margin_left: Option<f64>,
+}
+
 /// Paginate a lowered document under the selected theme and MATH family.
 #[napi]
 pub fn build_display(
     lowered: &LoweredDocumentHandle,
     theme: Option<String>,
     math_font: Option<String>,
+    template: Option<TemplateGeometryInput>,
 ) -> napi::Result<DisplaySceneHandle> {
     install_embedded_math_fonts();
     let selected = Theme::from_option(theme.as_deref());
     let family = resolve_math_font(math_font)?;
+    let geometry = template.map(|input| document::TemplateGeometry {
+        page_width: input.page_width,
+        page_height: input.page_height,
+        margin_top: input.margin_top,
+        margin_right: input.margin_right,
+        margin_bottom: input.margin_bottom,
+        margin_left: input.margin_left,
+    });
     let inner = lowered
         .inner
         .lock()
         .map_err(|_| napi::Error::from_reason("lowered document is poisoned"))?
         .take()
         .ok_or_else(|| napi::Error::from_reason("lowered document was consumed"))?;
-    Ok(DisplaySceneHandle { inner: document::build_display(inner, selected, family) })
+    Ok(DisplaySceneHandle { inner: document::build_display(inner, selected, family, geometry) })
 }
 
 /// Paginated display scene exposed to the host.

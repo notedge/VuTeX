@@ -27,6 +27,7 @@ function fakeBindings(overrides: Overrides = {}) {
         lower: [] as string[],
         display: [] as Array<string | undefined>,
         mathFont: [] as Array<string | undefined>,
+        template: [] as Array<unknown>,
         flow: [] as Array<string | undefined>,
         pdfSettings: [] as Array<string | undefined>,
         reports: [] as ReportCall[],
@@ -50,9 +51,10 @@ function fakeBindings(overrides: Overrides = {}) {
                 footnotesJson: () => JSON.stringify({ references: 0, definitions: 0, notes: 0 }),
             };
         },
-        buildDisplay: (_lowered, theme, mathFont) => {
+        buildDisplay: (_lowered, theme, mathFont, template) => {
             calls.display.push(theme);
             calls.mathFont.push(mathFont);
+            calls.template.push(template);
             return {
                 pageCount: () => 1,
                 itemCount: () => 2,
@@ -287,13 +289,17 @@ test("render fails closed when a declared math font has no bundled face", async 
     });
 });
 
-test("render warns that a locked template has no native consumer yet", async () => {
+test("render applies the declared template page geometry", async () => {
     await withTempDir(async (dir) => {
         const inputPath = join(dir, "chapter.md");
         await writeFile(inputPath, "# Title\n", "utf8");
         const template = join(dir, "templates", "article");
         await mkdir(template, { recursive: true });
-        await writeFile(join(template, "template.toml"), "name = 'article'\n", "utf8");
+        await writeFile(
+            join(template, "template.json"),
+            JSON.stringify({ page: { size: "letter" }, margin: 72 }),
+            "utf8",
+        );
         await writeFile(join(dir, "vutex.toml"), '[packages]\ntemplate = "./templates/article"\n', "utf8");
         await new PackageManager(dir).install();
 
@@ -302,8 +308,32 @@ test("render warns that a locked template has no native consumer yet", async () 
         const result = await runtime.render(inputPath);
 
         assert.equal(calls.display.length, 1);
-        assert.ok(result.diagnostics.some((item) => item.code === "VUTEX_PACKAGE_TEMPLATE_INACTIVE"));
+        assert.deepEqual(calls.template, [
+            { pageWidth: 612, pageHeight: 792, marginTop: 72, marginRight: 72, marginBottom: 72, marginLeft: 72 },
+        ]);
+        assert.ok(result.diagnostics.every((item) => item.code !== "VUTEX_PACKAGE_TEMPLATE_INACTIVE"));
         assert.equal(result.diagnostics.filter((item) => item.severity === "error").length, 0);
+        const extra = calls.reports.at(-1)?.extra ?? "";
+        assert.ok(extra.includes('"template":"templates/article"'), extra);
+    });
+});
+
+test("render fails closed when a template package has no valid template.json", async () => {
+    await withTempDir(async (dir) => {
+        const inputPath = join(dir, "chapter.md");
+        await writeFile(inputPath, "# Title\n", "utf8");
+        const template = join(dir, "templates", "article");
+        await mkdir(template, { recursive: true });
+        await writeFile(join(template, "template.json"), JSON.stringify({ page: { size: "tabloid" } }), "utf8");
+        await writeFile(join(dir, "vutex.toml"), '[packages]\ntemplate = "./templates/article"\n', "utf8");
+        await new PackageManager(dir).install();
+
+        const { bindings, calls } = fakeBindings();
+        const runtime = createVuTeXRuntime(bindings, { projectRoot: dir });
+        const result = await runtime.render(inputPath);
+
+        assert.equal(calls.display.length, 0);
+        assert.ok(result.diagnostics.some((item) => item.code === "VUTEX_PACKAGE_TEMPLATE_INVALID"));
     });
 });
 

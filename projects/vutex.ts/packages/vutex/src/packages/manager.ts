@@ -584,12 +584,19 @@ export class PackageManager {
                     continue;
                 }
             }
+            const directory =
+                locked.source === "path"
+                    ? resolve(this.projectRoot, locked.name)
+                    : locked.source.startsWith("registry+") && locked.artifactHash !== undefined
+                        ? this.registryCachePath(slot, locked.name, locked.artifactHash)
+                        : undefined;
             packages.push({
                 slot,
                 name: locked.name,
                 version: locked.version,
                 source: locked.source,
                 artifactHash: locked.artifactHash,
+                path: directory,
             });
             diagnostics.push({
                 code: "VUTEX_PACKAGE_ACTIVATED",

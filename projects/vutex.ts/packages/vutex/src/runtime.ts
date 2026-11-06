@@ -10,12 +10,14 @@ import type {
     InspectDocumentResult,
     RenderDocumentOptions,
     RenderDocumentResult,
+    TemplateGeometry,
     VuTeXBindings,
     VuTeXDiagnostic,
     VuTeXRuntime,
 } from "./types.js";
 import { PackageManager } from "./packages/manager.js";
 import { readManifest } from "./packages/manifest.js";
+import { readTemplateGeometry } from "./packages/template.js";
 
 type ParsedPayload = {
     ok: boolean;
@@ -208,14 +210,37 @@ export function createVuTeXRuntime(
             ...activation.diagnostics,
         ];
         const templatePackage = activatedSlot(activation.packages, "template");
+        let templateApplied: string | undefined;
+        let templateGeometry: TemplateGeometry | undefined;
         if (templatePackage !== undefined) {
-            diagnostics.push({
-                code: "VUTEX_PACKAGE_TEMPLATE_INACTIVE",
-                severity: "warning",
-                message: `template package is locked but no native template consumer applies it yet: ${templatePackage.name}`,
-                stage: "package",
-                args: { slot: "template", package: templatePackage.name },
-            });
+            // Reflowed html has no fixed pages, so a page template has nothing
+            // to act on and only the warning records the gap.
+            if (outputFormat === "html") {
+                diagnostics.push({
+                    code: "VUTEX_PACKAGE_TEMPLATE_INACTIVE",
+                    severity: "warning",
+                    message: `reflowed html has no fixed pages, so template ${templatePackage.name} does not apply`,
+                    stage: "package",
+                    args: { slot: "template", package: templatePackage.name },
+                });
+            } else {
+                if (templatePackage.path === undefined) {
+                    return fail(
+                        diagnostic(
+                            "VUTEX_PACKAGE_TEMPLATE_UNSUPPORTED",
+                            `template package has no resource directory: ${templatePackage.name}`,
+                            "package",
+                            inputPath,
+                        ),
+                    );
+                }
+                const read = await readTemplateGeometry(templatePackage.path);
+                if (read.diagnostic !== undefined) {
+                    return fail(read.diagnostic);
+                }
+                templateGeometry = read.geometry;
+                templateApplied = templatePackage.name;
+            }
         }
         let mathFontApplied: string | undefined;
         try {
@@ -243,7 +268,7 @@ export function createVuTeXRuntime(
                     });
                 }
             } else {
-                const scene = bindings.buildDisplay(lowered, theme, mathFont);
+                const scene = bindings.buildDisplay(lowered, theme, mathFont, templateGeometry);
                 mathFontApplied = scene.mathFontId();
                 pages = scene.pageCount();
                 items = scene.itemCount();
@@ -276,6 +301,7 @@ export function createVuTeXRuntime(
                     footnotes,
                     theme: theme ?? "baseline",
                     mathFont: mathFontApplied,
+                    template: templateApplied,
                     packages: activation.packages,
                 }),
             );

@@ -282,18 +282,58 @@ pub fn lower_document(graph: DocumentGraph, label: &str) -> LoweredDocument {
     LoweredDocument { graph, diagrams: diagrams.diagrams, footnotes: counts, diagnostics }
 }
 
+/// Page geometry contributed by a template resource package.
+///
+/// Margins are optional so a template that only names a page size keeps the
+/// margins of the active theme.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct TemplateGeometry {
+    /// Page width in PostScript points.
+    pub page_width: f64,
+    /// Page height in PostScript points.
+    pub page_height: f64,
+    /// Top margin in PostScript points.
+    pub margin_top: Option<f64>,
+    /// Right margin in PostScript points.
+    pub margin_right: Option<f64>,
+    /// Bottom margin in PostScript points.
+    pub margin_bottom: Option<f64>,
+    /// Left margin in PostScript points.
+    pub margin_left: Option<f64>,
+}
+
 /// Break the lowered graph into pages under the selected theme.
 ///
 /// `math_font` is the OpenType MATH family a document declared. Without one the
 /// pass keeps the host-installed default, so a host that names no math package
 /// observes exactly the face it installed at startup.
+///
+/// `template` overrides the page geometry of the theme, which is how a
+/// document declared template package reaches the layout pass.
 pub fn build_display(
     lowered: LoweredDocument,
     theme: Theme,
     math_font: Option<MathFontFamily>,
+    template: Option<TemplateGeometry>,
 ) -> DisplayScene {
     let mut hint = theme.layout_hint();
     hint.math_font = math_font;
+    if let Some(geometry) = template {
+        hint.page_width = geometry.page_width;
+        hint.page_height = geometry.page_height;
+        if let Some(value) = geometry.margin_top {
+            hint.margin.top = value;
+        }
+        if let Some(value) = geometry.margin_right {
+            hint.margin.right = value;
+        }
+        if let Some(value) = geometry.margin_bottom {
+            hint.margin.bottom = value;
+        }
+        if let Some(value) = geometry.margin_left {
+            hint.margin.left = value;
+        }
+    }
     let measurements = theme.body_metrics();
     let (plan, layout_diagnostics) =
         layout_with_metrics(&lowered.graph, &hint, &lowered.diagrams, measurements.get());

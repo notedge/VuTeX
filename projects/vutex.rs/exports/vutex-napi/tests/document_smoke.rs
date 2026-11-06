@@ -28,7 +28,7 @@ fn svg_of(name: &str, format: ImportFormat, source: &[u8]) -> (String, Value) {
     let lowered = lower_document(parsed.graph, name);
     let footnotes = serde_json::to_value(lowered.footnotes).expect("counts serialize");
     let diagnostics = serde_json::to_value(&lowered.diagnostics).expect("diagnostics serialize");
-    let scene = build_display(lowered, Theme::Baseline, None);
+    let scene = build_display(lowered, Theme::Baseline, None, None);
     let svg = render_display_svg(&scene).expect("svg renders");
     (svg, serde_json::json!({ "footnotes": footnotes, "diagnostics": diagnostics }))
 }
@@ -117,7 +117,7 @@ fn gfm_footnote_marker_survives_the_reflow_html_lane() {
 fn snapshot_html_reaches_a_payload() {
     let parsed = parse_document("sample.md", ImportFormat::Markdown, b"# Title\n\nHello world.\n").expect("parses");
     let lowered = lower_document(parsed.graph, "sample.md");
-    let scene = build_display(lowered, Theme::Baseline, None);
+    let scene = build_display(lowered, Theme::Baseline, None, None);
     let html = render_display_snapshot_html(&scene).expect("snapshot renders");
     assert!(html.contains("<html"), "{html}");
 }

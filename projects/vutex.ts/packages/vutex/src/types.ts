@@ -108,6 +108,18 @@ export type ActivatedPackage = {
     version: string;
     source: string;
     artifactHash?: string;
+    /** Directory holding the package resources, absent for byte-less presets. */
+    path?: string;
+};
+
+/** Page geometry a template package contributes to the native layout pass. */
+export type TemplateGeometry = {
+    pageWidth: number;
+    pageHeight: number;
+    marginTop?: number;
+    marginRight?: number;
+    marginBottom?: number;
+    marginLeft?: number;
 };
 
 export type PackageCheck = {
@@ -174,6 +186,7 @@ export type VuTeXBindings = {
         lowered: LoweredDocumentHandle,
         theme?: string,
         mathFont?: string,
+        template?: TemplateGeometry,
     ) => DisplaySceneHandle;
     buildFlow: (graphJson: string, theme?: string) => FlowSceneHandle;
     embedSvgFonts: (svg: string, theme?: string) => string;
