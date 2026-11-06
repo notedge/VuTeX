@@ -35,6 +35,7 @@ export function loadVuTeXNode(): VuTeXBindings {
         lowerDocument: (graphJson, label) => binding.lowerDocument(graphJson, label),
         buildDisplay: (lowered, theme, mathFont, template) => binding.buildDisplay(lowered, theme, mathFont, template),
         buildFlow: (graphJson, theme) => binding.buildFlow(graphJson, theme),
+        installMathFontFace: (name, artifactHash, bytes) => binding.installMathFontFace(name, artifactHash, bytes),
         embedSvgFonts: (svg, theme) => binding.embedSvgFonts(svg, theme),
         subsetFace: (family, script, style, chars) => binding.subsetFace(family, script, style, chars),
         summarizeDocument: (graphJson) => binding.summarizeDocument(graphJson),

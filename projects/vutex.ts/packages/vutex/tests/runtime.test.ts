@@ -50,6 +50,7 @@ function fakeBindings(overrides: { measureResponse?: string; renderFormulaRespon
             pdf: () => ({ pdf: new Uint8Array(), diagnosticsJson: "[]" }),
         }),
         buildFlow: () => ({ html: () => "<html/>" }),
+        installMathFontFace: () => {},
         embedSvgFonts: (svg) => svg,
         subsetFace: () => null,
         summarizeDocument: (graphJson) => {

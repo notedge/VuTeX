@@ -28,6 +28,7 @@ function fakeBindings(overrides: Overrides = {}) {
         display: [] as Array<string | undefined>,
         mathFont: [] as Array<string | undefined>,
         template: [] as Array<unknown>,
+        mathFaces: [] as Array<{ name: string; hash: string; bytes: Uint8Array }>,
         flow: [] as Array<string | undefined>,
         pdfSettings: [] as Array<string | undefined>,
         reports: [] as ReportCall[],
@@ -72,6 +73,9 @@ function fakeBindings(overrides: Overrides = {}) {
         buildFlow: (_graphJson, theme) => {
             calls.flow.push(theme);
             return { html: () => overrides.html ?? "<html/>" };
+        },
+        installMathFontFace: (name, hash, bytes) => {
+            calls.mathFaces.push({ name, hash, bytes });
         },
         embedSvgFonts: (svg) => svg,
         subsetFace: () => null,
@@ -270,13 +274,37 @@ test("render applies the declared theme and math-font slots", async () => {
     });
 });
 
-test("render fails closed when a declared math font has no bundled face", async () => {
+test("render registers a downloaded math face before laying out", async () => {
     await withTempDir(async (dir) => {
         const inputPath = join(dir, "chapter.md");
         await writeFile(inputPath, "# Title\n", "utf8");
         const resource = join(dir, "resources", "math");
         await mkdir(resource, { recursive: true });
-        await writeFile(join(resource, "face.otf"), "not a math font", "utf8");
+        await writeFile(join(resource, "math.otf"), "font payload", "utf8");
+        await writeFile(join(resource, "math-font.json"), JSON.stringify({ file: "math.otf" }), "utf8");
+        await writeFile(join(dir, "vutex.toml"), '[packages]\nmath-font = "./resources/math"\n', "utf8");
+        await new PackageManager(dir).install();
+
+        const { bindings, calls } = fakeBindings();
+        const runtime = createVuTeXRuntime(bindings, { projectRoot: dir });
+        const result = await runtime.render(inputPath);
+
+        assert.equal(calls.mathFaces.length, 1);
+        assert.equal(calls.mathFaces[0]?.name, "resources/math");
+        assert.ok((calls.mathFaces[0]?.hash ?? "").startsWith("sha256:"));
+        assert.equal(new TextDecoder().decode(calls.mathFaces[0]?.bytes), "font payload");
+        assert.deepEqual(calls.mathFont, ["resources/math"]);
+        assert.equal(result.diagnostics.filter((item) => item.severity === "error").length, 0);
+    });
+});
+
+test("render fails closed when a math font package declares no face file", async () => {
+    await withTempDir(async (dir) => {
+        const inputPath = join(dir, "chapter.md");
+        await writeFile(inputPath, "# Title\n", "utf8");
+        const resource = join(dir, "resources", "math");
+        await mkdir(resource, { recursive: true });
+        await writeFile(join(resource, "math.otf"), "font payload", "utf8");
         await writeFile(join(dir, "vutex.toml"), '[packages]\nmath-font = "./resources/math"\n', "utf8");
         await new PackageManager(dir).install();
 
@@ -285,7 +313,29 @@ test("render fails closed when a declared math font has no bundled face", async 
         const result = await runtime.render(inputPath);
 
         assert.equal(calls.display.length, 0);
-        assert.ok(result.diagnostics.some((item) => item.code === "VUTEX_PACKAGE_MATH_FONT_UNSUPPORTED"));
+        assert.equal(calls.mathFaces.length, 0);
+        assert.ok(result.diagnostics.some((item) => item.code === "VUTEX_PACKAGE_MATH_FONT_INVALID"));
+    });
+});
+
+test("render refuses to install a math face for reflowed html", async () => {
+    await withTempDir(async (dir) => {
+        const inputPath = join(dir, "chapter.md");
+        await writeFile(inputPath, "# Title\n", "utf8");
+        const resource = join(dir, "resources", "math");
+        await mkdir(resource, { recursive: true });
+        await writeFile(join(resource, "math.otf"), "font payload", "utf8");
+        await writeFile(join(resource, "math-font.json"), JSON.stringify({ file: "math.otf" }), "utf8");
+        await writeFile(join(dir, "vutex.toml"), '[packages]\nmath-font = "./resources/math"\n', "utf8");
+        await new PackageManager(dir).install();
+
+        const { bindings, calls } = fakeBindings();
+        const runtime = createVuTeXRuntime(bindings, { projectRoot: dir });
+        const result = await runtime.render(inputPath, { output: "html" });
+
+        assert.equal(calls.mathFaces.length, 0);
+        assert.equal(calls.flow.length, 1);
+        assert.ok(result.diagnostics.some((item) => item.code === "VUTEX_PACKAGE_MATH_FONT_INACTIVE"));
     });
 });
 

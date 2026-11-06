@@ -17,6 +17,7 @@ import type {
 } from "./types.js";
 import { PackageManager } from "./packages/manager.js";
 import { readManifest } from "./packages/manifest.js";
+import { readMathFontFace } from "./packages/math_font.js";
 import { readTemplateGeometry } from "./packages/template.js";
 
 type ParsedPayload = {
@@ -161,15 +162,63 @@ export function createVuTeXRuntime(
         }
 
         const mathPackage = activatedSlot(activation.packages, "math-font");
-        if (mathPackage !== undefined && (mathPackage.source !== "builtin" || !NATIVE_MATH_FONTS.has(mathPackage.name))) {
-            return fail(
-                diagnostic(
-                    "VUTEX_PACKAGE_MATH_FONT_UNSUPPORTED",
-                    `math font package has no bundled OpenType MATH face: ${mathPackage.name}`,
-                    "package",
-                    inputPath,
-                ),
-            );
+        const bundledMath = mathPackage !== undefined
+            && mathPackage.source === "builtin"
+            && NATIVE_MATH_FONTS.has(mathPackage.name);
+        if (mathPackage !== undefined && !bundledMath) {
+            if (mathPackage.path === undefined) {
+                return fail(
+                    diagnostic(
+                        "VUTEX_PACKAGE_MATH_FONT_UNSUPPORTED",
+                        `math font package has no resource directory: ${mathPackage.name}`,
+                        "package",
+                        inputPath,
+                    ),
+                );
+            }
+            // Reflowed html keeps formulas as markup, so the warning below is
+            // the whole record for that format and the face is never installed.
+            if (outputFormat !== "html") {
+                const face = await readMathFontFace(mathPackage.path);
+                if (face.diagnostic !== undefined) {
+                    return fail(face.diagnostic);
+                }
+                if (face.file === undefined) {
+                    return fail(
+                        diagnostic(
+                            "VUTEX_PACKAGE_MATH_FONT_INVALID",
+                            `math font package ${mathPackage.name} names no font file`,
+                            "package",
+                            inputPath,
+                        ),
+                    );
+                }
+                let faceBytes: Uint8Array;
+                try {
+                    faceBytes = await readBytes(face.file);
+                } catch {
+                    return fail(
+                        diagnostic(
+                            "VUTEX_PACKAGE_MATH_FONT_INVALID",
+                            `math font package ${mathPackage.name} has no readable font file`,
+                            "package",
+                            inputPath,
+                        ),
+                    );
+                }
+                try {
+                    bindings.installMathFontFace(mathPackage.name, mathPackage.artifactHash ?? "", faceBytes);
+                } catch (failure) {
+                    return fail(
+                        diagnostic(
+                            "VUTEX_PACKAGE_MATH_FONT_INVALID",
+                            failure instanceof Error ? failure.message : String(failure),
+                            "package",
+                            inputPath,
+                        ),
+                    );
+                }
+            }
         }
         const mathFont = mathPackage?.name;
 
