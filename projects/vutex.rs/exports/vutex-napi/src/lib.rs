@@ -173,11 +173,22 @@ struct InstalledMathFace {
     hash: String,
     /// Leaked name the native family registry keyed the payload on.
     family: &'static str,
+    /// TeX parameter family the package declared, if any.
+    tex_parameters: Option<&'static str>,
 }
 
 fn installed_math_faces() -> &'static Mutex<BTreeMap<String, InstalledMathFace>> {
     static FACES: OnceLock<Mutex<BTreeMap<String, InstalledMathFace>>> = OnceLock::new();
     FACES.get_or_init(|| Mutex::new(BTreeMap::new()))
+}
+
+/// TeX parameter families a math-font package may declare in `math-font.json`.
+///
+/// The list is the native contract, not a TypeScript copy: the package reader
+/// validates the declared label against this answer before installing a face.
+#[napi]
+pub fn math_font_tex_parameter_families() -> Vec<String> {
+    vutex_compose::math::MathSemantics::TEX_PARAMETER_FAMILIES.iter().map(|label| (*label).to_string()).collect()
 }
 
 /// Register a downloaded OpenType MATH face under its resource package id.
@@ -186,10 +197,18 @@ fn installed_math_faces() -> &'static Mutex<BTreeMap<String, InstalledMathFace>>
 /// before `build_display`, so the name the document declared resolves to the
 /// bytes the package downloaded. The face must carry a parsable `MATH` table;
 /// anything else fails here instead of falling back to synthetic metrics. A
-/// repeat install with the same artifact hash is a no-op, so a long-running
-/// host does not leak one copy of the payload per render.
+/// package may additionally declare the TeX parameter family its metrics
+/// follow, which is how a downloaded face inherits the σ16 lone-subscript
+/// correction; an unknown family is rejected rather than silently ignored. A
+/// repeat install with the same artifact hash and declaration is a no-op, so a
+/// long-running host does not leak one copy of the payload per render.
 #[napi]
-pub fn install_math_font_face(name: String, artifact_hash: String, bytes: Buffer) -> napi::Result<()> {
+pub fn install_math_font_face(
+    name: String,
+    artifact_hash: String,
+    bytes: Buffer,
+    tex_parameters: Option<String>,
+) -> napi::Result<()> {
     install_embedded_math_fonts();
     let id = name.trim();
     if id.is_empty() {
@@ -198,12 +217,23 @@ pub fn install_math_font_face(name: String, artifact_hash: String, bytes: Buffer
     if assets::math_family(id).is_some() {
         return Err(napi::Error::from_reason(format!("math font package id is reserved for a bundled face: {id}")));
     }
+    let declared = tex_parameters.as_deref().map(str::trim).filter(|label| !label.is_empty());
+    if let Some(label) = declared {
+        if !vutex_compose::math::MathSemantics::tex_parameter_family_known(label) {
+            return Err(napi::Error::from_reason(format!(
+                "math font package {id} declares unknown TeX parameter family: {label}"
+            )));
+        }
+    }
     let payload = bytes.as_ref();
     if payload.is_empty() {
         return Err(napi::Error::from_reason(format!("math font package {id} carries no face bytes")));
     }
     let mut faces = installed_math_faces().lock().map_err(|_| napi::Error::from_reason("math face registry is poisoned"))?;
-    if faces.get(id).is_some_and(|face| face.hash == artifact_hash) {
+    if faces
+        .get(id)
+        .is_some_and(|face| face.hash == artifact_hash && face.tex_parameters == declared)
+    {
         return Ok(());
     }
     if vutex_text::math::MathFontFacts::from_bytes(payload).is_none() {
@@ -213,8 +243,12 @@ pub fn install_math_font_face(name: String, artifact_hash: String, bytes: Buffer
     }
     let family: &'static str = Box::leak(id.to_string().into_boxed_str());
     let leaked: &'static [u8] = Box::leak(payload.to_vec().into_boxed_slice());
-    vutex_text::math::install_math_font_named(family, leaked);
-    faces.insert(id.to_string(), InstalledMathFace { hash: artifact_hash, family });
+    let parameters: Option<&'static str> = declared.map(|label| &*Box::leak(label.to_string().into_boxed_str()));
+    match parameters {
+        Some(label) => vutex_text::math::install_math_font_named_with_parameters(family, leaked, label),
+        None => vutex_text::math::install_math_font_named(family, leaked),
+    }
+    faces.insert(id.to_string(), InstalledMathFace { hash: artifact_hash, family, tex_parameters: parameters });
     Ok(())
 }
 

@@ -28,7 +28,7 @@ function fakeBindings(overrides: Overrides = {}) {
         display: [] as Array<string | undefined>,
         mathFont: [] as Array<string | undefined>,
         template: [] as Array<unknown>,
-        mathFaces: [] as Array<{ name: string; hash: string; bytes: Uint8Array }>,
+        mathFaces: [] as Array<{ name: string; hash: string; bytes: Uint8Array; texParameters?: string }>,
         flow: [] as Array<string | undefined>,
         pdfSettings: [] as Array<string | undefined>,
         reports: [] as ReportCall[],
@@ -74,9 +74,10 @@ function fakeBindings(overrides: Overrides = {}) {
             calls.flow.push(theme);
             return { html: () => overrides.html ?? "<html/>" };
         },
-        installMathFontFace: (name, hash, bytes) => {
-            calls.mathFaces.push({ name, hash, bytes });
+        installMathFontFace: (name, hash, bytes, texParameters) => {
+            calls.mathFaces.push({ name, hash, bytes, texParameters });
         },
+        mathFontTexParameterFamilies: () => ["latin-modern-math", "xits-math"],
         embedSvgFonts: (svg) => svg,
         subsetFace: () => null,
         summarizeDocument: () => JSON.stringify({ blocks: 1 }),
@@ -295,6 +296,56 @@ test("render registers a downloaded math face before laying out", async () => {
         assert.equal(new TextDecoder().decode(calls.mathFaces[0]?.bytes), "font payload");
         assert.deepEqual(calls.mathFont, ["resources/math"]);
         assert.equal(result.diagnostics.filter((item) => item.severity === "error").length, 0);
+    });
+});
+
+test("render forwards a declared TeX parameter family to the native face registry", async () => {
+    await withTempDir(async (dir) => {
+        const inputPath = join(dir, "chapter.md");
+        await writeFile(inputPath, "# Title\n", "utf8");
+        const resource = join(dir, "resources", "math");
+        await mkdir(resource, { recursive: true });
+        await writeFile(join(resource, "math.otf"), "font payload", "utf8");
+        await writeFile(
+            join(resource, "math-font.json"),
+            JSON.stringify({ file: "math.otf", texParameters: "xits-math" }),
+            "utf8",
+        );
+        await writeFile(join(dir, "vutex.toml"), '[packages]\nmath-font = "./resources/math"\n', "utf8");
+        await new PackageManager(dir).install();
+
+        const { bindings, calls } = fakeBindings();
+        const runtime = createVuTeXRuntime(bindings, { projectRoot: dir });
+        const result = await runtime.render(inputPath);
+
+        assert.equal(calls.mathFaces.length, 1);
+        assert.equal(calls.mathFaces[0]?.texParameters, "xits-math");
+        assert.equal(result.diagnostics.filter((item) => item.severity === "error").length, 0);
+    });
+});
+
+test("render fails closed when a math font package declares an unknown TeX parameter family", async () => {
+    await withTempDir(async (dir) => {
+        const inputPath = join(dir, "chapter.md");
+        await writeFile(inputPath, "# Title\n", "utf8");
+        const resource = join(dir, "resources", "math");
+        await mkdir(resource, { recursive: true });
+        await writeFile(join(resource, "math.otf"), "font payload", "utf8");
+        await writeFile(
+            join(resource, "math-font.json"),
+            JSON.stringify({ file: "math.otf", texParameters: "computer-modern" }),
+            "utf8",
+        );
+        await writeFile(join(dir, "vutex.toml"), '[packages]\nmath-font = "./resources/math"\n', "utf8");
+        await new PackageManager(dir).install();
+
+        const { bindings, calls } = fakeBindings();
+        const runtime = createVuTeXRuntime(bindings, { projectRoot: dir });
+        const result = await runtime.render(inputPath);
+
+        assert.equal(calls.display.length, 0);
+        assert.equal(calls.mathFaces.length, 0);
+        assert.ok(result.diagnostics.some((item) => item.code === "VUTEX_PACKAGE_MATH_FONT_SEMANTICS_UNKNOWN"));
     });
 });
 

@@ -51,6 +51,7 @@ function fakeBindings(overrides: { measureResponse?: string; renderFormulaRespon
         }),
         buildFlow: () => ({ html: () => "<html/>" }),
         installMathFontFace: () => {},
+        mathFontTexParameterFamilies: () => ["latin-modern-math", "xits-math"],
         embedSvgFonts: (svg) => svg,
         subsetFace: () => null,
         summarizeDocument: (graphJson) => {

@@ -206,8 +206,26 @@ export function createVuTeXRuntime(
                         ),
                     );
                 }
+                if (
+                    face.texParameters !== undefined
+                    && !bindings.mathFontTexParameterFamilies().includes(face.texParameters)
+                ) {
+                    return fail(
+                        diagnostic(
+                            "VUTEX_PACKAGE_MATH_FONT_SEMANTICS_UNKNOWN",
+                            `math font package ${mathPackage.name} declares unknown TeX parameter family: ${face.texParameters}`,
+                            "package",
+                            inputPath,
+                        ),
+                    );
+                }
                 try {
-                    bindings.installMathFontFace(mathPackage.name, mathPackage.artifactHash ?? "", faceBytes);
+                    bindings.installMathFontFace(
+                        mathPackage.name,
+                        mathPackage.artifactHash ?? "",
+                        faceBytes,
+                        face.texParameters,
+                    );
                 } catch (failure) {
                     return fail(
                         diagnostic(

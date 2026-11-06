@@ -189,7 +189,8 @@ export type VuTeXBindings = {
         template?: TemplateGeometry,
     ) => DisplaySceneHandle;
     buildFlow: (graphJson: string, theme?: string) => FlowSceneHandle;
-    installMathFontFace: (name: string, artifactHash: string, bytes: Uint8Array) => void;
+    installMathFontFace: (name: string, artifactHash: string, bytes: Uint8Array, texParameters?: string) => void;
+    mathFontTexParameterFamilies: () => string[];
     embedSvgFonts: (svg: string, theme?: string) => string;
     subsetFace: (family: string, script: string, style: string, chars: string) => Uint8Array | null;
     summarizeDocument: (graphJson: string) => string;

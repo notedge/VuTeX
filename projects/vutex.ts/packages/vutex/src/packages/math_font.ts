@@ -16,13 +16,15 @@ function invalid(message: string, details: Record<string, unknown>): VuTeXDiagno
 /**
  * Locate the OpenType MATH face a math-font package declares in `math-font.json`.
  *
- * The file names one font inside the package root. Whether the bytes actually
- * carry a parsable `MATH` table is the native registry's decision, not this
- * reader's: this layer only resolves the path and refuses to leave the package.
+ * The file names one font inside the package root and may name the TeX
+ * parameter family the face's metrics follow. Whether the bytes actually carry
+ * a parsable `MATH` table is the native registry's decision, and whether the
+ * parameter family is known is the native list's decision; this reader only
+ * resolves the paths and refuses to leave the package.
  */
 export async function readMathFontFace(
     directory: string,
-): Promise<{ file?: string; diagnostic?: VuTeXDiagnostic }> {
+): Promise<{ file?: string; texParameters?: string; diagnostic?: VuTeXDiagnostic }> {
     const record = join(directory, "math-font.json");
     let parsed: unknown;
     try {
@@ -42,6 +44,10 @@ export async function readMathFontFace(
     if (typeof declared !== "string" || declared.trim().length === 0) {
         return { diagnostic: invalid(`math-font.json at ${directory} names no font file`, { directory }) };
     }
+    const texParameters = (parsed as { texParameters?: unknown }).texParameters;
+    if (texParameters !== undefined && (typeof texParameters !== "string" || texParameters.trim().length === 0)) {
+        return { diagnostic: invalid(`math-font.json at ${directory} declares an empty TeX parameter family`, { directory }) };
+    }
     const root = resolve(directory);
     const file = resolve(root, declared);
     const inside = relative(root, file);
@@ -53,5 +59,5 @@ export async function readMathFontFace(
             }),
         };
     }
-    return { file };
+    return { file, texParameters: texParameters === undefined ? undefined : texParameters.trim() };
 }
