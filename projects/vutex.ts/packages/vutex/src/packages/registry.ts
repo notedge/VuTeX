@@ -152,6 +152,13 @@ export function satisfies(version: ParsedVersion, range: VersionRange): boolean 
     }
 }
 
+/** Check a plain version string against one range string. */
+export function satisfiesRange(version: string, range: string): boolean {
+    const parsedVersion = parseVersion(version);
+    const parsedRange = parseRange(range);
+    return parsedVersion !== undefined && parsedRange !== undefined && satisfies(parsedVersion, parsedRange);
+}
+
 /** Highest version satisfying every declared range. */
 export function selectVersion(
     metadata: RegistryMetadata,

@@ -253,3 +253,104 @@ test("activation fails when the cached tree is missing, without reaching the net
         assert.equal(activation.diagnostics[0]?.code, "VUTEX_PACKAGE_ARTIFACT_MISSING");
     });
 });
+
+function trackingTransport(routes: Record<string, Route>): {
+    transport: (url: string) => Promise<{ status: number; body: Uint8Array }>;
+    calls: string[];
+} {
+    const calls: string[] = [];
+    const inner = transportFor(routes);
+    return {
+        transport: async (url: string) => {
+            calls.push(url);
+            return inner(url);
+        },
+        calls,
+    };
+}
+
+function registryMetadata(versions: string[], payload: string): string {
+    return JSON.stringify({
+        slot: "math-font",
+        name: "libertinus",
+        versions: versions.map((version) => ({
+            version,
+            files: [
+                {
+                    path: "math.otf",
+                    url: "../../files/math.otf",
+                    sha256: digestOf(payload),
+                },
+            ],
+        })),
+    });
+}
+
+test("install keeps the locked registry version and update lowers the pin", async () => {
+    await withProject(async (dir) => {
+        const payload = "face bytes";
+        const fileUrl = `${REGISTRY}/files/math.otf`;
+        const url = metadataUrl(REGISTRY, "math-font", "libertinus");
+        await writeManifest(dir, { "math-font": "libertinus@^1.0.0" });
+
+        const first = trackingTransport({ [url]: registryMetadata(["1.0.0"], payload), [fileUrl]: payload });
+        const manager = new PackageManager(dir, { transport: first.transport });
+        await manager.install();
+        assert.equal((await readLockfile(dir))?.packages[0]?.version, "1.0.0");
+
+        // The registry publishes 1.1.0 afterwards. A plain install must not
+        // leave the locked version, and it must not reach the network.
+        const second = trackingTransport({ [url]: registryMetadata(["1.0.0", "1.1.0"], payload), [fileUrl]: payload });
+        const locked = new PackageManager(dir, { transport: second.transport });
+        await locked.install();
+        assert.equal((await readLockfile(dir))?.packages[0]?.version, "1.0.0");
+        assert.deepEqual(second.calls, []);
+
+        // Update ignores the pin and resolves the declared range again. The
+        // fixture metadata omits `artifactHash`, so the file is fetched once
+        // more into the same content addressed cache.
+        await locked.update();
+        assert.equal((await readLockfile(dir))?.packages[0]?.version, "1.1.0");
+        assert.deepEqual(second.calls, [url, fileUrl]);
+    });
+});
+
+test("install re-resolves when the declared range rules out the locked version", async () => {
+    await withProject(async (dir) => {
+        const payload = "face bytes";
+        const fileUrl = `${REGISTRY}/files/math.otf`;
+        const url = metadataUrl(REGISTRY, "math-font", "libertinus");
+        const transport = transportFor({ [url]: registryMetadata(["1.0.0", "2.0.0"], payload), [fileUrl]: payload });
+
+        await writeManifest(dir, { "math-font": "libertinus@^1.0.0" });
+        const manager = new PackageManager(dir, { transport });
+        await manager.install();
+        assert.equal((await readLockfile(dir))?.packages[0]?.version, "1.0.0");
+
+        await writeManifest(dir, { "math-font": "libertinus@^2.0.0" });
+        await manager.install();
+        assert.equal((await readLockfile(dir))?.packages[0]?.version, "2.0.0");
+    });
+});
+
+test("install with an intact lock and cache never reaches the network", async () => {
+    await withProject(async (dir) => {
+        const payload = "face bytes";
+        const online = new PackageManager(dir, {
+            transport: async (url: string) => {
+                return transportFor({ [metadataUrl(REGISTRY, "math-font", "libertinus")]: registryMetadata(["1.0.0"], payload), [`${REGISTRY}/files/math.otf`]: payload })(url);
+            },
+        });
+        await writeManifest(dir, { "math-font": "libertinus@^1.0.0" });
+        await online.install();
+
+        const offline = new PackageManager(dir, {
+            transport: async () => {
+                throw new Error("install must not reach the network");
+            },
+        });
+        await offline.install();
+        assert.equal((await readLockfile(dir))?.packages[0]?.version, "1.0.0");
+    });
+});
+

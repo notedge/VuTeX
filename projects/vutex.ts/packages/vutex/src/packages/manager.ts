@@ -20,6 +20,7 @@ import {
     fetchRegistryMetadata,
     nodeTransport,
     parseRegistrySpec,
+    satisfiesRange,
     selectVersion,
     type RegistryFile,
     type RegistryMetadata,
@@ -204,8 +205,15 @@ export class PackageManager {
     }
 
     async install(options: PackageInstallOptions = {}): Promise<void> {
+        await this.resolveAndInstall(options, "install");
+    }
+
+    private async resolveAndInstall(
+        options: PackageInstallOptions,
+        mode: "install" | "update",
+    ): Promise<void> {
         const declared = await this.declaredPackages(options);
-        const plan = await this.resolvePlan(declared, "install");
+        const plan = await this.resolvePlan(declared, mode);
         const errors = plan.diagnostics.filter((item) => item.severity === "error");
         if (errors.length > 0) {
             throw new PackageResolveError(errors);
@@ -216,13 +224,29 @@ export class PackageManager {
         const entries: LockedPackage[] = [];
         for (const item of plan.packages) {
             let artifactHash = item.artifactHash;
-            if (item.source.startsWith("registry+") && item.registryFiles !== undefined) {
-                const downloaded = await this.downloadRegistryPackage(item);
-                if (downloaded.diagnostic) {
-                    failures.push(downloaded.diagnostic);
-                    continue;
+            if (item.source.startsWith("registry+")) {
+                // A package already present in the content addressed cache is
+                // not downloaded again, so an install stays offline once the
+                // lock has been satisfied.
+                if (await this.cachedRegistryArtifact(item)) {
+                    artifactHash = item.artifactHash;
+                } else {
+                    let downloadable = item;
+                    if (item.registryFiles === undefined) {
+                        const hydrated = await this.hydratePinnedPackage(item);
+                        if (hydrated.diagnostic) {
+                            failures.push(hydrated.diagnostic);
+                            continue;
+                        }
+                        downloadable = hydrated.package as ResolvedPackage;
+                    }
+                    const downloaded = await this.downloadRegistryPackage(downloadable);
+                    if (downloaded.diagnostic) {
+                        failures.push(downloaded.diagnostic);
+                        continue;
+                    }
+                    artifactHash = downloaded.artifactHash;
                 }
-                artifactHash = downloaded.artifactHash;
             }
             const entry: Omit<LockedPackage, "contentHash"> = {
                 slot: item.slot,
@@ -238,6 +262,57 @@ export class PackageManager {
             throw new PackageResolveError(failures);
         }
         await writeLockfile(this.projectRoot, { version: 1, packages: entries });
+    }
+
+    /** Whether the content addressed cache already holds this exact artifact. */
+    private async cachedRegistryArtifact(item: ResolvedPackage): Promise<boolean> {
+        if (item.artifactHash === undefined) {
+            return false;
+        }
+        const cache = this.registryCachePath(item.slot, item.name, item.artifactHash);
+        try {
+            const tree = await hashTree(cache);
+            return tree.artifactHash === item.artifactHash;
+        } catch {
+            return false;
+        }
+    }
+
+    /**
+     * A locked registry package whose cache went missing still knows its exact
+     * version. Fetch that version's metadata so the files can be downloaded
+     * without letting a newer version replace the pin.
+     */
+    private async hydratePinnedPackage(
+        item: ResolvedPackage,
+    ): Promise<{ package?: ResolvedPackage; diagnostic?: VuTeXDiagnostic }> {
+        const base = await this.registryBase();
+        if (base === undefined) {
+            return {
+                diagnostic: packageDiagnostic(
+                    "VUTEX_PACKAGE_REGISTRY_UNCONFIGURED",
+                    `no registry is configured to restore ${item.slot} ${item.name}`,
+                    { slot: item.slot, name: item.name },
+                ),
+            };
+        }
+        const fetched = await fetchRegistryMetadata(this.options.transport ?? nodeTransport, base, item.slot, item.name);
+        if (fetched.diagnostic || fetched.metadata === undefined) {
+            return { diagnostic: fetched.diagnostic };
+        }
+        const version = fetched.metadata.versions.find((entry) => entry.version === item.version);
+        if (version === undefined) {
+            return {
+                diagnostic: packageDiagnostic(
+                    "VUTEX_PACKAGE_VERSION_NO_MATCH",
+                    `${item.slot} ${item.name}@${item.version} is locked but no longer published`,
+                    { slot: item.slot, name: item.name, version: item.version },
+                ),
+            };
+        }
+        return {
+            package: this.registryPackage(item.slot, item.name, version, base, fetched.metadataUrl),
+        };
     }
 
     /**
@@ -345,7 +420,7 @@ export class PackageManager {
     }
 
     async update(): Promise<void> {
-        await this.install();
+        await this.resolveAndInstall({}, "update");
     }
 
     async doctor(): Promise<PackageDoctorReport> {
@@ -361,7 +436,9 @@ export class PackageManager {
 
         const declared = manifest?.packages ?? {};
         const declaredSlots = Object.keys(declared).sort((left, right) => left.localeCompare(right, "en"));
-        const plan = await this.resolvePlan(declared);
+        // Doctor resolves as if updating, so the drift check still sees what
+        // the declared ranges would pick today.
+        const plan = await this.resolvePlan(declared, "update");
 
         const unknownSlots = plan.diagnostics.filter((item) => item.code === "VUTEX_PACKAGE_SLOT_UNKNOWN");
         checks.push(
@@ -545,7 +622,7 @@ export class PackageManager {
 
     private async resolvePlan(
         declared: Record<string, string>,
-        mode: "install" | "activate" = "install",
+        mode: "install" | "update" | "activate" = "install",
     ): Promise<{ packages: ResolvedPackage[]; diagnostics: VuTeXDiagnostic[] }> {
         const diagnostics: VuTeXDiagnostic[] = [];
         const packages = new Map<string, ResolvedPackage>();
@@ -553,8 +630,20 @@ export class PackageManager {
         const metadataByKey = new Map<string, RegistryMetadata>();
         const metadataUrls = new Map<string, string | undefined>();
         const expanded = new Set<string>();
+        const pinnedSlots = new Set<string>();
         const registryBase = await this.registryBase();
         const transport = this.options.transport ?? nodeTransport;
+
+        // `install` reproduces the lockfile, so an unchanged declaration never
+        // silently upgrades to a newer registry version. `update` ignores the
+        // pins and resolves the declared ranges again.
+        const pins = new Map<string, LockedPackage>();
+        if (mode === "install") {
+            const lock = await readLockfile(this.projectRoot);
+            for (const item of lock?.packages ?? []) {
+                pins.set(item.slot, item);
+            }
+        }
 
         type Requirement = { slot: string; name: string; range: string; from?: string; registry?: boolean };
         const queue: Requirement[] = [];
@@ -585,6 +674,49 @@ export class PackageManager {
                     from: `${slot}:${name}@${version.version}`,
                 });
             }
+        };
+
+        /**
+         * Reuse the version the lockfile already pinned, as long as it still
+         * satisfies the requirement. Reused versions keep their recorded
+         * dependencies, so a plain install touches neither metadata nor files.
+         */
+        const tryPin = (requirement: Requirement): boolean => {
+            if (mode !== "install") {
+                return false;
+            }
+            const pin = pins.get(requirement.slot);
+            if (pin === undefined || pin.name !== requirement.name) {
+                return false;
+            }
+            if (!pin.source.startsWith("registry+")) {
+                return false;
+            }
+            // A bare id prefers the built-in preset when one exists.
+            if (
+                requirement.registry !== true &&
+                isPackageSlot(pin.slot) &&
+                lookupBuiltin(pin.name, pin.slot) !== undefined
+            ) {
+                return false;
+            }
+            if (!satisfiesRange(pin.version, requirement.range)) {
+                return false;
+            }
+            const existing = packages.get(requirement.slot);
+            if (existing !== undefined) {
+                return existing.name === pin.name && existing.version === pin.version;
+            }
+            packages.set(requirement.slot, {
+                slot: pin.slot,
+                name: pin.name,
+                version: pin.version,
+                source: pin.source,
+                artifactHash: pin.artifactHash,
+                dependencies: [...pin.dependencies],
+            });
+            pinnedSlots.add(requirement.slot);
+            return true;
         };
 
         while (queue.length > 0) {
@@ -622,6 +754,14 @@ export class PackageManager {
                     }
                     continue;
                 }
+                // A second requirement can rule out the locked version. Drop
+                // the pin and resolve the registry with both ranges instead.
+                if (pinnedSlots.has(slot) && !satisfiesRange(existing.version, range)) {
+                    packages.delete(slot);
+                    pinnedSlots.delete(slot);
+                    queue.unshift(requirement);
+                    continue;
+                }
                 const ranges = rangesBySlot.get(slot) ?? [];
                 if (!ranges.includes(range)) {
                     ranges.push(range);
@@ -654,6 +794,10 @@ export class PackageManager {
                 } else if (resolved.package) {
                     packages.set(slot, resolved.package);
                 }
+                continue;
+            }
+
+            if (tryPin(requirement)) {
                 continue;
             }
 
@@ -731,9 +875,10 @@ export class PackageManager {
             expand(slot, name, version);
         }
 
-        // Dependency references name the versions the plan actually chose.
+        // Dependency references name the versions the plan actually chose. Reused
+        // lock entries keep their recorded references untouched.
         for (const item of packages.values()) {
-            if (!item.source.startsWith("registry+")) {
+            if (!item.source.startsWith("registry+") || pinnedSlots.has(item.slot)) {
                 continue;
             }
             const found = metadataByKey.get(keyOf(item.slot, item.name));
@@ -743,6 +888,70 @@ export class PackageManager {
                 .filter((dependency): dependency is ResolvedPackage => dependency !== undefined)
                 .map((dependency) => `${dependency.slot}:${dependency.name}@${dependency.version}`)
                 .sort((left, right) => left.localeCompare(right, "en"));
+        }
+
+        // A reused lock entry brings its dependency references along, so their
+        // targets must enter the plan even when nothing declares them.
+        const pending = [...pinnedSlots];
+        while (pending.length > 0) {
+            const slot = pending.pop() as string;
+            const item = packages.get(slot);
+            if (item === undefined) {
+                continue;
+            }
+            for (const reference of item.dependencies) {
+                const separator = reference.indexOf(":");
+                const at = reference.lastIndexOf("@");
+                if (separator <= 0 || at <= separator) {
+                    diagnostics.push(
+                        packageDiagnostic(
+                            "VUTEX_PACKAGE_LOCK_INCOMPLETE",
+                            `${slot} locks an unreadable dependency reference: ${reference}`,
+                            { slot, reference },
+                        ),
+                    );
+                    continue;
+                }
+                const refSlot = reference.slice(0, separator);
+                const refName = reference.slice(separator + 1, at);
+                const refVersion = reference.slice(at + 1);
+                const target = packages.get(refSlot);
+                if (target !== undefined) {
+                    if (target.name !== refName || target.version !== refVersion) {
+                        diagnostics.push(
+                            packageDiagnostic(
+                                "VUTEX_PACKAGE_DEPENDENCY_CONFLICT",
+                                `${refSlot} is locked as ${refName}@${refVersion} but the plan resolved ${target.name}@${target.version}`,
+                                { slot: refSlot, expected: `${refName}@${refVersion}`, actual: `${target.name}@${target.version}` },
+                            ),
+                        );
+                    }
+                    continue;
+                }
+                const pin = pins.get(refSlot);
+                if (pin === undefined || pin.name !== refName || pin.version !== refVersion) {
+                    diagnostics.push(
+                        packageDiagnostic(
+                            "VUTEX_PACKAGE_LOCK_INCOMPLETE",
+                            `${slot} depends on ${reference} which the lockfile does not contain`,
+                            { slot, reference },
+                        ),
+                    );
+                    continue;
+                }
+                packages.set(refSlot, {
+                    slot: pin.slot,
+                    name: pin.name,
+                    version: pin.version,
+                    source: pin.source,
+                    artifactHash: pin.artifactHash,
+                    dependencies: [...pin.dependencies],
+                });
+                if (pin.source.startsWith("registry+")) {
+                    pinnedSlots.add(refSlot);
+                    pending.push(refSlot);
+                }
+            }
         }
 
         return { packages: [...packages.values()], diagnostics };
