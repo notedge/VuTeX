@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -14,13 +14,12 @@ const cases = JSON.parse(readFileSync(resolve(corpusDir, "cases.json"), "utf8"))
 const native = loadNative();
 const viz = await instance();
 
-const browser = process.env.PUPPETEER_EXECUTABLE_PATH
-    ?? "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const buildDir = resolve(resultsRoot, ".build", "mermaid");
 mkdirSync(buildDir, { recursive: true });
 const puppeteerConfig = resolve(buildDir, "puppeteer.json");
+// No `executablePath`: mermaid-cli rasterizes with the Chromium its Puppeteer
+// dependency provisioned, so the reference does not vary with the host browser.
 writeFileSync(puppeteerConfig, JSON.stringify({
-    ...(existsSync(browser) ? { executablePath: browser } : {}),
     args: ["--no-sandbox", "--disable-gpu"],
 }, null, 2));
 

@@ -123,7 +123,7 @@ if (falsePositives.length > 0) {
 // The goldens claim byte equality, so the gate pins the rasterizer identity
 // itself: the five fields below must be recorded and must name the bundled
 // build rather than a host browser or a channel.
-const MANIFEST = "projects/vutex.rs/crates/vutex-layout/tests/fixtures/visual/manifest.json";
+const MANIFEST = "projects/vutex.ts/examples/visual-golden/frames/manifest.json";
 let rasterizer;
 try {
     rasterizer = JSON.parse(readFileSync(join(repo, MANIFEST), "utf8")).rasterizer;
