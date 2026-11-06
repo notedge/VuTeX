@@ -21,6 +21,7 @@
         "@doki-land/nifty": "^0.1.9",
         "@vutex/vutex": "workspace:*",
         "@vutex/watex": "workspace:*",
-        "@vutex/latex": "workspace:*"
+        "@vutex/latex": "workspace:*",
+        "@vutex/tex": "workspace:*"
     }
 }
