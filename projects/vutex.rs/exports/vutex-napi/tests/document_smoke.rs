@@ -13,9 +13,11 @@
 
 use serde_json::Value;
 use vutex_napi::document::{
-    ImportFormat, assemble_report, build_display, build_flow, lower_document, parse_document,
-    render_display_snapshot_html, render_display_svg, render_flow_html,
+    ImportFormat, TemplateColors, TemplateGeometry, assemble_report, build_display, build_flow,
+    lower_document, parse_document, render_display_snapshot_html, render_display_svg,
+    render_flow_html,
 };
+use vutex_layout::hint::{ChromeHeader, SectionChrome};
 use vutex_napi::theme::Theme;
 use vutex_napi::footnote::{
     FOOTNOTE_DEFINITION_DUPLICATE, FOOTNOTE_DEFINITION_MISSING, FOOTNOTE_DEFINITION_UNREFERENCED,
@@ -38,6 +40,39 @@ fn markdown_source_reaches_svg() {
     let (svg, _) = svg_of("sample.md", ImportFormat::Markdown, b"# Title\n\nHello world.\n");
     assert!(svg.contains("<svg"), "{svg}");
     assert!(svg.contains("@font-face"), "the SVG lane skipped font embedding");
+}
+
+#[test]
+fn template_third_layer_reaches_layout_and_paint() {
+    let parsed = parse_document(
+        "sample.md",
+        ImportFormat::Markdown,
+        b"# One\n\nBody.\n\n## Sub\n\nMore.\n\n# Two\n\nEnd.\n",
+    )
+    .expect("source parses");
+    let lowered = lower_document(parsed.graph, "sample.md");
+    let template = TemplateGeometry {
+        page_width: 612.0,
+        page_height: 792.0,
+        chrome_folio: Some(true),
+        chrome_start_page: Some(1),
+        chrome_sections: [
+            Some(SectionChrome { header: Some(ChromeHeader::Literal("PART ONE")), folio: Some(false) }),
+            Some(SectionChrome { header: Some(ChromeHeader::Literal("SUBSECTION")), folio: Some(true) }),
+            None,
+            None,
+        ],
+        section_breaks: [true, true, false, false],
+        paragraph_gap: Some(12.0),
+        paragraph_indent: Some(24.0),
+        colors: TemplateColors { ink: Some("#112233"), ..Default::default() },
+        ..Default::default()
+    };
+    let scene = build_display(lowered, Theme::Baseline, None, Some(template));
+    let svg = render_display_svg(&scene).expect("svg renders");
+    assert!(svg.contains("PART ONE"), "{svg}");
+    assert!(svg.contains("SUBSECTION"), "{svg}");
+    assert!(svg.contains("fill=\"#112233\""), "{svg}");
 }
 
 #[test]

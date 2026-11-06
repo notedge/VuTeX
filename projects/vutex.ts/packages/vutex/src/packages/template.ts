@@ -1,16 +1,41 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import type { TemplateGeometry, VuTeXDiagnostic } from "../types.js";
+import type { TemplateColorToken, TemplateGeometry, TemplateSectionChrome, VuTeXDiagnostic } from "../types.js";
 
 const PAGE_SIZES: Record<string, { width: number; height: number }> = {
     a4: { width: 595.276, height: 841.89 },
     letter: { width: 612, height: 792 },
 };
 
+const COLOR_TOKENS: readonly TemplateColorToken[] = [
+    "ink",
+    "inkSecondary",
+    "inkMuted",
+    "inkFaint",
+    "accent",
+    "ruleStrong",
+    "rule",
+    "ruleFaint",
+    "tint",
+    "header",
+    "folio",
+    "headingRule",
+];
+
 function invalid(message: string, details: Record<string, unknown>): VuTeXDiagnostic {
     return {
         code: "VUTEX_PACKAGE_TEMPLATE_INVALID",
+        severity: "error",
+        message,
+        stage: "package",
+        args: details,
+    };
+}
+
+function unsupported(message: string, details: Record<string, unknown>): VuTeXDiagnostic {
+    return {
+        code: "VUTEX_PACKAGE_TEMPLATE_UNSUPPORTED",
         severity: "error",
         message,
         stage: "package",
@@ -30,6 +55,20 @@ function margin(value: unknown): number | undefined | null {
         return value;
     }
     return null;
+}
+
+/** Trimmed running-header text, or `null` when it fails the 1–160 contract. */
+function headerText(value: unknown): string | null {
+    if (typeof value !== "string") {
+        return null;
+    }
+    const text = value.trim();
+    return text.length === 0 || text.length > 160 ? null : text;
+}
+
+/** A `#RRGGBB` colour token, or `null` when the value is malformed. */
+function colorText(value: unknown): string | null {
+    return typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value) ? value : null;
 }
 
 /**
@@ -131,12 +170,9 @@ export async function readTemplateGeometry(
         }
         const chrome = record.chrome as Record<string, unknown>;
         if (chrome.header !== undefined) {
-            if (typeof chrome.header !== "string" || chrome.header.trim().length === 0) {
+            const text = headerText(chrome.header);
+            if (text === null) {
                 return { diagnostic: invalid(`template.json has an invalid chrome header`, { directory }) };
-            }
-            const text = chrome.header.trim();
-            if (text.length > 160) {
-                return { diagnostic: invalid(`template.json chrome header is longer than 160 characters`, { directory }) };
             }
             geometry.chromeHeader = text;
         }
@@ -157,6 +193,62 @@ export async function readTemplateGeometry(
                 return { diagnostic: invalid(`template.json has an invalid chrome alignment`, { directory }) };
             }
             geometry.headerAlign = chrome.align;
+        }
+        if (chrome.sections !== undefined) {
+            if (chrome.sections === null || typeof chrome.sections !== "object" || Array.isArray(chrome.sections)) {
+                return { diagnostic: invalid(`template.json has an invalid chrome sections block`, { directory }) };
+            }
+            const entries = chrome.sections as Record<string, unknown>;
+            const sections: TemplateSectionChrome[] = [];
+            for (const [key, value] of Object.entries(entries)) {
+                if (!/^[1-4]$/.test(key)) {
+                    return {
+                        diagnostic: invalid(`template.json chrome section level is outside H1 to H4`, {
+                            directory,
+                            level: key,
+                        }),
+                    };
+                }
+                if (value === null || typeof value !== "object" || Array.isArray(value)) {
+                    return { diagnostic: invalid(`template.json chrome section ${key} is not an object`, { directory }) };
+                }
+                const entry = value as { header?: unknown; folio?: unknown };
+                if (entry.header === undefined && entry.folio === undefined) {
+                    return {
+                        diagnostic: invalid(`template.json chrome section ${key} needs a header or a folio`, {
+                            directory,
+                            level: key,
+                        }),
+                    };
+                }
+                const section: TemplateSectionChrome = { level: Number(key) };
+                if (entry.header !== undefined) {
+                    const text = headerText(entry.header);
+                    if (text === null) {
+                        return {
+                            diagnostic: invalid(`template.json chrome section ${key} has an invalid header`, {
+                                directory,
+                                level: key,
+                            }),
+                        };
+                    }
+                    section.header = text;
+                }
+                if (entry.folio !== undefined) {
+                    if (typeof entry.folio !== "boolean") {
+                        return {
+                            diagnostic: invalid(`template.json chrome section ${key} has an invalid folio flag`, {
+                                directory,
+                                level: key,
+                            }),
+                        };
+                    }
+                    section.folio = entry.folio;
+                }
+                sections.push(section);
+            }
+            sections.sort((left, right) => left.level - right.level);
+            geometry.chromeSections = sections;
         }
     }
     if (record.sections !== undefined) {
@@ -186,7 +278,16 @@ export async function readTemplateGeometry(
         if (record.styles === null || typeof record.styles !== "object") {
             return { diagnostic: invalid(`template.json has an invalid styles block`, { directory }) };
         }
-        const styles = record.styles as { bodySize?: unknown; lineHeight?: unknown; headingScales?: unknown };
+        const styles = record.styles as {
+            bodySize?: unknown;
+            lineHeight?: unknown;
+            headingScales?: unknown;
+            paragraphGap?: unknown;
+            paragraphIndent?: unknown;
+            colors?: unknown;
+            fontFamily?: unknown;
+            fontFamilies?: unknown;
+        };
         if (styles.bodySize !== undefined) {
             if (typeof styles.bodySize !== "number" || styles.bodySize < 8 || styles.bodySize > 24) {
                 return { diagnostic: invalid(`template.json bodySize must be between 8 and 24 points`, { directory }) };
@@ -207,6 +308,44 @@ export async function readTemplateGeometry(
                 return { diagnostic: invalid(`template.json headingScales must be between 0.8 and 4`, { directory }) };
             }
             geometry.headingScales = styles.headingScales as number[];
+        }
+        for (const [field, name] of [
+            ["paragraphGap", "paragraphGap"],
+            ["paragraphIndent", "paragraphIndent"],
+        ] as const) {
+            const value = styles[field];
+            if (value === undefined) {
+                continue;
+            }
+            if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 48) {
+                return { diagnostic: invalid(`template.json ${name} must be between 0 and 48 points`, { directory }) };
+            }
+            geometry[field] = value;
+        }
+        if (styles.colors !== undefined) {
+            if (styles.colors === null || typeof styles.colors !== "object" || Array.isArray(styles.colors)) {
+                return { diagnostic: invalid(`template.json has an invalid colors block`, { directory }) };
+            }
+            const colors: Partial<Record<TemplateColorToken, string>> = {};
+            for (const [token, value] of Object.entries(styles.colors as Record<string, unknown>)) {
+                if (!COLOR_TOKENS.includes(token as TemplateColorToken)) {
+                    return { diagnostic: invalid(`template.json colors names an unknown token: ${token}`, { directory, token }) };
+                }
+                const color = colorText(value);
+                if (color === null) {
+                    return { diagnostic: invalid(`template.json color ${token} must be #RRGGBB`, { directory, token }) };
+                }
+                colors[token as TemplateColorToken] = color;
+            }
+            geometry.colors = colors;
+        }
+        if (styles.fontFamily !== undefined || styles.fontFamilies !== undefined) {
+            return {
+                diagnostic: unsupported(
+                    `template.json declares a text font family but the bundled layout only has serif and monospace faces`,
+                    { directory },
+                ),
+            };
         }
     }
     return { geometry };

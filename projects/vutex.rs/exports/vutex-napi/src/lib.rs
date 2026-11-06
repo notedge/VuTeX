@@ -33,7 +33,7 @@ use document_fonts::{BodyFace, BodyFaceStyle, BodyFamily, BodyScript};
 use document_ir::DocumentGraph;
 use napi::bindgen_prelude::Buffer;
 use napi_derive::napi;
-use vutex_layout::hint::Align;
+use vutex_layout::hint::{Align, ChromeHeader, SectionChrome};
 use vutex_text::math::MathFontFamily;
 use watex_wasm::{RenderOptions, measure, render, render_mathml, render_svg};
 
@@ -297,6 +297,46 @@ fn resolve_math_font(math_font: Option<String>) -> napi::Result<Option<MathFontF
     }
 }
 
+/// Chrome a template switches on when a heading of one level starts.
+#[napi(object)]
+pub struct TemplateSectionInput {
+    /// Heading level, H1 to H4.
+    pub level: u32,
+    /// Header source: `title`, `none`, or literal text.
+    pub header: Option<String>,
+    /// Whether pages in this section carry a folio.
+    pub folio: Option<bool>,
+}
+
+/// Colour tokens a template may override, each a `#RRGGBB` string.
+#[napi(object)]
+pub struct TemplateColorsInput {
+    /// Primary ink.
+    pub ink: Option<String>,
+    /// Secondary ink for quotes and captions.
+    pub ink_secondary: Option<String>,
+    /// Muted ink for chrome.
+    pub ink_muted: Option<String>,
+    /// Faint ink for decorative marks.
+    pub ink_faint: Option<String>,
+    /// Accent colour for links.
+    pub accent: Option<String>,
+    /// Strong rule colour.
+    pub rule_strong: Option<String>,
+    /// Regular rule colour.
+    pub rule: Option<String>,
+    /// Faint rule colour.
+    pub rule_faint: Option<String>,
+    /// Light tint behind code and header cells.
+    pub tint: Option<String>,
+    /// Running header colour.
+    pub header: Option<String>,
+    /// Folio colour.
+    pub folio: Option<String>,
+    /// Rule colour under an H1.
+    pub heading_rule: Option<String>,
+}
+
 /// Page geometry a template package contributes to the layout pass.
 #[napi(object)]
 pub struct TemplateGeometryInput {
@@ -320,6 +360,8 @@ pub struct TemplateGeometryInput {
     pub chrome_start_page: Option<u32>,
     /// Running header alignment: `left`, `center`, or `right`.
     pub header_align: Option<String>,
+    /// Per-level chrome overrides, H1 to H4.
+    pub chrome_sections: Option<Vec<TemplateSectionInput>>,
     /// Heading levels that start a new page.
     pub page_break_before: Option<Vec<u32>>,
     /// Body text size in points.
@@ -328,6 +370,12 @@ pub struct TemplateGeometryInput {
     pub line_height: Option<f64>,
     /// Heading size as a multiple of the body size, H1 to H4.
     pub heading_scales: Option<Vec<f64>>,
+    /// Space after a paragraph, in points.
+    pub paragraph_gap: Option<f64>,
+    /// First-line paragraph indent, in points.
+    pub paragraph_indent: Option<f64>,
+    /// Colour token overrides.
+    pub colors: Option<TemplateColorsInput>,
 }
 
 /// Paginate a lowered document under the selected theme and MATH family.
@@ -376,6 +424,27 @@ fn template_geometry(input: TemplateGeometryInput) -> napi::Result<document::Tem
         }
         section_breaks[(level - 1) as usize] = true;
     }
+    let mut chrome_sections: [Option<SectionChrome>; 4] = [None; 4];
+    for section in input.chrome_sections.unwrap_or_default() {
+        if !(1..=4).contains(&section.level) {
+            return Err(napi::Error::from_reason(format!("template chrome level is outside H1 to H4: {}", section.level)));
+        }
+        let index = (section.level - 1) as usize;
+        if chrome_sections[index].is_some() {
+            return Err(napi::Error::from_reason(format!("template declares chrome twice for H{}", section.level)));
+        }
+        if section.header.is_none() && section.folio.is_none() {
+            return Err(napi::Error::from_reason(format!(
+                "template chrome for H{} needs a header or a folio flag",
+                section.level
+            )));
+        }
+        let header = match section.header {
+            None => None,
+            Some(text) => Some(section_chrome_header(text)?),
+        };
+        chrome_sections[index] = Some(SectionChrome { header, folio: section.folio });
+    }
     let heading_scales = match input.heading_scales {
         None => None,
         Some(values) => {
@@ -384,6 +453,25 @@ fn template_geometry(input: TemplateGeometryInput) -> napi::Result<document::Tem
                 .map_err(|_| napi::Error::from_reason("template heading scales need exactly four values"))?;
             Some(scales)
         }
+    };
+    let paragraph_gap = template_distance(input.paragraph_gap, "paragraph gap")?;
+    let paragraph_indent = template_distance(input.paragraph_indent, "paragraph indent")?;
+    let colors = match input.colors {
+        None => document::TemplateColors::default(),
+        Some(colors) => document::TemplateColors {
+            ink: template_color(colors.ink, "ink")?,
+            ink_secondary: template_color(colors.ink_secondary, "inkSecondary")?,
+            ink_muted: template_color(colors.ink_muted, "inkMuted")?,
+            ink_faint: template_color(colors.ink_faint, "inkFaint")?,
+            accent: template_color(colors.accent, "accent")?,
+            rule_strong: template_color(colors.rule_strong, "ruleStrong")?,
+            rule: template_color(colors.rule, "rule")?,
+            rule_faint: template_color(colors.rule_faint, "ruleFaint")?,
+            tint: template_color(colors.tint, "tint")?,
+            header: template_color(colors.header, "header")?,
+            folio: template_color(colors.folio, "folio")?,
+            heading_rule: template_color(colors.heading_rule, "headingRule")?,
+        },
     };
     Ok(document::TemplateGeometry {
         page_width: input.page_width,
@@ -396,11 +484,57 @@ fn template_geometry(input: TemplateGeometryInput) -> napi::Result<document::Tem
         chrome_folio: input.chrome_folio,
         chrome_start_page: input.chrome_start_page.map(|page| page as usize),
         header_align,
+        chrome_sections,
         section_breaks,
         body_size: input.body_size,
         line_height: input.line_height,
         heading_scales,
+        paragraph_gap,
+        paragraph_indent,
+        colors,
     })
+}
+
+/// Validate one per-section header source.
+fn section_chrome_header(text: String) -> napi::Result<ChromeHeader> {
+    match text.as_str() {
+        "title" => Ok(ChromeHeader::Title),
+        "none" => Ok(ChromeHeader::None),
+        _ => {
+            let trimmed = text.trim();
+            if trimmed.is_empty() || trimmed.chars().count() > 160 {
+                return Err(napi::Error::from_reason(
+                    "template chrome literal header must be 1 to 160 characters".to_string(),
+                ));
+            }
+            Ok(ChromeHeader::Literal(intern_template_text(trimmed.to_string())))
+        }
+    }
+}
+
+/// Validate a `#RRGGBB` colour token.
+fn template_color(value: Option<String>, token: &str) -> napi::Result<Option<&'static str>> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let valid = value.len() == 7
+        && value.starts_with('#')
+        && value[1..].chars().all(|ch| ch.is_ascii_hexdigit());
+    if !valid {
+        return Err(napi::Error::from_reason(format!("template colour {token} must be #RRGGBB: {value}")));
+    }
+    Ok(Some(intern_template_text(value)))
+}
+
+/// Validate a paragraph distance in points.
+fn template_distance(value: Option<f64>, name: &str) -> napi::Result<Option<f64>> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    if !value.is_finite() || !(0.0..=48.0).contains(&value) {
+        return Err(napi::Error::from_reason(format!("template {name} must be between 0 and 48 points")));
+    }
+    Ok(Some(value))
 }
 
 /// Paginated display scene exposed to the host.

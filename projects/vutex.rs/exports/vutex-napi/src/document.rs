@@ -28,7 +28,7 @@ use document_formats::import::{
 use document_ir::{Block, DocumentGraph};
 use serde::{Deserialize, Serialize};
 use vutex_compose::{Diagnostic as RenderDiagnostic, Severity};
-use vutex_layout::hint::ChromeHeader;
+use vutex_layout::hint::{ChromeHeader, SectionChrome};
 use vutex_layout::{Diagrams, layout_with_metrics};
 use vutex_presentation::{
     DisplayPresentation, FlowPresentation, build_display_presentation, build_flow_presentation,
@@ -283,12 +283,47 @@ pub fn lower_document(graph: DocumentGraph, label: &str) -> LoweredDocument {
     LoweredDocument { graph, diagrams: diagrams.diagrams, footnotes: counts, diagnostics }
 }
 
+/// Colour tokens a template may override.
+///
+/// Every value is a `#RRGGBB` string. `None` keeps the theme colour, so a
+/// template only restates the tokens it actually repaints. The set is closed on
+/// purpose: a token outside this list has no measurable slot in
+/// [`vutex_layout::hint::StyleTokens`].
+#[derive(Debug, Clone, Copy, Default)]
+pub struct TemplateColors {
+    /// Primary ink.
+    pub ink: Option<&'static str>,
+    /// Secondary ink for quotes and captions.
+    pub ink_secondary: Option<&'static str>,
+    /// Muted ink for chrome.
+    pub ink_muted: Option<&'static str>,
+    /// Faint ink for decorative marks.
+    pub ink_faint: Option<&'static str>,
+    /// Accent colour for links.
+    pub accent: Option<&'static str>,
+    /// Strong rule colour.
+    pub rule_strong: Option<&'static str>,
+    /// Regular rule colour.
+    pub rule: Option<&'static str>,
+    /// Faint rule colour.
+    pub rule_faint: Option<&'static str>,
+    /// Light tint behind code and header cells.
+    pub tint: Option<&'static str>,
+    /// Running header colour.
+    pub header: Option<&'static str>,
+    /// Folio colour.
+    pub folio: Option<&'static str>,
+    /// Rule colour under an H1.
+    pub heading_rule: Option<&'static str>,
+}
+
 /// Page geometry contributed by a template resource package.
 ///
 /// Margins are optional so a template that only names a page size keeps the
 /// margins of the active theme. The remaining fields are the template's second
-/// layer: page chrome overrides, section page breaks, and a body style reflow.
-/// Every override is optional, so a template that declares only geometry keeps
+/// and third layers: page chrome overrides, section page breaks, a body style
+/// reflow, paragraph rhythm, per-section chrome, and colour tokens. Every
+/// override is optional, so a template that declares only geometry keeps
 /// exactly the theme behaviour it had before.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct TemplateGeometry {
@@ -312,6 +347,8 @@ pub struct TemplateGeometry {
     pub chrome_start_page: Option<usize>,
     /// Horizontal alignment of the running header.
     pub header_align: Option<vutex_layout::hint::Align>,
+    /// Per-level chrome overrides, indexed H1 to H4.
+    pub chrome_sections: [Option<SectionChrome>; 4],
     /// Heading levels that start a new page, H1 to H4.
     pub section_breaks: [bool; 4],
     /// Body text size in points.
@@ -320,6 +357,12 @@ pub struct TemplateGeometry {
     pub line_height: Option<f64>,
     /// Heading size as a multiple of the body size, H1 to H4.
     pub heading_scales: Option<[f64; 4]>,
+    /// Space after a paragraph, in points.
+    pub paragraph_gap: Option<f64>,
+    /// First-line paragraph indent, in points.
+    pub paragraph_indent: Option<f64>,
+    /// Colour token overrides.
+    pub colors: TemplateColors,
 }
 
 /// Break the lowered graph into pages under the selected theme.
@@ -378,6 +421,50 @@ pub fn build_display(
         }
         if let Some(scales) = geometry.heading_scales {
             hint.style.heading_scales = scales;
+        }
+        if let Some(gap) = geometry.paragraph_gap {
+            hint.style.paragraph_gap = gap;
+        }
+        if let Some(indent) = geometry.paragraph_indent {
+            hint.style.paragraph_indent = indent;
+        }
+        hint.chrome.sections = geometry.chrome_sections;
+        let colors = geometry.colors;
+        if let Some(value) = colors.ink {
+            hint.style.ink = value;
+        }
+        if let Some(value) = colors.ink_secondary {
+            hint.style.ink_secondary = value;
+        }
+        if let Some(value) = colors.ink_muted {
+            hint.style.ink_muted = value;
+        }
+        if let Some(value) = colors.ink_faint {
+            hint.style.ink_faint = value;
+        }
+        if let Some(value) = colors.accent {
+            hint.style.accent = value;
+        }
+        if let Some(value) = colors.rule_strong {
+            hint.style.rule_strong = value;
+        }
+        if let Some(value) = colors.rule {
+            hint.style.rule = value;
+        }
+        if let Some(value) = colors.rule_faint {
+            hint.style.rule_faint = value;
+        }
+        if let Some(value) = colors.tint {
+            hint.style.tint = value;
+        }
+        if let Some(value) = colors.header {
+            hint.style.header_color = value;
+        }
+        if let Some(value) = colors.folio {
+            hint.style.folio_color = value;
+        }
+        if let Some(value) = colors.heading_rule {
+            hint.style.heading_rule_color = value;
         }
     }
     let measurements = theme.body_metrics();

@@ -466,6 +466,116 @@ test("render applies the template chrome, section breaks, and style reflow", asy
     });
 });
 
+test("render applies template section chrome, paragraph rhythm, and colour tokens", async () => {
+    await withTempDir(async (dir) => {
+        const inputPath = join(dir, "chapter.md");
+        await writeFile(inputPath, "# Title\n", "utf8");
+        const template = join(dir, "templates", "article");
+        await mkdir(template, { recursive: true });
+        await writeFile(
+            join(template, "template.json"),
+            JSON.stringify({
+                page: { size: "letter" },
+                margin: 72,
+                chrome: {
+                    header: "none",
+                    folio: true,
+                    sections: {
+                        "1": { header: "PART ONE", folio: false },
+                        "2": { header: "title" },
+                    },
+                },
+                styles: {
+                    paragraphGap: 8,
+                    paragraphIndent: 24,
+                    colors: { ink: "#112233", accent: "#aabbcc", header: "#445566" },
+                },
+            }),
+            "utf8",
+        );
+        await writeFile(join(dir, "vutex.toml"), '[packages]\ntemplate = "./templates/article"\n', "utf8");
+        await new PackageManager(dir).install();
+
+        const { bindings, calls } = fakeBindings();
+        const runtime = createVuTeXRuntime(bindings, { projectRoot: dir });
+        const result = await runtime.render(inputPath);
+
+        assert.equal(calls.display.length, 1);
+        assert.deepEqual(calls.template, [
+            {
+                pageWidth: 612,
+                pageHeight: 792,
+                marginTop: 72,
+                marginRight: 72,
+                marginBottom: 72,
+                marginLeft: 72,
+                chromeHeader: "none",
+                chromeFolio: true,
+                chromeSections: [
+                    { level: 1, header: "PART ONE", folio: false },
+                    { level: 2, header: "title" },
+                ],
+                paragraphGap: 8,
+                paragraphIndent: 24,
+                colors: { ink: "#112233", accent: "#aabbcc", header: "#445566" },
+            },
+        ]);
+        assert.equal(result.diagnostics.filter((item) => item.severity === "error").length, 0);
+    });
+});
+
+test("render fails closed when template colours are malformed", async () => {
+    await withTempDir(async (dir) => {
+        const inputPath = join(dir, "chapter.md");
+        await writeFile(inputPath, "# Title\n", "utf8");
+        const template = join(dir, "templates", "article");
+        await mkdir(template, { recursive: true });
+        await writeFile(
+            join(template, "template.json"),
+            JSON.stringify({
+                page: { size: "letter" },
+                styles: { colors: { ink: "red" } },
+            }),
+            "utf8",
+        );
+        await writeFile(join(dir, "vutex.toml"), '[packages]\ntemplate = "./templates/article"\n', "utf8");
+        await new PackageManager(dir).install();
+
+        const { bindings, calls } = fakeBindings();
+        const runtime = createVuTeXRuntime(bindings, { projectRoot: dir });
+        const result = await runtime.render(inputPath);
+
+        assert.equal(calls.display.length, 0);
+        assert.ok(result.diagnostics.some((item) => item.code === "VUTEX_PACKAGE_TEMPLATE_INVALID"));
+    });
+});
+
+test("render fails closed when a template asks for an unsupported text font family", async () => {
+    await withTempDir(async (dir) => {
+        const inputPath = join(dir, "chapter.md");
+        await writeFile(inputPath, "# Title\n", "utf8");
+        const template = join(dir, "templates", "article");
+        await mkdir(template, { recursive: true });
+        await writeFile(
+            join(template, "template.json"),
+            JSON.stringify({
+                page: { size: "letter" },
+                styles: { fontFamily: "Inter" },
+            }),
+            "utf8",
+        );
+        await writeFile(join(dir, "vutex.toml"), '[packages]\ntemplate = "./templates/article"\n', "utf8");
+        await new PackageManager(dir).install();
+
+        const { bindings, calls } = fakeBindings();
+        const runtime = createVuTeXRuntime(bindings, { projectRoot: dir });
+        const result = await runtime.render(inputPath);
+
+        assert.equal(calls.display.length, 0);
+        assert.ok(result.diagnostics.some((item) => item.code === "VUTEX_PACKAGE_TEMPLATE_UNSUPPORTED"));
+    });
+});
+
 test("render fails closed when template section levels or heading scales are invalid", async () => {
     await withTempDir(async (dir) => {
         const inputPath = join(dir, "chapter.md");

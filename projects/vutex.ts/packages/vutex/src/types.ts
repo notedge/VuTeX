@@ -121,6 +121,31 @@ export type ActivatedPackage = {
     path?: string;
 };
 
+/** Colour tokens a template may override, each written as `#RRGGBB`. */
+export type TemplateColorToken =
+    | "ink"
+    | "inkSecondary"
+    | "inkMuted"
+    | "inkFaint"
+    | "accent"
+    | "ruleStrong"
+    | "rule"
+    | "ruleFaint"
+    | "tint"
+    | "header"
+    | "folio"
+    | "headingRule";
+
+/** Chrome a template switches on when a heading of one level starts. */
+export type TemplateSectionChrome = {
+    /** Heading level, H1 to H4. */
+    level: number;
+    /** Header source: `title`, `none`, or literal text. */
+    header?: string;
+    /** Whether pages in this section carry a folio. */
+    folio?: boolean;
+};
+
 /** Page geometry a template package contributes to the native layout pass. */
 export type TemplateGeometry = {
     pageWidth: number;
@@ -137,6 +162,8 @@ export type TemplateGeometry = {
     chromeStartPage?: number;
     /** Horizontal alignment of the running header. */
     headerAlign?: "left" | "center" | "right";
+    /** Per-level chrome overrides, H1 to H4. */
+    chromeSections?: TemplateSectionChrome[];
     /** Heading levels that start a new page, H1 to H4. */
     pageBreakBefore?: number[];
     /** Body text size in points. */
@@ -145,6 +172,12 @@ export type TemplateGeometry = {
     lineHeight?: number;
     /** Heading size as a multiple of the body size, H1 to H4. */
     headingScales?: number[];
+    /** Space after a paragraph, in points. */
+    paragraphGap?: number;
+    /** First-line paragraph indent, in points. */
+    paragraphIndent?: number;
+    /** Colour token overrides. */
+    colors?: Partial<Record<TemplateColorToken, string>>;
 };
 
 export type PackageCheck = {
