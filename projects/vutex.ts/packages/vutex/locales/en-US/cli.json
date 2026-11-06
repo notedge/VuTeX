@@ -3,9 +3,9 @@
   "cli.cmd.render": "Render a document to the configured output format",
   "cli.cmd.inspect": "Inspect input format and document metadata",
   "cli.cmd.package": "Manage VuTeX resource packages (fonts, templates, profiles)",
-  "cli.cmd.package.list": "List resource packages from manifest and lockfile",
-  "cli.cmd.package.add": "Add a resource package alias to vutex.toml",
-  "cli.cmd.package.remove": "Remove a resource package alias from vutex.toml",
+  "cli.cmd.package.list": "List resource packages with their slots",
+  "cli.cmd.package.add": "Add a resource package to its slot in vutex.toml",
+  "cli.cmd.package.remove": "Remove a resource package from its slot in vutex.toml",
   "cli.cmd.package.install": "Resolve and install resource packages into the project cache",
   "cli.cmd.package.update": "Refresh the resource package lockfile",
   "cli.cmd.package.doctor": "Check manifest, lockfile, and package cache health",
@@ -15,5 +15,5 @@
   "cli.opt.theme": "Typography theme: baseline (default) or traditional",
   "cli.opt.json": "Emit machine-readable JSON on stdout",
   "cli.opt.package-name": "Resource package name to install",
-  "cli.opt.package-version": "Requested package version range"
+  "cli.opt.package-slot": "Resource slot: font, math-font, template, theme, profile, macros, resources, fixture"
 }

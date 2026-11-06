@@ -1,12 +1,17 @@
 import type { Cli, ParsedOptions } from "@vmz/commander";
 
 import { createVuTeXRuntime } from "../context.js";
-import { emitHuman, emitJson } from "../diagnostics.js";
+import { emitHuman, emitJson, presentDiagnostics } from "../diagnostics.js";
 import { ExitCode } from "../exit-codes.js";
+import { PackageResolveError } from "../../packages/manager.js";
 
 function readName(options: ParsedOptions): string | undefined {
     const value = options._[0] ?? options.name;
     return typeof value === "string" ? value : undefined;
+}
+
+function readSlot(options: ParsedOptions): string | undefined {
+    return typeof options.slot === "string" ? options.slot : undefined;
 }
 
 export function registerPackageCommands(cli: Cli): void {
@@ -22,7 +27,7 @@ export function registerPackageCommands(cli: Cli): void {
                 emitJson({ packages: items });
             } else {
                 for (const item of items) {
-                    emitHuman(`${item.name}\t${item.version}\t${item.source}`);
+                    emitHuman(`${item.slot}\t${item.name}\t${item.version}\t${item.source}`);
                 }
             }
             return ExitCode.Ok;
@@ -30,15 +35,22 @@ export function registerPackageCommands(cli: Cli): void {
 
     group
         .command("add", "cli.cmd.package.add")
+        .option("--slot <slot>", "cli.opt.package-slot")
         .action(async (options: ParsedOptions) => {
             const name = readName(options);
             if (!name) {
                 return ExitCode.InvalidArgs;
             }
             const runtime = await createVuTeXRuntime();
-            await runtime.packages.add(name, {
-                version: typeof options.version === "string" ? options.version : undefined,
-            });
+            try {
+                await runtime.packages.add(name, { slot: readSlot(options) });
+            } catch (error) {
+                if (error instanceof PackageResolveError) {
+                    presentDiagnostics(error.diagnostics, false);
+                    return ExitCode.ActionFailed;
+                }
+                throw error;
+            }
             return ExitCode.Ok;
         });
 
@@ -57,13 +69,21 @@ export function registerPackageCommands(cli: Cli): void {
     group
         .command("install", "cli.cmd.package.install")
         .option("--name <name>", "cli.opt.package-name")
-        .option("--version <version>", "cli.opt.package-version")
+        .option("--slot <slot>", "cli.opt.package-slot")
         .action(async (options: ParsedOptions) => {
             const runtime = await createVuTeXRuntime();
-            await runtime.packages.install({
-                name: typeof options.name === "string" ? options.name : undefined,
-                version: typeof options.version === "string" ? options.version : undefined,
-            });
+            try {
+                await runtime.packages.install({
+                    name: typeof options.name === "string" ? options.name : undefined,
+                    slot: readSlot(options),
+                });
+            } catch (error) {
+                if (error instanceof PackageResolveError) {
+                    presentDiagnostics(error.diagnostics, false);
+                    return ExitCode.ActionFailed;
+                }
+                throw error;
+            }
             return ExitCode.Ok;
         });
 
@@ -71,7 +91,15 @@ export function registerPackageCommands(cli: Cli): void {
         .command("update", "cli.cmd.package.update")
         .action(async () => {
             const runtime = await createVuTeXRuntime();
-            await runtime.packages.update();
+            try {
+                await runtime.packages.update();
+            } catch (error) {
+                if (error instanceof PackageResolveError) {
+                    presentDiagnostics(error.diagnostics, false);
+                    return ExitCode.ActionFailed;
+                }
+                throw error;
+            }
             return ExitCode.Ok;
         });
 

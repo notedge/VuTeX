@@ -60,6 +60,7 @@ test("writeLockfile and readLockfile round-trip every field", async () => {
             version: 1,
             packages: [
                 {
+                    slot: "font",
                     name: "alpha",
                     version: "1.2.3",
                     source: "@vutex/alpha",
@@ -67,10 +68,12 @@ test("writeLockfile and readLockfile round-trip every field", async () => {
                     dependencies: ["beta"],
                 },
                 {
+                    slot: "theme",
                     name: "beta",
                     version: "0.9.0",
                     source: "@vutex/beta",
                     contentHash: "sha256:def",
+                    artifactHash: "sha256:artifact",
                     dependencies: [],
                 },
             ],

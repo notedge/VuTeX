@@ -68,6 +68,7 @@ export type RenderDocumentResult = {
     pdf?: Uint8Array;
     reportJson: string;
     diagnostics: VuTeXDiagnostic[];
+    packages?: ActivatedPackage[];
 };
 
 export type InspectDocumentResult = {
@@ -77,15 +78,36 @@ export type InspectDocumentResult = {
     diagnostics: VuTeXDiagnostic[];
 };
 
+export type PackageSlot =
+    | "font"
+    | "math-font"
+    | "template"
+    | "theme"
+    | "profile"
+    | "macros"
+    | "resources"
+    | "fixture";
+
 export type PackageInstallOptions = {
     name?: string;
     version?: string;
+    slot?: string;
 };
 
 export type PackageRecord = {
+    slot: string;
     name: string;
     version: string;
     source: string;
+    artifactHash?: string;
+};
+
+export type ActivatedPackage = {
+    slot: string;
+    name: string;
+    version: string;
+    source: string;
+    artifactHash?: string;
 };
 
 export type PackageCheck = {

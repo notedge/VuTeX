@@ -105,11 +105,22 @@ export function createVuTeXRuntime(
             ? renderOptions.theme
             : undefined;
         const inputs = JSON.stringify([{ path: inputPath, format: inputFormat }]);
+        const activation = await packages.activation();
+        const activationErrors = activation.diagnostics.filter((item) => item.severity === "error");
+        if (activationErrors.length > 0) {
+            return {
+                outputFormat,
+                reportJson: bindings.assembleReport("render", inputs, JSON.stringify(activation.diagnostics)),
+                diagnostics: activation.diagnostics,
+                packages: [],
+            };
+        }
 
         const fail = (item: VuTeXDiagnostic): RenderDocumentResult => ({
             outputFormat,
             reportJson: bindings.assembleReport("render", inputs, JSON.stringify([item])),
             diagnostics: [item],
+            packages: activation.packages,
         });
 
         let bytes: Uint8Array;
@@ -133,6 +144,7 @@ export function createVuTeXRuntime(
                 outputFormat,
                 reportJson: bindings.assembleReport("render", inputs, JSON.stringify(items)),
                 diagnostics: items.length > 0 ? items : [first],
+                packages: activation.packages,
             };
         }
 
@@ -143,7 +155,10 @@ export function createVuTeXRuntime(
         }
 
         const graphJson = JSON.stringify(parsed.graph);
-        const diagnostics: VuTeXDiagnostic[] = [...(parsed.diagnostics ?? [])];
+        const diagnostics: VuTeXDiagnostic[] = [
+            ...(parsed.diagnostics ?? []),
+            ...activation.diagnostics,
+        ];
         try {
             const lowered = bindings.lowerDocument(graphJson, inputPath);
             const footnotes = JSON.parse(lowered.footnotesJson()) as Record<string, number>;
@@ -188,10 +203,18 @@ export function createVuTeXRuntime(
                     bytes: bodyBytes,
                     ...(pages === undefined ? {} : { pages, items }),
                 }),
-                JSON.stringify({ footnotes, theme: theme ?? "baseline" }),
+                JSON.stringify({ footnotes, theme: theme ?? "baseline", packages: activation.packages }),
             );
 
-            return { outputFormat: outputFormatLabel, svg, html, pdf, reportJson, diagnostics };
+            return {
+                outputFormat: outputFormatLabel,
+                svg,
+                html,
+                pdf,
+                reportJson,
+                diagnostics,
+                packages: activation.packages,
+            };
         } catch (failure) {
             const message = failure instanceof Error ? failure.message : String(failure);
             const item = diagnostic("VUTEX_RENDER_FAILED", message, "render", inputPath);
@@ -200,6 +223,7 @@ export function createVuTeXRuntime(
                 outputFormat,
                 reportJson: bindings.assembleReport("render", inputs, JSON.stringify(diagnostics)),
                 diagnostics,
+                packages: activation.packages,
             };
         }
     }

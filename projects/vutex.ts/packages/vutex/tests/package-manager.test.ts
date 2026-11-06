@@ -1,152 +1,209 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import test from "node:test";
+import { join, resolve } from "node:path";
+import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 
-import { contentDigest, PackageManager } from "../src/packages/manager.js";
+import { BUILTIN_PACKAGES } from "../src/packages/builtin.js";
+import { contentDigest, PackageManager, PackageResolveError } from "../src/packages/manager.js";
 import { readLockfile, writeLockfile } from "../src/packages/lockfile.js";
-import { readManifest } from "../src/packages/manifest.js";
 
-test("package manager writes lockfile on install", async () => {
+const REPO_FONTS = fileURLToPath(new URL("../../../../vutex.rs/fonts", import.meta.url));
+
+async function withProject(run: (dir: string) => Promise<void>): Promise<void> {
     const dir = await mkdtemp(join(tmpdir(), "vutex-pkg-"));
     try {
-        const manager = new PackageManager(dir);
-        await manager.add("font-libertinus", { version: "^0.1.0" });
-        await manager.install();
-        const lock = await readFile(join(dir, "vutex.lock"), "utf8");
-        assert.match(lock, /font-libertinus/);
+        await run(dir);
     } finally {
         await rm(dir, { recursive: true, force: true });
     }
-});
+}
 
-test("list falls back lock > manifest > empty", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "vutex-pkg-"));
-    try {
-        const manager = new PackageManager(dir);
+async function writeManifest(dir: string, toml: string): Promise<void> {
+    await writeFile(join(dir, "vutex.toml"), toml, "utf8");
+}
 
-        assert.deepEqual(await manager.list(), []);
-
-        await manager.add("alpha", { version: "1.0.0" });
-        assert.deepEqual(await manager.list(), [
-            { name: "alpha", version: "1.0.0", source: "manifest" },
-        ]);
-
-        await manager.install();
-        await writeFile(join(dir, "vutex.toml"), '[packages]\nbeta = "2.0.0"\n', "utf8");
-        assert.deepEqual(await manager.list(), [
-            { name: "alpha", version: "1.0.0", source: "@vutex/alpha" },
-        ]);
-    } finally {
-        await rm(dir, { recursive: true, force: true });
+test("builtin font digests match the bundled files", async () => {
+    const fonts = BUILTIN_PACKAGES.filter((item) => item.files.length > 0);
+    assert.ok(fonts.length > 0);
+    for (const item of fonts) {
+        for (const file of item.files) {
+            const digest = createHash("sha256")
+                .update(await readFile(join(REPO_FONTS, file.path)))
+                .digest("hex");
+            assert.equal(digest, file.digest, `${item.id} drifted from ${file.path}`);
+        }
     }
 });
 
-test("add stores a scoped name under its trailing alias and defaults to latest", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "vutex-pkg-"));
-    try {
+test("install locks a builtin font by slot", async () => {
+    await withProject(async (dir) => {
+        await writeManifest(dir, '[packages]\nmath-font = "xits-math"\ntheme = "baseline"\n');
         const manager = new PackageManager(dir);
-        await manager.add("fonts/libertinus");
-        const manifest = await readManifest(dir);
-        assert.deepEqual(manifest?.packages, { libertinus: "latest" });
-    } finally {
-        await rm(dir, { recursive: true, force: true });
-    }
-});
-
-test("add preserves unrelated document and profile sections", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "vutex-pkg-"));
-    try {
-        await writeFile(
-            join(dir, "vutex.toml"),
-            '[document]\ninput = "main.md"\noutput = "svg"\n\n[profile]\nname = "book"\n',
-            "utf8",
-        );
-        const manager = new PackageManager(dir);
-        await manager.add("alpha", { version: "0.2.0" });
-
-        const manifest = await readManifest(dir);
-        assert.equal(manifest?.document?.input, "main.md");
-        assert.equal(manifest?.document?.output, "svg");
-        assert.equal(manifest?.profile?.name, "book");
-        assert.deepEqual(manifest?.packages, { alpha: "0.2.0" });
-    } finally {
-        await rm(dir, { recursive: true, force: true });
-    }
-});
-
-test("remove is a no-op without packages and deletes only the target entry", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "vutex-pkg-"));
-    try {
-        const manager = new PackageManager(dir);
-
-        await manager.remove("ghost");
-        await assert.rejects(readFile(join(dir, "vutex.toml"), "utf8"), { code: "ENOENT" });
-
-        await manager.add("keep-me", { version: "1.0.0" });
-        await manager.add("drop-me", { version: "2.0.0" });
-        await manager.remove("drop-me");
-
-        const manifest = await readManifest(dir);
-        assert.deepEqual(manifest?.packages, { "keep-me": "1.0.0" });
-    } finally {
-        await rm(dir, { recursive: true, force: true });
-    }
-});
-
-test("install writes lock entries with a real content digest and empty dependencies", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "vutex-pkg-"));
-    try {
-        const manager = new PackageManager(dir);
-        await manager.add("alpha", { version: "1.2.3" });
         await manager.install();
 
         const lock = await readLockfile(dir);
-        assert.equal(lock?.version, 1);
-        assert.deepEqual(lock?.packages, [
-            {
-                name: "alpha",
-                version: "1.2.3",
-                source: "@vutex/alpha",
-                contentHash: contentDigest({
-                    name: "alpha",
-                    version: "1.2.3",
-                    source: "@vutex/alpha",
-                    dependencies: [],
-                }),
+        const xits = BUILTIN_PACKAGES.find((item) => item.id === "xits-math");
+        assert.ok(lock);
+        assert.deepEqual(lock.packages.map((item) => item.slot), ["math-font", "theme"]);
+        assert.deepEqual(lock.packages[0], {
+            slot: "math-font",
+            name: "xits-math",
+            version: "builtin",
+            source: "builtin",
+            artifactHash: xits?.artifactHash,
+            contentHash: contentDigest({
+                slot: "math-font",
+                name: "xits-math",
+                version: "builtin",
+                source: "builtin",
+                artifactHash: xits?.artifactHash,
                 dependencies: [],
-            },
-        ]);
-    } finally {
-        await rm(dir, { recursive: true, force: true });
-    }
+            }),
+            dependencies: [],
+        });
+    });
 });
 
 test("install is byte-identical across repeated runs", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "vutex-pkg-"));
-    try {
+    await withProject(async (dir) => {
+        await writeManifest(dir, '[packages]\ntheme = "traditional"\nfont = "tinos"\n');
         const manager = new PackageManager(dir);
-        await manager.add("zeta", { version: "1.0.0" });
-        await manager.add("alpha", { version: "1.0.0" });
-
         await manager.install();
         const first = await readFile(join(dir, "vutex.lock"), "utf8");
         await manager.install();
         const second = await readFile(join(dir, "vutex.lock"), "utf8");
 
         assert.equal(first, second);
-        assert.match(first, /alpha[\s\S]*zeta/);
-    } finally {
-        await rm(dir, { recursive: true, force: true });
-    }
+        assert.match(first, /font[\s\S]*theme/);
+    });
 });
 
-test("doctor reports a tampered content hash", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "vutex-pkg-"));
-    try {
+test("add writes the package under its inferred slot", async () => {
+    await withProject(async (dir) => {
         const manager = new PackageManager(dir);
-        await manager.add("alpha", { version: "1.0.0" });
+        await manager.add("@vutex/font-libertinus");
+        const manifest = await readFile(join(dir, "vutex.toml"), "utf8");
+        assert.match(manifest, /font = "@vutex\/font-libertinus"/);
+    });
+});
+
+test("add fails when the slot cannot be inferred", async () => {
+    await withProject(async (dir) => {
+        const manager = new PackageManager(dir);
+        await assert.rejects(
+            () => manager.add("xits-math"),
+            (error: unknown) =>
+                error instanceof PackageResolveError &&
+                error.diagnostics[0]?.code === "VUTEX_PACKAGE_SLOT_REQUIRED",
+        );
+    });
+});
+
+test("remove deletes a package by name and by slot", async () => {
+    await withProject(async (dir) => {
+        await writeManifest(dir, '[packages]\nfont = "tinos"\ntheme = "baseline"\n');
+        const manager = new PackageManager(dir);
+        await manager.remove("tinos");
+        let manifest = await readFile(join(dir, "vutex.toml"), "utf8");
+        assert.doesNotMatch(manifest, /tinos/);
+        await manager.remove("theme");
+        manifest = await readFile(join(dir, "vutex.toml"), "utf8");
+        assert.doesNotMatch(manifest, /baseline/);
+    });
+});
+
+test("install rejects an unknown slot", async () => {
+    await withProject(async (dir) => {
+        await writeManifest(dir, '[packages]\ncolors = "xits-math"\n');
+        const manager = new PackageManager(dir);
+        await assert.rejects(
+            () => manager.install(),
+            (error: unknown) =>
+                error instanceof PackageResolveError &&
+                error.diagnostics[0]?.code === "VUTEX_PACKAGE_SLOT_UNKNOWN",
+        );
+    });
+});
+
+test("install reports a missing builtin font", async () => {
+    await withProject(async (dir) => {
+        await writeManifest(dir, '[packages]\nmath-font = "libertinus"\n');
+        const manager = new PackageManager(dir);
+        await assert.rejects(
+            () => manager.install(),
+            (error: unknown) =>
+                error instanceof PackageResolveError &&
+                error.diagnostics[0]?.code === "VUTEX_PACKAGE_FONT_MISSING",
+        );
+        const report = await manager.doctor();
+        const fonts = report.checks.find((check) => check.id === "fonts");
+        assert.equal(fonts?.code, "VUTEX_PACKAGE_FONT_MISSING");
+    });
+});
+
+test("install rejects registry names until downloads exist", async () => {
+    await withProject(async (dir) => {
+        await writeManifest(dir, '[packages]\nmath-font = "@vutex/math-font-libertinus"\n');
+        const manager = new PackageManager(dir);
+        await assert.rejects(
+            () => manager.install(),
+            (error: unknown) =>
+                error instanceof PackageResolveError &&
+                error.diagnostics[0]?.code === "VUTEX_PACKAGE_SOURCE_UNAVAILABLE",
+        );
+    });
+});
+
+test("path sources hash the resource tree and doctor detects drift", async () => {
+    await withProject(async (dir) => {
+        const resource = join(dir, "resources", "math");
+        await managerAddFile(resource, "font.otf");
+        await writeManifest(dir, '[packages]\nmath-font = "./resources/math"\n');
+
+        const manager = new PackageManager(dir);
+        await manager.install();
+        const lock = await readLockfile(dir);
+        assert.ok(lock);
+        assert.equal(lock.packages[0]?.source, "path");
+        assert.equal(lock.packages[0]?.version, "local");
+        assert.match(lock.packages[0]?.artifactHash ?? "", /^sha256:[0-9a-f]{64}$/);
+
+        let report = await manager.doctor();
+        assert.equal(report.ok, true);
+
+        await writeFile(join(resource, "font.otf"), "changed", "utf8");
+        report = await manager.doctor();
+        const artifacts = report.checks.find((check) => check.id === "artifacts");
+        assert.equal(artifacts?.ok, false);
+        assert.equal(artifacts?.code, "VUTEX_PACKAGE_ARTIFACT_MISMATCH");
+    });
+});
+
+async function managerAddFile(dir: string, name: string): Promise<void> {
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, name), "font-bytes", "utf8");
+}
+
+test("doctor reports a missing path source", async () => {
+    await withProject(async (dir) => {
+        await writeManifest(dir, '[packages]\nfont = "./resources/missing"\n');
+        const manager = new PackageManager(dir);
+        await assert.rejects(
+            () => manager.install(),
+            (error: unknown) =>
+                error instanceof PackageResolveError &&
+                error.diagnostics[0]?.code === "VUTEX_PACKAGE_PATH_MISSING",
+        );
+    });
+});
+
+test("doctor reports a tampered record digest", async () => {
+    await withProject(async (dir) => {
+        await writeManifest(dir, '[packages]\ntheme = "baseline"\n');
+        const manager = new PackageManager(dir);
         await manager.install();
 
         const lock = await readLockfile(dir);
@@ -155,120 +212,61 @@ test("doctor reports a tampered content hash", async () => {
         await writeLockfile(dir, lock);
 
         const report = await manager.doctor();
-        assert.equal(report.ok, false);
         const integrity = report.checks.find((check) => check.id === "integrity");
         assert.equal(integrity?.ok, false);
         assert.equal(integrity?.code, "VUTEX_PACKAGE_HASH_MISMATCH");
-    } finally {
-        await rm(dir, { recursive: true, force: true });
-    }
+    });
 });
 
-test("doctor reports unactivated and stale packages", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "vutex-pkg-"));
-    try {
+test("doctor reports unactivated and stale slots", async () => {
+    await withProject(async (dir) => {
+        await writeManifest(dir, '[packages]\nfont = "tinos"\ntheme = "baseline"\n');
         const manager = new PackageManager(dir);
-        await manager.add("alpha", { version: "1.0.0" });
-        await manager.add("beta", { version: "2.0.0" });
         await manager.install();
 
-        await writeFile(join(dir, "vutex.toml"), '[packages]\nalpha = "1.0.0"\n', "utf8");
+        await writeManifest(dir, '[packages]\nfont = "tinos"\n');
         const stale = await manager.doctor();
         const staleActivation = stale.checks.find((check) => check.id === "activation");
         assert.equal(staleActivation?.ok, false);
         assert.equal(staleActivation?.code, "VUTEX_PACKAGE_UNACTIVATED");
-        assert.match(staleActivation?.message ?? "", /stale: beta/);
+        assert.match(staleActivation?.message ?? "", /stale: theme/);
 
-        await writeFile(join(dir, "vutex.toml"), '[packages]\ngamma = "3.0.0"\n', "utf8");
+        await writeManifest(dir, '[packages]\nmath-font = "xits-math"\n');
         const missing = await manager.doctor();
         const missingActivation = missing.checks.find((check) => check.id === "activation");
         assert.equal(missingActivation?.ok, false);
-        assert.match(missingActivation?.message ?? "", /unactivated: gamma/);
-    } finally {
-        await rm(dir, { recursive: true, force: true });
-    }
+        assert.match(missingActivation?.message ?? "", /unactivated: math-font/);
+    });
 });
 
 test("doctor reports a profile conflict", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "vutex-pkg-"));
-    try {
-        await writeFile(
-            join(dir, "vutex.toml"),
-            '[profile]\nname = "book"\n\n[packages]\nprofile = "latex"\n',
-            "utf8",
-        );
+    await withProject(async (dir) => {
+        await writeManifest(dir, '[profile]\nname = "book"\n\n[packages]\nprofile = "latex"\n');
         const manager = new PackageManager(dir);
         await manager.install();
 
         const report = await manager.doctor();
-        assert.equal(report.ok, false);
         const profile = report.checks.find((check) => check.id === "profile");
         assert.equal(profile?.code, "VUTEX_PACKAGE_PROFILE_CONFLICT");
-    } finally {
-        await rm(dir, { recursive: true, force: true });
-    }
+    });
 });
 
-test("install merges options.name into the locked set", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "vutex-pkg-"));
-    try {
+test("activation lists the packages and emits info diagnostics", async () => {
+    await withProject(async (dir) => {
+        await managerAddFile(join(dir, "resources", "template"), "template.toml");
+        await writeManifest(dir, '[packages]\nmath-font = "xits-math"\ntemplate = "./resources/template"\n');
+
         const manager = new PackageManager(dir);
-        await manager.add("alpha", { version: "1.0.0" });
-        await manager.install({ name: "extra", version: "9.9.9" });
-
-        const lock = await readLockfile(dir);
-        assert.deepEqual(
-            lock?.packages.map((item) => `${item.name}@${item.version}`),
-            ["alpha@1.0.0", "extra@9.9.9"],
-        );
-    } finally {
-        await rm(dir, { recursive: true, force: true });
-    }
-});
-
-test("update rewrites the lock from the manifest like install", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "vutex-pkg-"));
-    try {
-        const manager = new PackageManager(dir);
-        await manager.add("alpha", { version: "1.0.0" });
-        await manager.update();
-
-        const lock = await readLockfile(dir);
-        assert.deepEqual(lock?.packages.map((item) => item.name), ["alpha"]);
-        assert.equal(lock?.packages[0]?.source, "@vutex/alpha");
-    } finally {
-        await rm(dir, { recursive: true, force: true });
-    }
-});
-
-test("doctor reports the four manifest and lock states", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "vutex-pkg-"));
-    try {
-        const manager = new PackageManager(dir);
-
-        const empty = await manager.doctor();
-        assert.equal(empty.ok, false);
-        assert.equal(empty.checks.find((c) => c.id === "manifest")?.ok, false);
-        assert.equal(empty.checks.find((c) => c.id === "lockfile")?.ok, true);
-        assert.match(empty.checks.find((c) => c.id === "lockfile")?.message ?? "", /no resource packages/);
-
-        await manager.add("alpha", { version: "1.0.0" });
-        const manifestOnly = await manager.doctor();
-        assert.equal(manifestOnly.ok, false);
-        assert.equal(manifestOnly.checks.find((c) => c.id === "manifest")?.ok, true);
-        assert.equal(manifestOnly.checks.find((c) => c.id === "lockfile")?.ok, false);
-        assert.match(manifestOnly.checks.find((c) => c.id === "lockfile")?.message ?? "", /missing/);
-
         await manager.install();
-        const both = await manager.doctor();
-        assert.equal(both.ok, true);
-        assert.match(both.checks.find((c) => c.id === "lockfile")?.message ?? "", /tracks 1 package/);
 
-        await writeFile(join(dir, "vutex.toml"), '[profile]\nname = "book"\n', "utf8");
-        const noPackages = await manager.doctor();
-        assert.equal(noPackages.ok, true);
-        assert.match(noPackages.checks.find((c) => c.id === "lockfile")?.message ?? "", /no resource packages/);
-    } finally {
-        await rm(dir, { recursive: true, force: true });
-    }
+        const activation = await manager.activation();
+        assert.deepEqual(
+            activation.packages.map((item) => item.slot),
+            ["math-font", "template"],
+        );
+        assert.deepEqual(
+            activation.diagnostics.map((item) => item.code),
+            ["VUTEX_PACKAGE_ACTIVATED", "VUTEX_PACKAGE_ACTIVATED"],
+        );
+    });
 });

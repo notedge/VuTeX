@@ -190,23 +190,24 @@ test("packages delegates to the real package manager against the project root", 
 
         assert.deepEqual(await runtime.packages.list(), []);
 
-        await runtime.packages.add("font-libertinus", { version: "^0.1.0" });
+        await runtime.packages.add("tinos", { slot: "font" });
         assert.deepEqual(await runtime.packages.list(), [
-            { name: "font-libertinus", version: "^0.1.0", source: "manifest" },
+            { slot: "font", name: "tinos", version: "unresolved", source: "manifest" },
         ]);
 
         await runtime.packages.install();
         const locked = await runtime.packages.list();
-        assert.deepEqual(locked, [
-            { name: "font-libertinus", version: "^0.1.0", source: "@vutex/font-libertinus" },
-        ]);
+        assert.equal(locked.length, 1);
+        assert.equal(locked[0]?.slot, "font");
+        assert.equal(locked[0]?.name, "tinos");
+        assert.equal(locked[0]?.version, "builtin");
+        assert.equal(locked[0]?.source, "builtin");
+        assert.match(locked[0]?.artifactHash ?? "", /^sha256:[0-9a-f]{64}$/);
 
         const report = await runtime.packages.doctor();
         assert.equal(report.ok, true);
 
-        await runtime.packages.remove("font-libertinus");
-        assert.deepEqual(await runtime.packages.list(), [
-            { name: "font-libertinus", version: "^0.1.0", source: "@vutex/font-libertinus" },
-        ]);
+        await runtime.packages.remove("tinos");
+        assert.deepEqual(await runtime.packages.list(), locked);
     });
 });
