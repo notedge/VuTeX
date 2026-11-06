@@ -33,6 +33,7 @@ use document_fonts::{BodyFace, BodyFaceStyle, BodyFamily, BodyScript};
 use document_ir::DocumentGraph;
 use napi::bindgen_prelude::Buffer;
 use napi_derive::napi;
+use vutex_layout::hint::Align;
 use vutex_text::math::MathFontFamily;
 use watex_wasm::{RenderOptions, measure, render, render_mathml, render_svg};
 
@@ -41,6 +42,22 @@ use crate::theme::Theme;
 /// Install the crate's math faces once per process.
 fn install_embedded_math_fonts() {
     document_fonts::install_math_fonts(&assets::math_pack());
+}
+
+/// Intern a template-supplied string for the `'static` layout hint.
+///
+/// A header literal lives for the life of the process, so a host that renders
+/// many documents with the same template does not leak one copy per render.
+fn intern_template_text(value: String) -> &'static str {
+    static INTERNED: OnceLock<Mutex<BTreeMap<String, &'static str>>> = OnceLock::new();
+    let map = INTERNED.get_or_init(|| Mutex::new(BTreeMap::new()));
+    let mut guard = map.lock().expect("template text intern");
+    if let Some(existing) = guard.get(&value) {
+        return existing;
+    }
+    let leaked: &'static str = Box::leak(value.clone().into_boxed_str());
+    guard.insert(value, leaked);
+    leaked
 }
 
 /// PDF bytes plus render diagnostics.
@@ -295,6 +312,22 @@ pub struct TemplateGeometryInput {
     pub margin_bottom: Option<f64>,
     /// Left margin in PostScript points.
     pub margin_left: Option<f64>,
+    /// Header source: `title`, `none`, or literal text.
+    pub chrome_header: Option<String>,
+    /// Whether pages carry a folio.
+    pub chrome_folio: Option<bool>,
+    /// 1-based page index where chrome starts.
+    pub chrome_start_page: Option<u32>,
+    /// Running header alignment: `left`, `center`, or `right`.
+    pub header_align: Option<String>,
+    /// Heading levels that start a new page.
+    pub page_break_before: Option<Vec<u32>>,
+    /// Body text size in points.
+    pub body_size: Option<f64>,
+    /// Line box as a multiple of the body size.
+    pub line_height: Option<f64>,
+    /// Heading size as a multiple of the body size, H1 to H4.
+    pub heading_scales: Option<Vec<f64>>,
 }
 
 /// Paginate a lowered document under the selected theme and MATH family.
@@ -308,14 +341,10 @@ pub fn build_display(
     install_embedded_math_fonts();
     let selected = Theme::from_option(theme.as_deref());
     let family = resolve_math_font(math_font)?;
-    let geometry = template.map(|input| document::TemplateGeometry {
-        page_width: input.page_width,
-        page_height: input.page_height,
-        margin_top: input.margin_top,
-        margin_right: input.margin_right,
-        margin_bottom: input.margin_bottom,
-        margin_left: input.margin_left,
-    });
+    let geometry = match template {
+        Some(input) => Some(template_geometry(input)?),
+        None => None,
+    };
     let inner = lowered
         .inner
         .lock()
@@ -323,6 +352,55 @@ pub fn build_display(
         .take()
         .ok_or_else(|| napi::Error::from_reason("lowered document was consumed"))?;
     Ok(DisplaySceneHandle { inner: document::build_display(inner, selected, family, geometry) })
+}
+
+/// Validate and translate the JS template payload into the layout contract.
+fn template_geometry(input: TemplateGeometryInput) -> napi::Result<document::TemplateGeometry> {
+    let chrome_header = match input.chrome_header.as_deref() {
+        None => None,
+        Some("title") => Some("title"),
+        Some("none") => Some("none"),
+        Some(text) => Some(intern_template_text(text.to_string())),
+    };
+    let header_align = match input.header_align.as_deref() {
+        None => None,
+        Some("left") => Some(Align::Left),
+        Some("center") => Some(Align::Center),
+        Some("right") => Some(Align::Right),
+        Some(other) => return Err(napi::Error::from_reason(format!("unknown template header alignment: {other}"))),
+    };
+    let mut section_breaks = [false; 4];
+    for level in input.page_break_before.unwrap_or_default() {
+        if !(1..=4).contains(&level) {
+            return Err(napi::Error::from_reason(format!("template page break level is outside H1 to H4: {level}")));
+        }
+        section_breaks[(level - 1) as usize] = true;
+    }
+    let heading_scales = match input.heading_scales {
+        None => None,
+        Some(values) => {
+            let scales: [f64; 4] = values
+                .try_into()
+                .map_err(|_| napi::Error::from_reason("template heading scales need exactly four values"))?;
+            Some(scales)
+        }
+    };
+    Ok(document::TemplateGeometry {
+        page_width: input.page_width,
+        page_height: input.page_height,
+        margin_top: input.margin_top,
+        margin_right: input.margin_right,
+        margin_bottom: input.margin_bottom,
+        margin_left: input.margin_left,
+        chrome_header,
+        chrome_folio: input.chrome_folio,
+        chrome_start_page: input.chrome_start_page.map(|page| page as usize),
+        header_align,
+        section_breaks,
+        body_size: input.body_size,
+        line_height: input.line_height,
+        heading_scales,
+    })
 }
 
 /// Paginated display scene exposed to the host.

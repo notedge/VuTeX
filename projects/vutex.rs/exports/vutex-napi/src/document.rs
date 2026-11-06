@@ -28,6 +28,7 @@ use document_formats::import::{
 use document_ir::{Block, DocumentGraph};
 use serde::{Deserialize, Serialize};
 use vutex_compose::{Diagnostic as RenderDiagnostic, Severity};
+use vutex_layout::hint::ChromeHeader;
 use vutex_layout::{Diagrams, layout_with_metrics};
 use vutex_presentation::{
     DisplayPresentation, FlowPresentation, build_display_presentation, build_flow_presentation,
@@ -285,7 +286,10 @@ pub fn lower_document(graph: DocumentGraph, label: &str) -> LoweredDocument {
 /// Page geometry contributed by a template resource package.
 ///
 /// Margins are optional so a template that only names a page size keeps the
-/// margins of the active theme.
+/// margins of the active theme. The remaining fields are the template's second
+/// layer: page chrome overrides, section page breaks, and a body style reflow.
+/// Every override is optional, so a template that declares only geometry keeps
+/// exactly the theme behaviour it had before.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct TemplateGeometry {
     /// Page width in PostScript points.
@@ -300,6 +304,22 @@ pub struct TemplateGeometry {
     pub margin_bottom: Option<f64>,
     /// Left margin in PostScript points.
     pub margin_left: Option<f64>,
+    /// Header source: `title`, `none`, or literal text.
+    pub chrome_header: Option<&'static str>,
+    /// Whether pages carry a folio.
+    pub chrome_folio: Option<bool>,
+    /// 1-based page index where chrome starts.
+    pub chrome_start_page: Option<usize>,
+    /// Horizontal alignment of the running header.
+    pub header_align: Option<vutex_layout::hint::Align>,
+    /// Heading levels that start a new page, H1 to H4.
+    pub section_breaks: [bool; 4],
+    /// Body text size in points.
+    pub body_size: Option<f64>,
+    /// Line box as a multiple of the body size.
+    pub line_height: Option<f64>,
+    /// Heading size as a multiple of the body size, H1 to H4.
+    pub heading_scales: Option<[f64; 4]>,
 }
 
 /// Break the lowered graph into pages under the selected theme.
@@ -332,6 +352,32 @@ pub fn build_display(
         }
         if let Some(value) = geometry.margin_left {
             hint.margin.left = value;
+        }
+        if let Some(header) = geometry.chrome_header {
+            hint.chrome.header = match header {
+                "title" => ChromeHeader::Title,
+                "none" => ChromeHeader::None,
+                text => ChromeHeader::Literal(text),
+            };
+        }
+        if let Some(folio) = geometry.chrome_folio {
+            hint.chrome.folio = folio;
+        }
+        if let Some(start) = geometry.chrome_start_page {
+            hint.chrome.start_page = start;
+        }
+        if let Some(align) = geometry.header_align {
+            hint.style.header_align = align;
+        }
+        hint.section_breaks = geometry.section_breaks;
+        if let Some(size) = geometry.body_size {
+            hint.base_font_size = size;
+        }
+        if let Some(line_height) = geometry.line_height {
+            hint.line_height = line_height;
+        }
+        if let Some(scales) = geometry.heading_scales {
+            hint.style.heading_scales = scales;
         }
     }
     let measurements = theme.body_metrics();

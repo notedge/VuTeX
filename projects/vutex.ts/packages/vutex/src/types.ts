@@ -120,6 +120,22 @@ export type TemplateGeometry = {
     marginRight?: number;
     marginBottom?: number;
     marginLeft?: number;
+    /** Running header source: `title`, `none`, or literal text. */
+    chromeHeader?: string;
+    /** Whether pages carry a folio. */
+    chromeFolio?: boolean;
+    /** 1-based page index where the running header and folio start. */
+    chromeStartPage?: number;
+    /** Horizontal alignment of the running header. */
+    headerAlign?: "left" | "center" | "right";
+    /** Heading levels that start a new page, H1 to H4. */
+    pageBreakBefore?: number[];
+    /** Body text size in points. */
+    bodySize?: number;
+    /** Line box as a multiple of the body size. */
+    lineHeight?: number;
+    /** Heading size as a multiple of the body size, H1 to H4. */
+    headingScales?: number[];
 };
 
 export type PackageCheck = {

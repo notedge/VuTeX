@@ -419,6 +419,80 @@ test("render applies the declared template page geometry", async () => {
     });
 });
 
+test("render applies the template chrome, section breaks, and style reflow", async () => {
+    await withTempDir(async (dir) => {
+        const inputPath = join(dir, "chapter.md");
+        await writeFile(inputPath, "# Title\n", "utf8");
+        const template = join(dir, "templates", "article");
+        await mkdir(template, { recursive: true });
+        await writeFile(
+            join(template, "template.json"),
+            JSON.stringify({
+                page: { size: "letter" },
+                margin: 72,
+                chrome: { header: "ACME REPORT", folio: false, startPage: 1, align: "left" },
+                sections: { pageBreakBefore: [1] },
+                styles: { bodySize: 12, lineHeight: 1.8, headingScales: [1.6, 1.35, 1.18, 1.08] },
+            }),
+            "utf8",
+        );
+        await writeFile(join(dir, "vutex.toml"), '[packages]\ntemplate = "./templates/article"\n', "utf8");
+        await new PackageManager(dir).install();
+
+        const { bindings, calls } = fakeBindings();
+        const runtime = createVuTeXRuntime(bindings, { projectRoot: dir });
+        const result = await runtime.render(inputPath);
+
+        assert.equal(calls.display.length, 1);
+        assert.deepEqual(calls.template, [
+            {
+                pageWidth: 612,
+                pageHeight: 792,
+                marginTop: 72,
+                marginRight: 72,
+                marginBottom: 72,
+                marginLeft: 72,
+                chromeHeader: "ACME REPORT",
+                chromeFolio: false,
+                chromeStartPage: 1,
+                headerAlign: "left",
+                pageBreakBefore: [1],
+                bodySize: 12,
+                lineHeight: 1.8,
+                headingScales: [1.6, 1.35, 1.18, 1.08],
+            },
+        ]);
+        assert.equal(result.diagnostics.filter((item) => item.severity === "error").length, 0);
+    });
+});
+
+test("render fails closed when template section levels or heading scales are invalid", async () => {
+    await withTempDir(async (dir) => {
+        const inputPath = join(dir, "chapter.md");
+        await writeFile(inputPath, "# Title\n", "utf8");
+        const template = join(dir, "templates", "article");
+        await mkdir(template, { recursive: true });
+        await writeFile(
+            join(template, "template.json"),
+            JSON.stringify({
+                page: { size: "letter" },
+                sections: { pageBreakBefore: [5] },
+                styles: { headingScales: [1.6, 1.35, 1.18] },
+            }),
+            "utf8",
+        );
+        await writeFile(join(dir, "vutex.toml"), '[packages]\ntemplate = "./templates/article"\n', "utf8");
+        await new PackageManager(dir).install();
+
+        const { bindings, calls } = fakeBindings();
+        const runtime = createVuTeXRuntime(bindings, { projectRoot: dir });
+        const result = await runtime.render(inputPath);
+
+        assert.equal(calls.display.length, 0);
+        assert.ok(result.diagnostics.some((item) => item.code === "VUTEX_PACKAGE_TEMPLATE_INVALID"));
+    });
+});
+
 test("render fails closed when a template package has no valid template.json", async () => {
     await withTempDir(async (dir) => {
         const inputPath = join(dir, "chapter.md");
