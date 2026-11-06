@@ -104,6 +104,8 @@ const BUILTIN_SEEDS: Array<Pick<BuiltinPackage, "id" | "slot" | "version" | "fil
     },
     { id: "baseline", slot: "theme", version: "builtin", files: [] },
     { id: "traditional", slot: "theme", version: "builtin", files: [] },
+    { id: "editorial", slot: "theme", version: "builtin", files: [] },
+    { id: "classic", slot: "theme", version: "builtin", files: [] },
     { id: "latex", slot: "profile", version: "builtin", files: [] },
     { id: "typst", slot: "profile", version: "builtin", files: [] },
     { id: "notedown", slot: "profile", version: "builtin", files: [] },

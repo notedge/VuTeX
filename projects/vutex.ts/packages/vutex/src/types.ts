@@ -144,6 +144,7 @@ export type DisplaySceneHandle = {
     pageCount: () => number;
     itemCount: () => number;
     themeId: () => string;
+    mathFontId: () => string | undefined;
     diagnosticsJson: () => string;
     svg: () => string;
     snapshotHtml: () => string;
@@ -169,7 +170,11 @@ export type VuTeXBindings = {
     renderFormula: (source: string, optionsJson?: string) => string;
     parseDocument: (label: string, format: string, bytes: Uint8Array) => string;
     lowerDocument: (graphJson: string, label: string) => LoweredDocumentHandle;
-    buildDisplay: (lowered: LoweredDocumentHandle, theme?: string) => DisplaySceneHandle;
+    buildDisplay: (
+        lowered: LoweredDocumentHandle,
+        theme?: string,
+        mathFont?: string,
+    ) => DisplaySceneHandle;
     buildFlow: (graphJson: string, theme?: string) => FlowSceneHandle;
     embedSvgFonts: (svg: string, theme?: string) => string;
     subsetFace: (family: string, script: string, style: string, chars: string) => Uint8Array | null;

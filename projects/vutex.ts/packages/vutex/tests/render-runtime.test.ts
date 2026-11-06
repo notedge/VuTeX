@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import test from "node:test";
 
 import { writePdfOutput } from "../src/cli/commands/render.js";
+import { PackageManager } from "../src/packages/manager.js";
 import { createVuTeXRuntime } from "../src/runtime.js";
 import type { RenderDocumentResult, VuTeXBindings } from "../src/types.js";
 
@@ -25,6 +26,7 @@ function fakeBindings(overrides: Overrides = {}) {
         parse: [] as ParseCall[],
         lower: [] as string[],
         display: [] as Array<string | undefined>,
+        mathFont: [] as Array<string | undefined>,
         flow: [] as Array<string | undefined>,
         pdfSettings: [] as Array<string | undefined>,
         reports: [] as ReportCall[],
@@ -48,12 +50,14 @@ function fakeBindings(overrides: Overrides = {}) {
                 footnotesJson: () => JSON.stringify({ references: 0, definitions: 0, notes: 0 }),
             };
         },
-        buildDisplay: (lowered, theme) => {
+        buildDisplay: (_lowered, theme, mathFont) => {
             calls.display.push(theme);
+            calls.mathFont.push(mathFont);
             return {
                 pageCount: () => 1,
                 itemCount: () => 2,
                 themeId: () => theme ?? "baseline",
+                mathFontId: () => mathFont,
                 diagnosticsJson: () => JSON.stringify(overrides.sceneDiagnostics ?? []),
                 svg: () => overrides.svg ?? "<svg/>",
                 snapshotHtml: () => overrides.html ?? "<html/>",
@@ -240,6 +244,66 @@ test("render honors an explicit input override over the file extension", async (
         await runtime.render(inputPath, { input: "markdown" });
 
         assert.equal(calls.parse[0]?.format, "markdown");
+    });
+});
+
+test("render applies the declared theme and math-font slots", async () => {
+    await withTempDir(async (dir) => {
+        const inputPath = join(dir, "chapter.md");
+        await writeFile(inputPath, "# Title\n", "utf8");
+        await writeFile(join(dir, "vutex.toml"), '[packages]\nmath-font = "xits-math"\ntheme = "editorial"\n', "utf8");
+        await new PackageManager(dir).install();
+
+        const { bindings, calls } = fakeBindings();
+        const runtime = createVuTeXRuntime(bindings, { projectRoot: dir });
+        const result = await runtime.render(inputPath);
+
+        assert.deepEqual(calls.display, ["editorial"]);
+        assert.deepEqual(calls.mathFont, ["xits-math"]);
+        assert.deepEqual(result.packages?.map((item) => item.slot), ["math-font", "theme"]);
+        const extra = calls.reports.at(-1)?.extra ?? "";
+        assert.ok(extra.includes('"theme":"editorial"'), extra);
+        assert.ok(extra.includes('"mathFont":"xits-math"'), extra);
+        assert.equal(result.diagnostics.filter((item) => item.severity === "error").length, 0);
+    });
+});
+
+test("render fails closed when a declared math font has no bundled face", async () => {
+    await withTempDir(async (dir) => {
+        const inputPath = join(dir, "chapter.md");
+        await writeFile(inputPath, "# Title\n", "utf8");
+        const resource = join(dir, "resources", "math");
+        await mkdir(resource, { recursive: true });
+        await writeFile(join(resource, "face.otf"), "not a math font", "utf8");
+        await writeFile(join(dir, "vutex.toml"), '[packages]\nmath-font = "./resources/math"\n', "utf8");
+        await new PackageManager(dir).install();
+
+        const { bindings, calls } = fakeBindings();
+        const runtime = createVuTeXRuntime(bindings, { projectRoot: dir });
+        const result = await runtime.render(inputPath);
+
+        assert.equal(calls.display.length, 0);
+        assert.ok(result.diagnostics.some((item) => item.code === "VUTEX_PACKAGE_MATH_FONT_UNSUPPORTED"));
+    });
+});
+
+test("render warns that a locked template has no native consumer yet", async () => {
+    await withTempDir(async (dir) => {
+        const inputPath = join(dir, "chapter.md");
+        await writeFile(inputPath, "# Title\n", "utf8");
+        const template = join(dir, "templates", "article");
+        await mkdir(template, { recursive: true });
+        await writeFile(join(template, "template.toml"), "name = 'article'\n", "utf8");
+        await writeFile(join(dir, "vutex.toml"), '[packages]\ntemplate = "./templates/article"\n', "utf8");
+        await new PackageManager(dir).install();
+
+        const { bindings, calls } = fakeBindings();
+        const runtime = createVuTeXRuntime(bindings, { projectRoot: dir });
+        const result = await runtime.render(inputPath);
+
+        assert.equal(calls.display.length, 1);
+        assert.ok(result.diagnostics.some((item) => item.code === "VUTEX_PACKAGE_TEMPLATE_INACTIVE"));
+        assert.equal(result.diagnostics.filter((item) => item.severity === "error").length, 0);
     });
 });
 

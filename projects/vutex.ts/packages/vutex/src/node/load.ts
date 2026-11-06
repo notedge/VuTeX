@@ -4,7 +4,7 @@ import type { LoweredDocumentHandle, DisplaySceneHandle, FlowSceneHandle, VuTeXB
 
 type NativeBinding = VuTeXBindings & {
     lowerDocument: (graphJson: string, label: string) => LoweredDocumentHandle;
-    buildDisplay: (lowered: LoweredDocumentHandle, theme?: string) => DisplaySceneHandle;
+    buildDisplay: (lowered: LoweredDocumentHandle, theme?: string, mathFont?: string) => DisplaySceneHandle;
     buildFlow: (graphJson: string, theme?: string) => FlowSceneHandle;
 };
 
@@ -33,7 +33,7 @@ export function loadVuTeXNode(): VuTeXBindings {
         renderFormula: (source, optionsJson) => binding.renderFormula(source, optionsJson),
         parseDocument: (label, format, bytes) => binding.parseDocument(label, format, bytes),
         lowerDocument: (graphJson, label) => binding.lowerDocument(graphJson, label),
-        buildDisplay: (lowered, theme) => binding.buildDisplay(lowered, theme),
+        buildDisplay: (lowered, theme, mathFont) => binding.buildDisplay(lowered, theme, mathFont),
         buildFlow: (graphJson, theme) => binding.buildFlow(graphJson, theme),
         embedSvgFonts: (svg, theme) => binding.embedSvgFonts(svg, theme),
         subsetFace: (family, script, style, chars) => binding.subsetFace(family, script, style, chars),

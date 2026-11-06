@@ -35,6 +35,7 @@ use vutex_presentation::{
 use vutex_render_html::{render_html_reflow, render_html_snapshot};
 use vutex_render_pdf::{PdfFontPolicy, PdfResources, render_pdf_with_resources_and_diagnostics};
 use vutex_render_svg::render_svg;
+use vutex_text::math::MathFontFamily;
 
 use crate::{
     diagram::lower_diagrams,
@@ -201,6 +202,8 @@ pub struct DisplayScene {
     pub display: DisplayPresentation,
     /// Typography theme the scene was laid out and paints with.
     pub theme: Theme,
+    /// MATH family every formula was laid out with, when a document named one.
+    pub math_font: Option<&'static str>,
     /// Diagnostics raised while lowering and laying out.
     pub diagnostics: Vec<DiagnosticRecord>,
 }
@@ -280,15 +283,24 @@ pub fn lower_document(graph: DocumentGraph, label: &str) -> LoweredDocument {
 }
 
 /// Break the lowered graph into pages under the selected theme.
-pub fn build_display(lowered: LoweredDocument, theme: Theme) -> DisplayScene {
-    let hint = theme.layout_hint();
+///
+/// `math_font` is the OpenType MATH family a document declared. Without one the
+/// pass keeps the host-installed default, so a host that names no math package
+/// observes exactly the face it installed at startup.
+pub fn build_display(
+    lowered: LoweredDocument,
+    theme: Theme,
+    math_font: Option<MathFontFamily>,
+) -> DisplayScene {
+    let mut hint = theme.layout_hint();
+    hint.math_font = math_font;
     let measurements = theme.body_metrics();
     let (plan, layout_diagnostics) =
         layout_with_metrics(&lowered.graph, &hint, &lowered.diagrams, measurements.get());
     let display = build_display_presentation(&plan);
     let mut diagnostics = lowered.diagnostics;
     diagnostics.extend(layout_diagnostics.iter().map(|diagnostic| stage_record(diagnostic, "layout", None)));
-    DisplayScene { display, theme, diagnostics }
+    DisplayScene { display, theme, math_font: math_font.map(MathFontFamily::label), diagnostics }
 }
 
 /// Build the semantic reflow scene for HTML output.

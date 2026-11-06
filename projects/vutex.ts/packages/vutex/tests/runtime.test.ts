@@ -43,6 +43,7 @@ function fakeBindings(overrides: { measureResponse?: string; renderFormulaRespon
             pageCount: () => 1,
             itemCount: () => 0,
             themeId: () => "baseline",
+            mathFontId: () => undefined,
             diagnosticsJson: () => "[]",
             svg: () => "<svg/>",
             snapshotHtml: () => "<html/>",

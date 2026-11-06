@@ -33,6 +33,7 @@ use document_fonts::{BodyFace, BodyFaceStyle, BodyFamily, BodyScript};
 use document_ir::DocumentGraph;
 use napi::bindgen_prelude::Buffer;
 use napi_derive::napi;
+use vutex_text::math::MathFontFamily;
 use watex_wasm::{RenderOptions, measure, render, render_mathml, render_svg};
 
 use crate::theme::Theme;
@@ -166,17 +167,41 @@ impl LoweredDocumentHandle {
     }
 }
 
-/// Paginate a lowered document under the selected theme.
+/// Resolve a declared math package to the family it installs.
+///
+/// The package id is the one the lockfile activated. An id outside the bundled
+/// pack, or a face the process never installed, is a host error rather than a
+/// silent fallback: a document that declared a math face must not paint another
+/// one.
+fn resolve_math_font(math_font: Option<String>) -> napi::Result<Option<MathFontFamily>> {
+    let Some(id) = math_font.as_deref().map(str::trim).filter(|id| !id.is_empty()) else {
+        return Ok(None);
+    };
+    let family = assets::math_family(id)
+        .ok_or_else(|| napi::Error::from_reason(format!("unknown math font package: {id}")))?;
+    if family.bytes().is_none() {
+        return Err(napi::Error::from_reason(format!("math font package is not installed: {id}")));
+    }
+    Ok(Some(family))
+}
+
+/// Paginate a lowered document under the selected theme and MATH family.
 #[napi]
-pub fn build_display(lowered: &LoweredDocumentHandle, theme: Option<String>) -> napi::Result<DisplaySceneHandle> {
+pub fn build_display(
+    lowered: &LoweredDocumentHandle,
+    theme: Option<String>,
+    math_font: Option<String>,
+) -> napi::Result<DisplaySceneHandle> {
+    install_embedded_math_fonts();
     let selected = Theme::from_option(theme.as_deref());
+    let family = resolve_math_font(math_font)?;
     let inner = lowered
         .inner
         .lock()
         .map_err(|_| napi::Error::from_reason("lowered document is poisoned"))?
         .take()
         .ok_or_else(|| napi::Error::from_reason("lowered document was consumed"))?;
-    Ok(DisplaySceneHandle { inner: document::build_display(inner, selected) })
+    Ok(DisplaySceneHandle { inner: document::build_display(inner, selected, family) })
 }
 
 /// Paginated display scene exposed to the host.
@@ -203,6 +228,12 @@ impl DisplaySceneHandle {
     #[napi]
     pub fn theme_id(&self) -> String {
         self.inner.theme.id().to_string()
+    }
+
+    /// MATH family id the scene laid formulas out with, when one was declared.
+    #[napi]
+    pub fn math_font_id(&self) -> Option<String> {
+        self.inner.math_font.map(str::to_string)
     }
 
     /// Serialized layout diagnostics.

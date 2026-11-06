@@ -21,7 +21,7 @@ use vutex_napi::{
 fn render(name: &str, source: &str) -> String {
     let parsed = parse_document(name, ImportFormat::Markdown, source.as_bytes()).expect("markdown parses");
     let lowered = lower_document(parsed.graph, name);
-    let scene = build_display(lowered, Theme::Baseline);
+    let scene = build_display(lowered, Theme::Baseline, None);
     render_display_svg(&scene).expect("svg renders")
 }
 
@@ -60,7 +60,7 @@ fn headings_are_bold_and_body_text_is_not() {
 fn snapshot_html_carries_the_same_faces_as_svg() {
     let parsed = parse_document("sample.md", ImportFormat::Markdown, b"# Title\n\nBody `code`.\n").expect("parses");
     let lowered = lower_document(parsed.graph, "sample.md");
-    let scene = build_display(lowered, Theme::Baseline);
+    let scene = build_display(lowered, Theme::Baseline, None);
     let html = render_display_snapshot_html(&scene).expect("snapshot renders");
     assert!(html.contains("@font-face"), "snapshot html has no embedded face");
     assert!(!html.contains("font-family:serif"), "snapshot html kept the generic family");

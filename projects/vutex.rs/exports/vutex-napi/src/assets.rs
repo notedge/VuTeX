@@ -7,6 +7,7 @@
 use std::sync::{Arc, OnceLock};
 
 use document_fonts::{BodyFace, BodyFaceSet, BodyFaceStyle, BodyFamily, BodyScript, BodyMetrics, MathFontPack};
+use vutex_text::math::MathFontFamily;
 
 const TINOS_REGULAR: &[u8] = include_bytes!("../../../fonts/Tinos-Regular.ttf");
 const TINOS_BOLD: &[u8] = include_bytes!("../../../fonts/Tinos-Bold.ttf");
@@ -51,4 +52,20 @@ pub(crate) fn body_metrics() -> &'static BodyMetrics {
 /// Math faces installed into `document_text` at startup.
 pub(crate) fn math_pack() -> MathFontPack {
     MathFontPack::new(LATIN_MODERN_MATH, XITS_MATH)
+}
+
+/// Bundled math packages, each naming the OpenType MATH family it installs.
+///
+/// The ids match the built-in package registry, so a document that declares
+/// `[packages] math-font = "xits-math"` selects the same face the registry
+/// reports as activated.
+pub(crate) const MATH_PACKAGE_FAMILIES: [(&str, MathFontFamily); 2] =
+    [("latin-modern-math", MathFontFamily::LmMath), ("xits-math", MathFontFamily::XitsMath)];
+
+/// Resolve a bundled math package id to its family.
+pub(crate) fn math_family(package: &str) -> Option<MathFontFamily> {
+    MATH_PACKAGE_FAMILIES
+        .iter()
+        .find(|(id, _)| *id == package)
+        .map(|(_, family)| *family)
 }

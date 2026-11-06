@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { dirname, extname, resolve } from "node:path";
 
 import type {
+    ActivatedPackage,
     CreateVuTeXOptions,
     FormulaRender,
     FormulaRenderOptions,
@@ -82,6 +83,21 @@ function readBytes(inputPath: string): Promise<Uint8Array> {
     return readFile(resolve(inputPath)).then((buffer) => new Uint8Array(buffer));
 }
 
+/** Theme presets the native scene knows how to lay out. */
+const NATIVE_THEMES = new Set(["baseline", "traditional", "editorial", "classic"]);
+
+/**
+ * Built-in math packages that install one OpenType MATH family.
+ *
+ * The native binding owns the same mapping, so an id outside this set fails
+ * closed instead of painting a face the document never declared.
+ */
+const NATIVE_MATH_FONTS = new Set(["latin-modern-math", "xits-math"]);
+
+function activatedSlot(activation: ActivatedPackage[], slot: string): ActivatedPackage | undefined {
+    return activation.find((item) => item.slot === slot);
+}
+
 /**
  * Compose the native primitives into one render call.
  *
@@ -101,7 +117,7 @@ export function createVuTeXRuntime(
         const manifest = await readManifest(projectRoot);
         const outputFormat = normalizeOutputFormat(renderOptions.output ?? manifest?.document?.output);
         const inputFormat = renderOptions.input ?? manifest?.document?.input ?? formatFromPath(inputPath);
-        const theme = typeof renderOptions.theme === "string" && renderOptions.theme.length > 0
+        const explicitTheme = typeof renderOptions.theme === "string" && renderOptions.theme.length > 0
             ? renderOptions.theme
             : undefined;
         const inputs = JSON.stringify([{ path: inputPath, format: inputFormat }]);
@@ -116,12 +132,44 @@ export function createVuTeXRuntime(
             };
         }
 
-        const fail = (item: VuTeXDiagnostic): RenderDocumentResult => ({
-            outputFormat,
-            reportJson: bindings.assembleReport("render", inputs, JSON.stringify([item])),
-            diagnostics: [item],
-            packages: activation.packages,
-        });
+        const fail = (item: VuTeXDiagnostic): RenderDocumentResult => {
+            const items = [...activation.diagnostics, item];
+            return {
+                outputFormat,
+                reportJson: bindings.assembleReport("render", inputs, JSON.stringify(items)),
+                diagnostics: items,
+                packages: activation.packages,
+            };
+        };
+
+        // A declared slot must change what the renderer does. `theme` and
+        // `math-font` have native consumers, so an unusable value fails the
+        // render instead of silently painting the built-in baseline.
+        const themePackage = activatedSlot(activation.packages, "theme");
+        const theme = explicitTheme ?? themePackage?.name;
+        if (theme !== undefined && !NATIVE_THEMES.has(theme)) {
+            return fail(
+                diagnostic(
+                    "VUTEX_PACKAGE_THEME_UNSUPPORTED",
+                    `theme package has no native preset: ${theme}`,
+                    "package",
+                    inputPath,
+                ),
+            );
+        }
+
+        const mathPackage = activatedSlot(activation.packages, "math-font");
+        if (mathPackage !== undefined && (mathPackage.source !== "builtin" || !NATIVE_MATH_FONTS.has(mathPackage.name))) {
+            return fail(
+                diagnostic(
+                    "VUTEX_PACKAGE_MATH_FONT_UNSUPPORTED",
+                    `math font package has no bundled OpenType MATH face: ${mathPackage.name}`,
+                    "package",
+                    inputPath,
+                ),
+            );
+        }
+        const mathFont = mathPackage?.name;
 
         let bytes: Uint8Array;
         try {
@@ -159,6 +207,17 @@ export function createVuTeXRuntime(
             ...(parsed.diagnostics ?? []),
             ...activation.diagnostics,
         ];
+        const templatePackage = activatedSlot(activation.packages, "template");
+        if (templatePackage !== undefined) {
+            diagnostics.push({
+                code: "VUTEX_PACKAGE_TEMPLATE_INACTIVE",
+                severity: "warning",
+                message: `template package is locked but no native template consumer applies it yet: ${templatePackage.name}`,
+                stage: "package",
+                args: { slot: "template", package: templatePackage.name },
+            });
+        }
+        let mathFontApplied: string | undefined;
         try {
             const lowered = bindings.lowerDocument(graphJson, inputPath);
             const footnotes = JSON.parse(lowered.footnotesJson()) as Record<string, number>;
@@ -174,8 +233,18 @@ export function createVuTeXRuntime(
             if (outputFormat === "html") {
                 const flow = bindings.buildFlow(lowered.graphJson(), theme);
                 html = flow.html();
+                if (mathFont !== undefined) {
+                    diagnostics.push({
+                        code: "VUTEX_PACKAGE_MATH_FONT_INACTIVE",
+                        severity: "warning",
+                        message: `reflowed html keeps formulas as markup, so ${mathFont} does not apply`,
+                        stage: "package",
+                        args: { slot: "math-font", package: mathFont },
+                    });
+                }
             } else {
-                const scene = bindings.buildDisplay(lowered, theme);
+                const scene = bindings.buildDisplay(lowered, theme, mathFont);
+                mathFontApplied = scene.mathFontId();
                 pages = scene.pageCount();
                 items = scene.itemCount();
                 diagnostics.push(...(JSON.parse(scene.diagnosticsJson()) as VuTeXDiagnostic[]));
@@ -203,7 +272,12 @@ export function createVuTeXRuntime(
                     bytes: bodyBytes,
                     ...(pages === undefined ? {} : { pages, items }),
                 }),
-                JSON.stringify({ footnotes, theme: theme ?? "baseline", packages: activation.packages }),
+                JSON.stringify({
+                    footnotes,
+                    theme: theme ?? "baseline",
+                    mathFont: mathFontApplied,
+                    packages: activation.packages,
+                }),
             );
 
             return {
