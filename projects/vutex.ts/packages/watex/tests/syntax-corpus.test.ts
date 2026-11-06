@@ -134,18 +134,18 @@ test("measureFormula accepts the same corpus with positive widths", () => {
     }
 });
 
-test("unclosed group stays visible plain text with a warning without throwing", () => {
+test("unclosed group is rejected as a measured placeholder with a warning", () => {
     // Since the VuTeX-owned TeX parser was removed, malformed sources are
-    // lowered by notedown and degrade to visible plain text with a warning —
-    // the same recovery contract as unsupported commands and diagrams.
+    // lowered by notedown and rejected with a warning plus a measured
+    // placeholder box — the same recovery contract as unsupported commands.
     const result = watex.renderFormula("\\frac{a");
-    assert.equal(result.diagnostics.length, 1);
-    const [diagnostic] = result.diagnostics;
-    assert.equal(diagnostic?.code, "vutex.math.unsupported_expression");
-    assert.equal(diagnostic?.severity, "warning");
-    assert.match(diagnostic?.message ?? "", /stays plain text/);
-    assert.equal(diagnostic?.start == null, true);
-    assert.equal(diagnostic?.end == null, true);
+    const rejection = result.diagnostics.find((d) => d.code === "vutex.math.unsupported_expression");
+    assert.ok(rejection, "the unclosed group must report an unsupported expression");
+    assert.equal(rejection?.severity, "warning");
+    assert.match(rejection?.message ?? "", /keeps a placeholder box/);
+    assert.equal(rejection?.start == null, true);
+    assert.equal(rejection?.end == null, true);
+    assert.equal(result.diagnostics.filter((d) => d.severity === "error").length, 0);
     assert.ok(result.metrics.width > 0);
     assert.ok(result.svg.length > 0);
 });
