@@ -32,9 +32,11 @@ jobs:
       # wasm before typecheck/test so the module resolves on a clean checkout.
       - name: Build wasm bindings
         run: pnpm build:wasm
+      # `@vutex/watex` pins real-WASM to native parity, so the Node-API binary
+      # must exist before the package tests load it.
+      - name: Build native bindings (linux)
+        run: pnpm build:napi
       - name: Typecheck packages
         run: pnpm typecheck
       - name: Test packages
         run: pnpm --filter @vutex/vutex --filter @vutex/watex test
-      - name: Build native bindings (linux)
-        run: pnpm build:napi
