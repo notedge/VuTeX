@@ -1,6 +1,6 @@
-import { createHash } from "node:crypto";
-import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+import { mkdir, readFile, readdir, rename, stat, writeFile } from "node:fs/promises";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 import TOML from "@iarna/toml";
 
@@ -15,8 +15,33 @@ import type {
 import { lookupBuiltin } from "./builtin.js";
 import { readLockfile, writeLockfile, type LockedPackage } from "./lockfile.js";
 import { inferSlot, isPackageSlot, readManifest, type VuTeXManifest } from "./manifest.js";
+import {
+    downloadRegistryFile,
+    fetchRegistryMetadata,
+    nodeTransport,
+    parseRegistrySpec,
+    selectVersion,
+    type RegistryFile,
+    type RegistryMetadata,
+    type RegistryTransport,
+    type RegistryVersion,
+} from "./registry.js";
 
-export type ResolvedPackage = Omit<LockedPackage, "contentHash">;
+export type ResolvedPackage = Omit<LockedPackage, "contentHash"> & {
+    /** Files a registry version downloads, absent for builtin and path sources. */
+    registryFiles?: RegistryFile[];
+    /** Metadata URL that named the selected version. */
+    metadataUrl?: string;
+};
+
+export type PackageManagerOptions = {
+    /** Network client, injectable so tests never reach a real registry. */
+    transport?: RegistryTransport;
+    /** Registry base URL that wins over `VUTEX_REGISTRY`. */
+    registry?: string;
+    /** Environment to read `VUTEX_REGISTRY` from. */
+    environment?: NodeJS.ProcessEnv;
+};
 
 export class PackageResolveError extends Error {
     constructor(readonly diagnostics: VuTeXDiagnostic[]) {
@@ -94,7 +119,24 @@ function passedCheck(id: string, message: string): PackageCheck {
 }
 
 export class PackageManager {
-    constructor(private readonly projectRoot: string) {}
+    constructor(
+        private readonly projectRoot: string,
+        private readonly options: PackageManagerOptions = {},
+    ) {}
+
+    /** Registry base URL: option, then manifest `[registry] url`, then env. */
+    private async registryBase(): Promise<string | undefined> {
+        const manifest = await readManifest(this.projectRoot);
+        const environment = this.options.environment ?? process.env;
+        const candidate = this.options.registry ?? manifest?.registry?.url ?? environment.VUTEX_REGISTRY;
+        return typeof candidate === "string" && candidate.trim().length > 0 ? candidate.trim() : undefined;
+    }
+
+    /** Content addressed cache path for one downloaded registry package. */
+    private registryCachePath(slot: string, name: string, artifactHash: string): string {
+        const digest = artifactHash.startsWith("sha256:") ? artifactHash.slice("sha256:".length) : artifactHash;
+        return join(this.projectRoot, ".vutex", "packages", slot, encodeURIComponent(name), digest);
+    }
 
     async list(): Promise<PackageRecord[]> {
         const lock = await readLockfile(this.projectRoot);
@@ -163,18 +205,143 @@ export class PackageManager {
 
     async install(options: PackageInstallOptions = {}): Promise<void> {
         const declared = await this.declaredPackages(options);
-        const plan = await this.resolvePlan(declared);
+        const plan = await this.resolvePlan(declared, "install");
         const errors = plan.diagnostics.filter((item) => item.severity === "error");
         if (errors.length > 0) {
             throw new PackageResolveError(errors);
         }
 
         await mkdir(join(this.projectRoot, ".vutex", "packages"), { recursive: true });
-        const entries: LockedPackage[] = plan.packages.map((item) => ({
-            ...item,
-            contentHash: contentDigest(item),
-        }));
+        const failures: VuTeXDiagnostic[] = [];
+        const entries: LockedPackage[] = [];
+        for (const item of plan.packages) {
+            let artifactHash = item.artifactHash;
+            if (item.source.startsWith("registry+") && item.registryFiles !== undefined) {
+                const downloaded = await this.downloadRegistryPackage(item);
+                if (downloaded.diagnostic) {
+                    failures.push(downloaded.diagnostic);
+                    continue;
+                }
+                artifactHash = downloaded.artifactHash;
+            }
+            const entry: Omit<LockedPackage, "contentHash"> = {
+                slot: item.slot,
+                name: item.name,
+                version: item.version,
+                source: item.source,
+                artifactHash,
+                dependencies: item.dependencies,
+            };
+            entries.push({ ...entry, contentHash: contentDigest(entry) });
+        }
+        if (failures.length > 0) {
+            throw new PackageResolveError(failures);
+        }
         await writeLockfile(this.projectRoot, { version: 1, packages: entries });
+    }
+
+    /**
+     * Download one registry version into a staging tree and move it into the
+     * content addressed cache.
+     *
+     * The cache is never mutated in place: a staged tree either matches the
+     * address already present or lands under a fresh one, so a failed download
+     * cannot poison a later activation.
+     */
+    private async downloadRegistryPackage(
+        item: ResolvedPackage,
+    ): Promise<{ artifactHash?: string; diagnostic?: VuTeXDiagnostic }> {
+        const files = item.registryFiles ?? [];
+        if (files.length === 0) {
+            return { artifactHash: item.artifactHash };
+        }
+        const staging = join(this.projectRoot, ".vutex", "staging", randomUUID());
+        await mkdir(staging, { recursive: true });
+        const transport = this.options.transport ?? nodeTransport;
+
+        for (const file of files) {
+            const target = resolve(staging, file.path);
+            const relativePath = relative(staging, target);
+            if (relativePath.length === 0 || relativePath.startsWith("..") || isAbsolute(relativePath)) {
+                return {
+                    diagnostic: packageDiagnostic(
+                        "VUTEX_PACKAGE_METADATA_INVALID",
+                        `package file escapes its root: ${file.path}`,
+                        { path: file.path },
+                    ),
+                };
+            }
+            let url: string;
+            try {
+                url = new URL(file.url, item.metadataUrl).toString();
+            } catch {
+                return {
+                    diagnostic: packageDiagnostic(
+                        "VUTEX_PACKAGE_METADATA_INVALID",
+                        `package file url is invalid: ${file.url}`,
+                        { path: file.path, url: file.url },
+                    ),
+                };
+            }
+            const downloaded = await downloadRegistryFile(transport, url, file.path);
+            if (downloaded.diagnostic || downloaded.bytes === undefined) {
+                return { diagnostic: downloaded.diagnostic };
+            }
+            const bytes = downloaded.bytes;
+            if (file.sha256 !== undefined) {
+                const expected = file.sha256.startsWith("sha256:") ? file.sha256.slice("sha256:".length) : file.sha256;
+                const actual = createHash("sha256").update(bytes).digest("hex");
+                if (actual !== expected.toLowerCase()) {
+                    return {
+                        diagnostic: packageDiagnostic(
+                            "VUTEX_PACKAGE_FILE_HASH_MISMATCH",
+                            `downloaded ${file.path} does not match its sha256`,
+                            { path: file.path, url, expected, actual },
+                        ),
+                    };
+                }
+            }
+            await mkdir(dirname(target), { recursive: true });
+            await writeFile(target, bytes);
+        }
+
+        const tree = await hashTree(staging);
+        const computed = tree.files > 0 ? tree.artifactHash : undefined;
+        if (item.artifactHash !== undefined && computed !== item.artifactHash) {
+            return {
+                diagnostic: packageDiagnostic(
+                    "VUTEX_PACKAGE_ARTIFACT_MISMATCH",
+                    `${item.slot} ${item.name} tree does not match the registry artifact hash`,
+                    { slot: item.slot, expected: item.artifactHash, actual: computed },
+                ),
+            };
+        }
+        const artifactHash = computed ?? item.artifactHash;
+        if (artifactHash === undefined || computed === undefined) {
+            return { artifactHash };
+        }
+        const cache = this.registryCachePath(item.slot, item.name, artifactHash);
+        try {
+            const existing = await hashTree(cache);
+            if (existing.artifactHash === artifactHash) {
+                return { artifactHash };
+            }
+        } catch {
+            // The cache is absent, so the staged tree can take the address.
+        }
+        await mkdir(dirname(cache), { recursive: true });
+        try {
+            await rename(staging, cache);
+        } catch (error) {
+            return {
+                diagnostic: packageDiagnostic(
+                    "VUTEX_PACKAGE_CACHE_CORRUPT",
+                    `${item.slot} cache is occupied by a different tree: ${error instanceof Error ? error.message : String(error)}`,
+                    { slot: item.slot, cache },
+                ),
+            };
+        }
+        return { artifactHash };
     }
 
     async update(): Promise<void> {
@@ -234,6 +401,7 @@ export class PackageManager {
             checks.push(...this.checkActivation(declared, plan.packages, lock.packages));
             checks.push(...this.checkIntegrity(lock.packages));
             checks.push(...this.checkArtifacts(plan.packages, lock.packages));
+            checks.push(...(await this.checkCache(lock.packages)));
         }
         checks.push(...this.checkProfile(manifest?.profile?.name, declared));
 
@@ -254,7 +422,7 @@ export class PackageManager {
             return { packages: [], diagnostics: [] };
         }
 
-        const plan = await this.resolvePlan(declared);
+        const plan = await this.resolvePlan(declared, "activate");
         const diagnostics: VuTeXDiagnostic[] = [...plan.diagnostics];
         const lock = await readLockfile(this.projectRoot);
         if (!lock) {
@@ -311,6 +479,34 @@ export class PackageManager {
                 );
                 continue;
             }
+            // Registry packages are activated from the content addressed cache.
+            // A render never reaches the network and never trusts the lock alone.
+            if (locked.source.startsWith("registry+") && locked.artifactHash !== undefined) {
+                const cache = this.registryCachePath(slot, locked.name, locked.artifactHash);
+                let tree;
+                try {
+                    tree = await hashTree(cache);
+                } catch {
+                    diagnostics.push(
+                        packageDiagnostic(
+                            "VUTEX_PACKAGE_ARTIFACT_MISSING",
+                            `${slot} is locked but not downloaded, run \`vutex package install\``,
+                            { slot, name: locked.name, version: locked.version },
+                        ),
+                    );
+                    continue;
+                }
+                if (tree.artifactHash !== locked.artifactHash) {
+                    diagnostics.push(
+                        packageDiagnostic(
+                            "VUTEX_PACKAGE_ARTIFACT_MISMATCH",
+                            `${slot} cache does not match ${locked.name}`,
+                            { slot, expected: locked.artifactHash, actual: tree.artifactHash },
+                        ),
+                    );
+                    continue;
+                }
+            }
             packages.push({
                 slot,
                 name: locked.name,
@@ -349,58 +545,226 @@ export class PackageManager {
 
     private async resolvePlan(
         declared: Record<string, string>,
+        mode: "install" | "activate" = "install",
     ): Promise<{ packages: ResolvedPackage[]; diagnostics: VuTeXDiagnostic[] }> {
-        const packages: ResolvedPackage[] = [];
         const diagnostics: VuTeXDiagnostic[] = [];
-        const slots = Object.keys(declared).sort((left, right) => left.localeCompare(right, "en"));
+        const packages = new Map<string, ResolvedPackage>();
+        const rangesBySlot = new Map<string, string[]>();
+        const metadataByKey = new Map<string, RegistryMetadata>();
+        const metadataUrls = new Map<string, string | undefined>();
+        const expanded = new Set<string>();
+        const registryBase = await this.registryBase();
+        const transport = this.options.transport ?? nodeTransport;
 
-        for (const slot of slots) {
+        type Requirement = { slot: string; name: string; range: string; from?: string; registry?: boolean };
+        const queue: Requirement[] = [];
+        for (const slot of Object.keys(declared).sort((left, right) => left.localeCompare(right, "en"))) {
+            const value = declared[slot];
+            if (isPathSource(value)) {
+                queue.push({ slot, name: value, range: "*" });
+            } else {
+                const spec = parseRegistrySpec(value);
+                // An explicit range asks the registry even when the id also
+                // names a built-in preset, so versioned packages stay usable.
+                queue.push({ slot, name: spec.name, range: spec.range, registry: spec.range !== "*" });
+            }
+        }
+
+        const keyOf = (slot: string, name: string): string => `${slot}\u0000${name}`;
+        const expand = (slot: string, name: string, version: RegistryVersion): void => {
+            const key = `${keyOf(slot, name)}\u0000${version.version}`;
+            if (expanded.has(key)) {
+                return;
+            }
+            expanded.add(key);
+            for (const dependency of version.dependencies) {
+                queue.push({
+                    slot: dependency.slot,
+                    name: dependency.name,
+                    range: dependency.range ?? "*",
+                    from: `${slot}:${name}@${version.version}`,
+                });
+            }
+        };
+
+        while (queue.length > 0) {
+            const requirement = queue.shift() as Requirement;
+            const { slot, name } = requirement;
+            const range = requirement.range.length > 0 ? requirement.range : "*";
             if (!isPackageSlot(slot)) {
                 diagnostics.push(
                     packageDiagnostic("VUTEX_PACKAGE_SLOT_UNKNOWN", `unknown package slot: ${slot}`, { slot }),
                 );
                 continue;
             }
-            const name = declared[slot];
+
+            const existing = packages.get(slot);
+            if (existing) {
+                if (existing.name !== name) {
+                    diagnostics.push(
+                        packageDiagnostic(
+                            "VUTEX_PACKAGE_DEPENDENCY_CONFLICT",
+                            `${slot} is required as both ${existing.name} and ${name}${requirement.from ? ` by ${requirement.from}` : ""}`,
+                            { slot, names: [existing.name, name], from: requirement.from },
+                        ),
+                    );
+                    continue;
+                }
+                if (existing.source === "builtin" || existing.source === "path") {
+                    if (range !== "*") {
+                        diagnostics.push(
+                            packageDiagnostic(
+                                "VUTEX_PACKAGE_VERSION_NO_MATCH",
+                                `${existing.name} is a ${existing.source} package and takes no version range`,
+                                { slot, name, range },
+                            ),
+                        );
+                    }
+                    continue;
+                }
+                const ranges = rangesBySlot.get(slot) ?? [];
+                if (!ranges.includes(range)) {
+                    ranges.push(range);
+                }
+                rangesBySlot.set(slot, ranges);
+                const found = metadataByKey.get(keyOf(slot, name));
+                if (!found) {
+                    continue;
+                }
+                const selected = selectVersion(found, ranges);
+                if (selected.diagnostic) {
+                    diagnostics.push(selected.diagnostic);
+                    continue;
+                }
+                const version = selected.version as RegistryVersion;
+                if (version.version !== existing.version) {
+                    packages.set(
+                        slot,
+                        this.registryPackage(slot, name, version, registryBase, metadataUrls.get(keyOf(slot, name))),
+                    );
+                    expand(slot, name, version);
+                }
+                continue;
+            }
+
             if (isPathSource(name)) {
                 const resolved = await this.resolvePath(slot, name);
                 if (resolved.diagnostic) {
                     diagnostics.push(resolved.diagnostic);
                 } else if (resolved.package) {
-                    packages.push(resolved.package);
+                    packages.set(slot, resolved.package);
                 }
                 continue;
             }
-            if (name.startsWith("@")) {
+
+            const builtin = requirement.registry === true ? undefined : lookupBuiltin(name, slot);
+            if (builtin) {
+                if (range !== "*") {
+                    diagnostics.push(
+                        packageDiagnostic(
+                            "VUTEX_PACKAGE_VERSION_NO_MATCH",
+                            `${name} is a built-in ${slot} package and takes no version range`,
+                            { slot, name, range },
+                        ),
+                    );
+                    continue;
+                }
+                packages.set(slot, {
+                    slot,
+                    name: builtin.id,
+                    version: builtin.version,
+                    source: "builtin",
+                    artifactHash: builtin.artifactHash,
+                    dependencies: [],
+                });
+                continue;
+            }
+
+            // Registry packages activate from the lockfile and the content
+            // addressed cache, so a render never depends on the network.
+            if (mode === "activate") {
+                continue;
+            }
+
+            if (registryBase === undefined) {
+                const scoped = name.startsWith("@");
                 diagnostics.push(
-                    packageDiagnostic(
-                        "VUTEX_PACKAGE_SOURCE_UNAVAILABLE",
-                        `registry downloads are not available yet: ${name}`,
-                        { slot, name },
-                    ),
+                    scoped
+                        ? packageDiagnostic(
+                            "VUTEX_PACKAGE_REGISTRY_UNCONFIGURED",
+                            `no registry is configured for ${name}, set [registry] url or VUTEX_REGISTRY`,
+                            { slot, name },
+                        )
+                        : packageDiagnostic(
+                            slot === "font" || slot === "math-font" ? "VUTEX_PACKAGE_FONT_MISSING" : "VUTEX_PACKAGE_NOT_FOUND",
+                            `no built-in ${slot} package named ${name}`,
+                            { slot, name },
+                        ),
                 );
                 continue;
             }
-            const builtin = lookupBuiltin(name, slot);
-            if (!builtin) {
-                const code = slot === "font" || slot === "math-font"
-                    ? "VUTEX_PACKAGE_FONT_MISSING"
-                    : "VUTEX_PACKAGE_NOT_FOUND";
-                diagnostics.push(
-                    packageDiagnostic(code, `no built-in ${slot} package named ${name}`, { slot, name }),
-                );
+
+            const key = keyOf(slot, name);
+            let found = metadataByKey.get(key);
+            if (!found) {
+                const fetched = await fetchRegistryMetadata(transport, registryBase, slot, name);
+                if (fetched.diagnostic) {
+                    diagnostics.push(fetched.diagnostic);
+                    continue;
+                }
+                found = fetched.metadata as RegistryMetadata;
+                metadataByKey.set(key, found);
+                metadataUrls.set(key, fetched.metadataUrl);
+            }
+            const ranges = rangesBySlot.get(slot) ?? [];
+            if (!ranges.includes(range)) {
+                ranges.push(range);
+            }
+            rangesBySlot.set(slot, ranges);
+            const selected = selectVersion(found, ranges);
+            if (selected.diagnostic) {
+                diagnostics.push(selected.diagnostic);
                 continue;
             }
-            packages.push({
-                slot,
-                name: builtin.id,
-                version: builtin.version,
-                source: "builtin",
-                artifactHash: builtin.artifactHash,
-                dependencies: [],
-            });
+            const version = selected.version as RegistryVersion;
+            packages.set(slot, this.registryPackage(slot, name, version, registryBase, metadataUrls.get(key)));
+            expand(slot, name, version);
         }
-        return { packages, diagnostics };
+
+        // Dependency references name the versions the plan actually chose.
+        for (const item of packages.values()) {
+            if (!item.source.startsWith("registry+")) {
+                continue;
+            }
+            const found = metadataByKey.get(keyOf(item.slot, item.name));
+            const version = found?.versions.find((entry) => entry.version === item.version);
+            item.dependencies = (version?.dependencies ?? [])
+                .map((dependency) => packages.get(dependency.slot))
+                .filter((dependency): dependency is ResolvedPackage => dependency !== undefined)
+                .map((dependency) => `${dependency.slot}:${dependency.name}@${dependency.version}`)
+                .sort((left, right) => left.localeCompare(right, "en"));
+        }
+
+        return { packages: [...packages.values()], diagnostics };
+    }
+
+    private registryPackage(
+        slot: string,
+        name: string,
+        version: RegistryVersion,
+        registryBase: string | undefined,
+        metadataUrl: string | undefined,
+    ): ResolvedPackage {
+        return {
+            slot,
+            name,
+            version: version.version,
+            source: registryBase === undefined ? "registry" : `registry+${registryBase}`,
+            artifactHash: version.artifactHash,
+            dependencies: [],
+            registryFiles: version.files,
+            metadataUrl,
+        };
     }
 
     private async resolvePath(
@@ -459,8 +823,22 @@ export class PackageManager {
     ): PackageCheck[] {
         const lockedBySlot = new Map(locked.map((item) => [item.slot, item]));
         const resolvedBySlot = new Map(resolved.map((item) => [item.slot, item]));
+        // A locked slot that no declaration names is only stale when nothing
+        // depends on it. Dependency-only slots stay locked without activating:
+        // activation is driven by what the document declares.
+        const dependencySlots = new Set<string>();
+        for (const item of locked) {
+            for (const dependency of item.dependencies) {
+                const separator = dependency.indexOf(":");
+                if (separator > 0) {
+                    dependencySlots.add(dependency.slice(0, separator));
+                }
+            }
+        }
         const missing = Object.keys(declared).filter((slot) => !lockedBySlot.has(slot));
-        const stale = locked.filter((item) => !(item.slot in declared)).map((item) => item.slot);
+        const stale = locked
+            .filter((item) => !(item.slot in declared) && !dependencySlots.has(item.slot))
+            .map((item) => item.slot);
         const drifted = Object.keys(declared)
             .filter((slot) => lockedBySlot.has(slot))
             .filter((slot) => {
@@ -512,7 +890,15 @@ export class PackageManager {
         const resolvedBySlot = new Map(resolved.map((item) => [item.slot, item]));
         const broken = locked
             .filter((item) => resolvedBySlot.has(item.slot))
-            .filter((item) => resolvedBySlot.get(item.slot)?.artifactHash !== item.artifactHash);
+            .filter((item) => {
+                const source = resolvedBySlot.get(item.slot) as ResolvedPackage;
+                // A registry metadata document may omit the tree hash. The lock
+                // keeps the hash `install` computed, so there is nothing to compare.
+                if (source.source.startsWith("registry+") && source.artifactHash === undefined) {
+                    return false;
+                }
+                return source.artifactHash !== item.artifactHash;
+            });
         return broken.length === 0
             ? [passedCheck("artifacts", "resource artifact hashes match their sources")]
             : [
@@ -520,6 +906,34 @@ export class PackageManager {
                     "artifacts",
                     "VUTEX_PACKAGE_ARTIFACT_MISMATCH",
                     `artifact hash mismatch for: ${broken.map((item) => item.slot).join(", ")}`,
+                ),
+            ];
+    }
+
+    private async checkCache(locked: LockedPackage[]): Promise<PackageCheck[]> {
+        const registry = locked.filter((item) => item.source.startsWith("registry+") && item.artifactHash !== undefined);
+        if (registry.length === 0) {
+            return [];
+        }
+        const broken: string[] = [];
+        for (const item of registry) {
+            const cache = this.registryCachePath(item.slot, item.name, item.artifactHash as string);
+            try {
+                const tree = await hashTree(cache);
+                if (tree.artifactHash !== item.artifactHash) {
+                    broken.push(item.slot);
+                }
+            } catch {
+                broken.push(item.slot);
+            }
+        }
+        return broken.length === 0
+            ? [passedCheck("cache", `${registry.length} registry package(s) cached and intact`)]
+            : [
+                failedCheck(
+                    "cache",
+                    "VUTEX_PACKAGE_ARTIFACT_MISSING",
+                    `not cached or corrupt: ${broken.join(", ")}`,
                 ),
             ];
     }

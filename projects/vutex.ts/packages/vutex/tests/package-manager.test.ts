@@ -144,7 +144,7 @@ test("install reports a missing builtin font", async () => {
     });
 });
 
-test("install rejects registry names until downloads exist", async () => {
+test("install reports a scoped package without a configured registry", async () => {
     await withProject(async (dir) => {
         await writeManifest(dir, '[packages]\nmath-font = "@vutex/math-font-libertinus"\n');
         const manager = new PackageManager(dir);
@@ -152,7 +152,7 @@ test("install rejects registry names until downloads exist", async () => {
             () => manager.install(),
             (error: unknown) =>
                 error instanceof PackageResolveError &&
-                error.diagnostics[0]?.code === "VUTEX_PACKAGE_SOURCE_UNAVAILABLE",
+                error.diagnostics[0]?.code === "VUTEX_PACKAGE_REGISTRY_UNCONFIGURED",
         );
     });
 });

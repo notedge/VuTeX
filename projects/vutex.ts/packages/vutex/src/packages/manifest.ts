@@ -13,6 +13,9 @@ export type VuTeXManifest = {
     profile?: {
         name?: string;
     };
+    registry?: {
+        url?: string;
+    };
     packages?: Record<string, string>;
 };
 
