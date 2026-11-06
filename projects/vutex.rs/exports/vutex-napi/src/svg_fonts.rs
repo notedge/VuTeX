@@ -24,9 +24,11 @@ use std::collections::BTreeSet;
 
 use document_fonts::{BodyFace, BodyFaceStyle, BodyFamily, BodyScript};
 
-use crate::assets::body_faces;
-use crate::font_subset::{mapped, subset_font, FacePayload};
-use crate::theme::Theme;
+use crate::{
+    assets::body_faces,
+    font_subset::{FacePayload, mapped, subset_font},
+    theme::Theme,
+};
 
 /// CSS family name the reading faces are published under.
 pub const SERIF_FAMILY: &str = "VuTeX Serif";
@@ -87,14 +89,8 @@ pub fn embed_html_fonts(html: &str, theme: Theme) -> String {
         out = out.replace("font-family: serif", &format!("font-family: '{}'", plan.serif_chain.replace(", ", "','")));
     }
     if !plan.mono_chain.is_empty() {
-        out = out.replace(
-            "font-family:monospace",
-            &format!("font-family:'{}'", plan.mono_chain.replace(", ", "','")),
-        );
-        out = out.replace(
-            "font-family: monospace",
-            &format!("font-family: '{}'", plan.mono_chain.replace(", ", "','")),
-        );
+        out = out.replace("font-family:monospace", &format!("font-family:'{}'", plan.mono_chain.replace(", ", "','")));
+        out = out.replace("font-family: monospace", &format!("font-family: '{}'", plan.mono_chain.replace(", ", "','")));
     }
     out
 }
@@ -107,15 +103,16 @@ fn build_plan(theme: Theme, runs: Vec<TextRun>) -> FontPlan {
         let bold = run.weight >= 600;
         let style = if bold {
             BodyFaceStyle::Bold
-        } else if run.italic {
+        }
+        else if run.italic {
             BodyFaceStyle::Italic
-        } else {
+        }
+        else {
             BodyFaceStyle::Regular
         };
         let family = if run.family == "monospace" { BodyFamily::Mono } else { BodyFamily::Serif };
-        let style_face = body_faces()
-            .iter()
-            .any(|face| face.family == family && face.style == style && face.script != BodyScript::Cjk);
+        let style_face =
+            body_faces().iter().any(|face| face.family == family && face.style == style && face.script != BodyScript::Cjk);
         let mut remaining = run.chars;
         for index in candidates(theme, &run.family, bold, run.italic) {
             if remaining.is_empty() {
@@ -218,10 +215,7 @@ fn build_plan(theme: Theme, runs: Vec<TextRun>) -> FontPlan {
 }
 
 fn cjk_faces(sets: &[BTreeSet<char>]) -> bool {
-    body_faces()
-        .iter()
-        .zip(sets.iter())
-        .any(|(face, chars)| face.script == BodyScript::Cjk && !chars.is_empty())
+    body_faces().iter().zip(sets.iter()).any(|(face, chars)| face.script == BodyScript::Cjk && !chars.is_empty())
 }
 
 /// Read every SVG `<text>` run with its style and its decoded characters.
@@ -235,10 +229,12 @@ fn text_runs(svg: &str) -> Vec<TextRun> {
             cursor = start + 5;
             continue;
         }
-        let Some(tag_end) = svg[start..].find('>').map(|index| start + index) else {
+        let Some(tag_end) = svg[start..].find('>').map(|index| start + index)
+        else {
             break;
         };
-        let Some(close) = svg[tag_end..].find("</text>").map(|index| tag_end + index) else {
+        let Some(close) = svg[tag_end..].find("</text>").map(|index| tag_end + index)
+        else {
             break;
         };
         let tag = &svg[start..=tag_end];
@@ -259,18 +255,8 @@ fn text_runs(svg: &str) -> Vec<TextRun> {
 /// a second run gathers the text inside elements whose style names monospace.
 fn html_runs(html: &str) -> Vec<TextRun> {
     let body = html_body(html);
-    let mut prose = TextRun {
-        family: "serif".to_string(),
-        weight: 400,
-        italic: false,
-        chars: BTreeSet::new(),
-    };
-    let mut code = TextRun {
-        family: "monospace".to_string(),
-        weight: 400,
-        italic: false,
-        chars: BTreeSet::new(),
-    };
+    let mut prose = TextRun { family: "serif".to_string(), weight: 400, italic: false, chars: BTreeSet::new() };
+    let mut code = TextRun { family: "monospace".to_string(), weight: 400, italic: false, chars: BTreeSet::new() };
     let mut stack: Vec<bool> = Vec::new();
     let mut cursor = 0usize;
     while let Some(found) = body[cursor..].find('<') {
@@ -278,16 +264,19 @@ fn html_runs(html: &str) -> Vec<TextRun> {
         let text = decode_entities(&body[cursor..start]);
         if stack.iter().any(|mono| *mono) {
             code.chars.extend(text.chars());
-        } else {
+        }
+        else {
             prose.chars.extend(text.chars());
         }
-        let Some(close) = body[start..].find('>').map(|index| start + index) else {
+        let Some(close) = body[start..].find('>').map(|index| start + index)
+        else {
             break;
         };
         let tag = &body[start..=close];
         if tag.starts_with("</") {
             stack.pop();
-        } else if !tag.trim_end_matches('>').trim_end().ends_with('/') {
+        }
+        else if !tag.trim_end_matches('>').trim_end().ends_with('/') {
             let mono = tag.contains("font-family:monospace") || tag.contains("font-family: monospace");
             stack.push(mono);
         }
@@ -296,7 +285,8 @@ fn html_runs(html: &str) -> Vec<TextRun> {
     let tail = decode_entities(&body[cursor..]);
     if stack.iter().any(|mono| *mono) {
         code.chars.extend(tail.chars());
-    } else {
+    }
+    else {
         prose.chars.extend(tail.chars());
     }
     vec![prose, code]
@@ -324,17 +314,11 @@ fn decode_entities(text: &str) -> String {
     if !text.contains('&') {
         return text.to_string();
     }
-    text.replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&quot;", "\"")
-        .replace("&apos;", "'")
-        .replace("&amp;", "&")
+    text.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&apos;", "'").replace("&amp;", "&")
 }
 
 fn face_index(family: BodyFamily, script: BodyScript, style: BodyFaceStyle) -> Option<usize> {
-    body_faces()
-        .iter()
-        .position(|face| face.family == family && face.script == script && face.style == style)
+    body_faces().iter().position(|face| face.family == family && face.script == script && face.style == style)
 }
 
 /// Faces a run consults, in the order CSS font matching picks them.
@@ -356,7 +340,8 @@ fn candidates(theme: Theme, family: &str, bold: bool, italic: bool) -> Vec<usize
                 if let Some(index) = face_index(BodyFamily::Serif, BodyScript::Cjk, BodyFaceStyle::Regular) {
                     order.push(index);
                 }
-            } else {
+            }
+            else {
                 if bold {
                     if let Some(index) = face_index(BodyFamily::Serif, BodyScript::Cjk, BodyFaceStyle::Bold) {
                         order.push(index);
@@ -371,10 +356,12 @@ fn candidates(theme: Theme, family: &str, bold: bool, italic: bool) -> Vec<usize
             let mut primary = Vec::new();
             if mono {
                 primary.push((BodyFamily::Mono, BodyScript::Latin, BodyFaceStyle::Regular));
-            } else {
+            }
+            else {
                 if bold {
                     primary.push((BodyFamily::Serif, BodyScript::Latin, BodyFaceStyle::Bold));
-                } else if italic {
+                }
+                else if italic {
                     primary.push((BodyFamily::Serif, BodyScript::Latin, BodyFaceStyle::Italic));
                 }
                 primary.push((BodyFamily::Serif, BodyScript::Latin, BodyFaceStyle::Regular));
@@ -435,7 +422,8 @@ fn emphasize_headings(svg: &str, theme: Theme) -> String {
     while let Some(found) = svg[cursor..].find("<text ") {
         let start = cursor + found;
         out.push_str(&svg[cursor..start]);
-        let Some(end) = svg[start..].find('>').map(|index| start + index) else {
+        let Some(end) = svg[start..].find('>').map(|index| start + index)
+        else {
             out.push_str(&svg[start..]);
             return out;
         };
@@ -446,7 +434,8 @@ fn emphasize_headings(svg: &str, theme: Theme) -> String {
         if size >= threshold && !tag.contains("font-weight=") {
             out.push_str(&tag[..tag.len() - 1]);
             out.push_str(" font-weight=\"700\">");
-        } else {
+        }
+        else {
             out.push_str(tag);
         }
         cursor = end + 1;

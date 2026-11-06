@@ -6,7 +6,7 @@
 
 use std::sync::{Arc, OnceLock};
 
-use document_fonts::{BodyFace, BodyFaceSet, BodyFaceStyle, BodyFamily, BodyScript, BodyMetrics, MathFontPack};
+use document_fonts::{BodyFace, BodyFaceSet, BodyFaceStyle, BodyFamily, BodyMetrics, BodyScript, MathFontPack};
 use vutex_text::math::MathFontFamily;
 
 const TINOS_REGULAR: &[u8] = include_bytes!("../../../fonts/Tinos-Regular.ttf");
@@ -64,8 +64,5 @@ pub(crate) const MATH_PACKAGE_FAMILIES: [(&str, MathFontFamily); 2] =
 
 /// Resolve a bundled math package id to its family.
 pub(crate) fn math_family(package: &str) -> Option<MathFontFamily> {
-    MATH_PACKAGE_FAMILIES
-        .iter()
-        .find(|(id, _)| *id == package)
-        .map(|(_, family)| *family)
+    MATH_PACKAGE_FAMILIES.iter().find(|(id, _)| *id == package).map(|(_, family)| *family)
 }

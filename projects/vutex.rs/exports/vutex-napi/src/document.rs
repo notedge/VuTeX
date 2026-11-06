@@ -16,23 +16,24 @@
 //! No primitive reads an input path, writes an output file, prints a message,
 //! or returns an exit code. Paths are only labels used in diagnostics.
 
-use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::{collections::BTreeMap, path::PathBuf};
 
-use document_formats::FormatError;
-use document_formats::import::{
-    docx::import_docx_bytes, epub::import_epub_bytes, html::import_html_bytes,
-    markdown::import_markdown_bytes, notedown::import_notedown_bytes, tex::import_tex_bytes,
-    typst::import_typst_bytes,
+use document_formats::{
+    FormatError,
+    import::{
+        docx::import_docx_bytes, epub::import_epub_bytes, html::import_html_bytes, markdown::import_markdown_bytes,
+        notedown::import_notedown_bytes, tex::import_tex_bytes, typst::import_typst_bytes,
+    },
 };
 use document_ir::{Block, DocumentGraph};
 use serde::{Deserialize, Serialize};
 use vutex_compose::{Diagnostic as RenderDiagnostic, Severity};
-use vutex_layout::hint::{ChromeHeader, SectionChrome};
-use vutex_layout::{Diagrams, layout_with_metrics};
-use vutex_presentation::{
-    DisplayPresentation, FlowPresentation, build_display_presentation, build_flow_presentation,
+use vutex_layout::{
+    Diagrams,
+    hint::{ChromeHeader, SectionChrome},
+    layout_with_metrics,
 };
+use vutex_presentation::{DisplayPresentation, FlowPresentation, build_display_presentation, build_flow_presentation};
 use vutex_render_html::{render_html_reflow, render_html_snapshot};
 use vutex_render_pdf::{PdfFontPolicy, PdfResources, render_pdf_with_resources_and_diagnostics};
 use vutex_render_svg::render_svg;
@@ -109,11 +110,8 @@ impl ImportFormat {
 
     /// Infer the format from the input path extension.
     pub fn from_path(path: &str) -> Self {
-        let extension = std::path::Path::new(path)
-            .extension()
-            .and_then(|value| value.to_str())
-            .unwrap_or("")
-            .to_ascii_lowercase();
+        let extension =
+            std::path::Path::new(path).extension().and_then(|value| value.to_str()).unwrap_or("").to_ascii_lowercase();
         match extension.as_str() {
             "md" | "markdown" => Self::Markdown,
             "nd" | "notedown" => Self::Notedown,
@@ -266,9 +264,8 @@ pub fn parse_document(label: &str, format: ImportFormat, bytes: &[u8]) -> Result
 }
 
 fn text_of<'a>(bytes: &'a [u8], format: ImportFormat, label: &str) -> Result<&'a str, FormatError> {
-    std::str::from_utf8(bytes).map_err(|failure| {
-        FormatError::invalid_input(format!("{label} is not valid UTF-8 {} text: {failure}", format.id()))
-    })
+    std::str::from_utf8(bytes)
+        .map_err(|failure| FormatError::invalid_input(format!("{label} is not valid UTF-8 {} text: {failure}", format.id())))
 }
 
 /// Lower every diagram and footnote in the graph.
@@ -468,8 +465,7 @@ pub fn build_display(
         }
     }
     let measurements = theme.body_metrics();
-    let (plan, layout_diagnostics) =
-        layout_with_metrics(&lowered.graph, &hint, &lowered.diagrams, measurements.get());
+    let (plan, layout_diagnostics) = layout_with_metrics(&lowered.graph, &hint, &lowered.diagrams, measurements.get());
     let display = build_display_presentation(&plan);
     let mut diagnostics = lowered.diagnostics;
     diagnostics.extend(layout_diagnostics.iter().map(|diagnostic| stage_record(diagnostic, "layout", None)));
@@ -486,23 +482,19 @@ pub fn build_flow(graph: &DocumentGraph, theme: Theme) -> FlowScene {
 /// This is the only document-to-SVG path in the repository. Font embedding
 /// happens here, so no caller can emit SVG without it.
 pub fn render_display_svg(scene: &DisplayScene) -> Result<String, DiagnosticRecord> {
-    let svg = render_svg(&scene.display).map_err(|failure| {
-        error(RENDER_FAILED, failure.message, "render", "")
-    })?;
+    let svg = render_svg(&scene.display).map_err(|failure| error(RENDER_FAILED, failure.message, "render", ""))?;
     Ok(embed_body_fonts(&svg, scene.theme))
 }
 
 /// Emit a display scene as fixed-geometry snapshot HTML with bundled fonts.
 pub fn render_display_snapshot_html(scene: &DisplayScene) -> Result<String, DiagnosticRecord> {
-    let html = render_html_snapshot(&scene.display)
-        .map_err(|failure| error(RENDER_FAILED, failure.message, "render", ""))?;
+    let html = render_html_snapshot(&scene.display).map_err(|failure| error(RENDER_FAILED, failure.message, "render", ""))?;
     Ok(embed_html_fonts(&html, scene.theme))
 }
 
 /// Emit a flow scene as reflow HTML with bundled fonts.
 pub fn render_flow_html(scene: &FlowScene) -> Result<String, DiagnosticRecord> {
-    let html = render_html_reflow(&scene.flow)
-        .map_err(|failure| error(RENDER_FAILED, failure.message, "render", ""))?;
+    let html = render_html_reflow(&scene.flow).map_err(|failure| error(RENDER_FAILED, failure.message, "render", ""))?;
     Ok(embed_html_fonts(&html, scene.theme))
 }
 
@@ -510,20 +502,16 @@ pub fn render_flow_html(scene: &FlowScene) -> Result<String, DiagnosticRecord> {
 ///
 /// The bundled policy is fixed: a delivered PDF never depends on faces the
 /// reader happens to have installed, so no system CJK face can paint a page.
-pub fn render_display_pdf(
-    scene: &DisplayScene,
-    resources_json: Option<&str>,
-) -> Result<PdfPrimitiveOutcome, DiagnosticRecord> {
+pub fn render_display_pdf(scene: &DisplayScene, resources_json: Option<&str>) -> Result<PdfPrimitiveOutcome, DiagnosticRecord> {
     let settings = PdfSettings::parse(resources_json);
     let resources = settings.resources();
-    let outcome =
-        render_pdf_with_resources_and_diagnostics(&scene.display, &PdfFontPolicy::Provided(crate::assets::body_set()), &resources)
-        .map_err(|failure| error(RENDER_FAILED, failure.message, "render", ""))?;
-    let diagnostics = outcome
-        .diagnostics
-        .iter()
-        .map(|diagnostic| stage_record(diagnostic, "render", None))
-        .collect();
+    let outcome = render_pdf_with_resources_and_diagnostics(
+        &scene.display,
+        &PdfFontPolicy::Provided(crate::assets::body_set()),
+        &resources,
+    )
+    .map_err(|failure| error(RENDER_FAILED, failure.message, "render", ""))?;
+    let diagnostics = outcome.diagnostics.iter().map(|diagnostic| stage_record(diagnostic, "render", None)).collect();
     Ok(PdfPrimitiveOutcome { pdf: outcome.pdf, diagnostics })
 }
 
@@ -699,7 +687,8 @@ fn decode_payload(payload: &str) -> Option<Vec<u8>> {
     let payload = payload.trim();
     let body = if payload.get(..5).is_some_and(|prefix| prefix.eq_ignore_ascii_case("data:")) {
         payload.split_once(',').map(|(_, body)| body)?
-    } else {
+    }
+    else {
         payload
     };
     base64_decode(body)

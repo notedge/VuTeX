@@ -26,8 +26,10 @@ pub mod svg_fonts;
 pub mod theme;
 pub mod tikz;
 
-use std::collections::{BTreeMap, BTreeSet};
-use std::sync::{Mutex, OnceLock};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::{Mutex, OnceLock},
+};
 
 use document_fonts::{BodyFace, BodyFaceStyle, BodyFamily, BodyScript};
 use document_ir::DocumentGraph;
@@ -247,16 +249,11 @@ pub fn install_math_font_face(
         return Err(napi::Error::from_reason(format!("math font package {id} carries no face bytes")));
     }
     let mut faces = installed_math_faces().lock().map_err(|_| napi::Error::from_reason("math face registry is poisoned"))?;
-    if faces
-        .get(id)
-        .is_some_and(|face| face.hash == artifact_hash && face.tex_parameters == declared)
-    {
+    if faces.get(id).is_some_and(|face| face.hash == artifact_hash && face.tex_parameters == declared) {
         return Ok(());
     }
     if vutex_text::math::MathFontFacts::from_bytes(payload).is_none() {
-        return Err(napi::Error::from_reason(format!(
-            "math font package {id} has no parsable OpenType MATH table"
-        )));
+        return Err(napi::Error::from_reason(format!("math font package {id} has no parsable OpenType MATH table")));
     }
     let family: &'static str = Box::leak(id.to_string().into_boxed_str());
     let leaked: &'static [u8] = Box::leak(payload.to_vec().into_boxed_slice());
@@ -277,7 +274,8 @@ pub fn install_math_font_face(
 /// never installed, is a host error rather than a silent fallback: a document
 /// that declared a math face must not paint another one.
 fn resolve_math_font(math_font: Option<String>) -> napi::Result<Option<MathFontFamily>> {
-    let Some(id) = math_font.as_deref().map(str::trim).filter(|id| !id.is_empty()) else {
+    let Some(id) = math_font.as_deref().map(str::trim).filter(|id| !id.is_empty())
+    else {
         return Ok(None);
     };
     if let Some(family) = assets::math_family(id) {
@@ -448,9 +446,8 @@ fn template_geometry(input: TemplateGeometryInput) -> napi::Result<document::Tem
     let heading_scales = match input.heading_scales {
         None => None,
         Some(values) => {
-            let scales: [f64; 4] = values
-                .try_into()
-                .map_err(|_| napi::Error::from_reason("template heading scales need exactly four values"))?;
+            let scales: [f64; 4] =
+                values.try_into().map_err(|_| napi::Error::from_reason("template heading scales need exactly four values"))?;
             Some(scales)
         }
     };
@@ -503,9 +500,7 @@ fn section_chrome_header(text: String) -> napi::Result<ChromeHeader> {
         _ => {
             let trimmed = text.trim();
             if trimmed.is_empty() || trimmed.chars().count() > 160 {
-                return Err(napi::Error::from_reason(
-                    "template chrome literal header must be 1 to 160 characters".to_string(),
-                ));
+                return Err(napi::Error::from_reason("template chrome literal header must be 1 to 160 characters".to_string()));
             }
             Ok(ChromeHeader::Literal(intern_template_text(trimmed.to_string())))
         }
@@ -514,12 +509,11 @@ fn section_chrome_header(text: String) -> napi::Result<ChromeHeader> {
 
 /// Validate a `#RRGGBB` colour token.
 fn template_color(value: Option<String>, token: &str) -> napi::Result<Option<&'static str>> {
-    let Some(value) = value else {
+    let Some(value) = value
+    else {
         return Ok(None);
     };
-    let valid = value.len() == 7
-        && value.starts_with('#')
-        && value[1..].chars().all(|ch| ch.is_ascii_hexdigit());
+    let valid = value.len() == 7 && value.starts_with('#') && value[1..].chars().all(|ch| ch.is_ascii_hexdigit());
     if !valid {
         return Err(napi::Error::from_reason(format!("template colour {token} must be #RRGGBB: {value}")));
     }
@@ -528,7 +522,8 @@ fn template_color(value: Option<String>, token: &str) -> napi::Result<Option<&'s
 
 /// Validate a paragraph distance in points.
 fn template_distance(value: Option<f64>, name: &str) -> napi::Result<Option<f64>> {
-    let Some(value) = value else {
+    let Some(value) = value
+    else {
         return Ok(None);
     };
     if !value.is_finite() || !(0.0..=48.0).contains(&value) {
@@ -659,9 +654,7 @@ fn find_face(family: &str, script: &str, style: &str) -> Option<&'static BodyFac
         "italic" => BodyFaceStyle::Italic,
         _ => BodyFaceStyle::Regular,
     };
-    assets::body_faces()
-        .iter()
-        .find(|face| face.family == family && face.script == script && face.style == style)
+    assets::body_faces().iter().find(|face| face.family == family && face.script == script && face.style == style)
 }
 
 /// Structural block counts for one serialized document graph.
@@ -681,18 +674,11 @@ pub fn assemble_report(
     output_json: Option<String>,
     extra_json: Option<String>,
 ) -> String {
-    document::assemble_report(
-        &operation,
-        &inputs_json,
-        &diagnostics_json,
-        output_json.as_deref(),
-        extra_json.as_deref(),
-    )
+    document::assemble_report(&operation, &inputs_json, &diagnostics_json, output_json.as_deref(), extra_json.as_deref())
 }
 
 /// Typography facts for the selected theme.
 #[napi]
 pub fn theme_facts(theme: Option<String>) -> String {
-    serde_json::to_string(&document::theme_facts(Theme::from_option(theme.as_deref())))
-        .unwrap_or_else(|_| "{}".to_string())
+    serde_json::to_string(&document::theme_facts(Theme::from_option(theme.as_deref()))).unwrap_or_else(|_| "{}".to_string())
 }

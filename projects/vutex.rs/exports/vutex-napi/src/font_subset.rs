@@ -64,10 +64,12 @@ pub fn subset_font(font: &[u8], chars: &BTreeSet<char>) -> Option<FacePayload> {
 
 /// Return the characters in `chars` that `font` maps.
 pub fn mapped(font: &[u8], chars: &BTreeSet<char>) -> BTreeSet<char> {
-    let Some(directory) = parse_directory(font) else {
+    let Some(directory) = parse_directory(font)
+    else {
         return BTreeSet::new();
     };
-    let Some(cmap) = table(font, &directory, b"cmap") else {
+    let Some(cmap) = table(font, &directory, b"cmap")
+    else {
         return BTreeSet::new();
     };
     chars.iter().copied().filter(|ch| glyph_for(cmap, *ch as u32).is_some()).collect()
@@ -119,18 +121,11 @@ fn build_subset(font: &[u8], chars: &BTreeSet<char>) -> Result<SubsetFont, Refus
     let new_cmap = rebuild_cmap(&mapped);
     let new_loca = rebuild_loca(&new_offsets);
 
-    let mut replacements = BTreeMap::from([
-        (*b"head", new_head),
-        (*b"glyf", new_glyf),
-        (*b"loca", new_loca),
-        (*b"cmap", new_cmap),
-    ]);
+    let mut replacements =
+        BTreeMap::from([(*b"head", new_head), (*b"glyf", new_glyf), (*b"loca", new_loca), (*b"cmap", new_cmap)]);
 
     let bytes = assemble(font, &directory, &mut replacements).ok_or(Refusal::Unsafe)?;
-    let glyph_count = retained
-        .iter()
-        .filter(|glyph| offsets[**glyph as usize] < offsets[**glyph as usize + 1])
-        .count();
+    let glyph_count = retained.iter().filter(|glyph| offsets[**glyph as usize] < offsets[**glyph as usize + 1]).count();
     Ok(SubsetFont { bytes, glyph_count, codepoint_count: mapped.len() })
 }
 
@@ -161,14 +156,16 @@ fn table<'a>(font: &'a [u8], directory: &TableDirectory, tag: &[u8; 4]) -> Optio
 /// Reject faces whose shaping layer maps one glyph to another, because the
 /// replacement glyph may not be in the character set.
 fn declares_substitutions(font: &[u8], directory: &TableDirectory) -> bool {
-    let Some(gsub) = table(font, directory, b"GSUB") else {
+    let Some(gsub) = table(font, directory, b"GSUB")
+    else {
         return false;
     };
     if gsub.len() < 10 {
         return true;
     }
     let feature_list = read_u16(gsub, 6).unwrap_or(0) as usize;
-    let Some(header) = gsub.get(feature_list..feature_list + 2) else {
+    let Some(header) = gsub.get(feature_list..feature_list + 2)
+    else {
         return true;
     };
     read_u16(header, 0).unwrap_or(1) > 0
@@ -181,11 +178,7 @@ fn read_loca(loca: &[u8], num_glyphs: usize, long_format: bool) -> Option<Vec<us
     }
     let mut offsets = Vec::with_capacity(num_glyphs + 1);
     for index in 0..=num_glyphs {
-        let value = if long_format {
-            read_u32(loca, index * 4)? as usize
-        } else {
-            read_u16(loca, index * 2)? as usize * 2
-        };
+        let value = if long_format { read_u32(loca, index * 4)? as usize } else { read_u16(loca, index * 2)? as usize * 2 };
         offsets.push(value);
     }
     Some(offsets)
@@ -302,15 +295,23 @@ fn retain_composites(glyf: &[u8], offsets: &[usize], retained: &mut BTreeSet<u16
                 if cursor + 4 > end {
                     break;
                 }
-                let Some(flags) = read_u16(glyf, cursor) else { break };
-                let Some(component) = read_u16(glyf, cursor + 2) else { break };
+                let Some(flags) = read_u16(glyf, cursor)
+                else {
+                    break;
+                };
+                let Some(component) = read_u16(glyf, cursor + 2)
+                else {
+                    break;
+                };
                 cursor += 4;
                 cursor += if flags & 0x0001 != 0 { 4 } else { 2 };
                 if flags & 0x0008 != 0 {
                     cursor += 2;
-                } else if flags & 0x0040 != 0 {
+                }
+                else if flags & 0x0040 != 0 {
                     cursor += 4;
-                } else if flags & 0x0080 != 0 {
+                }
+                else if flags & 0x0080 != 0 {
                     cursor += 8;
                 }
                 if (component as usize) < offsets.len() - 1 && retained.insert(component) {
@@ -546,7 +547,8 @@ mod tests {
     fn ten_characters_shrink_tinos_by_more_than_five_times() {
         let source = face(BodyFamily::Serif, BodyScript::Latin, BodyFaceStyle::Regular);
         let chars: BTreeSet<char> = "abcABC123".chars().collect();
-        let Some(FacePayload::Subset(subset)) = subset_font(source, &chars) else {
+        let Some(FacePayload::Subset(subset)) = subset_font(source, &chars)
+        else {
             panic!("Tinos must subset")
         };
         assert!(subset.bytes.len() * 5 < source.len(), "{} vs {}", subset.bytes.len(), source.len());
@@ -565,7 +567,8 @@ mod tests {
     fn composite_dependencies_survive_the_subset() {
         let source = face(BodyFamily::Serif, BodyScript::Latin, BodyFaceStyle::Regular);
         let chars: BTreeSet<char> = "é".chars().collect();
-        let Some(FacePayload::Subset(subset)) = subset_font(source, &chars) else {
+        let Some(FacePayload::Subset(subset)) = subset_font(source, &chars)
+        else {
             panic!("Tinos must subset")
         };
         let directory = parse_directory(&subset.bytes).expect("subset directory");
@@ -585,9 +588,11 @@ mod tests {
             cursor += if flags & 0x0001 != 0 { 4 } else { 2 };
             if flags & 0x0008 != 0 {
                 cursor += 2;
-            } else if flags & 0x0040 != 0 {
+            }
+            else if flags & 0x0040 != 0 {
                 cursor += 4;
-            } else if flags & 0x0080 != 0 {
+            }
+            else if flags & 0x0080 != 0 {
                 cursor += 8;
             }
             if flags & 0x0020 == 0 {
@@ -613,4 +618,3 @@ mod tests {
         assert!(subset_font(source, &chars).is_none());
     }
 }
-

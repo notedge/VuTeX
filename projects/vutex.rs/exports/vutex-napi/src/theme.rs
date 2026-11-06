@@ -20,8 +20,10 @@
 //! face, so SimSun, SimHei, and Microsoft YaHei never paint a VuTeX page.
 
 use document_fonts::{BodyFaceKey, BodyFaceStyle, BodyFamily, BodyMetrics};
-use vutex_layout::hint::{Align, Margin, StyleTokens, DEFAULT_MARGIN};
-use vutex_layout::LayoutHint;
+use vutex_layout::{
+    LayoutHint,
+    hint::{Align, DEFAULT_MARGIN, Margin, StyleTokens},
+};
 
 use crate::assets::{body_faces, body_metrics};
 
@@ -135,9 +137,7 @@ impl Theme {
                     (BodyFaceKey { family: BodyFamily::Mono, style: BodyFaceStyle::Regular }, "Noto Sans Mono Regular"),
                 ]
                 .into_iter()
-                .filter_map(|(key, label)| {
-                    face_for(key).map(|face| (key, label.to_string(), face.bytes.as_ref()))
-                }),
+                .filter_map(|(key, label)| face_for(key).map(|face| (key, label.to_string(), face.bytes.as_ref()))),
             )),
         }
     }
@@ -330,28 +330,24 @@ fn classic_style() -> StyleTokens {
 /// face for its request falls back to the regular file, matching the way CSS
 /// synthesizes an upright bold when only one weight is installed.
 fn face_for(key: BodyFaceKey) -> Option<&'static document_fonts::BodyFace> {
-    body_faces()
-        .iter()
-        .find(|face| match (key.family, key.style) {
-            (BodyFamily::Serif, BodyFaceStyle::Regular) => {
-                face.family == BodyFamily::Serif
-                    && face.script == document_fonts::BodyScript::Cjk
-                    && face.style == BodyFaceStyle::Regular
-            }
-            (BodyFamily::Serif, BodyFaceStyle::Bold) => {
-                face.family == BodyFamily::Serif
-                    && face.script == document_fonts::BodyScript::Cjk
-                    && face.style == BodyFaceStyle::Bold
-            }
-            (BodyFamily::Serif, BodyFaceStyle::Italic) => {
-                face.family == BodyFamily::Serif
-                    && face.script == document_fonts::BodyScript::Cjk
-                    && face.style == BodyFaceStyle::Regular
-            }
-            (BodyFamily::Mono, _) => {
-                face.family == BodyFamily::Mono && face.style == BodyFaceStyle::Regular
-            }
-        })
+    body_faces().iter().find(|face| match (key.family, key.style) {
+        (BodyFamily::Serif, BodyFaceStyle::Regular) => {
+            face.family == BodyFamily::Serif
+                && face.script == document_fonts::BodyScript::Cjk
+                && face.style == BodyFaceStyle::Regular
+        }
+        (BodyFamily::Serif, BodyFaceStyle::Bold) => {
+            face.family == BodyFamily::Serif
+                && face.script == document_fonts::BodyScript::Cjk
+                && face.style == BodyFaceStyle::Bold
+        }
+        (BodyFamily::Serif, BodyFaceStyle::Italic) => {
+            face.family == BodyFamily::Serif
+                && face.script == document_fonts::BodyScript::Cjk
+                && face.style == BodyFaceStyle::Regular
+        }
+        (BodyFamily::Mono, _) => face.family == BodyFamily::Mono && face.style == BodyFaceStyle::Regular,
+    })
 }
 
 /// Borrowed or owned body metrics.

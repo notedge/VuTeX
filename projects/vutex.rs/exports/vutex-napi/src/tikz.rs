@@ -17,10 +17,10 @@
 //! `vutex_layout` places the picture as a graphic instead of the source text.
 
 use document_ir::{Block, DocumentGraph};
-use plotter_input_tikz::{tikz_to_scene, TIKZ_ALT};
+use plotter_input_tikz::{TIKZ_ALT, tikz_to_scene};
 
 use crate::{
-    diagram::{document_span, LoweredDiagrams},
+    diagram::{LoweredDiagrams, document_span},
     document::{DiagnosticRecord, DiagnosticSpan},
 };
 

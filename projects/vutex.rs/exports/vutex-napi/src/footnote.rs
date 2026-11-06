@@ -285,7 +285,8 @@ pub fn absorb_definition_continuations(graph: &mut DocumentGraph, source: &str) 
     while index < graph.blocks.len() {
         let node_id = graph.blocks[index].id;
         let is_definition = matches!(&graph.blocks[index].block, Block::Opaque { kind, .. } if kind == DEFINITION_KIND);
-        let Some(span) = graph.block_span(node_id) else {
+        let Some(span) = graph.block_span(node_id)
+        else {
             index += 1;
             continue;
         };
@@ -309,7 +310,8 @@ pub fn absorb_definition_continuations(graph: &mut DocumentGraph, source: &str) 
         let mut absorbed = Vec::new();
         let mut probe = index + 1;
         for paragraph in &paragraphs {
-            let Some(node) = graph.blocks.get(probe) else {
+            let Some(node) = graph.blocks.get(probe)
+            else {
                 break;
             };
             let matches_paragraph = matches!(
@@ -344,14 +346,16 @@ fn scan_continuations(source: &str, from: usize) -> (Vec<String>, usize) {
     let mut paragraphs = Vec::new();
     let mut cursor = from;
     loop {
-        let Some(blank_start) = consume_line_break(source, cursor) else {
+        let Some(blank_start) = consume_line_break(source, cursor)
+        else {
             break;
         };
         let blank_end = line_end(source, blank_start);
         if !source[blank_start..blank_end].trim().is_empty() {
             break;
         }
-        let Some(content_start) = consume_line_break(source, blank_end) else {
+        let Some(content_start) = consume_line_break(source, blank_end)
+        else {
             break;
         };
         let rest = &source[content_start..];
@@ -528,10 +532,9 @@ mod tests {
 
     #[test]
     fn continuation_markup_survives_inside_its_paragraph() {
-        let (_, body) = parse_definition(
-            "[^4]: Inline **bold**, `code`, and [link](https://example.test).\n\n    Second keeps *stress*.",
-        )
-        .expect("definition parses");
+        let (_, body) =
+            parse_definition("[^4]: Inline **bold**, `code`, and [link](https://example.test).\n\n    Second keeps *stress*.")
+                .expect("definition parses");
         assert_eq!(body.len(), 2);
         assert!(body[0].contains("**bold**"), "{body:?}");
         assert!(body[0].contains("`code`"), "{body:?}");

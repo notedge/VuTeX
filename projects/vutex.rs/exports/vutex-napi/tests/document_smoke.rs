@@ -12,16 +12,17 @@
 //! the caller, and failures come back as diagnostic records.
 
 use serde_json::Value;
-use vutex_napi::document::{
-    ImportFormat, TemplateColors, TemplateGeometry, assemble_report, build_display, build_flow,
-    lower_document, parse_document, render_display_snapshot_html, render_display_svg,
-    render_flow_html,
-};
 use vutex_layout::hint::{ChromeHeader, SectionChrome};
-use vutex_napi::theme::Theme;
-use vutex_napi::footnote::{
-    FOOTNOTE_DEFINITION_DUPLICATE, FOOTNOTE_DEFINITION_MISSING, FOOTNOTE_DEFINITION_UNREFERENCED,
-    FOOTNOTE_REFERENCE_REPEATED,
+use vutex_napi::{
+    document::{
+        ImportFormat, TemplateColors, TemplateGeometry, assemble_report, build_display, build_flow, lower_document,
+        parse_document, render_display_snapshot_html, render_display_svg, render_flow_html,
+    },
+    footnote::{
+        FOOTNOTE_DEFINITION_DUPLICATE, FOOTNOTE_DEFINITION_MISSING, FOOTNOTE_DEFINITION_UNREFERENCED,
+        FOOTNOTE_REFERENCE_REPEATED,
+    },
+    theme::Theme,
 };
 
 /// Parse, lower, and emit SVG for one source.
@@ -44,12 +45,8 @@ fn markdown_source_reaches_svg() {
 
 #[test]
 fn template_third_layer_reaches_layout_and_paint() {
-    let parsed = parse_document(
-        "sample.md",
-        ImportFormat::Markdown,
-        b"# One\n\nBody.\n\n## Sub\n\nMore.\n\n# Two\n\nEnd.\n",
-    )
-    .expect("source parses");
+    let parsed = parse_document("sample.md", ImportFormat::Markdown, b"# One\n\nBody.\n\n## Sub\n\nMore.\n\n# Two\n\nEnd.\n")
+        .expect("source parses");
     let lowered = lower_document(parsed.graph, "sample.md");
     let template = TemplateGeometry {
         page_width: 612.0,
@@ -89,11 +86,7 @@ fn typst_source_reaches_svg() {
 
 #[test]
 fn tikz_fence_reaches_a_diagram_scene() {
-    let (svg, _) = svg_of(
-        "sample.md",
-        ImportFormat::Markdown,
-        b"```tikz\n\\draw (0,0) rectangle (1,1);\n```\n",
-    );
+    let (svg, _) = svg_of("sample.md", ImportFormat::Markdown, b"```tikz\n\\draw (0,0) rectangle (1,1);\n```\n");
     assert!(svg.contains("data-diagram=\"TikZ picture\""), "{svg}");
 }
 
@@ -118,11 +111,7 @@ fn gfm_footnote_definition_keeps_its_continuation_paragraphs() {
 
 #[test]
 fn gfm_footnote_reference_reaches_a_marker_and_an_endnote_body() {
-    let (svg, payload) = svg_of(
-        "sample.md",
-        ImportFormat::Markdown,
-        b"# Notes\n\nBody text.[^1]\n\n[^1]: Footnote body.\n",
-    );
+    let (svg, payload) = svg_of("sample.md", ImportFormat::Markdown, b"# Notes\n\nBody text.[^1]\n\n[^1]: Footnote body.\n");
     assert!(svg.contains("Body text.[1]"), "{svg}");
     assert!(svg.contains("[1] Footnote body."), "{svg}");
     assert_eq!(payload["footnotes"]["references"], 1, "{payload}");
@@ -133,12 +122,8 @@ fn gfm_footnote_reference_reaches_a_marker_and_an_endnote_body() {
 
 #[test]
 fn gfm_footnote_marker_survives_the_reflow_html_lane() {
-    let parsed = parse_document(
-        "sample.md",
-        ImportFormat::Markdown,
-        b"# Notes\n\nBody text.[^1]\n\n[^1]: Footnote body.\n",
-    )
-    .expect("parses");
+    let parsed = parse_document("sample.md", ImportFormat::Markdown, b"# Notes\n\nBody text.[^1]\n\n[^1]: Footnote body.\n")
+        .expect("parses");
     let lowered = lower_document(parsed.graph, "sample.md");
     let graph = lowered.graph;
     let flow = build_flow(&graph, Theme::Baseline);

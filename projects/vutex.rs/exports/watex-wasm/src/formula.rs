@@ -1,10 +1,10 @@
-use vutex_layout::math::{FontConformance, LayoutNode, default_base_size, layout_formula_source_with_conformance};
-use vutex_render_svg::math::{render_formula_result, render_mathml_result};
-use vutex_text::math::MathFontFamily;
 use vutex_compose::{
     Diagnostic, Severity,
     math::{FormulaLayoutResult, MathError},
 };
+use vutex_layout::math::{FontConformance, LayoutNode, default_base_size, layout_formula_source_with_conformance};
+use vutex_render_svg::math::{render_formula_result, render_mathml_result};
+use vutex_text::math::MathFontFamily;
 
 use crate::{
     html::HtmlBackend,
@@ -184,8 +184,7 @@ fn layout_formula(
         return Err(LayoutFailure::FontUnavailable);
     };
     let conformance = options.font_conformance.map(|mode| mode.engine_mode()).unwrap_or(FontConformance::AllowFallbacks);
-    layout_formula_source_with_conformance(source, display, base, family, conformance)
-        .map_err(LayoutFailure::Math)
+    layout_formula_source_with_conformance(source, display, base, family, conformance).map_err(LayoutFailure::Math)
 }
 
 /// Why a formula never reached layout.

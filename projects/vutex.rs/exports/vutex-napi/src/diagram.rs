@@ -139,10 +139,7 @@ pub fn lower_diagrams(graph: &DocumentGraph, path: &str) -> LoweredDiagrams {
                 message: error.message().to_string(),
                 stage: "diagram".to_string(),
                 path: Some(path.to_string()),
-                span: document_span(
-                    block_span,
-                    error.span().map(|span| DiagnosticSpan { start: span.start, end: span.end }),
-                ),
+                span: document_span(block_span, error.span().map(|span| DiagnosticSpan { start: span.start, end: span.end })),
             }),
         }
     }

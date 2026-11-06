@@ -10,10 +10,7 @@
 //! emits a generic `serif` or `monospace` family or omits `@font-face`.
 
 use vutex_napi::{
-    document::{
-        build_display, lower_document, parse_document, render_display_snapshot_html, render_display_svg,
-        ImportFormat,
-    },
+    document::{ImportFormat, build_display, lower_document, parse_document, render_display_snapshot_html, render_display_svg},
     svg_fonts::{embed_body_fonts, embed_html_fonts},
     theme::Theme,
 };

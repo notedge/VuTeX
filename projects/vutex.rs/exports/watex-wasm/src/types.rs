@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-use vutex_layout::math::FontConformance;
 use vutex_compose::math::MathSemantics;
+use vutex_layout::math::FontConformance;
 
 /// Inline or block formula layout mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
