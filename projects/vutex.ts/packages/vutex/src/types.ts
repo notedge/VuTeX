@@ -6,6 +6,15 @@ export type CreateVuTeXOptions = {
     projectRoot?: string;
     host?: VuTeXHost;
     backend?: VuTeXBackend;
+    /**
+     * Fallback theme and math face when neither the render call nor the
+     * manifest picks one. Distributions such as `@vutex/latex` set these so a
+     * preset never has to write into the user's project.
+     */
+    defaults?: {
+        theme?: string;
+        mathFont?: string;
+    };
 };
 
 export type DocumentOutputFormat = "svg" | "html" | "snapshot" | "pdf";

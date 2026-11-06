@@ -115,6 +115,7 @@ export function createVuTeXRuntime(
 ): VuTeXRuntime {
     const projectRoot = options.projectRoot ?? process.cwd();
     const packages = new PackageManager(projectRoot);
+    const defaults = options.defaults ?? {};
 
     async function render(inputPath: string, renderOptions: RenderDocumentOptions = {}): Promise<RenderDocumentResult> {
         const manifest = await readManifest(projectRoot);
@@ -149,7 +150,7 @@ export function createVuTeXRuntime(
         // `math-font` have native consumers, so an unusable value fails the
         // render instead of silently painting the built-in baseline.
         const themePackage = activatedSlot(activation.packages, "theme");
-        const theme = explicitTheme ?? themePackage?.name;
+        const theme = explicitTheme ?? themePackage?.name ?? defaults.theme;
         if (theme !== undefined && !NATIVE_THEMES.has(theme)) {
             return fail(
                 diagnostic(
@@ -238,7 +239,7 @@ export function createVuTeXRuntime(
                 }
             }
         }
-        const mathFont = mathPackage?.name;
+        const mathFont = mathPackage?.name ?? defaults.mathFont;
 
         let bytes: Uint8Array;
         try {
@@ -325,7 +326,7 @@ export function createVuTeXRuntime(
             if (outputFormat === "html") {
                 const flow = bindings.buildFlow(lowered.graphJson(), theme);
                 html = flow.html();
-                if (mathFont !== undefined) {
+                if (mathPackage !== undefined && mathFont !== undefined) {
                     diagnostics.push({
                         code: "VUTEX_PACKAGE_MATH_FONT_INACTIVE",
                         severity: "warning",

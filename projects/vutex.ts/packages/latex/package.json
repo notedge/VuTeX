@@ -1,0 +1,36 @@
+{
+    "name": "@vutex/latex",
+    "version": "0.0.14",
+    "description": "LaTeX-style VuTeX document distribution",
+    "type": "module",
+    "license": "MPL-2.0",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/notedge/VuTeX.git",
+        "directory": "projects/vutex.ts/packages/latex"
+    },
+    "publishConfig": {
+        "access": "public"
+    },
+    "exports": {
+        ".": "./src/index.ts"
+    },
+    "files": [
+        "src"
+    ],
+    "engines": {
+        "node": ">=20"
+    },
+    "scripts": {
+        "typecheck": "tsc --noEmit",
+        "test": "tsx --test tests/latex.test.ts"
+    },
+    "dependencies": {
+        "@vutex/vutex": "workspace:*"
+    },
+    "devDependencies": {
+        "@types/node": "^22.13.10",
+        "tsx": "^4.19.3",
+        "typescript": "^5.8.3"
+    }
+}
