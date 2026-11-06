@@ -5,9 +5,23 @@ import { isAbsolute, join } from "node:path";
 import test from "node:test";
 
 import { writePdfOutput } from "../src/cli/commands/render.js";
+import { readLockfile } from "../src/packages/lockfile.js";
 import { PackageManager } from "../src/packages/manager.js";
 import { createVuTeXRuntime } from "../src/runtime.js";
 import type { RenderDocumentResult, VuTeXBindings } from "../src/types.js";
+
+const REGISTRY = "https://registry.test";
+
+/** Deterministic transport stub for a registry-backed render. */
+function stubTransport(routes: Record<string, string>) {
+    const encoder = new TextEncoder();
+    return async (url: string) => {
+        const body = routes[url];
+        return body === undefined
+            ? { status: 404, body: encoder.encode("missing") }
+            : { status: 200, body: encoder.encode(body) };
+    };
+}
 
 type ParseCall = { label: string; format: string; bytes: Uint8Array };
 type ReportCall = { operation: string; inputs: string; diagnostics: string; output?: string; extra?: string };
@@ -296,6 +310,53 @@ test("render registers a downloaded math face before laying out", async () => {
         assert.equal(new TextDecoder().decode(calls.mathFaces[0]?.bytes), "font payload");
         assert.deepEqual(calls.mathFont, ["resources/math"]);
         assert.equal(result.diagnostics.filter((item) => item.severity === "error").length, 0);
+    });
+});
+
+test("render registers a registry math face under its locked package name", async () => {
+    await withTempDir(async (dir) => {
+        const inputPath = join(dir, "chapter.md");
+        await writeFile(inputPath, "# Title\n", "utf8");
+        const payload = "libertinus math face bytes";
+        const fileUrl = `${REGISTRY}/math-font/files/libertinus-math.otf`;
+        const descriptorUrl = `${REGISTRY}/math-font/files/math-font.json`;
+        const metadataUrl = `${REGISTRY}/math-font/libertinus.json`;
+        const metadata = {
+            slot: "math-font",
+            name: "libertinus",
+            versions: [
+                {
+                    version: "1.0.0",
+                    files: [
+                        { path: "math-font.json", url: "../../math-font/files/math-font.json" },
+                        { path: "libertinus-math.otf", url: "../../math-font/files/libertinus-math.otf" },
+                    ],
+                },
+            ],
+        };
+        const transport = stubTransport({
+            [metadataUrl]: JSON.stringify(metadata),
+            [descriptorUrl]: JSON.stringify({ file: "libertinus-math.otf", texParameters: "xits-math" }),
+            [fileUrl]: payload,
+        });
+        await writeFile(
+            join(dir, "vutex.toml"),
+            `[registry]\nurl = "${REGISTRY}"\n\n[packages]\nmath-font = "libertinus"\n`,
+            "utf8",
+        );
+        await new PackageManager(dir, { transport }).install();
+        const lock = await readLockfile(dir);
+
+        const { bindings, calls } = fakeBindings();
+        const runtime = createVuTeXRuntime(bindings, { projectRoot: dir });
+        const result = await runtime.render(inputPath);
+
+        assert.equal(result.diagnostics.filter((item) => item.severity === "error").length, 0);
+        assert.deepEqual(calls.mathFaces.map((face) => face.name), ["libertinus"]);
+        assert.equal(calls.mathFaces[0]?.hash, lock?.packages[0]?.artifactHash);
+        assert.equal(calls.mathFaces[0]?.texParameters, "xits-math");
+        assert.equal(calls.mathFont[0], "libertinus");
+        assert.equal(result.packages?.[0]?.source, `registry+${REGISTRY}`);
     });
 });
 
