@@ -7,7 +7,7 @@
     "status": "available",
     "status_reason": null
   },
-  "corpus_path": "projects/vutex.rs/crates/vutex-layout/tests/fixtures/oracle/corpus.json",
+  "corpus_path": "projects/vutex.ts/examples/oracle/records/corpus.json",
   "procedure": [
     "Install a TeX distribution (TeX Live / MacTeX) that ships LuaLaTeX and amsmath, or fetch `tectonic` which is self-contained. Re-run `node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs`.",
     "For every corpus formula, set it in a box in both styles: inline via `\\setbox0=\\hbox{$<tex>$}`, display via `\\setbox0=\\hbox{\\displaystyle $<tex>$}`.",
@@ -17,7 +17,9 @@
     "For every formula carrying a radical degree (`\\sqrt[...]{...}`), also measure the naked radical and the degree content in both superscript-demoted candidate styles with `\\typeout{NAKED: ...}` / `\\typeout{DEGBOX: ...}`.",
     "Then run one dedicated `\\showbox` pass per degree entry (with `\\showboxdepth` and `\\showboxbreadth` raised): the engine's box-structure dump reveals the degree assembly `kern, shifted degree box, kern`, so the degree anchor, box and kerns are engine output, not reconstruction. `\\showbox` halts the engine (Tectonic treats it as an error), hence the dedicated pass and `--keep-logs`.",
     "For script entries whose script box is the trailing item of the formula box, measure the script content alone in its own style (`\\typeout{SCRIPTBOX: ...}`) and derive the script anchor from engine box differences: x = wd(full) - wd(script box), y = ht(full) - ht(script box) for a superscript.",
-    "For fenced entries, measure the left delimiter stretched over a zero-width phantom of the body (`\\typeout{DELIMSIZE: ...}`): the phantom keeps the body's height and depth, so the delimiter grows exactly as in the full formula, and its height plus depth is the recorded `delimiter_size`."
+    "For fenced entries, measure the left delimiter stretched over a zero-width phantom of the body (`\\typeout{DELIMSIZE: ...}`): the phantom keeps the body's height and depth, so the delimiter grows exactly as in the full formula, and its height plus depth is the recorded `delimiter_size`.",
+    "Probe the math axis once in math mode with `\\typeout{AXIS: \\the\\fontdimen22\\textfont2}`: TeX centres fractions, brackets and large operators on that height, and it is the engine's own number, not a design assumption.",
+    "For every formula whose source draws a rule (fraction bar, radical vinculum, over/underbar), reuse the dedicated `\\showbox` pass: each bar appears as a `\\rule(<height>+<depth>)x<width>` node, so the recorded `rule_thickness` is the engine's drawn thickness (height plus depth), not a constant copied from a table."
   ],
   "probes": [
     {
@@ -106,9 +108,10 @@
       "width": 2.3199,
       "height": 0.583333,
       "depth": 0.194444,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -138,9 +141,10 @@
       "width": 2.3199,
       "height": 0.583333,
       "depth": 0.194444,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -170,9 +174,10 @@
       "width": 3.946046,
       "height": 0.6944440000000001,
       "depth": 0.083333,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -202,9 +207,10 @@
       "width": 3.946046,
       "height": 0.6944440000000001,
       "depth": 0.083333,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -234,9 +240,10 @@
       "width": 1.639322,
       "height": 0.879842,
       "depth": 0.428175,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
-      "rule_thickness": null,
+      "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -266,9 +273,10 @@
       "width": 2.419968,
       "height": 1.370952,
       "depth": 0.7692840000000001,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
-      "rule_thickness": null,
+      "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -298,9 +306,10 @@
       "width": 1.421959,
       "height": 0.66428,
       "depth": 0,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": [
         {
@@ -336,9 +345,10 @@
       "width": 1.421959,
       "height": 0.71428,
       "depth": 0,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": [
         {
@@ -374,9 +384,10 @@
       "width": 1.404863,
       "height": 0.800272,
       "depth": 0.23972500000000002,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
-      "rule_thickness": null,
+      "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -406,9 +417,10 @@
       "width": 1.404863,
       "height": 0.849092,
       "depth": 0.19090400000000002,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
-      "rule_thickness": null,
+      "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -438,9 +450,10 @@
       "width": 1.467375,
       "height": 0.800272,
       "depth": 0.23972500000000002,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
-      "rule_thickness": null,
+      "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": {
@@ -500,9 +513,10 @@
       "width": 1.467375,
       "height": 0.849092,
       "depth": 0.19090400000000002,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
-      "rule_thickness": null,
+      "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": {
@@ -562,9 +576,10 @@
       "width": 2.912167,
       "height": 0.8041750000000001,
       "depth": 0.30000499999999997,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -594,9 +609,10 @@
       "width": 1.955623,
       "height": 1.6513929999999999,
       "depth": 1.279865,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -626,9 +642,10 @@
       "width": 3.560759,
       "height": 1.0094509999999999,
       "depth": 0.35556,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -658,9 +675,10 @@
       "width": 3.8940930000000002,
       "height": 1.565013,
       "depth": 0.911122,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -690,9 +708,10 @@
       "width": 1.590436,
       "height": 0.850005,
       "depth": 0.350006,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
-      "rule_thickness": null,
+      "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": 1.200011,
       "script_positions": null,
       "degree": null,
@@ -722,9 +741,10 @@
       "width": 1.963034,
       "height": 1.1500080000000001,
       "depth": 0.685951,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
-      "rule_thickness": null,
+      "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": 1.8359590000000001,
       "script_positions": null,
       "degree": null,
@@ -754,9 +774,10 @@
       "width": 1.5715299999999999,
       "height": 0.75,
       "depth": 0.25,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": 1,
       "script_positions": null,
       "degree": null,
@@ -786,9 +807,10 @@
       "width": 1.5715299999999999,
       "height": 0.75,
       "depth": 0.25,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": 1,
       "script_positions": null,
       "degree": null,
@@ -818,9 +840,10 @@
       "width": 0.597226,
       "height": 0.958334,
       "depth": 0.194444,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -850,9 +873,10 @@
       "width": 0.597226,
       "height": 0.958334,
       "depth": 0.194444,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -882,9 +906,10 @@
       "width": 1.558682,
       "height": 0.8205539999999999,
       "depth": 0,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -914,6 +939,453 @@
       "width": 1.558682,
       "height": 0.8205539999999999,
       "depth": 0,
+      "axis": 0.25,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "column_alignment": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "degree": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "matrix",
+      "tex": "\\begin{matrix} a & b \\\\ c & d \\end{matrix}",
+      "display_mode": false,
+      "source": {
+        "engine": "latex",
+        "version": "Tectonic 0.17.0",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "font": {
+        "family": "Latin Modern Math",
+        "sha256": null,
+        "units_per_em": 1000,
+        "path": null
+      },
+      "size": 10,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": 2.0490749999999998,
+      "height": 1.45,
+      "depth": 0.95,
+      "axis": 0.25,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "column_alignment": {
+        "columns": 2,
+        "rows": [
+          {
+            "starts": [
+              0,
+              1.528589
+            ],
+            "widths": [
+              1.528589,
+              1.520486
+            ],
+            "offsets": [
+              0.5,
+              0.54566
+            ]
+          },
+          {
+            "starts": [
+              0,
+              1.528589
+            ],
+            "widths": [
+              1.528589,
+              1.520486
+            ],
+            "offsets": [
+              0.547917,
+              0.5
+            ]
+          }
+        ]
+      },
+      "delimiter_size": null,
+      "script_positions": null,
+      "degree": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "matrix",
+      "tex": "\\begin{matrix} a & b \\\\ c & d \\end{matrix}",
+      "display_mode": true,
+      "source": {
+        "engine": "latex",
+        "version": "Tectonic 0.17.0",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "font": {
+        "family": "Latin Modern Math",
+        "sha256": null,
+        "units_per_em": 1000,
+        "path": null
+      },
+      "size": 10,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": 2.0490749999999998,
+      "height": 1.45,
+      "depth": 0.95,
+      "axis": 0.25,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "column_alignment": {
+        "columns": 2,
+        "rows": [
+          {
+            "starts": [
+              0,
+              1.528589
+            ],
+            "widths": [
+              1.528589,
+              1.520486
+            ],
+            "offsets": [
+              0.5,
+              0.54566
+            ]
+          },
+          {
+            "starts": [
+              0,
+              1.528589
+            ],
+            "widths": [
+              1.528589,
+              1.520486
+            ],
+            "offsets": [
+              0.547917,
+              0.5
+            ]
+          }
+        ]
+      },
+      "delimiter_size": null,
+      "script_positions": null,
+      "degree": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "cases",
+      "tex": "\\begin{cases} x & x > 0 \\\\ 0 & \\text{otherwise} \\end{cases}",
+      "display_mode": false,
+      "source": {
+        "engine": "latex",
+        "version": "Tectonic 0.17.0",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "font": {
+        "family": "Latin Modern Math",
+        "sha256": null,
+        "units_per_em": 1000,
+        "path": null
+      },
+      "size": 10,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": 6.616086,
+      "height": 1.7500139999999997,
+      "depth": 1.2500149999999999,
+      "axis": 0.25,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "column_alignment": {
+        "columns": 2,
+        "rows": [
+          {
+            "starts": [
+              0,
+              1.5715270000000001
+            ],
+            "widths": [
+              1.5715270000000001,
+              4.119
+            ],
+            "offsets": [
+              0,
+              0
+            ]
+          },
+          {
+            "starts": [
+              0,
+              1.5715270000000001
+            ],
+            "widths": [
+              1.5715270000000001,
+              4.119
+            ],
+            "offsets": [
+              0,
+              0
+            ]
+          }
+        ]
+      },
+      "delimiter_size": null,
+      "script_positions": null,
+      "degree": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "cases",
+      "tex": "\\begin{cases} x & x > 0 \\\\ 0 & \\text{otherwise} \\end{cases}",
+      "display_mode": true,
+      "source": {
+        "engine": "latex",
+        "version": "Tectonic 0.17.0",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "font": {
+        "family": "Latin Modern Math",
+        "sha256": null,
+        "units_per_em": 1000,
+        "path": null
+      },
+      "size": 10,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": 6.616086,
+      "height": 1.7500139999999997,
+      "depth": 1.2500149999999999,
+      "axis": 0.25,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "column_alignment": {
+        "columns": 2,
+        "rows": [
+          {
+            "starts": [
+              0,
+              1.5715270000000001
+            ],
+            "widths": [
+              1.5715270000000001,
+              4.119
+            ],
+            "offsets": [
+              0,
+              0
+            ]
+          },
+          {
+            "starts": [
+              0,
+              1.5715270000000001
+            ],
+            "widths": [
+              1.5715270000000001,
+              4.119
+            ],
+            "offsets": [
+              0,
+              0
+            ]
+          }
+        ]
+      },
+      "delimiter_size": null,
+      "script_positions": null,
+      "degree": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "aligned",
+      "tex": "\\begin{aligned} a &= b + c \\\\ d &= e \\end{aligned}",
+      "display_mode": false,
+      "source": {
+        "engine": "latex",
+        "version": "Tectonic 0.17.0",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "font": {
+        "family": "Latin Modern Math",
+        "sha256": null,
+        "units_per_em": 1000,
+        "path": null
+      },
+      "size": 10,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": 3.946046,
+      "height": 1.6,
+      "depth": 1.1,
+      "axis": 0.25,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "column_alignment": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "degree": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "aligned",
+      "tex": "\\begin{aligned} a &= b + c \\\\ d &= e \\end{aligned}",
+      "display_mode": true,
+      "source": {
+        "engine": "latex",
+        "version": "Tectonic 0.17.0",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "font": {
+        "family": "Latin Modern Math",
+        "sha256": null,
+        "units_per_em": 1000,
+        "path": null
+      },
+      "size": 10,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": 3.946046,
+      "height": 1.6,
+      "depth": 1.1,
+      "axis": 0.25,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "column_alignment": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "degree": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "alignedat",
+      "tex": "\\begin{alignedat}{2} a &= b & c &= d \\end{alignedat}",
+      "display_mode": false,
+      "source": {
+        "engine": "latex",
+        "version": "Tectonic 0.17.0",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "font": {
+        "family": "Latin Modern Math",
+        "sha256": null,
+        "units_per_em": 1000,
+        "path": null
+      },
+      "size": 10,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": 4.577641,
+      "height": 0.85,
+      "depth": 0.35,
+      "axis": 0.25,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "column_alignment": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "degree": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "alignedat",
+      "tex": "\\begin{alignedat}{2} a &= b & c &= d \\end{alignedat}",
+      "display_mode": true,
+      "source": {
+        "engine": "latex",
+        "version": "Tectonic 0.17.0",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "font": {
+        "family": "Latin Modern Math",
+        "sha256": null,
+        "units_per_em": 1000,
+        "path": null
+      },
+      "size": 10,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": 4.577641,
+      "height": 0.85,
+      "depth": 0.35,
+      "axis": 0.25,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "column_alignment": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "degree": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "split",
+      "tex": "\\begin{split} a &= b \\\\ &= c \\end{split}",
+      "display_mode": false,
+      "source": {
+        "engine": "latex",
+        "version": "Tectonic 0.17.0",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
+        "status": "unsupported",
+        "status_reason": "Package amsmath Error: \\begin{split} won't work here. (amsmath rejects `split` in inner math, and a box is always inner math, in both `$...$` and `\\displaystyle $...$`)"
+      },
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
+      "axis": null,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "degree": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "split",
+      "tex": "\\begin{split} a &= b \\\\ &= c \\end{split}",
+      "display_mode": true,
+      "source": {
+        "engine": "latex",
+        "version": "Tectonic 0.17.0",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
+        "status": "unsupported",
+        "status_reason": "Package amsmath Error: \\begin{split} won't work here. (amsmath rejects `split` in inner math, and a box is always inner math, in both `$...$` and `\\displaystyle $...$`)"
+      },
+      "font": null,
+      "size": null,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": null,
+      "height": null,
+      "depth": null,
       "axis": null,
       "ink_bounds": null,
       "rule_thickness": null,
@@ -946,9 +1418,10 @@
       "width": 0.520601,
       "height": 0.7144440000000001,
       "depth": 0,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -978,9 +1451,10 @@
       "width": 0.520601,
       "height": 0.7144440000000001,
       "depth": 0,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1010,9 +1484,10 @@
       "width": 0.528589,
       "height": 0.667859,
       "depth": 0,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1042,9 +1517,10 @@
       "width": 0.528589,
       "height": 0.667859,
       "depth": 0,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1074,9 +1550,10 @@
       "width": 0.571527,
       "height": 0.667859,
       "depth": 0,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1106,9 +1583,10 @@
       "width": 0.571527,
       "height": 0.667859,
       "depth": 0,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1138,9 +1616,10 @@
       "width": 0.52616,
       "height": 0.667859,
       "depth": 0.194444,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1170,9 +1649,10 @@
       "width": 0.52616,
       "height": 0.667859,
       "depth": 0.194444,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1202,9 +1682,10 @@
       "width": 1.641943,
       "height": 1.002777,
       "depth": 0,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1234,9 +1715,10 @@
       "width": 1.641943,
       "height": 1.002777,
       "depth": 0,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1266,9 +1748,10 @@
       "width": 3.215749,
       "height": 0.779439,
       "depth": 0.26055799999999996,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
-      "rule_thickness": null,
+      "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": {
@@ -1328,9 +1811,10 @@
       "width": 3.215749,
       "height": 0.82826,
       "depth": 0.211737,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
-      "rule_thickness": null,
+      "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": {
@@ -1390,9 +1874,10 @@
       "width": 1.673766,
       "height": 0.8601409999999999,
       "depth": 0.379868,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
-      "rule_thickness": null,
+      "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1422,9 +1907,10 @@
       "width": 1.76859,
       "height": 1.5443820000000001,
       "depth": 0.8956390000000001,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
-      "rule_thickness": null,
+      "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1454,9 +1940,10 @@
       "width": 2.404865,
       "height": 0.965274,
       "depth": 0.274734,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
-      "rule_thickness": null,
+      "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1486,9 +1973,10 @@
       "width": 2.404865,
       "height": 1.362918,
       "depth": 0.477097,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
-      "rule_thickness": null,
+      "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1518,9 +2006,10 @@
       "width": 0.8672129999999999,
       "height": 1.034956,
       "depth": 0.344841,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
-      "rule_thickness": null,
+      "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1550,9 +2039,10 @@
       "width": 0.913763,
       "height": 1.429955,
       "depth": 0.685951,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
-      "rule_thickness": null,
+      "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1582,9 +2072,10 @@
       "width": 0.768588,
       "height": 1.107062,
       "depth": 0.685951,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
-      "rule_thickness": null,
+      "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1614,9 +2105,10 @@
       "width": 0.768588,
       "height": 1.107062,
       "depth": 0.685951,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
-      "rule_thickness": null,
+      "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1646,9 +2138,10 @@
       "width": 0.673764,
       "height": 0.69512,
       "depth": 0.344841,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
-      "rule_thickness": null,
+      "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1678,9 +2171,10 @@
       "width": 0.673764,
       "height": 0.69512,
       "depth": 0.344841,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
-      "rule_thickness": null,
+      "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1710,9 +2204,10 @@
       "width": 2.801056,
       "height": 0.8041750000000001,
       "depth": 0.30000499999999997,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1742,9 +2237,10 @@
       "width": 1.806609,
       "height": 1.6513929999999999,
       "depth": 1.279865,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1774,9 +2270,10 @@
       "width": 3.104889,
       "height": 0.80556,
       "depth": 0.35556,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1806,9 +2303,10 @@
       "width": 3.188223,
       "height": 1.361122,
       "depth": 0.911122,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -1838,9 +2336,10 @@
       "width": 1.984384,
       "height": 0.986893,
       "depth": 0,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": [
         {
@@ -1876,9 +2375,10 @@
       "width": 1.984384,
       "height": 1.036893,
       "depth": 0,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": [
         {
@@ -1914,9 +2414,10 @@
       "width": 1.840436,
       "height": 0.850005,
       "depth": 0.350006,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
-      "rule_thickness": null,
+      "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": 1.200011,
       "script_positions": null,
       "degree": null,
@@ -1946,9 +2447,10 @@
       "width": 2.1019259999999997,
       "height": 1.1500080000000001,
       "depth": 0.685951,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
-      "rule_thickness": null,
+      "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": 1.8359590000000001,
       "script_positions": null,
       "degree": null,
@@ -1978,9 +2480,10 @@
       "width": 1.298381,
       "height": 0.75,
       "depth": 0.25,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": 1,
       "script_positions": null,
       "degree": null,
@@ -2010,9 +2513,10 @@
       "width": 1.298381,
       "height": 0.75,
       "depth": 0.25,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": 1,
       "script_positions": null,
       "degree": null,
@@ -2042,9 +2546,10 @@
       "width": 2.011705,
       "height": 1.150009,
       "depth": 0.700008,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
-      "rule_thickness": null,
+      "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2074,9 +2579,778 @@
       "width": 2.2339580000000003,
       "height": 1.450012,
       "depth": 1.00001,
-      "axis": null,
+      "axis": 0.25,
+      "ink_bounds": null,
+      "rule_thickness": 0.039998,
+      "column_alignment": null,
+      "delimiter_size": null,
+      "script_positions": null,
+      "degree": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "fenced-matrix",
+      "tex": "\\left[ \\begin{matrix} a & b \\\\ c & d \\end{matrix} \\right]",
+      "display_mode": false,
+      "source": {
+        "engine": "latex",
+        "version": "Tectonic 0.17.0",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "font": {
+        "family": "Latin Modern Math",
+        "sha256": null,
+        "units_per_em": 1000,
+        "path": null
+      },
+      "size": 10,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": 3.104636,
+      "height": 1.45001,
+      "depth": 0.9500120000000001,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": {
+        "columns": 2,
+        "rows": [
+          {
+            "starts": [
+              0,
+              1.528589
+            ],
+            "widths": [
+              1.528589,
+              1.520486
+            ],
+            "offsets": [
+              0.5,
+              0.54566
+            ]
+          },
+          {
+            "starts": [
+              0,
+              1.528589
+            ],
+            "widths": [
+              1.528589,
+              1.520486
+            ],
+            "offsets": [
+              0.547917,
+              0.5
+            ]
+          }
+        ]
+      },
+      "delimiter_size": null,
+      "script_positions": null,
+      "degree": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "fenced-matrix",
+      "tex": "\\left[ \\begin{matrix} a & b \\\\ c & d \\end{matrix} \\right]",
+      "display_mode": true,
+      "source": {
+        "engine": "latex",
+        "version": "Tectonic 0.17.0",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "font": {
+        "family": "Latin Modern Math",
+        "sha256": null,
+        "units_per_em": 1000,
+        "path": null
+      },
+      "size": 10,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": 3.104636,
+      "height": 1.45001,
+      "depth": 0.9500120000000001,
+      "axis": 0.25,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "column_alignment": {
+        "columns": 2,
+        "rows": [
+          {
+            "starts": [
+              0,
+              1.528589
+            ],
+            "widths": [
+              1.528589,
+              1.520486
+            ],
+            "offsets": [
+              0.5,
+              0.54566
+            ]
+          },
+          {
+            "starts": [
+              0,
+              1.528589
+            ],
+            "widths": [
+              1.528589,
+              1.520486
+            ],
+            "offsets": [
+              0.547917,
+              0.5
+            ]
+          }
+        ]
+      },
+      "delimiter_size": null,
+      "script_positions": null,
+      "degree": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "smallmatrix",
+      "tex": "\\begin{smallmatrix} a & b \\\\ c & d \\end{smallmatrix}",
+      "display_mode": false,
+      "source": {
+        "engine": "latex",
+        "version": "Tectonic 0.17.0",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "font": {
+        "family": "Latin Modern Math",
+        "sha256": null,
+        "units_per_em": 1000,
+        "path": null
+      },
+      "size": 10,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": 1.4610720000000001,
+      "height": 0.81111,
+      "depth": 0.31111,
+      "axis": 0.25,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "column_alignment": {
+        "columns": 2,
+        "rows": [
+          {
+            "starts": [
+              0,
+              0.433765
+            ],
+            "widths": [
+              0.433765,
+              0.693982
+            ],
+            "offsets": [
+              0,
+              0.310005
+            ]
+          },
+          {
+            "starts": [
+              0,
+              0.433765
+            ],
+            "widths": [
+              0.433765,
+              0.693982
+            ],
+            "offsets": [
+              0.038196,
+              0.27769499999999997
+            ]
+          }
+        ]
+      },
+      "delimiter_size": null,
+      "script_positions": null,
+      "degree": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "smallmatrix",
+      "tex": "\\begin{smallmatrix} a & b \\\\ c & d \\end{smallmatrix}",
+      "display_mode": true,
+      "source": {
+        "engine": "latex",
+        "version": "Tectonic 0.17.0",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "font": {
+        "family": "Latin Modern Math",
+        "sha256": null,
+        "units_per_em": 1000,
+        "path": null
+      },
+      "size": 10,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": 1.4610720000000001,
+      "height": 0.81111,
+      "depth": 0.31111,
+      "axis": 0.25,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "column_alignment": {
+        "columns": 2,
+        "rows": [
+          {
+            "starts": [
+              0,
+              0.433765
+            ],
+            "widths": [
+              0.433765,
+              0.693982
+            ],
+            "offsets": [
+              0,
+              0.310005
+            ]
+          },
+          {
+            "starts": [
+              0,
+              0.433765
+            ],
+            "widths": [
+              0.433765,
+              0.693982
+            ],
+            "offsets": [
+              0.038196,
+              0.27769499999999997
+            ]
+          }
+        ]
+      },
+      "delimiter_size": null,
+      "script_positions": null,
+      "degree": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "gathered",
+      "tex": "\\begin{gathered} a+b \\\\ c+d \\end{gathered}",
+      "display_mode": false,
+      "source": {
+        "engine": "latex",
+        "version": "Tectonic 0.17.0",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "font": {
+        "family": "Latin Modern Math",
+        "sha256": null,
+        "units_per_em": 1000,
+        "path": null
+      },
+      "size": 10,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": 2.1799679999999997,
+      "height": 1.6,
+      "depth": 1.1,
+      "axis": 0.25,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "column_alignment": {
+        "columns": 1,
+        "rows": [
+          {
+            "starts": [
+              0
+            ],
+            "widths": [
+              2.1799679999999997
+            ],
+            "offsets": [
+              0
+            ]
+          },
+          {
+            "starts": [
+              0
+            ],
+            "widths": [
+              2.1799679999999997
+            ],
+            "offsets": [
+              0.002257
+            ]
+          }
+        ]
+      },
+      "delimiter_size": null,
+      "script_positions": null,
+      "degree": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "gathered",
+      "tex": "\\begin{gathered} a+b \\\\ c+d \\end{gathered}",
+      "display_mode": true,
+      "source": {
+        "engine": "latex",
+        "version": "Tectonic 0.17.0",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "font": {
+        "family": "Latin Modern Math",
+        "sha256": null,
+        "units_per_em": 1000,
+        "path": null
+      },
+      "size": 10,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": 2.1799679999999997,
+      "height": 1.6,
+      "depth": 1.1,
+      "axis": 0.25,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "column_alignment": {
+        "columns": 1,
+        "rows": [
+          {
+            "starts": [
+              0
+            ],
+            "widths": [
+              2.1799679999999997
+            ],
+            "offsets": [
+              0
+            ]
+          },
+          {
+            "starts": [
+              0
+            ],
+            "widths": [
+              2.1799679999999997
+            ],
+            "offsets": [
+              0.002257
+            ]
+          }
+        ]
+      },
+      "delimiter_size": null,
+      "script_positions": null,
+      "degree": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "bmatrix",
+      "tex": "\\begin{bmatrix} a & b \\\\ c & d \\end{bmatrix}",
+      "display_mode": false,
+      "source": {
+        "engine": "latex",
+        "version": "Tectonic 0.17.0",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "font": {
+        "family": "Latin Modern Math",
+        "sha256": null,
+        "units_per_em": 1000,
+        "path": null
+      },
+      "size": 10,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": 3.104636,
+      "height": 1.45001,
+      "depth": 0.9500120000000001,
+      "axis": 0.25,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "column_alignment": {
+        "columns": 2,
+        "rows": [
+          {
+            "starts": [
+              0,
+              1.528589
+            ],
+            "widths": [
+              1.528589,
+              1.520486
+            ],
+            "offsets": [
+              0.5,
+              0.54566
+            ]
+          },
+          {
+            "starts": [
+              0,
+              1.528589
+            ],
+            "widths": [
+              1.528589,
+              1.520486
+            ],
+            "offsets": [
+              0.547917,
+              0.5
+            ]
+          }
+        ]
+      },
+      "delimiter_size": null,
+      "script_positions": null,
+      "degree": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "bmatrix",
+      "tex": "\\begin{bmatrix} a & b \\\\ c & d \\end{bmatrix}",
+      "display_mode": true,
+      "source": {
+        "engine": "latex",
+        "version": "Tectonic 0.17.0",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "font": {
+        "family": "Latin Modern Math",
+        "sha256": null,
+        "units_per_em": 1000,
+        "path": null
+      },
+      "size": 10,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": 3.104636,
+      "height": 1.45001,
+      "depth": 0.9500120000000001,
+      "axis": 0.25,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "column_alignment": {
+        "columns": 2,
+        "rows": [
+          {
+            "starts": [
+              0,
+              1.528589
+            ],
+            "widths": [
+              1.528589,
+              1.520486
+            ],
+            "offsets": [
+              0.5,
+              0.54566
+            ]
+          },
+          {
+            "starts": [
+              0,
+              1.528589
+            ],
+            "widths": [
+              1.528589,
+              1.520486
+            ],
+            "offsets": [
+              0.547917,
+              0.5
+            ]
+          }
+        ]
+      },
+      "delimiter_size": null,
+      "script_positions": null,
+      "degree": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "vmatrix",
+      "tex": "\\begin{vmatrix} a & b \\\\ c & d \\end{vmatrix}",
+      "display_mode": false,
+      "source": {
+        "engine": "latex",
+        "version": "Tectonic 0.17.0",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "font": {
+        "family": "Latin Modern Math",
+        "sha256": null,
+        "units_per_em": 1000,
+        "path": null
+      },
+      "size": 10,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": 2.715741,
+      "height": 1.450012,
+      "depth": 0.9500120000000001,
+      "axis": 0.25,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "column_alignment": {
+        "columns": 2,
+        "rows": [
+          {
+            "starts": [
+              0,
+              1.528589
+            ],
+            "widths": [
+              1.528589,
+              1.520486
+            ],
+            "offsets": [
+              0.5,
+              0.54566
+            ]
+          },
+          {
+            "starts": [
+              0,
+              1.528589
+            ],
+            "widths": [
+              1.528589,
+              1.520486
+            ],
+            "offsets": [
+              0.547917,
+              0.5
+            ]
+          }
+        ]
+      },
+      "delimiter_size": null,
+      "script_positions": null,
+      "degree": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "vmatrix",
+      "tex": "\\begin{vmatrix} a & b \\\\ c & d \\end{vmatrix}",
+      "display_mode": true,
+      "source": {
+        "engine": "latex",
+        "version": "Tectonic 0.17.0",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "font": {
+        "family": "Latin Modern Math",
+        "sha256": null,
+        "units_per_em": 1000,
+        "path": null
+      },
+      "size": 10,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": 2.715741,
+      "height": 1.450012,
+      "depth": 0.9500120000000001,
+      "axis": 0.25,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "column_alignment": {
+        "columns": 2,
+        "rows": [
+          {
+            "starts": [
+              0,
+              1.528589
+            ],
+            "widths": [
+              1.528589,
+              1.520486
+            ],
+            "offsets": [
+              0.5,
+              0.54566
+            ]
+          },
+          {
+            "starts": [
+              0,
+              1.528589
+            ],
+            "widths": [
+              1.528589,
+              1.520486
+            ],
+            "offsets": [
+              0.547917,
+              0.5
+            ]
+          }
+        ]
+      },
+      "delimiter_size": null,
+      "script_positions": null,
+      "degree": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "Vmatrix",
+      "tex": "\\begin{Vmatrix} a & b \\\\ c & d \\end{Vmatrix}",
+      "display_mode": false,
+      "source": {
+        "engine": "latex",
+        "version": "Tectonic 0.17.0",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "font": {
+        "family": "Latin Modern Math",
+        "sha256": null,
+        "units_per_em": 1000,
+        "path": null
+      },
+      "size": 10,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": 3.16019,
+      "height": 1.450012,
+      "depth": 0.9500120000000001,
+      "axis": 0.25,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "column_alignment": {
+        "columns": 2,
+        "rows": [
+          {
+            "starts": [
+              0,
+              1.528589
+            ],
+            "widths": [
+              1.528589,
+              1.520486
+            ],
+            "offsets": [
+              0.5,
+              0.54566
+            ]
+          },
+          {
+            "starts": [
+              0,
+              1.528589
+            ],
+            "widths": [
+              1.528589,
+              1.520486
+            ],
+            "offsets": [
+              0.547917,
+              0.5
+            ]
+          }
+        ]
+      },
+      "delimiter_size": null,
+      "script_positions": null,
+      "degree": null,
+      "mathml": null
+    },
+    {
+      "schema_version": "v0",
+      "corpus_id": "Vmatrix",
+      "tex": "\\begin{Vmatrix} a & b \\\\ c & d \\end{Vmatrix}",
+      "display_mode": true,
+      "source": {
+        "engine": "latex",
+        "version": "Tectonic 0.17.0",
+        "command": "node projects/vutex.ts/examples/oracle/emit-latex-boxes.mjs",
+        "status": "available",
+        "status_reason": null
+      },
+      "font": {
+        "family": "Latin Modern Math",
+        "sha256": null,
+        "units_per_em": 1000,
+        "path": null
+      },
+      "size": 10,
+      "normalized_atoms": null,
+      "style_cramped": null,
+      "width": 3.16019,
+      "height": 1.450012,
+      "depth": 0.9500120000000001,
+      "axis": 0.25,
+      "ink_bounds": null,
+      "rule_thickness": null,
+      "column_alignment": {
+        "columns": 2,
+        "rows": [
+          {
+            "starts": [
+              0,
+              1.528589
+            ],
+            "widths": [
+              1.528589,
+              1.520486
+            ],
+            "offsets": [
+              0.5,
+              0.54566
+            ]
+          },
+          {
+            "starts": [
+              0,
+              1.528589
+            ],
+            "widths": [
+              1.528589,
+              1.520486
+            ],
+            "offsets": [
+              0.547917,
+              0.5
+            ]
+          }
+        ]
+      },
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2106,9 +3380,10 @@
       "width": 1.124417,
       "height": 0.6944440000000001,
       "depth": 0,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2138,9 +3413,10 @@
       "width": 1.124417,
       "height": 0.6944440000000001,
       "depth": 0,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2170,9 +3446,10 @@
       "width": 1.235526,
       "height": 0.6944440000000001,
       "depth": 0,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2202,9 +3479,10 @@
       "width": 1.235526,
       "height": 0.6944440000000001,
       "depth": 0,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2234,9 +3512,10 @@
       "width": 1.957755,
       "height": 0.6944440000000001,
       "depth": 0,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2266,9 +3545,10 @@
       "width": 1.957755,
       "height": 0.6944440000000001,
       "depth": 0,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2298,9 +3578,10 @@
       "width": 2.9577549999999997,
       "height": 0.6944440000000001,
       "depth": 0,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2330,9 +3611,10 @@
       "width": 2.9577549999999997,
       "height": 0.6944440000000001,
       "depth": 0,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2362,9 +3644,10 @@
       "width": 1.127084,
       "height": 0.6944440000000001,
       "depth": 0,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2394,9 +3677,10 @@
       "width": 1.127084,
       "height": 0.6944440000000001,
       "depth": 0,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2426,9 +3710,10 @@
       "width": 4.2733609999999995,
       "height": 0.635971,
       "depth": 0.194444,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2458,9 +3743,10 @@
       "width": 4.2733609999999995,
       "height": 0.635971,
       "depth": 0.194444,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2490,9 +3776,10 @@
       "width": 2.540959,
       "height": 0.430554,
       "depth": 0.194444,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2522,9 +3809,10 @@
       "width": 2.540959,
       "height": 0.430554,
       "depth": 0.194444,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2554,9 +3842,10 @@
       "width": 3.114226,
       "height": 0.683331,
       "depth": 0,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2586,9 +3875,10 @@
       "width": 3.114226,
       "height": 0.683331,
       "depth": 0,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2618,9 +3908,10 @@
       "width": 5.077637,
       "height": 0.6944440000000001,
       "depth": 0.083333,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2650,9 +3941,10 @@
       "width": 5.077637,
       "height": 0.6944440000000001,
       "depth": 0.083333,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2682,9 +3974,10 @@
       "width": 5.661212,
       "height": 0.583333,
       "depth": 0.14999800000000002,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2714,9 +4007,10 @@
       "width": 5.661212,
       "height": 0.583333,
       "depth": 0.14999800000000002,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2746,9 +4040,10 @@
       "width": 4.809,
       "height": 0.6940000000000001,
       "depth": 0.010999,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2778,9 +4073,10 @@
       "width": 4.809,
       "height": 0.6940000000000001,
       "depth": 0.010999,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2810,9 +4106,10 @@
       "width": 5.958115,
       "height": 0.615,
       "depth": 0.194444,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2842,9 +4139,10 @@
       "width": 5.958115,
       "height": 0.615,
       "depth": 0.194444,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2874,9 +4172,10 @@
       "width": 2.670747,
       "height": 1.0600070000000001,
       "depth": 0.543994,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
-      "rule_thickness": null,
+      "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2906,9 +4205,10 @@
       "width": 3.152167,
       "height": 1.494173,
       "depth": 0.9299899999999999,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
-      "rule_thickness": null,
+      "rule_thickness": 0.039998,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -2938,9 +4238,10 @@
       "width": 2.577795,
       "height": 0.986893,
       "depth": 0,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": [
         {
@@ -2976,9 +4277,10 @@
       "width": 2.577795,
       "height": 1.036893,
       "depth": 0,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": [
         {
@@ -3014,9 +4316,10 @@
       "width": 1.476381,
       "height": 0.686111,
       "depth": 0,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -3046,9 +4349,10 @@
       "width": 1.476381,
       "height": 0.686111,
       "depth": 0,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -3078,9 +4382,10 @@
       "width": 0.722223,
       "height": 0.688889,
       "depth": 0,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -3110,9 +4415,10 @@
       "width": 0.722223,
       "height": 0.688889,
       "depth": 0,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -3142,9 +4448,10 @@
       "width": 0.6897249999999999,
       "height": 0.683331,
       "depth": 0,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -3174,9 +4481,10 @@
       "width": 0.6897249999999999,
       "height": 0.683331,
       "depth": 0,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -3206,9 +4514,10 @@
       "width": 0.38333300000000003,
       "height": 0.444444,
       "depth": 0,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -3238,9 +4547,10 @@
       "width": 0.38333300000000003,
       "height": 0.444444,
       "depth": 0,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -3270,9 +4580,10 @@
       "width": 0.584303,
       "height": 0.430554,
       "depth": 0,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -3302,9 +4613,10 @@
       "width": 0.584303,
       "height": 0.430554,
       "depth": 0,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -3334,9 +4646,10 @@
       "width": 0.528589,
       "height": 0.6944440000000001,
       "depth": 0,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -3366,9 +4679,10 @@
       "width": 0.528589,
       "height": 0.6944440000000001,
       "depth": 0,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -3398,9 +4712,10 @@
       "width": 0.528589,
       "height": 0.628473,
       "depth": 0,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -3430,9 +4745,10 @@
       "width": 0.528589,
       "height": 0.628473,
       "depth": 0,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -3462,9 +4778,10 @@
       "width": 1.558682,
       "height": 1.050206,
       "depth": 0,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,
@@ -3494,9 +4811,10 @@
       "width": 1.558682,
       "height": 1.050206,
       "depth": 0,
-      "axis": null,
+      "axis": 0.25,
       "ink_bounds": null,
       "rule_thickness": null,
+      "column_alignment": null,
       "delimiter_size": null,
       "script_positions": null,
       "degree": null,

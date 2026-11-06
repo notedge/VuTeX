@@ -8,7 +8,7 @@
     "status_reason": null
   },
   "font": {
-    "path": "projects/vutex.rs/crates/vutex-text/assets/LatinModernMath-Regular.otf",
+    "path": "projects/vutex.rs/fonts/LatinModernMath-Regular.otf",
     "sha256": "6075562b771f8b82f0c179e363389684f2dd09de30038269e2628e504bd7be0f",
     "size_bytes": 733736,
     "family": "Latin Modern Math",
