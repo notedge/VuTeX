@@ -1,0 +1,18 @@
+[package]
+name = "vutex-quality-gates"
+version.workspace = true
+authors.workspace = true
+description = "Blocking G1-G5 oracle, geometry and conformance gates"
+license.workspace = true
+edition.workspace = true
+publish = false
+
+[dependencies]
+document-fonts = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+vutex-compose = { workspace = true }
+vutex-layout = { workspace = true }
+vutex-render-pdf = { workspace = true }
+vutex-render-svg = { workspace = true }
+vutex-text = { workspace = true }

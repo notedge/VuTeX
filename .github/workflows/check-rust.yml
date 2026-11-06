@@ -43,6 +43,50 @@ jobs:
           sudo apt-get install -y fonts-droid-fallback fonts-wqy-zenhei
       - run: cargo test --workspace
 
-  # The G1-G5 oracle and font-conformance suites left this workspace with the
-  # `vutex-*` crates. No member here owns them, and `cargo test -p <dep>` cannot
-  # address a git dependency, so only the workspace suites above run.
+  # Quality gates (design doc 16, G1-G4). The suites live in
+  # `projects/vutex.rs/tests/quality-gates`, which consumes the pinned
+  # `vutex-*` crates as git dependencies. All steps are blocking: no
+  # continue-on-error. The LaTeX gate consumes the checked-in Tectonic
+  # snapshot (`latex-status.json`, status=available), so no TeX engine is
+  # required on the runner.
+  quality-gates:
+    name: quality gates (G1-G5)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # G1: record coverage, axis and rule measurements, radical degree and
+      # fence assembly, and the engine's column grid against the LaTeX
+      # reference. The full tolerance parity test stays `#[ignore]`d: its
+      # ledger is advisory until the geometry gate closes upstream.
+      - name: G1 LaTeX geometry oracle
+        run: cargo test -p vutex-quality-gates --test oracle_latex_geometry
+      # G2: corpus contract plus KaTeX / MathJax structure and font facts.
+      - name: G2 structure oracles
+        run: >
+          cargo test -p vutex-quality-gates
+          --test oracle_corpus_contract
+          --test oracle_katex_mathml
+          --test oracle_mathjax_mathml
+          --test oracle_mathjax_svg
+          --test oracle_math_facts
+      # G1/G4: SVG outline geometry, ink invariants and single-result
+      # cross-backend consistency.
+      - name: outline geometry and backend consistency
+        run: >
+          cargo test -p vutex-quality-gates
+          --test outline_geometry
+          --test corpus_invariants
+          --test formula_backend_consistency
+      - name: G4 cross-backend consistency
+        run: cargo test -p vutex-quality-gates --test cross_backend
+      # G5: strict font-conformance mode — the corpus must paint without a
+      # single fallback (missing MATH constant, glyph variant, assembly piece,
+      # italic correction or accent attachment), and the production-mode
+      # ledger must report every substituted value with a structured code.
+      - name: G5 font conformance
+        run: cargo test -p vutex-quality-gates --test font_conformance_gate
+      # Error corpus: malformed input must really fail to parse.
+      - name: math gate corpus coverage and error records
+        run: cargo test -p vutex-quality-gates --test math_gate_corpus

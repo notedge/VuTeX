@@ -1,11 +1,12 @@
 [workspace]
 resolver = "2"
-# Only the export surfaces still belong to this repository. The `vutex-*`
-# crates moved upstream to `document.rs`, so they are consumed as git
-# dependencies instead of workspace members.
+# Only the export surfaces and the gate suites still belong to this repository.
+# The `vutex-*` crates moved upstream to `document.rs`, so they are consumed as
+# git dependencies instead of workspace members.
 members = [
     "projects/vutex.rs/exports/watex-wasm",
     "projects/vutex.rs/exports/vutex-napi",
+    "projects/vutex.rs/tests/quality-gates",
 ]
 default-members = [
     "projects/vutex.rs/exports/watex-wasm",
