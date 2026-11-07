@@ -121,6 +121,23 @@ fn gfm_footnote_reference_reaches_a_marker_and_an_endnote_body() {
 }
 
 #[test]
+fn gfm_footnote_body_keeps_its_inline_semantics() {
+    let source = b"Body text.[^1]\n\n[^1]: Body with $\\alpha + \\beta$ and `SIGMA13`.\n";
+    let (svg, payload) = svg_of("notes.md", ImportFormat::Markdown, source);
+    assert!(!svg.contains("$\\alpha"), "inline math stayed literal in the endnote: {svg}");
+    assert!(!svg.contains('`'), "inline code kept its authored backticks: {svg}");
+    assert!(svg.contains("SIGMA13"), "the note body text itself was dropped: {svg}");
+    assert_eq!(payload["footnotes"]["notes"], 1, "{payload}");
+}
+
+#[test]
+fn gfm_footnote_body_falls_back_to_text_for_block_level_content() {
+    let source = b"Body text.[^1]\n\n[^1]: - item\n";
+    let (svg, _) = svg_of("notes.md", ImportFormat::Markdown, source);
+    assert!(svg.contains("[1] - item"), "a block-level body must stay literal: {svg}");
+}
+
+#[test]
 fn gfm_footnote_marker_survives_the_reflow_html_lane() {
     let parsed = parse_document("sample.md", ImportFormat::Markdown, b"# Notes\n\nBody text.[^1]\n\n[^1]: Footnote body.\n")
         .expect("parses");

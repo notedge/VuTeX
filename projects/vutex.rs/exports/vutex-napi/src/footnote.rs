@@ -19,6 +19,7 @@
 
 use std::collections::BTreeMap;
 
+use document_formats::import::markdown::import_markdown_bytes;
 use document_ir::{Block, DocumentGraph, Inline, NodeId, SemanticStatus};
 
 use crate::document::{DiagnosticRecord, DiagnosticSpan};
@@ -227,8 +228,15 @@ pub fn lower_footnotes(graph: &DocumentGraph, path: &str) -> FootnoteLowering {
         });
         for (number, paragraphs) in &notes {
             for (index, paragraph) in paragraphs.iter().enumerate() {
-                let text = if index == 0 { format!("[{number}] {paragraph}") } else { paragraph.clone() };
-                rewritten.push_block(Block::Paragraph { content: vec![Inline::Text { text }] });
+                let mut content = Vec::new();
+                if index == 0 {
+                    content.push(Inline::Text { text: format!("[{number}] ") });
+                }
+                match body_inlines(paragraph) {
+                    Some(inlines) => content.extend(inlines),
+                    None => content.push(Inline::Text { text: paragraph.clone() }),
+                }
+                rewritten.push_block(Block::Paragraph { content: merge_text(content) });
             }
         }
     }
@@ -246,6 +254,87 @@ fn parse_definition(payload: &str) -> Option<(String, Vec<String>)> {
         return None;
     }
     Some((label.to_string(), paragraphs))
+}
+
+/// Inline content of one authored definition paragraph, when it survives a
+/// reparse without loss.
+///
+/// The contract keeps a definition body as authored Markdown text, so the host
+/// cannot invent its inline semantics. Markdown syntax belongs to the format
+/// layer, and its importer is the only reader that restores exactly what our
+/// own importers wrote, so this asks that layer to read the fragment again
+/// instead of flattening the body to one text run.
+///
+/// Only a body that reparses to exactly one paragraph qualifies. Block-level
+/// constructs, nested note references, and import losses all stay flattened
+/// text, because the endnote area carries plain paragraphs and a fragment
+/// graph has no definition to resolve a nested label against.
+fn body_inlines(paragraph: &str) -> Option<Vec<Inline>> {
+    let parsed = import_markdown_bytes("footnote-body.md", paragraph).ok()?;
+    if !parsed.coverage.loss.is_empty() {
+        return None;
+    }
+    let mut content = None;
+    for node in &parsed.blocks {
+        let Block::Paragraph { content: inlines } = &node.block
+        else {
+            return None;
+        };
+        if content.replace(inlines.clone()).is_some() {
+            return None;
+        }
+    }
+    let mut content = content?;
+    if nests_note(&content) {
+        return None;
+    }
+    // The fragment bound its images to its own asset table, so those identities
+    // do not exist in the document graph this note joins. The source location
+    // is all an endnote image keeps anyway.
+    clear_assets(&mut content);
+    Some(content)
+}
+
+/// Whether inline content contains a note or citation reference.
+fn nests_note(content: &[Inline]) -> bool {
+    content.iter().any(|inline| match inline {
+        Inline::Note { .. } | Inline::Citation { .. } => true,
+        Inline::Styled { children, .. } | Inline::Attributed { children, .. } => nests_note(children),
+        Inline::Link { display, .. } => nests_note(display),
+        Inline::Image { alt, .. } => nests_note(alt),
+        _ => false,
+    })
+}
+
+/// Drop asset bindings that belong to a fragment graph.
+fn clear_assets(content: &mut [Inline]) {
+    for inline in content {
+        match inline {
+            Inline::Image { asset, alt, .. } => {
+                *asset = None;
+                clear_assets(alt);
+            }
+            Inline::Styled { children, .. } | Inline::Attributed { children, .. } => clear_assets(children),
+            Inline::Link { display, .. } => clear_assets(display),
+            _ => {}
+        }
+    }
+}
+
+/// Merge adjacent plain text runs.
+///
+/// A body that carried no semantic inline keeps the single text run the endnote
+/// area has always painted, so the marker and the body never split into two
+/// runs for plain prose.
+fn merge_text(content: Vec<Inline>) -> Vec<Inline> {
+    let mut merged: Vec<Inline> = Vec::new();
+    for inline in content {
+        match (merged.last_mut(), inline) {
+            (Some(Inline::Text { text }), Inline::Text { text: next }) => text.push_str(&next),
+            (_, inline) => merged.push(inline),
+        }
+    }
+    merged
 }
 
 /// Split a definition body on blank lines and flatten each paragraph to one line.
