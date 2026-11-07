@@ -74,10 +74,27 @@ check("vutex.boundary.font_embedding_is_shared", () => {
 });
 
 check("vutex.boundary.only_two_library_crates", () => {
+  const problems = [];
+  // The gate suite is a non-published test crate, never a shipped library:
+  // it is allowed to exist beside the two export crates.
+  const gateSuite = "tests/quality-gates/Cargo.toml";
   const crates = cargoFiles
     .map((file) => relative(rustRoot, file).replaceAll("\\", "/"))
     .filter((path) => !path.startsWith("exports/") && path !== "Cargo.toml");
-  return crates.map((path) => `${path} adds a third crate`);
+  for (const path of crates) {
+    if (path !== gateSuite) {
+      problems.push(`${path} adds a third crate`);
+      continue;
+    }
+    const manifest = readFileSync(join(rustRoot, path), "utf8");
+    if (!/^publish\s*=\s*false$/m.test(manifest)) problems.push(`${path} is publishable`);
+  }
+  const rootManifest = readFileSync(join(root, "Cargo.toml"), "utf8");
+  const defaultMembers = /^default-members\s*=\s*\[([\s\S]*?)\]/m.exec(rootManifest)?.[1] ?? "";
+  if (defaultMembers.includes("tests/quality-gates")) {
+    problems.push("tests/quality-gates/Cargo.toml is a default member and would ship with every build");
+  }
+  return problems;
 });
 
 if (failures.length > 0) {
