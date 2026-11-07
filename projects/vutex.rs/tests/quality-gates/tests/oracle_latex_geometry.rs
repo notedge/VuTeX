@@ -393,20 +393,15 @@ fn records_cover_the_corpus_and_blocked_records_have_no_geometry() {
 /// without CM-metric faces.  Every one was measured from the engine's own
 /// output, not inferred from a picture.  They are registered with their exact
 /// numbers in `tests/fixtures/font-metric-ledger.json`; this comment only
-/// keeps the prose behind the original six entries:
+/// keeps the prose behind the entries that still diverge.
 ///
-/// * `width` on `fraction-compound (inline)` and `script-nested` — the CM
-///   script faces (`cmmi7`, `cmsy7`) are a non-proportional 0.7× design whose
-///   individual advances exceed a uniform scale, so script-size runs assemble
-///   slightly narrower under LM.
-/// * `width` on `radical-degree` — the degree advance is the *scriptscript
-///   digit design*: the engine sets the degree in `OT1/cmr/m/n/5` and probes
-///   it as `DEGBOX: script = 3.98613pt`, `scriptscript = 3.40283pt`
-///   (= 0.340283em at 10pt), while LM Math keeps one digit advance and scales
-///   it uniformly to 0.25em.  The rest of the radical assembly agrees to
-///   measurement precision: the naked radical is 1.404863em on both sides,
-///   `kern_before` 3.8920px vs 3.8888px (0.08%), `kern_after` −7.7840px vs
-///   −7.7776px.  The 0.0903em advance difference is exactly the 6.2% total.
+/// Earlier entries for `fraction-compound`, `script-nested`, `radical-degree`,
+/// `integral-limits`, the delimiter variants and the script cases were removed
+/// once the layout rules that consumed the CM optical-size faces landed: a
+/// re-measure against Tectonic put every one inside the 5% width tolerance, so
+/// keeping them registered would have claimed a divergence the engine no
+/// longer reproduces.
+///
 /// * `width` on `fraction-sum-radical (inline)` — the numerator's `\sum` is
 ///   the decisive term: the engine's `SUM-TEXT`, `SUM-SCRIPT` and `SUM-SS`
 ///   probes all report `10.55559pt` (= 1.0556em), because TeX large operators
@@ -418,6 +413,13 @@ fn records_cover_the_corpus_and_blocked_records_have_no_geometry() {
 ///   (`\sqrt` 0.657em vs 0.583em, `n` 0.494em vs 0.42em — CM's optical-size
 ///   faces again), so the divergence is font data on both sides of the bar,
 ///   not a box-model shortfall.
+/// * `width` on `oint-script`, both styles — LM's contour-integral advances
+///   are wider than CM's: `0.996979em` at text size (probed `\textstyle\oint`
+///   `6.66667pt`) and `1.589981em` at display size (probed
+///   `\displaystyle\oint` `10.00002pt`), while CM keeps `0.666667em` and
+///   `1.000002em`.  The formula total diverges the other way, because the
+///   subscript-bound operator falls back to a narrower advance variant, so the
+///   gap is an advance-table difference rather than a spacing rule.
 ///
 /// Machine-checked ledger of accepted font-metric divergences.
 ///

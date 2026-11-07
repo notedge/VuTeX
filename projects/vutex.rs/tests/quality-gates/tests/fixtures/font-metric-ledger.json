@@ -5,247 +5,6 @@
   "drift_tolerance_em": 0.005,
   "entries": [
     {
-      "corpus_id": "fraction-compound",
-      "display": false,
-      "field": "width",
-      "vutex": 1.486,
-      "latex": 1.6393,
-      "relative": 0.0935,
-      "mechanism": "script-optical-size",
-      "font_family": "Latin Modern Math (upem 1000) / Computer Modern 10pt",
-      "evidence": [
-        {
-          "source": "latin-modern-math",
-          "kind": "math-constant",
-          "name": "ScriptPercentScaleDown",
-          "value": 70,
-          "detail": "MATH table, percent"
-        },
-        {
-          "source": "latex",
-          "kind": "glyph-advance",
-          "name": "\\scriptstyle a (cmmi7)",
-          "value": 0.433765,
-          "detail": "probe: 4.33765pt"
-        },
-        {
-          "source": "latex",
-          "kind": "glyph-advance",
-          "name": "\\scriptstyle b (cmmi7)",
-          "value": 0.351666,
-          "detail": "probe: 3.51666pt"
-        },
-        {
-          "source": "latin-modern-math",
-          "kind": "glyph-advance",
-          "name": "u1D44E a",
-          "value": 0.529
-        },
-        {
-          "source": "latin-modern-math",
-          "kind": "glyph-advance",
-          "name": "u1D44F b",
-          "value": 0.429
-        }
-      ]
-    },
-    {
-      "corpus_id": "script-nested",
-      "display": false,
-      "field": "width",
-      "vutex": 1.259,
-      "latex": 1.422,
-      "relative": 0.1146,
-      "mechanism": "script-optical-size",
-      "font_family": "Latin Modern Math (upem 1000) / Computer Modern 10pt",
-      "evidence": [
-        {
-          "source": "latin-modern-math",
-          "kind": "math-constant",
-          "name": "ScriptPercentScaleDown",
-          "value": 70,
-          "detail": "MATH table, percent"
-        },
-        {
-          "source": "latex",
-          "kind": "glyph-advance",
-          "name": "\\scriptstyle a (cmmi7)",
-          "value": 0.433765,
-          "detail": "probe: 4.33765pt"
-        },
-        {
-          "source": "latex",
-          "kind": "glyph-advance",
-          "name": "\\scriptstyle x (cmmi7)",
-          "value": 0.453473,
-          "detail": "probe: 4.53473pt"
-        },
-        {
-          "source": "latin-modern-math",
-          "kind": "glyph-advance",
-          "name": "u1D44E a",
-          "value": 0.529
-        },
-        {
-          "source": "latin-modern-math",
-          "kind": "glyph-advance",
-          "name": "u1D465 x",
-          "value": 0.572
-        },
-        {
-          "source": "latin-modern-math",
-          "kind": "math-constant",
-          "name": "ScriptScriptPercentScaleDown",
-          "value": 50,
-          "detail": "MATH table, percent"
-        },
-        {
-          "source": "latex",
-          "kind": "glyph-advance",
-          "name": "\\scriptscriptstyle a (cmmi5)",
-          "value": 0.387215,
-          "detail": "probe: 3.87215pt"
-        },
-        {
-          "source": "latex",
-          "kind": "glyph-advance",
-          "name": "\\scriptscriptstyle b (cmmi5)",
-          "value": 0.316667,
-          "detail": "probe: 3.16667pt"
-        }
-      ]
-    },
-    {
-      "corpus_id": "script-nested",
-      "display": true,
-      "field": "width",
-      "vutex": 1.259,
-      "latex": 1.422,
-      "relative": 0.1146,
-      "mechanism": "script-optical-size",
-      "font_family": "Latin Modern Math (upem 1000) / Computer Modern 10pt",
-      "evidence": [
-        {
-          "source": "latin-modern-math",
-          "kind": "math-constant",
-          "name": "ScriptPercentScaleDown",
-          "value": 70,
-          "detail": "MATH table, percent"
-        },
-        {
-          "source": "latex",
-          "kind": "glyph-advance",
-          "name": "\\scriptstyle a (cmmi7)",
-          "value": 0.433765,
-          "detail": "probe: 4.33765pt"
-        },
-        {
-          "source": "latex",
-          "kind": "glyph-advance",
-          "name": "\\scriptstyle x (cmmi7)",
-          "value": 0.453473,
-          "detail": "probe: 4.53473pt"
-        },
-        {
-          "source": "latin-modern-math",
-          "kind": "glyph-advance",
-          "name": "u1D44E a",
-          "value": 0.529
-        },
-        {
-          "source": "latin-modern-math",
-          "kind": "glyph-advance",
-          "name": "u1D465 x",
-          "value": 0.572
-        },
-        {
-          "source": "latin-modern-math",
-          "kind": "math-constant",
-          "name": "ScriptScriptPercentScaleDown",
-          "value": 50,
-          "detail": "MATH table, percent"
-        },
-        {
-          "source": "latex",
-          "kind": "glyph-advance",
-          "name": "\\scriptscriptstyle a (cmmi5)",
-          "value": 0.387215,
-          "detail": "probe: 3.87215pt"
-        },
-        {
-          "source": "latex",
-          "kind": "glyph-advance",
-          "name": "\\scriptscriptstyle b (cmmi5)",
-          "value": 0.316667,
-          "detail": "probe: 3.16667pt"
-        }
-      ]
-    },
-    {
-      "corpus_id": "radical-degree",
-      "display": false,
-      "field": "width",
-      "vutex": 1.377,
-      "latex": 1.4674,
-      "relative": 0.0616,
-      "mechanism": "glyph-advance",
-      "font_family": "Latin Modern Math (upem 1000) / Computer Modern 10pt",
-      "evidence": [
-        {
-          "source": "latex",
-          "kind": "glyph-advance",
-          "name": "\\scriptscriptstyle 1 (cmr5, DEGBOX)",
-          "value": 0.340283,
-          "detail": "probe: 3.40283pt"
-        },
-        {
-          "source": "latin-modern-math",
-          "kind": "glyph-advance",
-          "name": "one",
-          "value": 0.5
-        },
-        {
-          "source": "latin-modern-math",
-          "kind": "math-constant",
-          "name": "ScriptScriptPercentScaleDown",
-          "value": 50,
-          "detail": "MATH table, percent"
-        }
-      ]
-    },
-    {
-      "corpus_id": "radical-degree",
-      "display": true,
-      "field": "width",
-      "vutex": 1.377,
-      "latex": 1.4674,
-      "relative": 0.0616,
-      "mechanism": "glyph-advance",
-      "font_family": "Latin Modern Math (upem 1000) / Computer Modern 10pt",
-      "evidence": [
-        {
-          "source": "latex",
-          "kind": "glyph-advance",
-          "name": "\\scriptscriptstyle 1 (cmr5, DEGBOX)",
-          "value": 0.340283,
-          "detail": "probe: 3.40283pt"
-        },
-        {
-          "source": "latin-modern-math",
-          "kind": "glyph-advance",
-          "name": "one",
-          "value": 0.5
-        },
-        {
-          "source": "latin-modern-math",
-          "kind": "math-constant",
-          "name": "ScriptScriptPercentScaleDown",
-          "value": 50,
-          "detail": "MATH table, percent"
-        }
-      ]
-    },
-    {
       "corpus_id": "sum-limits",
       "display": true,
       "field": "height",
@@ -333,44 +92,12 @@
       ]
     },
     {
-      "corpus_id": "integral-limits",
-      "display": true,
-      "field": "width",
-      "vutex": 3.5563,
-      "latex": 3.8941,
-      "relative": 0.0867,
-      "mechanism": "large-operator-advance",
-      "font_family": "Latin Modern Math (upem 1000) / Computer Modern 10pt",
-      "evidence": [
-        {
-          "source": "latin-modern-math",
-          "kind": "glyph-advance",
-          "name": "integral",
-          "value": 0.665
-        },
-        {
-          "source": "latex",
-          "kind": "glyph-advance",
-          "name": "\\displaystyle\\int (cmex)",
-          "value": 1.000002,
-          "detail": "probe: DISPLAY-INT"
-        },
-        {
-          "source": "latex",
-          "kind": "glyph-advance",
-          "name": "\\textstyle\\int (cmmi)",
-          "value": 0.666667,
-          "detail": "probe: INT"
-        }
-      ]
-    },
-    {
       "corpus_id": "oint-script",
       "display": false,
       "field": "width",
-      "vutex": 3.2809,
+      "vutex": 2.9449539184570312,
       "latex": 3.1049,
-      "relative": 0.0567,
+      "relative": 0.05151408468645333,
       "mechanism": "large-operator-advance",
       "font_family": "Latin Modern Math (upem 1000) / Computer Modern 10pt",
       "evidence": [
@@ -404,132 +131,42 @@
       ]
     },
     {
-      "corpus_id": "fenced-fraction",
-      "display": false,
+      "corpus_id": "oint-script",
+      "display": true,
       "field": "width",
-      "vutex": 1.4543,
-      "latex": 1.5904,
-      "relative": 0.0856,
-      "mechanism": "delimiter-variant",
+      "vutex": 3.0199508666992188,
+      "latex": 3.188223,
+      "relative": 0.05277928592221468,
+      "mechanism": "large-operator-advance",
       "font_family": "Latin Modern Math (upem 1000) / Computer Modern 10pt",
       "evidence": [
         {
-          "source": "latex",
-          "kind": "box-width",
-          "name": "$\\left(\\frac{a}{b}\\right)$",
-          "value": 1.590436,
-          "detail": "probe: FENCED-paren"
-        },
-        {
-          "source": "latex",
-          "kind": "box-width",
-          "name": "$\\frac{a}{b}$",
-          "value": 0.673764,
-          "detail": "probe: FRAC-ab"
-        },
-        {
-          "source": "latex",
-          "kind": "glyph-advance",
-          "name": "\\left( variant (derived)",
-          "value": 0.458336,
-          "detail": "(1.590436-0.673764)/2"
-        },
-        {
           "source": "latin-modern-math",
           "kind": "glyph-advance",
-          "name": "parenleft",
-          "value": 0.389
+          "name": "contourintegral display-size variant",
+          "value": 1.589981,
+          "detail": "measured from a bare $\\displaystyle\\oint$ layout"
         },
         {
-          "source": "latin-modern-math",
+          "source": "latex",
           "kind": "glyph-advance",
-          "name": "parenleft next size variant",
-          "value": 0.422
-        }
-      ]
-    },
-    {
-      "corpus_id": "brace-fenced-fraction",
-      "display": false,
-      "field": "width",
-      "vutex": 1.6903,
-      "latex": 1.8404,
-      "relative": 0.0816,
-      "mechanism": "delimiter-variant",
-      "font_family": "Latin Modern Math (upem 1000) / Computer Modern 10pt",
-      "evidence": [
+          "name": "\\displaystyle\\oint (cmex)",
+          "value": 1.000002,
+          "detail": "probe: DISPLAY-OINT (10.00002pt)"
+        },
         {
           "source": "latex",
-          "kind": "box-width",
-          "name": "$\\left\\{\\frac{a}{b}\\right\\}$",
-          "value": 1.840436,
-          "detail": "probe: FENCED-brace"
+          "kind": "glyph-advance",
+          "name": "\\textstyle\\oint (cmmi)",
+          "value": 0.666667,
+          "detail": "probe: OINT (6.66667pt)"
         },
         {
           "source": "latex",
           "kind": "box-width",
-          "name": "$\\frac{a}{b}$",
-          "value": 0.673764,
-          "detail": "probe: FRAC-ab"
-        },
-        {
-          "source": "latex",
-          "kind": "glyph-advance",
-          "name": "\\left\\{ variant (derived)",
-          "value": 0.583336,
-          "detail": "(1.840436-0.673764)/2"
-        },
-        {
-          "source": "latin-modern-math",
-          "kind": "glyph-advance",
-          "name": "braceleft",
-          "value": 0.5
-        }
-      ]
-    },
-    {
-      "corpus_id": "null-fence-derivative",
-      "display": false,
-      "field": "width",
-      "vutex": 1.8805,
-      "latex": 2.0117,
-      "relative": 0.0652,
-      "mechanism": "delimiter-variant",
-      "font_family": "Latin Modern Math (upem 1000) / Computer Modern 10pt",
-      "evidence": [
-        {
-          "source": "latex",
-          "kind": "box-width",
-          "name": "$\\left.\\frac{dy}{dx}\\right|_0$",
-          "value": 2.011705,
-          "detail": "probe: NULLFENCE"
-        },
-        {
-          "source": "latex",
-          "kind": "box-width",
-          "name": "$\\frac{dy}{dx}$",
-          "value": 1.10976,
-          "detail": "probe: FRAC-dydx"
-        },
-        {
-          "source": "latex",
-          "kind": "math-constant",
-          "name": "\\nulldelimiterspace",
-          "value": 0.12,
-          "detail": "probe: 1.2pt"
-        },
-        {
-          "source": "latin-modern-math",
-          "kind": "glyph-advance",
-          "name": "u1D451 d",
-          "value": 0.52
-        },
-        {
-          "source": "latex",
-          "kind": "glyph-advance",
-          "name": "\\textstyle d (cmmi)",
-          "value": 0.520486,
-          "detail": "probe: T-d"
+          "name": "$\\displaystyle\\oint_C f\\,dz$",
+          "value": 3.188223,
+          "detail": "probe: OINT-F-display (31.88223pt)"
         }
       ]
     },
@@ -538,8 +175,8 @@
       "display": false,
       "field": "depth",
       "vutex": 0.022,
-      "latex": 0.0,
-      "relative": 22.0,
+      "latex": 0,
+      "relative": 22,
       "mechanism": "glyph-ink",
       "font_family": "Latin Modern Math (upem 1000) / Computer Modern 10pt",
       "evidence": [
@@ -553,14 +190,14 @@
           "source": "latex",
           "kind": "glyph-ink",
           "name": "\\textstyle C box depth",
-          "value": 0.0,
+          "value": 0,
           "detail": "probe: T-C"
         },
         {
           "source": "latex",
           "kind": "box-depth",
           "name": "$\\widehat{CD}$",
-          "value": 0.0,
+          "value": 0,
           "detail": "probe: WIDEHAT"
         }
       ]
@@ -570,8 +207,8 @@
       "display": true,
       "field": "depth",
       "vutex": 0.022,
-      "latex": 0.0,
-      "relative": 22.0,
+      "latex": 0,
+      "relative": 22,
       "mechanism": "glyph-ink",
       "font_family": "Latin Modern Math (upem 1000) / Computer Modern 10pt",
       "evidence": [
@@ -585,14 +222,14 @@
           "source": "latex",
           "kind": "glyph-ink",
           "name": "\\textstyle C box depth",
-          "value": 0.0,
+          "value": 0,
           "detail": "probe: T-C"
         },
         {
           "source": "latex",
           "kind": "box-depth",
           "name": "$\\widehat{CD}$",
-          "value": 0.0,
+          "value": 0,
           "detail": "probe: WIDEHAT"
         }
       ]
@@ -631,7 +268,7 @@
           "source": "latin-modern-math",
           "kind": "glyph-advance",
           "name": "arrowdblright",
-          "value": 1.0
+          "value": 1
         }
       ]
     },
@@ -669,7 +306,7 @@
           "source": "latin-modern-math",
           "kind": "glyph-advance",
           "name": "arrowdblright",
-          "value": 1.0
+          "value": 1
         }
       ]
     },
@@ -764,8 +401,8 @@
       "display": false,
       "field": "depth",
       "vutex": 0.022,
-      "latex": 0.0,
-      "relative": 22.0,
+      "latex": 0,
+      "relative": 22,
       "mechanism": "glyph-ink",
       "font_family": "Latin Modern Math (upem 1000) / Computer Modern 10pt",
       "evidence": [
@@ -779,7 +416,7 @@
           "source": "latex",
           "kind": "glyph-ink",
           "name": "$0$ box depth",
-          "value": 0.0,
+          "value": 0,
           "detail": "probe: DIGIT-0"
         },
         {
@@ -795,8 +432,8 @@
       "display": true,
       "field": "depth",
       "vutex": 0.022,
-      "latex": 0.0,
-      "relative": 22.0,
+      "latex": 0,
+      "relative": 22,
       "mechanism": "glyph-ink",
       "font_family": "Latin Modern Math (upem 1000) / Computer Modern 10pt",
       "evidence": [
@@ -810,7 +447,7 @@
           "source": "latex",
           "kind": "glyph-ink",
           "name": "$0$ box depth",
-          "value": 0.0,
+          "value": 0,
           "detail": "probe: DIGIT-0"
         },
         {
@@ -825,9 +462,9 @@
       "corpus_id": "cdots-sum",
       "display": false,
       "field": "width",
-      "vutex": 5.1608,
+      "vutex": 5.271302795410156,
       "latex": 5.6612,
-      "relative": 0.0884,
+      "relative": 0.06887183010489721,
       "mechanism": "glyph-advance",
       "font_family": "Latin Modern Math (upem 1000) / Computer Modern 10pt",
       "evidence": [
@@ -863,9 +500,9 @@
       "corpus_id": "cdots-sum",
       "display": true,
       "field": "width",
-      "vutex": 5.1608,
+      "vutex": 5.271302795410156,
       "latex": 5.6612,
-      "relative": 0.0884,
+      "relative": 0.06887183010489721,
       "mechanism": "glyph-advance",
       "font_family": "Latin Modern Math (upem 1000) / Computer Modern 10pt",
       "evidence": [
@@ -958,174 +595,6 @@
           "kind": "glyph-ink",
           "name": "u1D456 i bbox yMin",
           "value": -0.011
-        }
-      ]
-    },
-    {
-      "corpus_id": "script-tower",
-      "display": false,
-      "field": "width",
-      "vutex": 2.2952,
-      "latex": 2.5778,
-      "relative": 0.1096,
-      "mechanism": "script-optical-size",
-      "font_family": "Latin Modern Math (upem 1000) / Computer Modern 10pt",
-      "evidence": [
-        {
-          "source": "latex",
-          "kind": "glyph-advance",
-          "name": "\\scriptstyle 0 (cmr7)",
-          "value": 0.398613,
-          "detail": "probe: SS-0"
-        },
-        {
-          "source": "latin-modern-math",
-          "kind": "glyph-advance",
-          "name": "zero",
-          "value": 0.5
-        },
-        {
-          "source": "latex",
-          "kind": "glyph-advance",
-          "name": "\\scriptscriptstyle 0 (cmr5)",
-          "value": 0.340283,
-          "detail": "probe: SSS-0"
-        },
-        {
-          "source": "latin-modern-math",
-          "kind": "math-constant",
-          "name": "ScriptScriptPercentScaleDown",
-          "value": 50,
-          "detail": "MATH table, percent"
-        }
-      ]
-    },
-    {
-      "corpus_id": "script-tower",
-      "display": true,
-      "field": "width",
-      "vutex": 2.2952,
-      "latex": 2.5778,
-      "relative": 0.1096,
-      "mechanism": "script-optical-size",
-      "font_family": "Latin Modern Math (upem 1000) / Computer Modern 10pt",
-      "evidence": [
-        {
-          "source": "latex",
-          "kind": "glyph-advance",
-          "name": "\\scriptstyle 0 (cmr7)",
-          "value": 0.398613,
-          "detail": "probe: SS-0"
-        },
-        {
-          "source": "latin-modern-math",
-          "kind": "glyph-advance",
-          "name": "zero",
-          "value": 0.5
-        },
-        {
-          "source": "latex",
-          "kind": "glyph-advance",
-          "name": "\\scriptscriptstyle 0 (cmr5)",
-          "value": 0.340283,
-          "detail": "probe: SSS-0"
-        },
-        {
-          "source": "latin-modern-math",
-          "kind": "math-constant",
-          "name": "ScriptScriptPercentScaleDown",
-          "value": 50,
-          "detail": "MATH table, percent"
-        }
-      ]
-    },
-    {
-      "corpus_id": "script-negative",
-      "display": false,
-      "field": "width",
-      "vutex": 1.7562,
-      "latex": 1.9844,
-      "relative": 0.115,
-      "mechanism": "script-optical-size",
-      "font_family": "Latin Modern Math (upem 1000) / Computer Modern 10pt",
-      "evidence": [
-        {
-          "source": "latex",
-          "kind": "glyph-advance",
-          "name": "\\scriptstyle x (cmmi7)",
-          "value": 0.453473,
-          "detail": "probe: 4.53473pt"
-        },
-        {
-          "source": "latin-modern-math",
-          "kind": "glyph-advance",
-          "name": "u1D465 x",
-          "value": 0.572
-        },
-        {
-          "source": "latex",
-          "kind": "glyph-advance",
-          "name": "\\scriptstyle - (cmsy7)",
-          "value": 0.625002,
-          "detail": "probe: 6.25002pt"
-        },
-        {
-          "source": "latin-modern-math",
-          "kind": "glyph-advance",
-          "name": "minus",
-          "value": 0.778
-        },
-        {
-          "source": "latin-modern-math",
-          "kind": "math-constant",
-          "name": "ScriptPercentScaleDown",
-          "value": 70,
-          "detail": "MATH table, percent"
-        }
-      ]
-    },
-    {
-      "corpus_id": "script-negative",
-      "display": true,
-      "field": "width",
-      "vutex": 1.7562,
-      "latex": 1.9844,
-      "relative": 0.115,
-      "mechanism": "script-optical-size",
-      "font_family": "Latin Modern Math (upem 1000) / Computer Modern 10pt",
-      "evidence": [
-        {
-          "source": "latex",
-          "kind": "glyph-advance",
-          "name": "\\scriptstyle x (cmmi7)",
-          "value": 0.453473,
-          "detail": "probe: 4.53473pt"
-        },
-        {
-          "source": "latin-modern-math",
-          "kind": "glyph-advance",
-          "name": "u1D465 x",
-          "value": 0.572
-        },
-        {
-          "source": "latex",
-          "kind": "glyph-advance",
-          "name": "\\scriptstyle - (cmsy7)",
-          "value": 0.625002,
-          "detail": "probe: 6.25002pt"
-        },
-        {
-          "source": "latin-modern-math",
-          "kind": "glyph-advance",
-          "name": "minus",
-          "value": 0.778
-        },
-        {
-          "source": "latin-modern-math",
-          "kind": "math-constant",
-          "name": "ScriptPercentScaleDown",
-          "value": 70,
-          "detail": "MATH table, percent"
         }
       ]
     },
@@ -1133,9 +602,9 @@
       "corpus_id": "fraction-nested",
       "display": false,
       "field": "width",
-      "vutex": 0.6725,
+      "vutex": 0.7949737548828125,
       "latex": 0.8672,
-      "relative": 0.2245,
+      "relative": 0.08328672176797446,
       "mechanism": "script-optical-size",
       "font_family": "Latin Modern Math (upem 1000) / Computer Modern 10pt",
       "evidence": [
@@ -1172,234 +641,6 @@
           "name": "ScriptScriptPercentScaleDown",
           "value": 50,
           "detail": "MATH table, percent"
-        }
-      ]
-    },
-    {
-      "corpus_id": "fraction-nested",
-      "display": true,
-      "field": "width",
-      "vutex": 0.8503,
-      "latex": 0.9138,
-      "relative": 0.0695,
-      "mechanism": "script-optical-size",
-      "font_family": "Latin Modern Math (upem 1000) / Computer Modern 10pt",
-      "evidence": [
-        {
-          "source": "latex",
-          "kind": "box-width",
-          "name": "$\\frac{\\frac{a}{b}}{c}$",
-          "value": 0.867213,
-          "detail": "probe: FRAC-nested"
-        },
-        {
-          "source": "latex",
-          "kind": "glyph-advance",
-          "name": "\\scriptscriptstyle a (cmmi5)",
-          "value": 0.387215,
-          "detail": "probe: SSS-a"
-        },
-        {
-          "source": "latin-modern-math",
-          "kind": "glyph-advance",
-          "name": "u1D44E a",
-          "value": 0.529
-        },
-        {
-          "source": "latin-modern-math",
-          "kind": "math-constant",
-          "name": "ScriptPercentScaleDown",
-          "value": 70,
-          "detail": "MATH table, percent"
-        },
-        {
-          "source": "latin-modern-math",
-          "kind": "math-constant",
-          "name": "ScriptScriptPercentScaleDown",
-          "value": 50,
-          "detail": "MATH table, percent"
-        }
-      ]
-    },
-    {
-      "corpus_id": "fraction-text",
-      "display": false,
-      "field": "width",
-      "vutex": 0.6103,
-      "latex": 0.6738,
-      "relative": 0.0942,
-      "mechanism": "script-optical-size",
-      "font_family": "Latin Modern Math (upem 1000) / Computer Modern 10pt",
-      "evidence": [
-        {
-          "source": "latex",
-          "kind": "box-width",
-          "name": "$\\tfrac{a}{b}$",
-          "value": 0.673764,
-          "detail": "probe: FRAC-tfrac"
-        },
-        {
-          "source": "latex",
-          "kind": "glyph-advance",
-          "name": "\\scriptstyle a (cmmi7)",
-          "value": 0.433765,
-          "detail": "probe: 4.33765pt"
-        },
-        {
-          "source": "latin-modern-math",
-          "kind": "glyph-advance",
-          "name": "u1D44E a",
-          "value": 0.529
-        },
-        {
-          "source": "latin-modern-math",
-          "kind": "math-constant",
-          "name": "ScriptPercentScaleDown",
-          "value": 70,
-          "detail": "MATH table, percent"
-        },
-        {
-          "source": "latex",
-          "kind": "math-constant",
-          "name": "\\nulldelimiterspace",
-          "value": 0.12,
-          "detail": "probe: 1.2pt"
-        }
-      ]
-    },
-    {
-      "corpus_id": "fraction-text",
-      "display": true,
-      "field": "width",
-      "vutex": 0.6103,
-      "latex": 0.6738,
-      "relative": 0.0942,
-      "mechanism": "script-optical-size",
-      "font_family": "Latin Modern Math (upem 1000) / Computer Modern 10pt",
-      "evidence": [
-        {
-          "source": "latex",
-          "kind": "box-width",
-          "name": "$\\tfrac{a}{b}$",
-          "value": 0.673764,
-          "detail": "probe: FRAC-tfrac"
-        },
-        {
-          "source": "latex",
-          "kind": "glyph-advance",
-          "name": "\\scriptstyle a (cmmi7)",
-          "value": 0.433765,
-          "detail": "probe: 4.33765pt"
-        },
-        {
-          "source": "latin-modern-math",
-          "kind": "glyph-advance",
-          "name": "u1D44E a",
-          "value": 0.529
-        },
-        {
-          "source": "latin-modern-math",
-          "kind": "math-constant",
-          "name": "ScriptPercentScaleDown",
-          "value": 70,
-          "detail": "MATH table, percent"
-        },
-        {
-          "source": "latex",
-          "kind": "math-constant",
-          "name": "\\nulldelimiterspace",
-          "value": 0.12,
-          "detail": "probe: 1.2pt"
-        }
-      ]
-    },
-    {
-      "corpus_id": "smallmatrix",
-      "display": false,
-      "field": "width",
-      "vutex": 1.3622,
-      "latex": 1.4611,
-      "relative": 0.0677,
-      "mechanism": "script-optical-size",
-      "font_family": "Latin Modern Math (upem 1000) / Computer Modern 10pt",
-      "evidence": [
-        {
-          "source": "latex",
-          "kind": "box-width",
-          "name": "$\\begin{smallmatrix}a&b\\\\c&d\\end{smallmatrix}$",
-          "value": 1.461072,
-          "detail": "probe: SMALLMAT"
-        },
-        {
-          "source": "latex",
-          "kind": "glyph-advance",
-          "name": "\\scriptstyle a (cmmi7)",
-          "value": 0.433765,
-          "detail": "probe: SS-a"
-        },
-        {
-          "source": "latex",
-          "kind": "glyph-advance",
-          "name": "\\scriptstyle d (cmmi7)",
-          "value": 0.416287,
-          "detail": "probe: SS-d"
-        },
-        {
-          "source": "latin-modern-math",
-          "kind": "glyph-advance",
-          "name": "u1D44E a",
-          "value": 0.529
-        },
-        {
-          "source": "latin-modern-math",
-          "kind": "glyph-advance",
-          "name": "u1D451 d",
-          "value": 0.52
-        }
-      ]
-    },
-    {
-      "corpus_id": "smallmatrix",
-      "display": true,
-      "field": "width",
-      "vutex": 1.3622,
-      "latex": 1.4611,
-      "relative": 0.0677,
-      "mechanism": "script-optical-size",
-      "font_family": "Latin Modern Math (upem 1000) / Computer Modern 10pt",
-      "evidence": [
-        {
-          "source": "latex",
-          "kind": "box-width",
-          "name": "$\\begin{smallmatrix}a&b\\\\c&d\\end{smallmatrix}$",
-          "value": 1.461072,
-          "detail": "probe: SMALLMAT"
-        },
-        {
-          "source": "latex",
-          "kind": "glyph-advance",
-          "name": "\\scriptstyle a (cmmi7)",
-          "value": 0.433765,
-          "detail": "probe: SS-a"
-        },
-        {
-          "source": "latex",
-          "kind": "glyph-advance",
-          "name": "\\scriptstyle d (cmmi7)",
-          "value": 0.416287,
-          "detail": "probe: SS-d"
-        },
-        {
-          "source": "latin-modern-math",
-          "kind": "glyph-advance",
-          "name": "u1D44E a",
-          "value": 0.529
-        },
-        {
-          "source": "latin-modern-math",
-          "kind": "glyph-advance",
-          "name": "u1D451 d",
-          "value": 0.52
         }
       ]
     },
@@ -1507,9 +748,9 @@
       "corpus_id": "fraction-sum-radical",
       "display": false,
       "field": "width",
-      "vutex": 2.2272,
+      "vutex": 2.42513427734375,
       "latex": 2.6707,
-      "relative": 0.1661,
+      "relative": 0.09194807453336203,
       "mechanism": "large-operator-advance",
       "font_family": "Latin Modern Math (upem 1000) / Computer Modern 10pt",
       "evidence": [
