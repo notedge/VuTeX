@@ -7,13 +7,19 @@ export type CreateVuTeXOptions = {
     host?: VuTeXHost;
     backend?: VuTeXBackend;
     /**
-     * Fallback theme and math face when neither the render call nor the
-     * manifest picks one. Distributions such as `@vutex/latex` set these so a
-     * preset never has to write into the user's project.
+     * Fallback theme, math face and input format when neither the render call
+     * nor the manifest picks one. Distributions such as `@vutex/latex` set
+     * these so a preset never has to write into the user's project.
      */
     defaults?: {
         theme?: string;
         mathFont?: string;
+        /**
+         * Input format used when the render call and the manifest stay silent.
+         * An input distribution such as `@vutex/typst` sets this so files with
+         * no recognised extension still reach the right adapter.
+         */
+        input?: string;
     };
 };
 

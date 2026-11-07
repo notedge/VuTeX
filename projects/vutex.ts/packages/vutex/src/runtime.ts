@@ -120,7 +120,7 @@ export function createVuTeXRuntime(
     async function render(inputPath: string, renderOptions: RenderDocumentOptions = {}): Promise<RenderDocumentResult> {
         const manifest = await readManifest(projectRoot);
         const outputFormat = normalizeOutputFormat(renderOptions.output ?? manifest?.document?.output);
-        const inputFormat = renderOptions.input ?? manifest?.document?.input ?? formatFromPath(inputPath);
+        const inputFormat = renderOptions.input ?? manifest?.document?.input ?? defaults.input ?? formatFromPath(inputPath);
         const explicitTheme = typeof renderOptions.theme === "string" && renderOptions.theme.length > 0
             ? renderOptions.theme
             : undefined;
