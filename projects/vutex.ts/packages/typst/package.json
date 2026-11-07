@@ -1,6 +1,6 @@
 {
     "name": "@vutex/typst",
-    "version": "0.0.1",
+    "version": "0.0.17",
     "description": "Typst-style VuTeX input distribution",
     "type": "module",
     "license": "MPL-2.0",
