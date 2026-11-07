@@ -206,11 +206,11 @@
         64
       ],
       "svgViewport": [
-        48.6557,
-        20.6296
+        48.8085,
+        22.6664
       ],
-      "bytes": 971,
-      "sha256": "3f283a7ad84b7fc897ee4f356dc3cc1f6c729728503b1be855d5bee9cef8d641"
+      "bytes": 968,
+      "sha256": "3ded056c33dd44844f4e1d0d26e0d4c4e9f1aba15c44b8fc206b02d987ed19b1"
     },
     "sum-limits-display": {
       "tex": "\\sum_{i=1}^{n} i",
@@ -236,11 +236,11 @@
         64
       ],
       "svgViewport": [
-        61.4176,
-        25.7845
+        61.2634,
+        27.9745
       ],
-      "bytes": 1247,
-      "sha256": "5558f9cb1d28a22b4be2b14d28c113ae82761d81c596581e295856d05a01c5be"
+      "bytes": 1248,
+      "sha256": "ee06bd76fab53ca855bf09fc5814cc388d85acaa1ee5d977fed360d6293de69d"
     },
     "integral-limits-display": {
       "tex": "\\int_0^1 x^2\\,dx",
@@ -866,11 +866,11 @@
         64
       ],
       "svgViewport": [
-        46.7201,
-        20.4862
+        46.8729,
+        22.5231
       ],
-      "bytes": 817,
-      "sha256": "a14bbac912f481fa6e5db7697dc9be516f1daf1d77933013c688f5b4dd3ba8e0"
+      "bytes": 847,
+      "sha256": "1d71bffdf753d292b24e918202f1ba11e3b042a816829880f66239a6ca6c28f5"
     },
     "prod-limits-display": {
       "tex": "\\prod_{i=1}^{n} i",
@@ -1587,10 +1587,10 @@
       ],
       "svgViewport": [
         41.5823,
-        31.1915
+        30.6314
       ],
-      "bytes": 1036,
-      "sha256": "5aa605b326f8257f5739fed76d401f62ec07a387c045154c13f6bcef175651e8"
+      "bytes": 1049,
+      "sha256": "51629f86bd9cd92ba0b92774d1fae19ef94779e7f3ed4ce3e0f6b8b9a131b413"
     },
     "fraction-sum-radical-display": {
       "tex": "\\frac{\\sum_{i=1}^{n} i}{\\sqrt{n}}",
@@ -1602,10 +1602,10 @@
       ],
       "svgViewport": [
         52.9556,
-        45.5332
+        44.0931
       ],
-      "bytes": 1430,
-      "sha256": "f6c735a6a3c632414003f03ebad0593030a16250177e19ba9d52206b5da6b104"
+      "bytes": 1414,
+      "sha256": "d65ae9400f2954d1dc2c3715b25a44ab4a6d9cbbf8979f4080291b32da3cda16"
     },
     "script-tower-inline": {
       "tex": "10^{10^{10}}",

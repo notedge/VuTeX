@@ -247,38 +247,6 @@
     },
     {
       "corpus_id": "sum-limits",
-      "display": false,
-      "field": "depth",
-      "vutex": 0.2547,
-      "latex": 0.3,
-      "relative": 0.151,
-      "mechanism": "math-constant",
-      "font_family": "Latin Modern Math (upem 1000) / Computer Modern 10pt",
-      "evidence": [
-        {
-          "source": "latin-modern-math",
-          "kind": "math-constant",
-          "name": "SubscriptShiftDown",
-          "value": 0.247,
-          "detail": "MATH table"
-        },
-        {
-          "source": "latex",
-          "kind": "box-depth",
-          "name": "$\\sum_{i=1}^{n} i$ (text style)",
-          "value": 0.300005,
-          "detail": "probe: TEXT-SUMLIM"
-        },
-        {
-          "source": "latin-modern-math",
-          "kind": "glyph-ink",
-          "name": "u1D456 i bbox yMin",
-          "value": -0.011
-        }
-      ]
-    },
-    {
-      "corpus_id": "sum-limits",
       "display": true,
       "field": "height",
       "vutex": 1.4671,
@@ -321,38 +289,6 @@
           "name": "$\\displaystyle\\sum$",
           "value": 1.050006,
           "detail": "probe: DISPLAY-SUM"
-        }
-      ]
-    },
-    {
-      "corpus_id": "prod-limits",
-      "display": false,
-      "field": "depth",
-      "vutex": 0.2547,
-      "latex": 0.3,
-      "relative": 0.151,
-      "mechanism": "math-constant",
-      "font_family": "Latin Modern Math (upem 1000) / Computer Modern 10pt",
-      "evidence": [
-        {
-          "source": "latin-modern-math",
-          "kind": "math-constant",
-          "name": "SubscriptShiftDown",
-          "value": 0.247,
-          "detail": "MATH table"
-        },
-        {
-          "source": "latin-modern-math",
-          "kind": "glyph-advance",
-          "name": "product",
-          "value": 0.944
-        },
-        {
-          "source": "latex",
-          "kind": "box-depth",
-          "name": "$\\prod_{i=1}^{n} i$ (text style)",
-          "value": 0.300005,
-          "detail": "probe: TEXT-SUMLIM"
         }
       ]
     },
