@@ -420,14 +420,9 @@ fn visit_block_inlines(block: &Block, visit: &mut impl FnMut(&Inline)) {
                 visit_inlines(&item.content, visit);
             }
         }
-        Block::Table { rows, .. } => {
-            for row in rows {
-                for cell in &row.cells {
-                    visit_inlines(&cell.content, visit);
-                }
-            }
-        }
-        Block::Quote { content, .. } => visit_inlines(content, visit),
+        // Table cells and quotations now hold child block ids instead of
+        // inline runs. Those child blocks are nodes of the same graph and are
+        // visited when the flat block list reaches them.
         _ => {}
     }
 }
@@ -442,14 +437,9 @@ fn for_each_block_inline(block: &mut Block, edit: &mut impl FnMut(&mut Inline)) 
                 edit_inlines(&mut item.content, edit);
             }
         }
-        Block::Table { rows, .. } => {
-            for row in rows {
-                for cell in &mut row.cells {
-                    edit_inlines(&mut cell.content, edit);
-                }
-            }
-        }
-        Block::Quote { content, .. } => edit_inlines(content, edit),
+        // Table cells and quotations now hold child block ids instead of
+        // inline runs. Those child blocks are nodes of the same graph and are
+        // edited when the flat block list reaches them.
         _ => {}
     }
 }
