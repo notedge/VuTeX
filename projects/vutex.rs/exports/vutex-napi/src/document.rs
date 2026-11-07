@@ -34,7 +34,7 @@ use vutex_layout::{
     layout_with_metrics,
 };
 use vutex_presentation::{DisplayPresentation, FlowPresentation, build_display_presentation, build_flow_presentation};
-use vutex_render_html::{render_html_reflow, render_html_snapshot};
+use vutex_render_html::{FlowMathContext, render_html_reflow, render_html_reflow_with_math, render_html_snapshot};
 use vutex_render_pdf::{PdfFontPolicy, PdfResources, render_pdf_with_resources_and_diagnostics};
 use vutex_render_svg::render_svg;
 use vutex_text::math::MathFontFamily;
@@ -213,6 +213,8 @@ pub struct FlowScene {
     pub flow: FlowPresentation,
     /// Typography theme the payload paints with.
     pub theme: Theme,
+    /// OpenType MATH family a document declared, when one reached layout.
+    pub math_font: Option<MathFontFamily>,
 }
 
 /// Typography and font facts a host can show without rendering.
@@ -473,8 +475,12 @@ pub fn build_display(
 }
 
 /// Build the semantic reflow scene for HTML output.
-pub fn build_flow(graph: &DocumentGraph, theme: Theme) -> FlowScene {
-    FlowScene { flow: build_flow_presentation(graph), theme }
+///
+/// `math_font` is the OpenType MATH family a document declared. Reflow
+/// typesetting resolves it the same way the display pass does, so a host that
+/// names no math package observes the face it installed at startup.
+pub fn build_flow(graph: &DocumentGraph, theme: Theme, math_font: Option<MathFontFamily>) -> FlowScene {
+    FlowScene { flow: build_flow_presentation(graph), theme, math_font }
 }
 
 /// Emit a display scene as SVG bytes with the bundled fonts embedded.
@@ -492,10 +498,32 @@ pub fn render_display_snapshot_html(scene: &DisplayScene) -> Result<String, Diag
     Ok(embed_html_fonts(&html, scene.theme))
 }
 
-/// Emit a flow scene as reflow HTML with bundled fonts.
-pub fn render_flow_html(scene: &FlowScene) -> Result<String, DiagnosticRecord> {
-    let html = render_html_reflow(&scene.flow).map_err(|failure| error(RENDER_FAILED, failure.message, "render", ""))?;
-    Ok(embed_html_fonts(&html, scene.theme))
+/// Outcome of a reflow HTML render.
+#[derive(Debug, Serialize)]
+pub struct FlowHtmlOutcome {
+    /// Complete HTML document.
+    pub html: String,
+    /// Diagnostics raised while typesetting formulas.
+    pub diagnostics: Vec<DiagnosticRecord>,
+}
+
+/// Emit a flow scene as reflow HTML with formulas typeset and fonts embedded.
+///
+/// A formula the engine rejects or cannot typeset keeps its authored source and
+/// adds a diagnostic, so the caller's report names it instead of shipping a
+/// blank hole.
+pub fn render_flow_html(scene: &FlowScene) -> Result<FlowHtmlOutcome, DiagnosticRecord> {
+    let math = scene.math_font.or_else(MathFontFamily::builtin_default).map(|family| FlowMathContext {
+        family,
+        base_size: scene.theme.base_font_size(),
+    });
+    let rendered = match math {
+        Some(math) => render_html_reflow_with_math(&scene.flow, &math),
+        None => render_html_reflow(&scene.flow).map(|markup| vutex_render_html::FlowHtml { markup, diagnostics: Vec::new() }),
+    }
+    .map_err(|failure| error(RENDER_FAILED, failure.message, "render", ""))?;
+    let diagnostics = rendered.diagnostics.iter().map(|diagnostic| stage_record(diagnostic, "render", None)).collect();
+    Ok(FlowHtmlOutcome { html: embed_html_fonts(&rendered.markup, scene.theme), diagnostics })
 }
 
 /// Emit a display scene as PDF bytes.

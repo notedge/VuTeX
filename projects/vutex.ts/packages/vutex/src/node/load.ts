@@ -5,7 +5,7 @@ import type { LoweredDocumentHandle, DisplaySceneHandle, FlowSceneHandle, Templa
 type NativeBinding = VuTeXBindings & {
     lowerDocument: (graphJson: string, label: string) => LoweredDocumentHandle;
     buildDisplay: (lowered: LoweredDocumentHandle, theme?: string, mathFont?: string, template?: TemplateGeometry) => DisplaySceneHandle;
-    buildFlow: (graphJson: string, theme?: string) => FlowSceneHandle;
+    buildFlow: (graphJson: string, theme?: string, mathFont?: string) => FlowSceneHandle;
 };
 
 const PLATFORM_PACKAGES: Record<string, string> = {
@@ -34,7 +34,7 @@ export function loadVuTeXNode(): VuTeXBindings {
         parseDocument: (label, format, bytes) => binding.parseDocument(label, format, bytes),
         lowerDocument: (graphJson, label) => binding.lowerDocument(graphJson, label),
         buildDisplay: (lowered, theme, mathFont, template) => binding.buildDisplay(lowered, theme, mathFont, template),
-        buildFlow: (graphJson, theme) => binding.buildFlow(graphJson, theme),
+        buildFlow: (graphJson, theme, mathFont) => binding.buildFlow(graphJson, theme, mathFont),
         installMathFontFace: (name, artifactHash, bytes, texParameters) =>
             binding.installMathFontFace(name, artifactHash, bytes, texParameters),
         mathFontTexParameterFamilies: () => binding.mathFontTexParameterFamilies(),

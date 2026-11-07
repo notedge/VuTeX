@@ -44,6 +44,7 @@ function fakeBindings(overrides: Overrides = {}) {
         template: [] as Array<unknown>,
         mathFaces: [] as Array<{ name: string; hash: string; bytes: Uint8Array; texParameters?: string }>,
         flow: [] as Array<string | undefined>,
+        flowMathFont: [] as Array<string | undefined>,
         pdfSettings: [] as Array<string | undefined>,
         reports: [] as ReportCall[],
     };
@@ -84,9 +85,13 @@ function fakeBindings(overrides: Overrides = {}) {
                 },
             };
         },
-        buildFlow: (_graphJson, theme) => {
+        buildFlow: (_graphJson, theme, mathFont) => {
             calls.flow.push(theme);
-            return { html: () => overrides.html ?? "<html/>" };
+            calls.flowMathFont.push(mathFont);
+            return {
+                html: () => overrides.html ?? "<html/>",
+                htmlWithDiagnostics: () => ({ html: overrides.html ?? "<html/>", diagnosticsJson: "[]" }),
+            };
         },
         installMathFontFace: (name, hash, bytes, texParameters) => {
             calls.mathFaces.push({ name, hash, bytes, texParameters });
@@ -430,7 +435,7 @@ test("render fails closed when a math font package declares no face file", async
     });
 });
 
-test("render refuses to install a math face for reflowed html", async () => {
+test("render installs a declared math face for reflowed html too", async () => {
     await withTempDir(async (dir) => {
         const inputPath = join(dir, "chapter.md");
         await writeFile(inputPath, "# Title\n", "utf8");
@@ -445,9 +450,10 @@ test("render refuses to install a math face for reflowed html", async () => {
         const runtime = createVuTeXRuntime(bindings, { projectRoot: dir });
         const result = await runtime.render(inputPath, { output: "html" });
 
-        assert.equal(calls.mathFaces.length, 0);
+        assert.equal(calls.mathFaces.length, 1);
         assert.equal(calls.flow.length, 1);
-        assert.ok(result.diagnostics.some((item) => item.code === "VUTEX_PACKAGE_MATH_FONT_INACTIVE"));
+        assert.equal(calls.flowMathFont[0], calls.mathFaces[0].name);
+        assert.ok(!result.diagnostics.some((item) => item.code === "VUTEX_PACKAGE_MATH_FONT_INACTIVE"));
     });
 });
 

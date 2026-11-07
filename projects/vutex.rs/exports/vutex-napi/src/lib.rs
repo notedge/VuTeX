@@ -595,12 +595,26 @@ impl DisplaySceneHandle {
 }
 
 /// Build the semantic reflow scene for HTML output.
+///
+/// `math_font` is the math package a document declared, resolved exactly as the
+/// display pass resolves it so HTML and SVG paint the same face.
 #[napi]
-pub fn build_flow(graph_json: String, theme: Option<String>) -> napi::Result<FlowSceneHandle> {
+pub fn build_flow(graph_json: String, theme: Option<String>, math_font: Option<String>) -> napi::Result<FlowSceneHandle> {
+    install_embedded_math_fonts();
     let graph: DocumentGraph = serde_json::from_str(&graph_json)
         .map_err(|failure| napi::Error::from_reason(format!("document graph is not valid JSON: {failure}")))?;
     let selected = Theme::from_option(theme.as_deref());
-    Ok(FlowSceneHandle { inner: document::build_flow(&graph, selected) })
+    let family = resolve_math_font(math_font)?;
+    Ok(FlowSceneHandle { inner: document::build_flow(&graph, selected, family) })
+}
+
+/// Reflow HTML plus the diagnostics its render raised.
+#[napi(object)]
+pub struct FlowHtmlOutput {
+    /// Complete HTML document.
+    pub html: String,
+    /// Serialized render diagnostics.
+    pub diagnostics_json: String,
 }
 
 /// Semantic reflow scene exposed to the host.
@@ -611,10 +625,21 @@ pub struct FlowSceneHandle {
 
 #[napi]
 impl FlowSceneHandle {
-    /// Emit reflow HTML with the bundled fonts embedded.
+    /// Emit reflow HTML with the bundled fonts and typeset formulas embedded.
     #[napi]
     pub fn html(&self) -> napi::Result<String> {
-        document::render_flow_html(&self.inner).map_err(|record| napi::Error::from_reason(record.message))
+        document::render_flow_html(&self.inner).map(|outcome| outcome.html).map_err(|record| napi::Error::from_reason(record.message))
+    }
+
+    /// Emit reflow HTML plus the diagnostics formula typesetting raised.
+    #[napi]
+    pub fn html_with_diagnostics(&self) -> napi::Result<FlowHtmlOutput> {
+        let outcome =
+            document::render_flow_html(&self.inner).map_err(|record| napi::Error::from_reason(record.message))?;
+        Ok(FlowHtmlOutput {
+            html: outcome.html,
+            diagnostics_json: serde_json::to_string(&outcome.diagnostics).unwrap_or_else(|_| "[]".to_string()),
+        })
     }
 }
 

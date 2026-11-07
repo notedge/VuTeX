@@ -49,7 +49,10 @@ function fakeBindings(overrides: { measureResponse?: string; renderFormulaRespon
             snapshotHtml: () => "<html/>",
             pdf: () => ({ pdf: new Uint8Array(), diagnosticsJson: "[]" }),
         }),
-        buildFlow: () => ({ html: () => "<html/>" }),
+        buildFlow: () => ({
+            html: () => "<html/>",
+            htmlWithDiagnostics: () => ({ html: "<html/>", diagnosticsJson: "[]" }),
+        }),
         installMathFontFace: () => {},
         mathFontTexParameterFamilies: () => ["latin-modern-math", "xits-math"],
         embedSvgFonts: (svg) => svg,

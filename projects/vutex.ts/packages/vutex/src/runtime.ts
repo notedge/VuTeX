@@ -177,9 +177,10 @@ export function createVuTeXRuntime(
                     ),
                 );
             }
-            // Reflowed html keeps formulas as markup, so the warning below is
-            // the whole record for that format and the face is never installed.
-            if (outputFormat !== "html") {
+            // A declared face is installed for every format: reflowed html
+            // typesets formulas too, so its render must paint the same face as
+            // svg, snapshot, and pdf.
+            {
                 const face = await readMathFontFace(mathPackage.path);
                 if (face.diagnostic !== undefined) {
                     return fail(face.diagnostic);
@@ -324,17 +325,11 @@ export function createVuTeXRuntime(
             let items: number | undefined;
 
             if (outputFormat === "html") {
-                const flow = bindings.buildFlow(lowered.graphJson(), theme);
-                html = flow.html();
-                if (mathPackage !== undefined && mathFont !== undefined) {
-                    diagnostics.push({
-                        code: "VUTEX_PACKAGE_MATH_FONT_INACTIVE",
-                        severity: "warning",
-                        message: `reflowed html keeps formulas as markup, so ${mathFont} does not apply`,
-                        stage: "package",
-                        args: { slot: "math-font", package: mathFont },
-                    });
-                }
+                const flow = bindings.buildFlow(lowered.graphJson(), theme, mathFont);
+                const rendered = flow.htmlWithDiagnostics();
+                html = rendered.html;
+                diagnostics.push(...(JSON.parse(rendered.diagnosticsJson) as VuTeXDiagnostic[]));
+                mathFontApplied = mathFont;
             } else {
                 const scene = bindings.buildDisplay(lowered, theme, mathFont, templateGeometry);
                 mathFontApplied = scene.mathFontId();

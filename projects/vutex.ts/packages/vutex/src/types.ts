@@ -230,6 +230,8 @@ export type DisplaySceneHandle = {
 /** Semantic reflow scene returned by `buildFlow`. */
 export type FlowSceneHandle = {
     html: () => string;
+    /** Reflow HTML plus the diagnostics formula typesetting raised. */
+    htmlWithDiagnostics: () => { html: string; diagnosticsJson: string };
 };
 
 /**
@@ -252,7 +254,7 @@ export type VuTeXBindings = {
         mathFont?: string,
         template?: TemplateGeometry,
     ) => DisplaySceneHandle;
-    buildFlow: (graphJson: string, theme?: string) => FlowSceneHandle;
+    buildFlow: (graphJson: string, theme?: string, mathFont?: string) => FlowSceneHandle;
     installMathFontFace: (name: string, artifactHash: string, bytes: Uint8Array, texParameters?: string) => void;
     mathFontTexParameterFamilies: () => string[];
     embedSvgFonts: (svg: string, theme?: string) => string;

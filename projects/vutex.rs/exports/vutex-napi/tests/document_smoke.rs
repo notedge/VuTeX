@@ -24,6 +24,7 @@ use vutex_napi::{
     },
     theme::Theme,
 };
+use vutex_text::math::MathFontFamily;
 
 /// Parse, lower, and emit SVG for one source.
 fn svg_of(name: &str, format: ImportFormat, source: &[u8]) -> (String, Value) {
@@ -143,11 +144,30 @@ fn gfm_footnote_marker_survives_the_reflow_html_lane() {
         .expect("parses");
     let lowered = lower_document(parsed.graph, "sample.md");
     let graph = lowered.graph;
-    let flow = build_flow(&graph, Theme::Baseline);
-    let html = render_flow_html(&flow).expect("html renders");
+    let flow = build_flow(&graph, Theme::Baseline, None);
+    let html = render_flow_html(&flow).expect("html renders").html;
     assert!(html.contains("[1]"), "{html}");
     assert!(html.contains("Footnote body."), "{html}");
     assert!(html.contains("@font-face"), "reflow html skipped font embedding");
+}
+
+#[test]
+fn reflow_html_typesets_formulas_instead_of_printing_tex() {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fonts");
+    document_fonts::install_math_fonts(&document_fonts::MathFontPack::load_from(&dir).expect("math font pack"));
+    let parsed = parse_document(
+        "sample.md",
+        ImportFormat::Markdown,
+        b"# Title\n\nArea $x^2$.\n\n$$\\frac{a}{b}$$\n",
+    )
+    .expect("parses");
+    let lowered = lower_document(parsed.graph, "sample.md");
+    let flow = build_flow(&lowered.graph, Theme::Baseline, Some(MathFontFamily::LmMath));
+    let outcome = render_flow_html(&flow).expect("html renders");
+    assert!(outcome.html.contains("<span class=\"vutex-math\""), "{}", outcome.html);
+    assert!(outcome.html.contains("<div class=\"vutex-math\" data-vutex-block=\"math\""), "{}", outcome.html);
+    assert!(!outcome.html.contains("<pre data-vutex-block=\"code\">\\frac"), "{}", outcome.html);
+    assert!(outcome.diagnostics.is_empty(), "{:?}", outcome.diagnostics);
 }
 
 #[test]
