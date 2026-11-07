@@ -207,10 +207,10 @@
       ],
       "svgViewport": [
         48.8085,
-        22.6664
+        21.5111
       ],
-      "bytes": 968,
-      "sha256": "3ded056c33dd44844f4e1d0d26e0d4c4e9f1aba15c44b8fc206b02d987ed19b1"
+      "bytes": 983,
+      "sha256": "2bc7213f636968268e0a4f855766151ceac2724ea2b3e691a654acd9a31bc029"
     },
     "sum-limits-display": {
       "tex": "\\sum_{i=1}^{n} i",
@@ -237,10 +237,10 @@
       ],
       "svgViewport": [
         61.2634,
-        27.9745
+        26.8192
       ],
-      "bytes": 1248,
-      "sha256": "ee06bd76fab53ca855bf09fc5814cc388d85acaa1ee5d977fed360d6293de69d"
+      "bytes": 1259,
+      "sha256": "bd35e594d8fe943e20abdb23000997b8364faa4ebe3126b9f571af720c952899"
     },
     "integral-limits-display": {
       "tex": "\\int_0^1 x^2\\,dx",
@@ -252,10 +252,10 @@
       ],
       "svgViewport": [
         67.0349,
-        47.618
+        45.0226
       ],
-      "bytes": 1433,
-      "sha256": "dd4502c13f1d305cda05c41ce686e5ffc420ae71016c0c8cfff5deb1316df042"
+      "bytes": 1420,
+      "sha256": "3ad387c461175ae246853f0289457e86ed1dc3dede808f1eaafd87089ce352f1"
     },
     "fenced-fraction-inline": {
       "tex": "\\left(\\frac{a}{b}\\right)",
@@ -867,10 +867,10 @@
       ],
       "svgViewport": [
         46.8729,
-        22.5231
+        21.3677
       ],
-      "bytes": 847,
-      "sha256": "1d71bffdf753d292b24e918202f1ba11e3b042a816829880f66239a6ca6c28f5"
+      "bytes": 846,
+      "sha256": "8c5110d0771ff4c282d9db783177c0a4ec3811d2d9356d155cc3e13647c036b3"
     },
     "prod-limits-display": {
       "tex": "\\prod_{i=1}^{n} i",
@@ -897,25 +897,25 @@
       ],
       "svgViewport": [
         50.5648,
-        23.9855
+        22.5453
       ],
-      "bytes": 1175,
-      "sha256": "4bd7a581807bff249e8cee2501e05e47bb9bd3fd2691c2eb2f2db12abcc1ee3f"
+      "bytes": 1174,
+      "sha256": "5ad4edf6316d7a4b1c8ff23bf9925f87d5ccbb9af991fc52512e98a2c47b3932"
     },
     "oint-script-display": {
       "tex": "\\oint_C f\\,dz",
       "display": true,
       "file": "oint-script-display.png",
       "window": [
-        73,
+        68,
         64
       ],
       "svgViewport": [
-        56.728,
-        39.7541
+        51.8608,
+        40.4172
       ],
-      "bytes": 1399,
-      "sha256": "c12d3bb54b7ab4f1c62cbe608c57b369873d8e560dc13b6104184dbb2d46a433"
+      "bytes": 1423,
+      "sha256": "633beb4ef583d4e3bcdb06f08da7fd439ca7d6dd95647af2aaa4d6b247656140"
     },
     "script-negative-inline": {
       "tex": "e^{-x^2}",
@@ -1587,10 +1587,10 @@
       ],
       "svgViewport": [
         41.5823,
-        30.6314
+        29.2626
       ],
-      "bytes": 1049,
-      "sha256": "51629f86bd9cd92ba0b92774d1fae19ef94779e7f3ed4ce3e0f6b8b9a131b413"
+      "bytes": 1081,
+      "sha256": "efceba653404b1ecdf994395a272f3807c7387c8c338f4cb78f17db460dc1cfd"
     },
     "fraction-sum-radical-display": {
       "tex": "\\frac{\\sum_{i=1}^{n} i}{\\sqrt{n}}",
@@ -1602,10 +1602,10 @@
       ],
       "svgViewport": [
         52.9556,
-        44.0931
+        42.9377
       ],
-      "bytes": 1414,
-      "sha256": "d65ae9400f2954d1dc2c3715b25a44ab4a6d9cbbf8979f4080291b32da3cda16"
+      "bytes": 1437,
+      "sha256": "8dc00040fc69e6d7810f56b6d6d498d4ab5df88691b23fca1e5ecc9abb5da778"
     },
     "script-tower-inline": {
       "tex": "10^{10^{10}}",
