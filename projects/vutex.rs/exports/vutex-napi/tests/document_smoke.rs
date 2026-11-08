@@ -359,6 +359,46 @@ fn typst_math_is_preserved_and_layout_reports_the_language() {
     assert!(svg.contains("x^2 + 1"), "preserved math source stays visible: {svg}");
 }
 
+#[test]
+fn typst_sample_keeps_body_text_and_drops_dynamic_and_comment_source() {
+    let source = "= Introduction\n\n// hidden note\n#set page(width: 10cm)\n\nBody with *bold* emphasis.\n";
+    let parsed = parse_document("sample.typ", ImportFormat::Typst, source.as_bytes()).expect("typst source parses");
+    let conversion = parsed.conversion.expect("the typst profile projects a conversion report");
+    assert!(
+        conversion.unsupported.iter().any(|item| item.code == "import.typst.dynamic_content"),
+        "the construct stays unsupported in the report: {conversion:?}"
+    );
+    assert!(
+        conversion.opaque.iter().any(|item| item.code == "typst.expression.set"),
+        "the construct stays opaque in the report: {conversion:?}"
+    );
+    configure_fonts();
+    let scene = build_display(lower_document(parsed.graph, "sample.typ"), Theme::Baseline, None, None);
+    assert!(
+        !scene.diagnostics.iter().any(|record| record.code.contains("opaque")),
+        "skipping the construct must not add a replacement diagnostic: {:?}",
+        scene.diagnostics
+    );
+    let svg = render_display_svg(&scene).expect("svg renders");
+    assert!(svg.contains("Introduction"), "{svg}");
+    assert!(svg.contains("Body with"), "{svg}");
+    assert!(!svg.contains("#set"), "the dynamic construct must not reach the page: {svg}");
+    assert!(!svg.contains("hidden note"), "the comment must not reach the page: {svg}");
+}
+
+#[test]
+fn typst_sample_reaches_reflow_html() {
+    let source = "= Introduction\n\n// hidden note\n#set page(width: 10cm)\n\nBody with *bold* emphasis.\n";
+    let parsed = parse_document("sample.typ", ImportFormat::Typst, source.as_bytes()).expect("typst source parses");
+    configure_fonts();
+    let flow = build_flow(&parsed.graph, Theme::Baseline, None);
+    let outcome = render_flow_html(&flow).expect("html renders");
+    assert!(outcome.html.contains("Introduction"), "{}", outcome.html);
+    assert!(outcome.html.contains("Body with"), "{}", outcome.html);
+    assert!(!outcome.html.contains("#set"), "{}", outcome.html);
+    assert!(!outcome.html.contains("hidden note"), "{}", outcome.html);
+}
+
 /// Collect the diagnostic codes of one payload in emission order.
 fn diagnostic_codes(payload: &Value) -> Vec<String> {
     payload["diagnostics"]
