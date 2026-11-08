@@ -23,6 +23,11 @@ jobs:
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
       - name: Install workspace dependencies
         run: pnpm install --no-frozen-lockfile
+      # Font assets are assembled from one in-repo source into two npm packages.
+      # The gate asserts faces, licences, package tarball contents, no duplicate
+      # binaries in shipped packages, and no `include_bytes!` of fonts.
+      - name: Check font assets
+        run: node scripts/ci/check-font-assets.mjs
       # Visual artefacts must come from Playwright's bundled Chromium, never the
       # browser a runner happens to have. This scan fails on `channel`,
       # `executablePath`, host Chrome paths and shell launches.

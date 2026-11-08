@@ -6,10 +6,18 @@
 //! judged downstream by the render cross-check harness.
 
 use serde_json::Value;
-use watex_wasm::{render_svg_wasm, watex_version};
+use watex_wasm::{install_math_fonts, render_svg_wasm, watex_version};
 
 fn parse(json: &str) -> Value {
     serde_json::from_str(json).expect("export must return valid JSON")
+}
+
+/// Install the repository math faces, since the artifact ships none.
+fn install_fonts() {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fonts");
+    let latin_modern = std::fs::read(dir.join("LatinModernMath-Regular.otf")).expect("read Latin Modern Math");
+    let xits = std::fs::read(dir.join("XITSMath-Regular.otf")).expect("read XITS Math");
+    install_math_fonts(&latin_modern, &xits);
 }
 
 #[test]
@@ -19,6 +27,7 @@ fn version_is_exposed() {
 
 #[test]
 fn render_svg_returns_non_empty_svg() {
+    install_fonts();
     let value = parse(&render_svg_wasm("\\frac{a}{b}", None));
     let svg = value["svg"].as_str().expect("svg");
     assert!(svg.starts_with("<svg"), "unexpected svg: {svg}");

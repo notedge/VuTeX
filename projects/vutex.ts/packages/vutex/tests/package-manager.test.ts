@@ -1,16 +1,12 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { test } from "node:test";
-import { fileURLToPath } from "node:url";
 
 import { BUILTIN_PACKAGES } from "../src/packages/builtin.js";
 import { contentDigest, PackageManager, PackageResolveError } from "../src/packages/manager.js";
 import { readLockfile, writeLockfile } from "../src/packages/lockfile.js";
-
-const REPO_FONTS = fileURLToPath(new URL("../../../../vutex.rs/fonts", import.meta.url));
 
 async function withProject(run: (dir: string) => Promise<void>): Promise<void> {
     const dir = await mkdtemp(join(tmpdir(), "vutex-pkg-"));
@@ -24,19 +20,6 @@ async function withProject(run: (dir: string) => Promise<void>): Promise<void> {
 async function writeManifest(dir: string, toml: string): Promise<void> {
     await writeFile(join(dir, "vutex.toml"), toml, "utf8");
 }
-
-test("builtin font digests match the bundled files", async () => {
-    const fonts = BUILTIN_PACKAGES.filter((item) => item.files.length > 0);
-    assert.ok(fonts.length > 0);
-    for (const item of fonts) {
-        for (const file of item.files) {
-            const digest = createHash("sha256")
-                .update(await readFile(join(REPO_FONTS, file.path)))
-                .digest("hex");
-            assert.equal(digest, file.digest, `${item.id} drifted from ${file.path}`);
-        }
-    }
-});
 
 test("install locks a builtin font by slot", async () => {
     await withProject(async (dir) => {
