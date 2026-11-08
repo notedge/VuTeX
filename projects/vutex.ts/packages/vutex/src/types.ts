@@ -79,6 +79,7 @@ export type VuTeXDiagnostic = {
     message: string;
     stage?: string;
     path?: string;
+    span?: { start: number; end: number };
     args?: Record<string, unknown>;
     cause?: string;
 };

@@ -239,11 +239,14 @@ fn tex_source_reports_unknown_environment_through_the_profile() {
         conversion.unsupported.iter().any(|item| item.code == "import.tex.unknown_environment"),
         "unknown environment missing from {conversion:?}"
     );
-    assert!(
-        parsed.diagnostics.iter().any(|record| record.code == "import.tex.unknown_environment"),
-        "unknown environment diagnostic missing from {:?}",
-        parsed.diagnostics
-    );
+    let record = parsed
+        .diagnostics
+        .iter()
+        .find(|record| record.code == "import.tex.unknown_environment")
+        .unwrap_or_else(|| panic!("unknown environment diagnostic missing from {:?}", parsed.diagnostics));
+    let span = record.span.unwrap_or_else(|| panic!("the profile must record the environment span: {record:?}"));
+    let text = std::str::from_utf8(&source[span.start..span.end]).expect("diagnostic span is UTF-8");
+    assert_eq!(text, "\\begin{foobar}\nkept\n\\end{foobar}");
 }
 
 #[test]

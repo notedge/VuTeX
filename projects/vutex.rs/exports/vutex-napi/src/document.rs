@@ -28,7 +28,7 @@ use document_formats::{
 use document_input_tex::import_source as import_tex_source;
 use document_ir::{Block, DocumentGraph};
 use serde::{Deserialize, Serialize};
-use vutex_compose::{Diagnostic as RenderDiagnostic, Severity};
+use vutex_compose::{Diagnostic as RenderDiagnostic, Severity, SourceSpan};
 use vutex_layout::{
     Diagrams,
     hint::{ChromeHeader, SectionChrome},
@@ -253,7 +253,7 @@ pub fn parse_document(label: &str, format: ImportFormat, bytes: &[u8]) -> Result
         let text = text_of(bytes, format, label)
             .map_err(|failure| error(IMPORT_FAILED, failure.to_string(), "import", label))?;
         let document = import_tex_source(label, text)
-            .map_err(|failure| error(failure.code(), failure.message().to_string(), "import", label))?;
+            .map_err(|failure| profile_error(failure.code(), failure.message(), failure.span(), "import", label))?;
         return Ok(ParsedDocument {
             graph: document.graph,
             format,
@@ -716,8 +716,24 @@ pub fn stage_record(diagnostic: &RenderDiagnostic, stage: &str, path: Option<&st
         message: diagnostic.message.clone(),
         stage: stage.to_string(),
         path: path.map(str::to_string),
-        span: None,
+        span: diagnostic.span.map(span_record),
     }
+}
+
+/// Convert a profile error into a report record, keeping its source range.
+fn profile_error(code: &str, message: &str, span: Option<SourceSpan>, stage: &str, path: &str) -> DiagnosticRecord {
+    DiagnosticRecord {
+        code: code.to_string(),
+        severity: "error".to_string(),
+        message: message.to_string(),
+        stage: stage.to_string(),
+        path: Some(path.to_string()),
+        span: span.map(span_record),
+    }
+}
+
+fn span_record(span: SourceSpan) -> DiagnosticSpan {
+    DiagnosticSpan { start: span.start as usize, end: span.end as usize }
 }
 
 fn severity_label(severity: Severity) -> String {
