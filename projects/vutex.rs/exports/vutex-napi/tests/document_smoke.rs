@@ -97,6 +97,57 @@ fn typst_source_reaches_svg() {
 }
 
 #[test]
+fn tex_sample_keeps_profile_constructs_in_svg() {
+    let source = br"\section{Introduction}
+Body with \textbf{bold} and \href{https://example.com}{link} and \cite{alpha,beta} and \ref{sec:one}.
+
+\begin{tabular}{ll}
+Left & Right \\
+\end{tabular}
+
+Inline math $x^2 + 1$.
+
+\begin{equation}
+\frac{a}{b}
+\end{equation}
+
+\begin{foobar}
+kept environment body
+\end{foobar}
+
+Footnote reference\footnote{note body with $y$}.
+";
+    let (svg, _payload) = svg_of("sample.tex", ImportFormat::Tex, source);
+    assert!(svg.contains("Introduction"), "{svg}");
+    assert!(svg.contains("bold"), "{svg}");
+    assert!(svg.contains("Left"), "{svg}");
+    assert!(svg.contains("Right"), "{svg}");
+    assert!(svg.contains("kept environment body"), "the unknown environment must stay visible: {svg}");
+    assert!(svg.contains("note body"), "{svg}");
+    assert!(svg.contains("https://example.com"), "the link target must survive: {svg}");
+    assert!(!svg.contains("$x^2 + 1$"), "inline math must be painted, not printed as source: {svg}");
+    assert!(!svg.contains("\\frac{a}{b}"), "block math must be painted, not printed as source: {svg}");
+    assert!(!svg.contains("(1)"), "an unnumbered equation must not print a number: {svg}");
+}
+
+#[test]
+fn tex_profile_report_reaches_the_lowering_payload() {
+    let source = b"\\section{Intro}\n\n\\begin{foobar}\nkept\n\\end{foobar}\n";
+    let parsed = parse_document("sample.tex", ImportFormat::Tex, source).expect("tex source parses");
+    let conversion = parsed.conversion.expect("the profile projects a conversion report");
+    assert!(
+        conversion.unsupported.iter().any(|item| item.code == "import.tex.unknown_environment"),
+        "{conversion:?}"
+    );
+    let lowered = lower_document(parsed.graph, "sample.tex");
+    assert!(
+        !lowered.diagnostics.iter().any(|entry| entry.code == "vutex.layout.math.unsupported_language"),
+        "TeX math must reach the shared formula pipeline: {:?}",
+        lowered.diagnostics
+    );
+}
+
+#[test]
 fn tikz_fence_reaches_a_diagram_scene() {
     let (svg, _) = svg_of("sample.md", ImportFormat::Markdown, b"```tikz\n\\draw (0,0) rectangle (1,1);\n```\n");
     assert!(svg.contains("data-diagram=\"TikZ picture\""), "{svg}");
