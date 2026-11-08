@@ -10,7 +10,9 @@ import type { VuTeXBindings } from "../src/types.js";
 type FormulaCall = { source: string; optionsJson: string | undefined };
 type ParseCall = { label: string; format: string; bytes: Uint8Array };
 
-function fakeBindings(overrides: { measureResponse?: string; renderFormulaResponse?: string } = {}) {
+function fakeBindings(
+    overrides: { measureResponse?: string; renderFormulaResponse?: string; parseResponse?: string } = {},
+) {
     const calls = {
         measure: [] as FormulaCall[],
         renderFormula: [] as FormulaCall[],
@@ -32,7 +34,7 @@ function fakeBindings(overrides: { measureResponse?: string; renderFormulaRespon
         },
         parseDocument: (label, format, bytes) => {
             calls.parse.push({ label, format, bytes });
-            return JSON.stringify({ ok: true, format, graph: { blocks: [] }, diagnostics: [] });
+            return overrides.parseResponse ?? JSON.stringify({ ok: true, format, graph: { blocks: [] }, diagnostics: [] });
         },
         lowerDocument: (graphJson) => ({
             graphJson: () => graphJson,
@@ -61,9 +63,9 @@ function fakeBindings(overrides: { measureResponse?: string; renderFormulaRespon
             calls.summarize.push(graphJson);
             return JSON.stringify({ blocks: 1 });
         },
-        assembleReport: (operation) => {
+        assembleReport: (operation, _inputs, _diagnostics, _output, extra) => {
             calls.reports.push(operation);
-            return JSON.stringify({ operation });
+            return JSON.stringify({ operation, ...(extra === undefined ? {} : JSON.parse(extra)) });
         },
         themeFacts: () => JSON.stringify({ id: "baseline" }),
     };
@@ -174,6 +176,58 @@ test("inspect parses bytes and summarizes the graph", async () => {
         assert.equal(calls.parse.length, 1);
         assert.equal(calls.summarize.length, 1);
         assert.equal(result.diagnostics.length, 0);
+    });
+});
+
+const CONVERSION = {
+    parsed: { considered: 2, handled: 2 },
+    lowered: { considered: 2, handled: 1 },
+    preserved: [],
+    unsupported: [{ code: "import.tex.unknown_environment", detail: "foobar" }],
+    opaque: [{ code: "environment", detail: "foobar" }],
+    lossy: [],
+};
+
+test("render projects the conversion report into the report payload", () => {
+    return withTempDir(async (dir) => {
+        const inputPath = join(dir, "doc.tex");
+        await writeFile(inputPath, "\\section{Intro}\n", "utf8");
+        const { bindings } = fakeBindings({
+            parseResponse: JSON.stringify({
+                ok: true,
+                format: "tex",
+                graph: { blocks: [] },
+                diagnostics: [],
+                conversion: CONVERSION,
+            }),
+        });
+        const runtime = createVuTeXRuntime(bindings);
+        return runtime.render(inputPath, { output: "svg" }).then((result) => {
+            const report = JSON.parse(result.reportJson) as { conversion?: typeof CONVERSION };
+            assert.deepEqual(report.conversion, CONVERSION);
+        });
+    });
+});
+
+test("inspect projects the conversion report alongside the summary", () => {
+    return withTempDir(async (dir) => {
+        const inputPath = join(dir, "doc.tex");
+        await writeFile(inputPath, "\\section{Intro}\n", "utf8");
+        const { bindings } = fakeBindings({
+            parseResponse: JSON.stringify({
+                ok: true,
+                format: "tex",
+                graph: { blocks: [] },
+                diagnostics: [],
+                conversion: CONVERSION,
+            }),
+        });
+        const runtime = createVuTeXRuntime(bindings);
+        return runtime.inspect(inputPath).then((result) => {
+            const report = JSON.parse(result.reportJson) as { blocks?: number; conversion?: typeof CONVERSION };
+            assert.equal(report.blocks, 1, "the summary and the conversion report share one payload");
+            assert.deepEqual(report.conversion, CONVERSION);
+        });
     });
 });
 

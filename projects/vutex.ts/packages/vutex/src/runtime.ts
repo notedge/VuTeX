@@ -3,6 +3,7 @@ import { dirname, extname, resolve } from "node:path";
 
 import type {
     ActivatedPackage,
+    ConversionReport,
     CreateVuTeXOptions,
     FormulaRender,
     FormulaRenderOptions,
@@ -25,6 +26,7 @@ type ParsedPayload = {
     format: string;
     graph?: unknown;
     diagnostics?: VuTeXDiagnostic[];
+    conversion?: ConversionReport;
 };
 
 function encodeFormulaOptions(options?: FormulaRenderOptions): string | undefined {
@@ -366,6 +368,7 @@ export function createVuTeXRuntime(
                     mathFont: mathFontApplied,
                     template: templateApplied,
                     packages: activation.packages,
+                    ...(parsed.conversion === undefined ? {} : { conversion: parsed.conversion }),
                 }),
             );
 
@@ -409,9 +412,14 @@ export function createVuTeXRuntime(
 
         const parsed = JSON.parse(bindings.parseDocument(inputPath, inputFormat, bytes)) as ParsedPayload;
         const diagnostics = parsed.diagnostics ?? [];
-        const extra = parsed.ok && parsed.graph !== undefined
+        let extra = parsed.ok && parsed.graph !== undefined
             ? bindings.summarizeDocument(JSON.stringify(parsed.graph))
             : undefined;
+        if (parsed.conversion !== undefined) {
+            const summary = extra === undefined ? {} : (JSON.parse(extra) as Record<string, unknown>);
+            summary.conversion = parsed.conversion;
+            extra = JSON.stringify(summary);
+        }
         return {
             inputFormat: parsed.format,
             path: inputPath,

@@ -84,6 +84,20 @@ export type VuTeXDiagnostic = {
     cause?: string;
 };
 
+export type ConversionCoverage = { considered: number; handled: number };
+
+export type ConversionItem = { code: string; detail: string };
+
+/** Conversion report an input profile projected for the parsed document. */
+export type ConversionReport = {
+    parsed: ConversionCoverage;
+    lowered: ConversionCoverage;
+    preserved: ConversionItem[];
+    unsupported: ConversionItem[];
+    opaque: ConversionItem[];
+    lossy: ConversionItem[];
+};
+
 export type RenderDocumentResult = {
     outputFormat: string;
     svg?: string;
