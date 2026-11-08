@@ -41,11 +41,6 @@ use watex_wasm::{RenderOptions, measure, render, render_mathml, render_svg};
 
 use crate::theme::Theme;
 
-/// Install the crate's math faces once per process.
-fn install_embedded_math_fonts() {
-    document_fonts::install_math_fonts(&assets::math_pack());
-}
-
 /// Intern a template-supplied string for the `'static` layout hint.
 ///
 /// A header literal lives for the life of the process, so a host that renders
@@ -107,7 +102,6 @@ pub fn configure_font_assets_dir(dir: String, manifest_json: Option<String>) -> 
 /// Measure a formula and return JSON (`FormulaRender`).
 #[napi]
 pub fn measure_formula(source: String, options_json: Option<String>) -> String {
-    install_embedded_math_fonts();
     let options = parse_render_options(options_json);
     serde_json::to_string(&measure(&source, &options)).unwrap_or_else(|_| "{}".to_string())
 }
@@ -115,7 +109,6 @@ pub fn measure_formula(source: String, options_json: Option<String>) -> String {
 /// Render a formula to SVG and return JSON (`FormulaRender`).
 #[napi]
 pub fn render_formula_svg(source: String, options_json: Option<String>) -> String {
-    install_embedded_math_fonts();
     let options = parse_render_options(options_json);
     serde_json::to_string(&render_svg(&source, &options)).unwrap_or_else(|_| "{}".to_string())
 }
@@ -123,7 +116,6 @@ pub fn render_formula_svg(source: String, options_json: Option<String>) -> Strin
 /// Render a formula to MathML and return JSON (`FormulaRender`).
 #[napi]
 pub fn render_formula_mathml(source: String, options_json: Option<String>) -> String {
-    install_embedded_math_fonts();
     let options = parse_render_options(options_json);
     serde_json::to_string(&render_mathml(&source, &options)).unwrap_or_else(|_| "{}".to_string())
 }
@@ -131,7 +123,6 @@ pub fn render_formula_mathml(source: String, options_json: Option<String>) -> St
 /// Render a formula with SVG and MathML and return JSON (`FormulaRender`).
 #[napi]
 pub fn render_formula(source: String, options_json: Option<String>) -> String {
-    install_embedded_math_fonts();
     let options = parse_render_options(options_json);
     serde_json::to_string(&render(&source, &options)).unwrap_or_else(|_| "{}".to_string())
 }
@@ -150,7 +141,6 @@ fn parse_render_options(raw: Option<String>) -> RenderOptions {
 /// reading the bytes and deciding what a failure means for its own exit code.
 #[napi]
 pub fn parse_document(label: String, format: String, bytes: Buffer) -> String {
-    install_embedded_math_fonts();
     let import_format = document::ImportFormat::from_option(&format);
     match document::parse_document(&label, import_format, &bytes) {
         Ok(parsed) => serde_json::json!({
@@ -255,7 +245,6 @@ pub fn install_math_font_face(
     bytes: Buffer,
     tex_parameters: Option<String>,
 ) -> napi::Result<()> {
-    install_embedded_math_fonts();
     let id = name.trim();
     if id.is_empty() {
         return Err(napi::Error::from_reason("math font package id is empty"));
@@ -411,7 +400,7 @@ pub fn build_display(
     math_font: Option<String>,
     template: Option<TemplateGeometryInput>,
 ) -> napi::Result<DisplaySceneHandle> {
-    install_embedded_math_fonts();
+    assets::require_configured().map_err(|failure| napi::Error::from_reason(failure.reason()))?;
     let selected = Theme::from_option(theme.as_deref());
     let family = resolve_math_font(math_font)?;
     let geometry = match template {
@@ -627,7 +616,7 @@ impl DisplaySceneHandle {
 /// display pass resolves it so HTML and SVG paint the same face.
 #[napi]
 pub fn build_flow(graph_json: String, theme: Option<String>, math_font: Option<String>) -> napi::Result<FlowSceneHandle> {
-    install_embedded_math_fonts();
+    assets::require_configured().map_err(|failure| napi::Error::from_reason(failure.reason()))?;
     let graph: DocumentGraph = serde_json::from_str(&graph_json)
         .map_err(|failure| napi::Error::from_reason(format!("document graph is not valid JSON: {failure}")))?;
     let selected = Theme::from_option(theme.as_deref());
@@ -671,26 +660,34 @@ impl FlowSceneHandle {
     }
 }
 
-/// Embed bundled fonts into an SVG payload a host already holds.
+/// Embed the configured body fonts into an SVG payload a host already holds.
+///
+/// Fails with `VUTEX_FONT_ASSETS_NOT_CONFIGURED` when no host configured fonts.
 #[napi]
-pub fn embed_svg_fonts(svg: String, theme: Option<String>) -> String {
+pub fn embed_svg_fonts(svg: String, theme: Option<String>) -> napi::Result<String> {
+    assets::require_configured().map_err(|failure| napi::Error::from_reason(failure.reason()))?;
     let selected = Theme::from_option(theme.as_deref());
-    document::embed_svg_fonts(&svg, selected)
+    Ok(document::embed_svg_fonts(&svg, selected))
 }
 
-/// Subset one bundled face to an explicit character set.
+/// Subset one configured body face to an explicit character set.
 ///
 /// Returns the subset program, or `null` when the face maps none of the
 /// characters. `family` is `serif` or `mono`, `script` is `latin` or `cjk`,
 /// `style` is `regular`, `bold`, or `italic`.
 #[napi]
-pub fn subset_face(family: String, script: String, style: String, chars: String) -> Option<Buffer> {
-    let face = find_face(&family, &script, &style)?;
+pub fn subset_face(family: String, script: String, style: String, chars: String) -> napi::Result<Option<Buffer>> {
+    assets::require_configured().map_err(|failure| napi::Error::from_reason(failure.reason()))?;
+    let Some(face) = find_face(&family, &script, &style)
+    else {
+        return Ok(None);
+    };
     let set: BTreeSet<char> = chars.chars().collect();
-    match font_subset::subset_font(&face.bytes, &set)? {
-        font_subset::FacePayload::Subset(subset) => Some(Buffer::from(subset.bytes)),
-        font_subset::FacePayload::Full => Some(Buffer::from(face.bytes.to_vec())),
-    }
+    Ok(match font_subset::subset_font(&face.bytes, &set) {
+        Some(font_subset::FacePayload::Subset(subset)) => Some(Buffer::from(subset.bytes)),
+        Some(font_subset::FacePayload::Full) => Some(Buffer::from(face.bytes.to_vec())),
+        None => None,
+    })
 }
 
 fn find_face(family: &str, script: &str, style: &str) -> Option<&'static BodyFace> {

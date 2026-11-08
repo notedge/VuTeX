@@ -32,6 +32,7 @@ export function registerRenderCommand(cli: Cli): void {
         .option("--profile <name>", "cli.opt.profile")
         .option("--input <format>", "cli.opt.input-format")
         .option("--theme <name>", "cli.opt.theme")
+        .option("--assets-dir <path>", "cli.opt.assets-dir")
         .option("--json", "cli.opt.json")
         .action(async (options: ParsedOptions) => {
             const inputPath = options._[0];
@@ -39,7 +40,10 @@ export function registerRenderCommand(cli: Cli): void {
                 return ExitCode.InvalidArgs;
             }
 
-            const runtime = await createVuTeXRuntime();
+            const runtime = await createVuTeXRuntime(
+                undefined,
+                typeof options.assetsDir === "string" ? options.assetsDir : undefined,
+            );
             const result = await runtime.render(inputPath, {
                 output: typeof options.output === "string" ? options.output : undefined,
                 profile: typeof options.profile === "string" ? options.profile : undefined,

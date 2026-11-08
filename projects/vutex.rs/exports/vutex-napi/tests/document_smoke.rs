@@ -26,8 +26,18 @@ use vutex_napi::{
 };
 use vutex_text::math::MathFontFamily;
 
+/// Configure the repository font pack once for this test binary.
+fn configure_fonts() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        let fonts = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fonts");
+        vutex_napi::configure_font_assets_dir(fonts.display().to_string(), None).expect("configure repository font pack");
+    });
+}
+
 /// Parse, lower, and emit SVG for one source.
 fn svg_of(name: &str, format: ImportFormat, source: &[u8]) -> (String, Value) {
+    configure_fonts();
     let parsed = parse_document(name, format, source).expect("source parses");
     let lowered = lower_document(parsed.graph, name);
     let footnotes = serde_json::to_value(lowered.footnotes).expect("counts serialize");
@@ -46,6 +56,7 @@ fn markdown_source_reaches_svg() {
 
 #[test]
 fn template_third_layer_reaches_layout_and_paint() {
+    configure_fonts();
     let parsed = parse_document("sample.md", ImportFormat::Markdown, b"# One\n\nBody.\n\n## Sub\n\nMore.\n\n# Two\n\nEnd.\n")
         .expect("source parses");
     let lowered = lower_document(parsed.graph, "sample.md");
@@ -140,6 +151,7 @@ fn gfm_footnote_body_falls_back_to_text_for_block_level_content() {
 
 #[test]
 fn gfm_footnote_marker_survives_the_reflow_html_lane() {
+    configure_fonts();
     let parsed = parse_document("sample.md", ImportFormat::Markdown, b"# Notes\n\nBody text.[^1]\n\n[^1]: Footnote body.\n")
         .expect("parses");
     let lowered = lower_document(parsed.graph, "sample.md");
@@ -153,14 +165,9 @@ fn gfm_footnote_marker_survives_the_reflow_html_lane() {
 
 #[test]
 fn reflow_html_typesets_formulas_instead_of_printing_tex() {
-    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fonts");
-    document_fonts::install_math_fonts(&document_fonts::MathFontPack::load_from(&dir).expect("math font pack"));
-    let parsed = parse_document(
-        "sample.md",
-        ImportFormat::Markdown,
-        b"# Title\n\nArea $x^2$.\n\n$$\\frac{a}{b}$$\n",
-    )
-    .expect("parses");
+    configure_fonts();
+    let parsed =
+        parse_document("sample.md", ImportFormat::Markdown, b"# Title\n\nArea $x^2$.\n\n$$\\frac{a}{b}$$\n").expect("parses");
     let lowered = lower_document(parsed.graph, "sample.md");
     let flow = build_flow(&lowered.graph, Theme::Baseline, Some(MathFontFamily::LmMath));
     let outcome = render_flow_html(&flow).expect("html renders");
@@ -172,6 +179,7 @@ fn reflow_html_typesets_formulas_instead_of_printing_tex() {
 
 #[test]
 fn snapshot_html_reaches_a_payload() {
+    configure_fonts();
     let parsed = parse_document("sample.md", ImportFormat::Markdown, b"# Title\n\nHello world.\n").expect("parses");
     let lowered = lower_document(parsed.graph, "sample.md");
     let scene = build_display(lowered, Theme::Baseline, None, None);

@@ -4,7 +4,7 @@
 //! page:
 //!
 //! * [`Theme::Baseline`] is the default and paints as the modern preset. Body
-//!   prose measures and paints with the bundled Noto Serif SC faces, margins
+//!   prose measures and paints with the configured Noto Serif SC faces, margins
 //!   open to 88/100/96/100 pt, the line box grows to 1.72 em, paragraphs take
 //!   8 pt of air, headings are truly bold, and tables keep only three light
 //!   rules with tabular figures.
@@ -16,8 +16,9 @@
 //! * [`Theme::Classic`] is a Chinese book face with centred headings, a two
 //!   character first-line indent, no paragraph gap, and no coloured accent.
 //!
-//! Every theme embeds only bundled faces. No theme falls back to a host CJK
-//! face, so SimSun, SimHei, and Microsoft YaHei never paint a VuTeX page.
+//! Every theme measures and paints from the configured face set only. No theme
+//! falls back to a host CJK face, so SimSun, SimHei, and Microsoft YaHei never
+//! paint a VuTeX page.
 
 use document_fonts::{BodyFaceKey, BodyFaceStyle, BodyFamily, BodyMetrics};
 use vutex_layout::{
@@ -39,10 +40,10 @@ pub const CLASSIC_ID: &str = "classic";
 /// Typography preset a render request selects.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Theme {
-    /// Modern scholarly default: bundled Noto Serif SC for Latin and Han.
+    /// Modern scholarly default: configured Noto Serif SC for Latin and Han.
     #[default]
     Baseline,
-    /// Tinos for Latin, bundled Noto Serif SC for Han, reference pagination.
+    /// Tinos for Latin, configured Noto Serif SC for Han, reference pagination.
     Traditional,
     /// Magazine preset with a warm tint and a brick accent rule.
     Editorial,
@@ -352,9 +353,9 @@ fn face_for(key: BodyFaceKey) -> Option<&'static document_fonts::BodyFace> {
 
 /// Borrowed or owned body metrics.
 pub enum BodyMeasurements {
-    /// The bundled Tinos plus Noto set.
+    /// The configured Tinos plus Noto set.
     Bundled,
-    /// A face set built from bundled files in a different order.
+    /// A face set built from configured files in a different order.
     Owned(BodyMetrics),
 }
 
@@ -412,7 +413,8 @@ mod tests {
     }
 
     #[test]
-    fn baseline_metrics_cover_latin_and_han_with_bundled_faces() {
+    fn baseline_metrics_cover_latin_and_han_with_configured_faces() {
+        crate::assets::configure_test_fonts();
         let metrics = Theme::Baseline.body_metrics();
         let regular = BodyFaceKey { family: BodyFamily::Serif, style: BodyFaceStyle::Regular };
         assert!(metrics.get().advance_em(regular, 'A').is_some());

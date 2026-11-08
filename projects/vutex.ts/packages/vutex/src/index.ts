@@ -1,4 +1,5 @@
-import { loadVuTeXNode } from "./node/load.js";
+import { configureFonts } from "./node/fonts.js";
+import { loadVuTeXNative, loadVuTeXNode } from "./node/load.js";
 import { createVuTeXRuntime } from "./runtime.js";
 import type { CreateVuTeXOptions, VuTeXRuntime } from "./types.js";
 
@@ -26,6 +27,8 @@ export type {
 } from "./types.js";
 
 export { loadVuTeXNode } from "./node/index.js";
+export { loadVuTeXNative } from "./node/load.js";
+export { configureFonts, configurePackageFonts } from "./node/fonts.js";
 export { createVuTeXRuntime } from "./runtime.js";
 
 /** Create a VuTeX runtime for Node hosts (native binding). */
@@ -35,6 +38,7 @@ export async function createVuTeX(options: CreateVuTeXOptions = {}): Promise<VuT
     if (host !== "node" && backend !== "native") {
         throw new Error("createVuTeX scaffold currently supports Node native hosts only");
     }
-    const bindings = loadVuTeXNode();
-    return createVuTeXRuntime(bindings, options);
+    const native = loadVuTeXNative();
+    await configureFonts(native, options.assetsDir);
+    return createVuTeXRuntime(loadVuTeXNode(), options);
 }

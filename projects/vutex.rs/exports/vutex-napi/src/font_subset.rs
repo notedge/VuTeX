@@ -525,6 +525,7 @@ mod tests {
     use document_fonts::{BodyFaceStyle, BodyFamily, BodyScript};
 
     fn face(family: BodyFamily, script: BodyScript, style: BodyFaceStyle) -> &'static [u8] {
+        crate::assets::configure_test_fonts();
         crate::assets::body_faces()
             .iter()
             .find(|face| face.family == family && face.script == script && face.style == style)
@@ -604,6 +605,7 @@ mod tests {
 
     #[test]
     fn every_packed_face_subset_safely() {
+        crate::assets::configure_test_fonts();
         for face in crate::assets::body_faces() {
             let directory = parse_directory(&face.bytes).expect("packed directory");
             assert!(!declares_substitutions(&face.bytes, &directory), "{:?} declares GSUB features", face.family);

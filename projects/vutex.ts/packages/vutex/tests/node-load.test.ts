@@ -5,7 +5,8 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { loadBindings } from "../src/cli/context.js";
-import { loadVuTeXNode } from "../src/node/load.js";
+import { configurePackageFonts } from "../src/node/fonts.js";
+import { loadVuTeXNative, loadVuTeXNode } from "../src/node/load.js";
 import type { VuTeXBindings, VuTeXDiagnostic } from "../src/types.js";
 
 const BINDING_FUNCTIONS = [
@@ -26,6 +27,12 @@ const BINDING_FUNCTIONS = [
 ] as const;
 
 const native = loadBindings();
+
+// Face entries fail closed until a host configures assets. The packaged
+// `@vutex/vutex-fonts` payload is the default source for these tests.
+if (native) {
+    await configurePackageFonts(loadVuTeXNative());
+}
 
 type FormulaPayload = {
     metrics: { width: number; height: number; depth: number; baseline: number };

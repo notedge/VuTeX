@@ -506,6 +506,11 @@ fn encode_base64(bytes: &[u8]) -> String {
 mod tests {
     use super::*;
 
+    /// Configure the repository font pack once for the process.
+    fn setup() {
+        crate::assets::configure_test_fonts();
+    }
+
     #[test]
     fn base64_matches_known_vectors() {
         assert_eq!(encode_base64(b""), "");
@@ -517,6 +522,7 @@ mod tests {
 
     #[test]
     fn latin_prose_carries_one_bundled_face_and_no_generic_family() {
+        setup();
         let svg = r#"<svg><title>x</title><text font-family="serif" font-size="11">Hello world.</text></svg>"#;
         let out = embed_body_fonts(svg, Theme::Baseline);
         assert!(out.contains("@font-face"));
@@ -527,6 +533,7 @@ mod tests {
 
     #[test]
     fn baseline_publishes_a_bold_face_for_the_weight_the_layout_emitted() {
+        setup();
         let svg = r#"<svg><text font-family="serif" font-weight="700" font-size="17.6">Title</text><text font-family="serif" font-size="11">Body</text></svg>"#;
         let out = embed_body_fonts(svg, Theme::Baseline);
         assert!(out.contains("font-weight=\"700\""), "heading run lost its weight");
@@ -536,6 +543,7 @@ mod tests {
 
     #[test]
     fn baseline_does_not_guess_heading_weight_from_size() {
+        setup();
         let svg = r#"<svg><text font-family="serif" font-size="17.6">Title</text><text font-family="serif" font-size="11">Body</text></svg>"#;
         let out = embed_body_fonts(svg, Theme::Baseline);
         assert!(!out.contains("font-weight=\"700\""), "the emitter re-guessed the heading weight");
@@ -543,6 +551,7 @@ mod tests {
 
     #[test]
     fn traditional_promotes_heading_runs_by_size() {
+        setup();
         let svg = r#"<svg><text font-family="serif" font-size="22">Chapter One</text><text font-family="serif" font-size="11">Body text</text></svg>"#;
         let out = embed_body_fonts(svg, Theme::Traditional);
         assert!(out.contains("font-size=\"22\" font-weight=\"700\""), "heading run got no weight");
@@ -551,6 +560,7 @@ mod tests {
 
     #[test]
     fn a_style_face_that_defers_a_glyph_gets_a_bundled_fallback_tail() {
+        setup();
         let svg = r#"<svg><text font-family="serif" font-style="italic" font-size="11">汉字</text></svg>"#;
         let out = embed_body_fonts(svg, Theme::Traditional);
         assert!(out.contains("@font-face{font-family:'VuTeX Fallback CJK'"), "no bundled fallback face");
@@ -559,6 +569,7 @@ mod tests {
 
     #[test]
     fn html_payloads_carry_the_same_face_rules() {
+        setup();
         let html = r#"<html><head></head><body><div style="font-family:serif">Hello</div></body></html>"#;
         let out = embed_html_fonts(html, Theme::Baseline);
         assert!(out.contains("@font-face"));

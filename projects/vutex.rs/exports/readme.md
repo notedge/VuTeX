@@ -21,7 +21,7 @@ Status words used below:
 | `vutexVersion()` | binding version string | available |
 | `inspectDocument(path)` | `{ inputFormat, path, reportJson }` | available for `.md`, `.nd`, `.html`, `.tex`, `.typst` |
 | `renderDocument(path, optionsJson)` | `{ exitCode, outputFormat, svg, html, pdf, reportJson }` | available, fidelity gaps below |
-| `measureFormula`, `renderFormulaSvg`, `renderFormulaMathml`, `renderFormula` | JSON `FormulaRender` | available — installs the embedded faces once per process |
+| `measureFormula`, `renderFormulaSvg`, `renderFormulaMathml`, `renderFormula` | JSON `FormulaRender` | available — needs configured math assets, otherwise `VUTEX_FONT_ASSETS_NOT_CONFIGURED` |
 
 `renderDocument` resolves the import format from the path extension or the
 `input` option. `output` accepts `svg`, `html`, `snapshot` or `pdf`, and
@@ -88,9 +88,9 @@ implementation.
 | `renderFormula(source, optionsJson)` | JSON `FormulaRender` with SVG and MathML | available, fidelity gap |
 
 Input is TeX maths only. The same payload type is used everywhere: `metrics`,
-`svg`, `html`, `mathml`, `semantics` and `diagnostics`. Both exports install the
-embedded Latin Modern Math and XITS Math faces once per process before layout,
-so a caller never has to install fonts first.
+`svg`, `html`, `mathml`, `semantics` and `diagnostics`. No face is embedded in
+this crate or its WASM artifact: install Latin Modern Math and XITS Math through
+`installMathFonts` (WASM) or `configure_font_assets` (native) before layout.
 
 ### Options
 

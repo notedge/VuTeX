@@ -4,12 +4,13 @@
 //! process and every later render reads that registry. Two first-class entry
 //! points fill it: [`configure_from_bytes`] takes payloads the host already
 //! read, [`configure_from_dir`] reads a directory the host names, including a
-//! system font directory. Neither falls back to the other.
+//! system font directory. Neither falls back to the other, and no embedded
+//! copy exists: a face entry that runs before configuration fails closed.
 
 use std::{
     collections::{BTreeMap, HashMap},
     path::{Path, PathBuf},
-    sync::{Arc, Mutex, OnceLock},
+    sync::{Arc, Mutex},
 };
 
 use document_fonts::{BodyFace, BodyFaceSet, BodyFaceStyle, BodyFamily, BodyMetrics, BodyScript, MathFontPack};
@@ -80,7 +81,7 @@ const TEXT_ROLES: [TextRoleSpec; 6] = [
 const MATH_ROLES: [(&str, MathFontFamily); 2] =
     [("math-latin-modern", MathFontFamily::LmMath), ("math-xits", MathFontFamily::XitsMath)];
 
-/// Failure while configuring font assets.
+/// Failure while configuring font assets, or while touching them too early.
 #[derive(Debug, Clone)]
 pub(crate) enum FontAssetsError {
     /// No manifest was found, or its structure cannot be read.
@@ -89,6 +90,8 @@ pub(crate) enum FontAssetsError {
     FileMissing(String),
     /// A different source was configured earlier in this process.
     AlreadyConfigured(String),
+    /// A face entry ran before any host configured assets.
+    NotConfigured,
 }
 
 impl FontAssetsError {
@@ -98,13 +101,15 @@ impl FontAssetsError {
             Self::ManifestInvalid(_) => "VUTEX_FONT_ASSETS_MANIFEST_INVALID",
             Self::FileMissing(_) => "VUTEX_FONT_ASSETS_FILE_MISSING",
             Self::AlreadyConfigured(_) => "VUTEX_FONT_ASSETS_ALREADY_CONFIGURED",
+            Self::NotConfigured => "VUTEX_FONT_ASSETS_NOT_CONFIGURED",
         }
     }
 
     /// `code: detail` reason handed to Node-API.
     pub(crate) fn reason(&self) -> String {
         let detail = match self {
-            Self::ManifestInvalid(detail) | Self::FileMissing(detail) | Self::AlreadyConfigured(detail) => detail,
+            Self::ManifestInvalid(detail) | Self::FileMissing(detail) | Self::AlreadyConfigured(detail) => detail.as_str(),
+            Self::NotConfigured => "configure fonts before calling a face entry",
         };
         format!("{}: {detail}", self.code())
     }
@@ -300,49 +305,30 @@ fn configured() -> Option<&'static Configured> {
     *CONFIGURED.lock().expect("font asset registry")
 }
 
-/// Embedded fallback that predates host configuration.
-fn embedded_set() -> &'static Arc<BodyFaceSet> {
-    static SET: OnceLock<Arc<BodyFaceSet>> = OnceLock::new();
-    SET.get_or_init(|| {
-        Arc::new(BodyFaceSet::new(vec![
-            BodyFace::new(BodyFamily::Serif, BodyScript::Latin, BodyFaceStyle::Regular, TINOS_REGULAR),
-            BodyFace::new(BodyFamily::Serif, BodyScript::Latin, BodyFaceStyle::Bold, TINOS_BOLD),
-            BodyFace::new(BodyFamily::Serif, BodyScript::Latin, BodyFaceStyle::Italic, TINOS_ITALIC),
-            BodyFace::new(BodyFamily::Serif, BodyScript::Cjk, BodyFaceStyle::Regular, NOTO_SERIF_SC_REGULAR),
-            BodyFace::new(BodyFamily::Serif, BodyScript::Cjk, BodyFaceStyle::Bold, NOTO_SERIF_SC_BOLD),
-            BodyFace::new(BodyFamily::Mono, BodyScript::Latin, BodyFaceStyle::Regular, NOTO_SANS_MONO_REGULAR),
-        ]))
-    })
-}
-
-/// Embedded body metrics, parsed once.
-fn embedded_metrics() -> &'static BodyMetrics {
-    static METRICS: OnceLock<BodyMetrics> = OnceLock::new();
-    METRICS.get_or_init(|| BodyMetrics::from_set(embedded_set()))
+/// Fail a face entry that runs before any host configured assets.
+pub(crate) fn require_configured() -> Result<(), FontAssetsError> {
+    match configured() {
+        Some(_) => Ok(()),
+        None => Err(FontAssetsError::NotConfigured),
+    }
 }
 
 /// Shared handle for [`PdfFontPolicy::Provided`](vutex_render_pdf::PdfFontPolicy).
+///
+/// Callers gate on [`require_configured`] first, so an unconfigured registry is
+/// unreachable here.
 pub(crate) fn body_set() -> Arc<BodyFaceSet> {
-    match configured() {
-        Some(configured) => configured.set.clone(),
-        None => embedded_set().clone(),
-    }
+    configured().expect("font assets are configured before a face entry runs").set.clone()
 }
 
 /// Faces in the pack's declaration order.
 pub(crate) fn body_faces() -> &'static [BodyFace] {
-    match configured() {
-        Some(configured) => configured.set.faces(),
-        None => embedded_set().faces(),
-    }
+    configured().expect("font assets are configured before a face entry runs").set.faces()
 }
 
 /// Metrics of the pack, parsed once.
 pub(crate) fn body_metrics() -> &'static BodyMetrics {
-    match configured() {
-        Some(configured) => &configured.metrics,
-        None => embedded_metrics(),
-    }
+    &configured().expect("font assets are configured before a face entry runs").metrics
 }
 
 /// Resolve a bundled math package id to its family.
@@ -350,17 +336,12 @@ pub(crate) fn math_family(package: &str) -> Option<MathFontFamily> {
     MATH_ROLES.iter().find(|(id, _)| *id == package).map(|(_, family)| *family)
 }
 
-// Embedded payloads kept until the explicit configuration cut-over lands.
-const TINOS_REGULAR: &[u8] = include_bytes!("../../../fonts/Tinos-Regular.ttf");
-const TINOS_BOLD: &[u8] = include_bytes!("../../../fonts/Tinos-Bold.ttf");
-const TINOS_ITALIC: &[u8] = include_bytes!("../../../fonts/Tinos-Italic.ttf");
-const NOTO_SERIF_SC_REGULAR: &[u8] = include_bytes!("../../../fonts/NotoSerifSC-Regular.ttf");
-const NOTO_SERIF_SC_BOLD: &[u8] = include_bytes!("../../../fonts/NotoSerifSC-Bold.ttf");
-const NOTO_SANS_MONO_REGULAR: &[u8] = include_bytes!("../../../fonts/NotoSansMono-Regular.ttf");
-const LATIN_MODERN_MATH: &[u8] = include_bytes!("../../../fonts/LatinModernMath-Regular.otf");
-const XITS_MATH: &[u8] = include_bytes!("../../../fonts/XITSMath-Regular.otf");
-
-/// Math faces installed into `document_text` at startup.
-pub(crate) fn math_pack() -> MathFontPack {
-    MathFontPack::new(LATIN_MODERN_MATH, XITS_MATH)
+/// Configure the repository font pack once for in-crate tests.
+#[cfg(test)]
+pub(crate) fn configure_test_fonts() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        let fonts = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fonts");
+        configure_from_dir(&fonts, None).expect("configure repository font pack");
+    });
 }

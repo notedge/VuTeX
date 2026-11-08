@@ -6,6 +6,7 @@ import { ExitCode } from "../exit-codes.js";
 
 export function registerInspectCommand(cli: Cli): void {
     cli.command("inspect", "cli.cmd.inspect")
+        .option("--assets-dir <path>", "cli.opt.assets-dir")
         .option("--json", "cli.opt.json")
         .action(async (options: ParsedOptions) => {
             const inputPath = options._[0];
@@ -13,7 +14,10 @@ export function registerInspectCommand(cli: Cli): void {
                 return ExitCode.InvalidArgs;
             }
 
-            const runtime = await createVuTeXRuntime();
+            const runtime = await createVuTeXRuntime(
+                undefined,
+                typeof options.assetsDir === "string" ? options.assetsDir : undefined,
+            );
             const result = await runtime.inspect(inputPath);
 
             if (options.json === true) {

@@ -6,8 +6,8 @@ export type CliContext = {
     toolVersion: string;
 };
 
-export async function createVuTeXRuntime(projectRoot?: string): Promise<VuTeXRuntime> {
-    return createVuTeX({ projectRoot: projectRoot ?? process.cwd(), host: "node", backend: "native" });
+export async function createVuTeXRuntime(projectRoot?: string, assetsDir?: string): Promise<VuTeXRuntime> {
+    return createVuTeX({ projectRoot: projectRoot ?? process.cwd(), assetsDir, host: "node", backend: "native" });
 }
 
 export function loadBindings(): ReturnType<typeof loadVuTeXNode> | null {

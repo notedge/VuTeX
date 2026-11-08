@@ -7,6 +7,13 @@ export type CreateVuTeXOptions = {
     host?: VuTeXHost;
     backend?: VuTeXBackend;
     /**
+     * Directory the native side reads fonts from (path P2). It may be the
+     * installed package directory, an offline directory, or a system font
+     * directory. When set it wins over `VUTEX_FONT_DIR` and the packaged
+     * assets, and an invalid directory fails instead of falling through.
+     */
+    assetsDir?: string;
+    /**
      * Fallback theme, math face and input format when neither the render call
      * nor the manifest picks one. Distributions such as `@vutex/latex` set
      * these so a preset never has to write into the user's project.

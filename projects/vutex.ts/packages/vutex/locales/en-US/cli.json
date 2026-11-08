@@ -13,6 +13,7 @@
   "cli.opt.profile": "Named language profile from vutex.toml",
   "cli.opt.input-format": "Override input format id",
   "cli.opt.theme": "Typography theme: baseline (default) or traditional",
+  "cli.opt.assets-dir": "Font asset directory: packaged assets, an offline directory, or a system font directory",
   "cli.opt.json": "Emit machine-readable JSON on stdout",
   "cli.opt.package-name": "Resource package name to install",
   "cli.opt.package-slot": "Resource slot: font, math-font, template, theme, profile, macros, resources, fixture"

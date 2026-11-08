@@ -15,7 +15,17 @@ use vutex_napi::{
     theme::Theme,
 };
 
+/// Configure the repository font pack once for this test binary.
+fn configure_fonts() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        let fonts = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fonts");
+        vutex_napi::configure_font_assets_dir(fonts.display().to_string(), None).expect("configure repository font pack");
+    });
+}
+
 fn render(name: &str, source: &str) -> String {
+    configure_fonts();
     let parsed = parse_document(name, ImportFormat::Markdown, source.as_bytes()).expect("markdown parses");
     let lowered = lower_document(parsed.graph, name);
     let scene = build_display(lowered, Theme::Baseline, None, None);
@@ -55,6 +65,7 @@ fn headings_are_bold_and_body_text_is_not() {
 
 #[test]
 fn snapshot_html_carries_the_same_faces_as_svg() {
+    configure_fonts();
     let parsed = parse_document("sample.md", ImportFormat::Markdown, b"# Title\n\nBody `code`.\n").expect("parses");
     let lowered = lower_document(parsed.graph, "sample.md");
     let scene = build_display(lowered, Theme::Baseline, None, None);
@@ -68,6 +79,7 @@ fn snapshot_html_carries_the_same_faces_as_svg() {
 /// checked so a future caller cannot bypass the shared layer.
 #[test]
 fn every_svg_entry_embeds_bundled_faces_and_drops_generic_families() {
+    configure_fonts();
     let source = "<svg xmlns=\"http://www.w3.org/2000/svg\"><title>x</title><text font-family=\"serif\">a</text><text font-family=\"monospace\">b</text></svg>";
     for theme in [Theme::Baseline, Theme::Traditional] {
         let out = embed_body_fonts(source, theme);

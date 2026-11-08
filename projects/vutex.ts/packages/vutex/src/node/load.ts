@@ -1,8 +1,9 @@
 import { createRequire } from "node:module";
 
 import type { LoweredDocumentHandle, DisplaySceneHandle, FlowSceneHandle, TemplateGeometry, VuTeXBindings } from "../types.js";
+import type { FontAssetBinding } from "./fonts.js";
 
-type NativeBinding = VuTeXBindings & {
+export type NativeVuTeXBinding = VuTeXBindings & FontAssetBinding & {
     lowerDocument: (graphJson: string, label: string) => LoweredDocumentHandle;
     buildDisplay: (lowered: LoweredDocumentHandle, theme?: string, mathFont?: string, template?: TemplateGeometry) => DisplaySceneHandle;
     buildFlow: (graphJson: string, theme?: string, mathFont?: string) => FlowSceneHandle;
@@ -16,15 +17,20 @@ const PLATFORM_PACKAGES: Record<string, string> = {
     "darwin-arm64": "@vutex/vutex-darwin-arm64",
 };
 
-/** Load the platform-specific Node-API binary from `@vutex/vutex-<platform>`. */
-export function loadVuTeXNode(): VuTeXBindings {
+/** Load the platform-specific Node-API binary, including its font entries. */
+export function loadVuTeXNative(): NativeVuTeXBinding {
     const key = `${process.platform}-${process.arch}`;
     const pkg = PLATFORM_PACKAGES[key];
     if (!pkg) {
         throw new Error(`Unsupported platform for VuTeX native bindings: ${key}`);
     }
     const require = createRequire(import.meta.url);
-    const binding = require(pkg).default as NativeBinding;
+    return require(pkg).default as NativeVuTeXBinding;
+}
+
+/** Load the platform-specific Node-API binary from `@vutex/vutex-<platform>`. */
+export function loadVuTeXNode(): VuTeXBindings {
+    const binding = loadVuTeXNative();
     return {
         vutexVersion: () => binding.vutexVersion(),
         measureFormula: (source, optionsJson) => binding.measureFormula(source, optionsJson),
