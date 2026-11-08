@@ -17,6 +17,7 @@ document-fonts = { workspace = true }
 document-formats = { workspace = true }
 document-ir = { workspace = true }
 document-input-tex = { workspace = true }
+document-input-typst = { workspace = true }
 plotter-diagram = { workspace = true }
 plotter-input-dot = { workspace = true }
 plotter-input-mermaid = { workspace = true }

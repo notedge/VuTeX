@@ -307,6 +307,37 @@ fn tex_source_over_budget_returns_the_profile_code() {
     assert_eq!(failure.code, "vutex.input.tex.source_too_large");
 }
 
+#[test]
+fn typst_unterminated_group_is_refused_by_the_profile() {
+    let source = b"= Intro\n\nBody.\n\n#set page(\n  width: 10cm,\n";
+    let failure = parse_document("sample.typ", ImportFormat::Typst, source).unwrap_err();
+    assert_eq!(failure.code, "vutex.input.typst.unterminated_dynamic_group");
+    assert_eq!(failure.severity, "error");
+}
+
+#[test]
+fn typst_single_line_group_yields_one_span() {
+    let source = "= Intro\n\n#set page(width: 10cm)\n\nBody.\n";
+    let parsed = parse_document("sample.typ", ImportFormat::Typst, source.as_bytes()).expect("typst source parses");
+    assert_eq!(parsed.diagnostics.len(), 1, "{:?}", parsed.diagnostics);
+    let record = &parsed.diagnostics[0];
+    assert_eq!(record.code, "import.typst.dynamic_content");
+    let span = record.span.unwrap_or_else(|| panic!("the profile must record the group span: {record:?}"));
+    assert_eq!(&source[span.start..span.end], "#set page(width: 10cm)");
+    let conversion = parsed.conversion.expect("the typst profile projects a conversion report");
+    assert!(
+        conversion.unsupported.iter().any(|item| item.code == "import.typst.dynamic_content"),
+        "{conversion:?}"
+    );
+}
+
+#[test]
+fn typst_source_over_budget_returns_the_profile_code() {
+    let source = "x".repeat(8 * 1024 * 1024 + 1);
+    let failure = parse_document("sample.typ", ImportFormat::Typst, source.as_bytes()).unwrap_err();
+    assert_eq!(failure.code, "vutex.input.typst.source_too_large");
+}
+
 /// Collect the diagnostic codes of one payload in emission order.
 fn diagnostic_codes(payload: &Value) -> Vec<String> {
     payload["diagnostics"]

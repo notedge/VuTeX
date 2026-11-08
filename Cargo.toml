@@ -55,6 +55,7 @@ vutex-render-pdf = { package = "document-renderer-pdf", git = "https://github.co
 document-formats = { package = "document-formats", git = "https://github.com/notedge/document.rs.git", rev = "e4b034288ff7a9c55aaf31e8c889cb10d9d031f8", default-features = false, features = ["markdown", "notedown", "html", "tex", "typst", "docx", "epub"] }
 document-ir = { package = "document-ir", git = "https://github.com/notedge/document.rs.git", rev = "e4b034288ff7a9c55aaf31e8c889cb10d9d031f8" }
 document-input-tex = { package = "document-input-tex", git = "https://github.com/notedge/document.rs.git", rev = "e4b034288ff7a9c55aaf31e8c889cb10d9d031f8" }
+document-input-typst = { package = "document-input-typst", git = "https://github.com/notedge/document.rs.git", rev = "e4b034288ff7a9c55aaf31e8c889cb10d9d031f8" }
 plotter-scene = { package = "plotter-scene", git = "https://github.com/notedge/document.rs.git", rev = "e4b034288ff7a9c55aaf31e8c889cb10d9d031f8" }
 plotter-types = { package = "plotter-types", git = "https://github.com/notedge/document.rs.git", rev = "e4b034288ff7a9c55aaf31e8c889cb10d9d031f8" }
 plotter-diagram = { package = "plotter-diagram", git = "https://github.com/notedge/document.rs.git", rev = "e4b034288ff7a9c55aaf31e8c889cb10d9d031f8" }

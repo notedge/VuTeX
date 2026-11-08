@@ -22,10 +22,11 @@ use document_formats::{
     FormatError,
     import::{
         docx::import_docx_bytes, epub::import_epub_bytes, html::import_html_bytes, markdown::import_markdown_bytes,
-        notedown::import_notedown_bytes, typst::import_typst_bytes,
+        notedown::import_notedown_bytes,
     },
 };
 use document_input_tex::import_source as import_tex_source;
+use document_input_typst::import_source as import_typst_source;
 use document_ir::{Block, DocumentGraph};
 use serde::{Deserialize, Serialize};
 use vutex_compose::{Diagnostic as RenderDiagnostic, Severity, SourceSpan};
@@ -58,6 +59,8 @@ pub const IMPORT_FAILED: &str = "VUTEX_IMPORT_FAILED";
 pub const RENDER_FAILED: &str = "VUTEX_RENDER_FAILED";
 /// Diagnostic code for an input whose bytes are not valid UTF-8 text.
 pub const INPUT_TEXT_INVALID: &str = "VUTEX_INPUT_TEXT_INVALID";
+/// Diagnostic code for a Typst graph that breaks document-model invariants.
+pub const INVALID_TYPST_GRAPH: &str = "vutex.input.typst.invalid_graph";
 
 /// Import format resolved from the caller or the path extension.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -261,12 +264,38 @@ pub fn parse_document(label: &str, format: ImportFormat, bytes: &[u8]) -> Result
             conversion: Some(document.report),
         });
     }
+    if format == ImportFormat::Typst {
+        // The Typst profile owns the byte budget, the unterminated-group
+        // refusal, the conversion report, and construct-level diagnostics. The
+        // graph invariant check stays a call into the document model until the
+        // profile exposes its own `validate_graph`.
+        let text = text_of(bytes, format, label)
+            .map_err(|failure| error(IMPORT_FAILED, failure.to_string(), "import", label))?;
+        let document = import_typst_source(label, text)
+            .map_err(|failure| profile_error(failure.code(), failure.message(), failure.diagnostic.span, "import", label))?;
+        let validation = document.graph.validate();
+        if !validation.is_valid() {
+            return Err(profile_error(
+                INVALID_TYPST_GRAPH,
+                &format!("lowered graph breaks document-model invariants: {:?}", validation.issues),
+                None,
+                "import",
+                label,
+            ));
+        }
+        return Ok(ParsedDocument {
+            graph: document.graph,
+            format,
+            diagnostics: document.diagnostics.iter().map(|entry| stage_record(entry, "import", Some(label))).collect(),
+            conversion: Some(document.report),
+        });
+    }
     let mut graph = match format {
         ImportFormat::Markdown => text_of(bytes, format, label).and_then(|text| import_markdown_bytes(label, text)),
         ImportFormat::Notedown => text_of(bytes, format, label).and_then(|text| import_notedown_bytes(label, text)),
         ImportFormat::Html => import_html_bytes(label, bytes),
         ImportFormat::Tex => unreachable!("tex returns before the adapter match"),
-        ImportFormat::Typst => text_of(bytes, format, label).and_then(|text| import_typst_bytes(label, text)),
+        ImportFormat::Typst => unreachable!("typst returns before the adapter match"),
         ImportFormat::Docx => import_docx_bytes(label, bytes),
         ImportFormat::Epub => import_epub_bytes(label, bytes),
         ImportFormat::Unknown => unreachable!("unknown formats return before the adapter match"),
