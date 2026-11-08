@@ -27,7 +27,7 @@ pub mod theme;
 pub mod tikz;
 
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, HashMap},
     sync::{Mutex, OnceLock},
 };
 
@@ -75,6 +75,33 @@ pub struct PdfRenderResponse {
 #[napi]
 pub fn vutex_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
+}
+
+/// Configure fonts from asset payloads the host already read (native path P1).
+///
+/// `manifest_json` is the asset manifest that ships beside the files, and
+/// `font_buffers` maps every file name it declares to the bytes the host loaded,
+/// typically from `@vutex/vutex-fonts`. A process accepts one source: repeating
+/// the same manifest is a no-op, a different one fails with
+/// `VUTEX_FONT_ASSETS_ALREADY_CONFIGURED`. Missing roles or payloads fail with
+/// `VUTEX_FONT_ASSETS_FILE_MISSING`, an unreadable manifest with
+/// `VUTEX_FONT_ASSETS_MANIFEST_INVALID`.
+#[napi]
+pub fn configure_font_assets(manifest_json: String, font_buffers: HashMap<String, Buffer>) -> napi::Result<()> {
+    assets::configure_from_bytes(&manifest_json, font_buffers).map_err(|failure| napi::Error::from_reason(failure.reason()))
+}
+
+/// Configure fonts from a directory the host names (native path P2).
+///
+/// `dir` may be a package asset directory or a system font directory. Without
+/// `manifest_json` the directory must carry `fonts.json`; with one it is either
+/// a full manifest or a `role → file` mapping, so file names need not match the
+/// production pack. Only the named files are read, never a directory scan.
+/// Errors are the same codes path P1 reports.
+#[napi]
+pub fn configure_font_assets_dir(dir: String, manifest_json: Option<String>) -> napi::Result<()> {
+    assets::configure_from_dir(std::path::Path::new(&dir), manifest_json.as_deref())
+        .map_err(|failure| napi::Error::from_reason(failure.reason()))
 }
 
 /// Measure a formula and return JSON (`FormulaRender`).
@@ -628,14 +655,15 @@ impl FlowSceneHandle {
     /// Emit reflow HTML with the bundled fonts and typeset formulas embedded.
     #[napi]
     pub fn html(&self) -> napi::Result<String> {
-        document::render_flow_html(&self.inner).map(|outcome| outcome.html).map_err(|record| napi::Error::from_reason(record.message))
+        document::render_flow_html(&self.inner)
+            .map(|outcome| outcome.html)
+            .map_err(|record| napi::Error::from_reason(record.message))
     }
 
     /// Emit reflow HTML plus the diagnostics formula typesetting raised.
     #[napi]
     pub fn html_with_diagnostics(&self) -> napi::Result<FlowHtmlOutput> {
-        let outcome =
-            document::render_flow_html(&self.inner).map_err(|record| napi::Error::from_reason(record.message))?;
+        let outcome = document::render_flow_html(&self.inner).map_err(|record| napi::Error::from_reason(record.message))?;
         Ok(FlowHtmlOutput {
             html: outcome.html,
             diagnostics_json: serde_json::to_string(&outcome.diagnostics).unwrap_or_else(|_| "[]".to_string()),
