@@ -1,6 +1,6 @@
 {
     "name": "@vutex/watex-fonts",
-    "version": "0.0.17",
+    "version": "0.0.18",
     "description": "WaTeX bundled math font assets for browser and Node",
     "type": "module",
     "license": "SEE LICENSE IN assets/fonts",

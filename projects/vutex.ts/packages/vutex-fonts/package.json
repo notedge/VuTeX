@@ -1,6 +1,6 @@
 {
     "name": "@vutex/vutex-fonts",
-    "version": "0.0.17",
+    "version": "0.0.18",
     "description": "VuTeX bundled body and math font assets",
     "type": "module",
     "license": "SEE LICENSE IN assets/fonts",
