@@ -9,6 +9,7 @@ export type {
     FormulaRender,
     RenderOptions,
     WaTeXBindings,
+    WaTeXFontAssets,
     WaTeXWasmOptions,
 } from "./types.js";
 

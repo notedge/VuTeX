@@ -189,13 +189,13 @@ fn layout_formula(
 
 /// Why a formula never reached layout.
 ///
-/// A host that installs no embedded face has no default family, which is a
+/// A host that installs no math face has no default family, which is a
 /// diagnosable state rather than a panic, so the export boundary can report it
 /// without unwinding through a foreign call.
 enum LayoutFailure {
     /// The formula parser or the layout engine rejected the source.
     Math(MathError),
-    /// No embedded math face is installed in this process.
+    /// No math font assets are configured in this process.
     FontUnavailable,
 }
 
@@ -278,9 +278,9 @@ fn layout_failure_to_diagnostic(err: &LayoutFailure) -> FormulaDiagnostic {
     match err {
         LayoutFailure::Math(err) => math_error_to_diagnostic(err),
         LayoutFailure::FontUnavailable => FormulaDiagnostic {
-            code: "WATEX_FONT_UNAVAILABLE".into(),
+            code: "VUTEX_FONT_ASSETS_NOT_CONFIGURED".into(),
             severity: severity_name(Severity::Error),
-            message: "no embedded math face is installed in this host".into(),
+            message: "no math font assets are configured in this host".into(),
             start: None,
             end: None,
         },

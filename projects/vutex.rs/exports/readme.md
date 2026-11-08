@@ -106,7 +106,7 @@ so a caller never has to install fonts first.
 | Request | Diagnostic |
 | --- | --- |
 | `fontFamily: stix-two-math` | `WATEX_UNSUPPORTED_FONT_FAMILY`, no layout runs |
-| No embedded math face installed in the host | `WATEX_FONT_UNAVAILABLE`, layout does not run |
+| No math font assets configured in the host | `VUTEX_FONT_ASSETS_NOT_CONFIGURED`, layout does not run |
 | Empty source | `WATEX_EMPTY_SOURCE` |
 | TeX command outside the supported maths grammar | parse or layout diagnostic; SVG is empty when parsing fails |
 | Markdown, HTML or a full LaTeX document shell | parse diagnostics, no document semantics |

@@ -13,11 +13,20 @@
         "access": "public"
     },
     "exports": {
+        ".": {
+            "types": "./index.d.ts",
+            "node": "./node.js",
+            "default": "./browser.js"
+        },
+        "./package.json": "./package.json",
         "./fonts.json": "./assets/fonts/fonts.json",
         "./fonts/*": "./assets/fonts/*"
     },
     "files": [
         "assets",
+        "browser.js",
+        "index.d.ts",
+        "node.js",
         "readme.md"
     ],
     "scripts": {

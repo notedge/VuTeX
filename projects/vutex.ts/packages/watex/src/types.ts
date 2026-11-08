@@ -10,7 +10,7 @@ export type RenderOptions = {
      * its display-mode default (14px inline, 16px block).
      */
     fontSize?: number;
-    /** Math font family. Defaults to `"xits-math"` — the builtin embedded face. */
+    /** Math font family. Defaults to `"xits-math"` — the default installed face. */
     fontFamily?: FontFamily;
     /**
      * G5 font conformance mode. `"strict"` fails the render when any font
@@ -45,6 +45,13 @@ export type FormulaRender = {
     diagnostics: FormulaDiagnostic[];
 };
 
+export type WaTeXFontAssets = {
+    /** Latin Modern Math (`lm-math`). */
+    latinModern: Uint8Array;
+    /** XITS Math (`xits-math`, the default). */
+    xits: Uint8Array;
+};
+
 export type WaTeXWasmOptions = {
     /** Fetch the wasm artifact from this URL (browser hosts). */
     url?: string | URL;
@@ -53,6 +60,16 @@ export type WaTeXWasmOptions = {
      * artifact has no fetchable URL). Takes precedence over `url`.
      */
     bytes?: Uint8Array;
+    /**
+     * Base URL of the directory carrying the two math font files. Hosts that
+     * serve the assets themselves set this; the default is the pinned CDN URL.
+     */
+    assetBaseUrl?: string | URL;
+    /**
+     * Math font bytes the host already read. Takes precedence over
+     * `assetBaseUrl` and over the default Node/CDN sources.
+     */
+    assets?: WaTeXFontAssets;
 };
 
 export type WaTeXBindings = {

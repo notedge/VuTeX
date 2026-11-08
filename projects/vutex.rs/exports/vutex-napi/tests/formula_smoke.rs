@@ -24,8 +24,8 @@ fn formula_entries_report_then_install_and_return_payloads() {
     // diagnostic instead of unwinding through the export boundary.
     let missing = watex_wasm::measure("x^2", &Default::default());
     assert!(
-        missing.diagnostics.iter().any(|item| item.code == "WATEX_FONT_UNAVAILABLE"),
-        "a host without an embedded face must report WATEX_FONT_UNAVAILABLE"
+        missing.diagnostics.iter().any(|item| item.code == "VUTEX_FONT_ASSETS_NOT_CONFIGURED"),
+        "a host without configured math assets must report VUTEX_FONT_ASSETS_NOT_CONFIGURED"
     );
 
     let entries: [(&str, fn(String, Option<String>) -> String); 4] = [
@@ -37,7 +37,7 @@ fn formula_entries_report_then_install_and_return_payloads() {
 
     for (label, entry) in entries {
         let value = parse(label, entry("x^2".to_string(), None));
-        assert!(!has_code(&value, "WATEX_FONT_UNAVAILABLE"), "{label} must install the embedded faces");
+        assert!(!has_code(&value, "VUTEX_FONT_ASSETS_NOT_CONFIGURED"), "{label} must install the math faces");
         assert!(!has_code(&value, "WATEX_MATH_ERROR"), "{label} must accept `x^2`");
         let width = value["metrics"]["width"].as_f64().unwrap_or(0.0);
         assert!(width > 0.0, "{label} must report a positive width, got {width}");
