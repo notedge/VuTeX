@@ -22,6 +22,8 @@ Cargo.lock
 node_modules/
 .env.placeholder.local
 .cache/
+projects/vutex.ts/packages/vutex-fonts/assets/
+projects/vutex.ts/packages/watex-fonts/assets/
 projects/vutex.ts/platforms/vutex-unknown-wasm32/lib/
 projects/vutex.ts/platforms/vutex-*/lib/
 cache/

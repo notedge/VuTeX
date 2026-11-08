@@ -29,7 +29,8 @@
         "test": "tsx --test tests/smoke.test.ts tests/facade.test.ts tests/load.test.ts tests/syntax-corpus.test.ts tests/native-parity.test.ts"
     },
     "dependencies": {
-        "@vutex/vutex-unknown-wasm32": "workspace:*"
+        "@vutex/vutex-unknown-wasm32": "workspace:*",
+        "@vutex/watex-fonts": "workspace:*"
     },
     "devDependencies": {
         "@types/node": "^22.13.10",

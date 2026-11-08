@@ -1,0 +1,26 @@
+{
+    "name": "@vutex/vutex-fonts",
+    "version": "0.0.17",
+    "description": "VuTeX bundled body and math font assets",
+    "type": "module",
+    "license": "SEE LICENSE IN assets/fonts",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/notedge/VuTeX.git",
+        "directory": "projects/vutex.ts/packages/vutex-fonts"
+    },
+    "publishConfig": {
+        "access": "public"
+    },
+    "exports": {
+        "./fonts.json": "./assets/fonts/fonts.json",
+        "./fonts/*": "./assets/fonts/*"
+    },
+    "files": [
+        "assets",
+        "readme.md"
+    ],
+    "scripts": {
+        "prepack": "node ../../../../scripts/fonts/stage.mjs"
+    }
+}

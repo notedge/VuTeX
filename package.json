@@ -11,6 +11,8 @@
         "fmt": "cargo fmt --all",
         "build:wasm": "node scripts/build-wasm.mjs",
         "build:napi": "node scripts/build-napi.mjs",
+        "fonts:stage": "node scripts/fonts/stage.mjs",
+        "fonts:stage:check": "node scripts/fonts/stage.mjs --check",
         "typecheck": "pnpm -r --if-present run typecheck",
         "placeholder": "nifty publish --placeholder --dry-run",
         "placeholder:publish": "nifty publish --placeholder",

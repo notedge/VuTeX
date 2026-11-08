@@ -1,0 +1,53 @@
+{
+  "schema": "vutex.font-assets/v1",
+  "files": [
+    {
+      "name": "Tinos-Regular.ttf",
+      "role": "text-serif-latin-regular",
+      "package": "text",
+      "license": "Tinos.OFL.md"
+    },
+    {
+      "name": "Tinos-Bold.ttf",
+      "role": "text-serif-latin-bold",
+      "package": "text",
+      "license": "Tinos.OFL.md"
+    },
+    {
+      "name": "Tinos-Italic.ttf",
+      "role": "text-serif-latin-italic",
+      "package": "text",
+      "license": "Tinos.OFL.md"
+    },
+    {
+      "name": "NotoSerifSC-Regular.ttf",
+      "role": "text-serif-cjk-regular",
+      "package": "text",
+      "license": "NotoSerifSC.OFL.md"
+    },
+    {
+      "name": "NotoSerifSC-Bold.ttf",
+      "role": "text-serif-cjk-bold",
+      "package": "text",
+      "license": "NotoSerifSC.OFL.md"
+    },
+    {
+      "name": "NotoSansMono-Regular.ttf",
+      "role": "text-mono-latin-regular",
+      "package": "text",
+      "license": "NotoSansMono.OFL.md"
+    },
+    {
+      "name": "LatinModernMath-Regular.otf",
+      "role": "math-latin-modern",
+      "package": "math",
+      "license": "LatinModernMath-Regular.GUST-FONT-LICENSE.md"
+    },
+    {
+      "name": "XITSMath-Regular.otf",
+      "role": "math-xits",
+      "package": "math",
+      "license": "XITSMath-Regular.OFL.md"
+    }
+  ]
+}
