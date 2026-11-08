@@ -338,6 +338,27 @@ fn typst_source_over_budget_returns_the_profile_code() {
     assert_eq!(failure.code, "vutex.input.typst.source_too_large");
 }
 
+#[test]
+fn typst_math_is_preserved_and_layout_reports_the_language() {
+    let source = "= Intro\n\nMath $x^2 + 1$.\n";
+    let parsed = parse_document("sample.typ", ImportFormat::Typst, source.as_bytes()).expect("typst source parses");
+    let conversion = parsed.conversion.expect("the typst profile projects a conversion report");
+    assert!(
+        conversion.preserved.iter().any(|item| item.code == "import.typst.math.source_preserved"),
+        "typst math must be preserved: {conversion:?}"
+    );
+    configure_fonts();
+    let lowered = lower_document(parsed.graph, "sample.typ");
+    let scene = build_display(lowered, Theme::Baseline, None, None);
+    assert!(
+        scene.diagnostics.iter().any(|record| record.code == "vutex.layout.math.unsupported_language"),
+        "layout must report the unlowered language: {:?}",
+        scene.diagnostics
+    );
+    let svg = render_display_svg(&scene).expect("svg renders");
+    assert!(svg.contains("x^2 + 1"), "preserved math source stays visible: {svg}");
+}
+
 /// Collect the diagnostic codes of one payload in emission order.
 fn diagnostic_codes(payload: &Value) -> Vec<String> {
     payload["diagnostics"]
