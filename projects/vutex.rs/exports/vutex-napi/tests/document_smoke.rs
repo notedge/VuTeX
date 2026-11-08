@@ -135,10 +135,7 @@ fn tex_profile_report_reaches_the_lowering_payload() {
     let source = b"\\section{Intro}\n\n\\begin{foobar}\nkept\n\\end{foobar}\n";
     let parsed = parse_document("sample.tex", ImportFormat::Tex, source).expect("tex source parses");
     let conversion = parsed.conversion.expect("the profile projects a conversion report");
-    assert!(
-        conversion.unsupported.iter().any(|item| item.code == "import.tex.unknown_environment"),
-        "{conversion:?}"
-    );
+    assert!(conversion.unsupported.iter().any(|item| item.code == "import.tex.unknown_environment"), "{conversion:?}");
     let lowered = lower_document(parsed.graph, "sample.tex");
     assert!(
         !lowered.diagnostics.iter().any(|entry| entry.code == "vutex.layout.math.unsupported_language"),
@@ -325,10 +322,7 @@ fn typst_single_line_group_yields_one_span() {
     let span = record.span.unwrap_or_else(|| panic!("the profile must record the group span: {record:?}"));
     assert_eq!(&source[span.start..span.end], "#set page(width: 10cm)");
     let conversion = parsed.conversion.expect("the typst profile projects a conversion report");
-    assert!(
-        conversion.unsupported.iter().any(|item| item.code == "import.typst.dynamic_content"),
-        "{conversion:?}"
-    );
+    assert!(conversion.unsupported.iter().any(|item| item.code == "import.typst.dynamic_content"), "{conversion:?}");
 }
 
 #[test]

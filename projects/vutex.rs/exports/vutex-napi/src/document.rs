@@ -253,8 +253,8 @@ pub fn parse_document(label: &str, format: ImportFormat, bytes: &[u8]) -> Result
         // The TeX profile owns the byte budget, graph validation, conversion
         // report, and construct-level diagnostics. Bypassing it here would drop
         // all four, so the profile is the only entry.
-        let text = text_of(bytes, format, label)
-            .map_err(|failure| error(IMPORT_FAILED, failure.to_string(), "import", label))?;
+        let text =
+            text_of(bytes, format, label).map_err(|failure| error(IMPORT_FAILED, failure.to_string(), "import", label))?;
         let document = import_tex_source(label, text)
             .map_err(|failure| profile_error(failure.code(), failure.message(), failure.span(), "import", label))?;
         return Ok(ParsedDocument {
@@ -269,8 +269,8 @@ pub fn parse_document(label: &str, format: ImportFormat, bytes: &[u8]) -> Result
         // refusal, the conversion report, and construct-level diagnostics. The
         // graph invariant check stays a call into the document model until the
         // profile exposes its own `validate_graph`.
-        let text = text_of(bytes, format, label)
-            .map_err(|failure| error(IMPORT_FAILED, failure.to_string(), "import", label))?;
+        let text =
+            text_of(bytes, format, label).map_err(|failure| error(IMPORT_FAILED, failure.to_string(), "import", label))?;
         let document = import_typst_source(label, text)
             .map_err(|failure| profile_error(failure.code(), failure.message(), failure.diagnostic.span, "import", label))?;
         let validation = document.graph.validate();
@@ -560,10 +560,10 @@ pub struct FlowHtmlOutcome {
 /// adds a diagnostic, so the caller's report names it instead of shipping a
 /// blank hole.
 pub fn render_flow_html(scene: &FlowScene) -> Result<FlowHtmlOutcome, DiagnosticRecord> {
-    let math = scene.math_font.or_else(MathFontFamily::builtin_default).map(|family| FlowMathContext {
-        family,
-        base_size: scene.theme.base_font_size(),
-    });
+    let math = scene
+        .math_font
+        .or_else(MathFontFamily::builtin_default)
+        .map(|family| FlowMathContext { family, base_size: scene.theme.base_font_size() });
     let rendered = match math {
         Some(math) => render_html_reflow_with_math(&scene.flow, &math),
         None => render_html_reflow(&scene.flow).map(|markup| vutex_render_html::FlowHtml { markup, diagnostics: Vec::new() }),

@@ -9,7 +9,7 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import test from "node:test";
 
-import { loadVuTeXNode } from "@vutex/vutex/node";
+import { configureFonts, loadVuTeXNative } from "@vutex/vutex";
 
 import { loadWaTeX } from "../src/wasm/load.js";
 import type { FormulaRender } from "../src/types.js";
@@ -20,7 +20,8 @@ const require = createRequire(import.meta.url);
 const wasmPackageJson = require.resolve("@vutex/vutex-unknown-wasm32/package.json");
 const wasmBytes = new Uint8Array(readFileSync(join(dirname(wasmPackageJson), "lib", "watex_wasm_bg.wasm")));
 const wasm = await loadWaTeX({ bytes: wasmBytes });
-const native = loadVuTeXNode();
+const native = loadVuTeXNative();
+await configureFonts(native);
 
 const CORPUS: readonly string[] = [
     "x + y",
