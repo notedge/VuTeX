@@ -22,9 +22,10 @@ use document_formats::{
     FormatError,
     import::{
         docx::import_docx_bytes, epub::import_epub_bytes, html::import_html_bytes, markdown::import_markdown_bytes,
-        notedown::import_notedown_bytes, tex::import_tex_bytes, typst::import_typst_bytes,
+        notedown::import_notedown_bytes, typst::import_typst_bytes,
     },
 };
+use document_input_tex::import_source as import_tex_source;
 use document_ir::{Block, DocumentGraph};
 use serde::{Deserialize, Serialize};
 use vutex_compose::{Diagnostic as RenderDiagnostic, Severity};
@@ -164,6 +165,8 @@ pub struct ParsedDocument {
     pub format: ImportFormat,
     /// Diagnostics raised while importing.
     pub diagnostics: Vec<DiagnosticRecord>,
+    /// Conversion report the input profile projected, when one was involved.
+    pub conversion: Option<vutex_compose::ConversionReport>,
 }
 
 /// Result of lowering diagrams and footnotes into layout input.
@@ -243,11 +246,26 @@ pub fn parse_document(label: &str, format: ImportFormat, bytes: &[u8]) -> Result
     if format == ImportFormat::Unknown {
         return Err(error(INPUT_FORMAT_UNSUPPORTED, format!("unsupported input format for {label}"), "import", label));
     }
+    if format == ImportFormat::Tex {
+        // The TeX profile owns the byte budget, graph validation, conversion
+        // report, and construct-level diagnostics. Bypassing it here would drop
+        // all four, so the profile is the only entry.
+        let text = text_of(bytes, format, label)
+            .map_err(|failure| error(IMPORT_FAILED, failure.to_string(), "import", label))?;
+        let document = import_tex_source(label, text)
+            .map_err(|failure| error(failure.code(), failure.message().to_string(), "import", label))?;
+        return Ok(ParsedDocument {
+            graph: document.graph,
+            format,
+            diagnostics: document.diagnostics.iter().map(|entry| stage_record(entry, "import", Some(label))).collect(),
+            conversion: Some(document.report),
+        });
+    }
     let mut graph = match format {
         ImportFormat::Markdown => text_of(bytes, format, label).and_then(|text| import_markdown_bytes(label, text)),
         ImportFormat::Notedown => text_of(bytes, format, label).and_then(|text| import_notedown_bytes(label, text)),
         ImportFormat::Html => import_html_bytes(label, bytes),
-        ImportFormat::Tex => text_of(bytes, format, label).and_then(|text| import_tex_bytes(label, text)),
+        ImportFormat::Tex => unreachable!("tex returns before the adapter match"),
         ImportFormat::Typst => text_of(bytes, format, label).and_then(|text| import_typst_bytes(label, text)),
         ImportFormat::Docx => import_docx_bytes(label, bytes),
         ImportFormat::Epub => import_epub_bytes(label, bytes),
@@ -262,7 +280,7 @@ pub fn parse_document(label: &str, format: ImportFormat, bytes: &[u8]) -> Result
             absorb_definition_continuations(&mut graph, text);
         }
     }
-    Ok(ParsedDocument { graph, format, diagnostics: Vec::new() })
+    Ok(ParsedDocument { graph, format, diagnostics: Vec::new(), conversion: None })
 }
 
 fn text_of<'a>(bytes: &'a [u8], format: ImportFormat, label: &str) -> Result<&'a str, FormatError> {

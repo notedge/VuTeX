@@ -229,6 +229,30 @@ fn report_assembly_wraps_caller_sections_without_inventing_status() {
     assert!(report.get("status").is_none(), "the library must not invent a process status");
 }
 
+#[test]
+fn tex_source_reports_unknown_environment_through_the_profile() {
+    let source = b"\\section{Intro}\n\nBody.\n\n\\begin{foobar}\nkept\n\\end{foobar}\n";
+    let parsed = parse_document("sample.tex", ImportFormat::Tex, source).expect("tex source parses");
+    assert_eq!(parsed.format.id(), "tex");
+    let conversion = parsed.conversion.expect("the tex profile projects a conversion report");
+    assert!(
+        conversion.unsupported.iter().any(|item| item.code == "import.tex.unknown_environment"),
+        "unknown environment missing from {conversion:?}"
+    );
+    assert!(
+        parsed.diagnostics.iter().any(|record| record.code == "import.tex.unknown_environment"),
+        "unknown environment diagnostic missing from {:?}",
+        parsed.diagnostics
+    );
+}
+
+#[test]
+fn tex_source_over_budget_returns_the_profile_code() {
+    let source = "x".repeat(8 * 1024 * 1024 + 1);
+    let failure = parse_document("sample.tex", ImportFormat::Tex, source.as_bytes()).unwrap_err();
+    assert_eq!(failure.code, "vutex.input.tex.source_too_large");
+}
+
 /// Collect the diagnostic codes of one payload in emission order.
 fn diagnostic_codes(payload: &Value) -> Vec<String> {
     payload["diagnostics"]

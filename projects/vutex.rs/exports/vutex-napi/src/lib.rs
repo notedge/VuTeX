@@ -143,13 +143,18 @@ fn parse_render_options(raw: Option<String>) -> RenderOptions {
 pub fn parse_document(label: String, format: String, bytes: Buffer) -> String {
     let import_format = document::ImportFormat::from_option(&format);
     match document::parse_document(&label, import_format, &bytes) {
-        Ok(parsed) => serde_json::json!({
-            "ok": true,
-            "format": parsed.format.id(),
-            "graph": parsed.graph,
-            "diagnostics": parsed.diagnostics,
-        })
-        .to_string(),
+        Ok(parsed) => {
+            let mut payload = serde_json::json!({
+                "ok": true,
+                "format": parsed.format.id(),
+                "graph": parsed.graph,
+                "diagnostics": parsed.diagnostics,
+            });
+            if let Some(conversion) = parsed.conversion {
+                payload["conversion"] = serde_json::json!(conversion);
+            }
+            payload.to_string()
+        }
         Err(record) => serde_json::json!({
             "ok": false,
             "format": import_format.id(),
