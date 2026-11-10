@@ -59,8 +59,6 @@ pub const IMPORT_FAILED: &str = "VUTEX_IMPORT_FAILED";
 pub const RENDER_FAILED: &str = "VUTEX_RENDER_FAILED";
 /// Diagnostic code for an input whose bytes are not valid UTF-8 text.
 pub const INPUT_TEXT_INVALID: &str = "VUTEX_INPUT_TEXT_INVALID";
-/// Diagnostic code for a Typst graph that breaks document-model invariants.
-pub const INVALID_TYPST_GRAPH: &str = "vutex.input.typst.invalid_graph";
 
 /// Import format resolved from the caller or the path extension.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -265,24 +263,16 @@ pub fn parse_document(label: &str, format: ImportFormat, bytes: &[u8]) -> Result
         });
     }
     if format == ImportFormat::Typst {
-        // The Typst profile owns the byte budget, the unterminated-group
-        // refusal, the conversion report, and construct-level diagnostics. The
-        // graph invariant check stays a call into the document model until the
-        // profile exposes its own `validate_graph`.
+        // The Typst profile owns the byte budget, the graph invariant check
+        // through its public `validate_graph`, the unterminated-group refusal,
+        // the conversion report, and construct-level diagnostics. The profile
+        // runs the check inside `import_source`, so the host never validates a
+        // graph a second time and the failure code reaches this mapping
+        // verbatim.
         let text =
             text_of(bytes, format, label).map_err(|failure| error(IMPORT_FAILED, failure.to_string(), "import", label))?;
         let document = import_typst_source(label, text)
             .map_err(|failure| profile_error(failure.code(), failure.message(), failure.diagnostic.span, "import", label))?;
-        let validation = document.graph.validate();
-        if !validation.is_valid() {
-            return Err(profile_error(
-                INVALID_TYPST_GRAPH,
-                &format!("lowered graph breaks document-model invariants: {:?}", validation.issues),
-                None,
-                "import",
-                label,
-            ));
-        }
         return Ok(ParsedDocument {
             graph: document.graph,
             format,
