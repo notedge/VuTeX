@@ -326,6 +326,55 @@ fn typst_single_line_group_yields_one_span() {
 }
 
 #[test]
+fn typst_cross_line_balanced_group_is_one_opaque_block_with_full_span() {
+    let group = "#set page(\n  width: 10cm,\n)";
+    let source = format!("= Intro\n\n{group}\n\nBody.\n");
+    let parsed =
+        parse_document("sample.typ", ImportFormat::Typst, source.as_bytes()).expect("a balanced cross-line group imports");
+    assert_eq!(parsed.diagnostics.len(), 1, "{:?}", parsed.diagnostics);
+    let record = &parsed.diagnostics[0];
+    assert_eq!(record.code, "import.typst.dynamic_content");
+    let span = record.span.unwrap_or_else(|| panic!("the profile must record the complete group span: {record:?}"));
+    assert_eq!(&source[span.start..span.end], group, "the span slices exactly the authored group");
+    let conversion = parsed.conversion.expect("the typst profile projects a conversion report");
+    let opaque = conversion
+        .opaque
+        .iter()
+        .find(|item| item.code == "typst.expression.set")
+        .unwrap_or_else(|| panic!("the group stays opaque in the report: {conversion:?}"));
+    assert_eq!(opaque.detail, group, "the payload keeps every line of the group, not just the head");
+    configure_fonts();
+    let scene = build_display(lower_document(parsed.graph, "sample.typ"), Theme::Baseline, None, None);
+    let svg = render_display_svg(&scene).expect("svg renders");
+    assert!(svg.contains("Intro"), "the heading before the group reaches the page: {svg}");
+    assert!(svg.contains("Body."), "the paragraph after the group reaches the page: {svg}");
+    assert!(!svg.contains("#set"), "the dynamic construct must not reach the page: {svg}");
+}
+
+#[test]
+fn typst_cross_line_group_without_the_close_is_still_refused() {
+    let source = b"= Intro\n\n#set page(\n  width: 10cm,\n\nBody.\n";
+    let failure = parse_document("sample.typ", ImportFormat::Typst, source).unwrap_err();
+    assert_eq!(failure.code, "vutex.input.typst.unterminated_dynamic_group");
+    assert_eq!(failure.severity, "error");
+}
+
+#[test]
+fn typst_block_in_inline_loss_carries_the_rejected_construct_span() {
+    let source = "Lead *a\n- b*\n";
+    let parsed = parse_document("sample.typ", ImportFormat::Typst, source.as_bytes())
+        .expect("the source imports with the construct recorded as a loss");
+    let record = parsed
+        .diagnostics
+        .iter()
+        .find(|entry| entry.code == "import.typst.block_in_inline_context")
+        .unwrap_or_else(|| panic!("the block-in-inline loss must reach the report: {:?}", parsed.diagnostics));
+    let span = record.span.unwrap_or_else(|| panic!("the profile must record the authored span: {record:?}"));
+    assert!(span.end > span.start, "the span must be non-empty: {span:?}");
+    assert_eq!(&source[span.start..span.end], "- b", "the span names the rejected block construct");
+}
+
+#[test]
 fn typst_source_over_budget_returns_the_profile_code() {
     let source = "x".repeat(8 * 1024 * 1024 + 1);
     let failure = parse_document("sample.typ", ImportFormat::Typst, source.as_bytes()).unwrap_err();
