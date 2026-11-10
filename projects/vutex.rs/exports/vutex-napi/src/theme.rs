@@ -348,6 +348,9 @@ fn face_for(key: BodyFaceKey) -> Option<&'static document_fonts::BodyFace> {
                 && face.style == BodyFaceStyle::Regular
         }
         (BodyFamily::Mono, _) => face.family == BodyFamily::Mono && face.style == BodyFaceStyle::Regular,
+        // A named family is served only by a face registered under that exact
+        // name, never by folding onto the bundled prose faces.
+        (BodyFamily::Named(name), _) => face.family == BodyFamily::Named(name),
     })
 }
 

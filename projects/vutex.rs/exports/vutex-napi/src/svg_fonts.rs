@@ -387,14 +387,18 @@ fn candidates(theme: Theme, family: &str, bold: bool, italic: bool) -> Vec<usize
 /// CSS family a bundled face is published under in a theme.
 fn face_family(theme: Theme, face: &BodyFace) -> &'static str {
     match theme {
+        // A `Named` face is published under the exact name the host registered,
+        // never folded onto the prose family.
         Theme::Baseline | Theme::Editorial | Theme::Classic => match face.family {
             BodyFamily::Serif => SERIF_FAMILY,
             BodyFamily::Mono => MONO_FAMILY,
+            BodyFamily::Named(name) => name,
         },
         Theme::Traditional => match (face.family, face.script) {
             (BodyFamily::Serif, BodyScript::Latin) => SERIF_FAMILY,
             (BodyFamily::Serif, BodyScript::Cjk) => CJK_FAMILY,
             (BodyFamily::Mono, _) => MONO_FAMILY,
+            (BodyFamily::Named(name), _) => name,
         },
     }
 }

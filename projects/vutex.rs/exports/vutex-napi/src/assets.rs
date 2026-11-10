@@ -218,7 +218,10 @@ fn assemble(
         return Err(FontAssetsError::ManifestInvalid("manifest is missing a math role".to_string()));
     };
     document_fonts::install_math_fonts(&MathFontPack::new(leak(latin_modern), leak(xits)));
-    let set = Arc::new(BodyFaceSet::new(faces));
+    // A repeated `(family, script, style)` triple is a broken pack declaration,
+    // so the registry refuses it through the manifest code instead of letting
+    // face order silently decide which face serves a run.
+    let set = Arc::new(BodyFaceSet::new(faces).map_err(|error| FontAssetsError::ManifestInvalid(error.to_string()))?);
     let metrics = BodyMetrics::from_set(&set);
     Ok(Box::leak(Box::new(Configured { source, set, metrics })))
 }
